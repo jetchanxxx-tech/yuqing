@@ -1,0 +1,88 @@
+# yuging platform configuration
+# Copy to config.yaml and adjust for your environment.
+# APP_ env vars take precedence (e.g., APP_SERVER_ADDR=:9090).
+
+server:
+  addr: ":8080"
+  env: production              # dev | production
+
+db:
+  primary: "postgres://yuging:secret@localhost:5432/yuging_platform?sslmode=disable"
+  replicas: []                 # read replicas (optional)
+  readWriteSplit: false        # true = route reads to replicas
+  maxConns: 40
+  tenant:
+    autoCreate: true           # auto-create tenant DB on signup
+    migrateOnBoot: true        # run tenant migrations at startup
+    poolMaxConns: 8
+    maxPools: 50               # LRU-evicted
+    idleTimeout: "30m"
+
+cache:
+  addr: "redis://localhost:6379/0"
+  ttl: "60s"
+
+queue:
+  driver: memory               # memory | redis | rabbitmq | nats
+
+llm:
+  defaultProvider: deepseek
+  models:
+    - id: deepseek-chat
+      provider: deepseek
+      baseUrl: "https://api.deepseek.com/v1"
+      apiKey: ""               # set via APP_LLM_MODELS_0_APIKEY env
+      inputCostPerM: 0.14      # platform cost (USD per 1M tokens)
+      outputCostPerM: 0.42
+      userInputPricePerM: 0.28 # user price (USD per 1M tokens, with margin)
+      userOutputPricePerM: 0.84
+      maxTokens: 8192
+    - id: kimi-k2-0711-preview
+      provider: moonshot
+      baseUrl: "https://api.moonshot.cn/v1"
+      apiKey: ""
+      inputCostPerM: 0.10
+      outputCostPerM: 0.40
+      userInputPricePerM: 0.20
+      userOutputPricePerM: 0.80
+      maxTokens: 8192
+
+storage:
+  driver: local                # local | s3
+  # local:
+  #   dir: /opt/yuging/data/storage
+  # s3:
+  #   endpoint: "https://minio.example.com"
+  #   bucket: yuging-reports
+  #   accessKey: ""
+  #   secretKey: ""
+
+search:
+  driver: pg                   # pg | elasticsearch
+
+auth:
+  jwtSecret: ""                # required, set via APP_AUTH_JWT_SECRET
+  accessTTL: "15m"
+  refreshTTL: "720h"           # 30 days
+
+billing:
+  currency: CNY
+  gateway: manual              # manual | stripe | alipay
+  invoicePrefix: "INV-"
+
+engines:
+  query:
+    url: "http://localhost:8000"
+    timeout: "60s"
+  media:
+    url: "http://localhost:8001"
+    timeout: "120s"
+  insight:
+    url: "http://localhost:8002"
+    timeout: "120s"
+  report:
+    url: "http://localhost:8003"
+    timeout: "300s"
+  forum:
+    url: "http://localhost:8004"
+    timeout: "300s"
