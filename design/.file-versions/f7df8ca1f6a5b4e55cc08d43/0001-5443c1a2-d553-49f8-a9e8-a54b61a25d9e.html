@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 微舆舆情监测</title>
+<style>
+/* ── 设计系统 Token（绑定：小红书 RED） ─────────────────────────────── */
+:root {
+  --bg:           #f5f5f5;
+  --surface:      #ffffff;
+  --surface-warm: #fafafa;
+  --fg:    rgba(0, 0, 0, 0.8);
+  --fg-2:  rgba(0, 0, 0, 0.62);
+  --muted: rgba(0, 0, 0, 0.45);
+  --meta:  rgba(0, 0, 0, 0.27);
+  --border:      rgba(0, 0, 0, 0.08);
+  --border-soft: rgba(0, 0, 0, 0.05);
+  --accent:        #ff2442;
+  --accent-on:     #ffffff;
+  --accent-hover:  #ff2e4d;
+  --accent-active: #e6203a;
+  --success: #02b940;
+  --warn:    #ff7d03;
+  --danger:  #ff2442;
+  --font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-lg:   18px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  28px;
+  --text-4xl:  32px;
+  --leading-body:     1.5;
+  --leading-tight:    1.25;
+  --tracking-display: 0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --section-y-desktop: 64px;
+  --section-y-tablet:  48px;
+  --section-y-phone:   32px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-pill: 9999px;
+  --elev-flat:   none;
+  --elev-ring:   0 0 0 1px var(--border);
+  --elev-raised: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+  --motion-fast:   150ms;
+  --motion-base:   200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max:            1200px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet:  16px;
+  --container-gutter-phone:   12px;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.num { font-variant-numeric: tabular-nums; }
+
+.page { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+
+/* 左侧品牌区 */
+.brand-panel {
+  background: var(--surface-warm);
+  padding: 56px 64px;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  min-height: 100vh;
+}
+.logo { display: inline-flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
+.logo .mark { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.brand-visual { margin: 48px 0 0; max-width: 480px; }
+.brand-visual img { width: 100%; height: auto; display: block; }
+.brand-panel .copy { margin-top: 48px; margin-bottom: auto; max-width: 420px; }
+.brand-panel .kicker {
+  display: inline-flex; padding: 4px 12px; border-radius: 9999px;
+  background: rgba(255,36,66,.08); color: var(--accent);
+  font-size: 12px; font-weight: 500; margin-bottom: 20px;
+}
+.brand-panel h1 { font-size: 34px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
+.brand-panel .lead { font-size: 16px; color: var(--fg-2); margin-top: 14px; line-height: 1.7; }
+.points { margin-top: 32px; display: grid; gap: 18px; }
+.point { display: flex; gap: 12px; }
+.point .ic {
+  flex: none; width: 28px; height: 28px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--accent);
+}
+.point b { display: block; font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+.point span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.brand-panel .foot { margin-top: 40px; font-size: 12px; color: var(--muted); }
+
+/* 右侧表单区 */
+.form-panel { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.auth-card { width: 100%; max-width: 400px; }
+.auth-card h2 { font-size: 24px; font-weight: 600; line-height: 1.3; }
+.auth-card .sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.tabs { display: flex; gap: 32px; margin: 32px 0 24px; border-bottom: 1px solid var(--border); }
+.tabs button {
+  position: relative; background: none; border: none; padding: 8px 2px;
+  font-size: 14px; color: var(--muted); font-weight: 400; white-space: nowrap;
+}
+.tabs button:hover { color: var(--fg-2); }
+.tabs button.active { color: var(--fg); font-weight: 600; }
+.tabs button.active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--accent); border-radius: 2px;
+}
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 13px; font-weight: 500; color: var(--fg-2); margin-bottom: 6px; }
+.input {
+  width: 100%; height: 42px; padding: 0 14px; border: none; border-radius: var(--radius-sm);
+  background: var(--bg); font: inherit; font-size: 14px; color: var(--fg);
+  transition: box-shadow var(--motion-fast) var(--ease-standard);
+}
+.input:focus { outline: none; box-shadow: 0 0 0 2px rgba(255,36,66,.30); background: var(--surface); }
+.input::placeholder { color: var(--meta); }
+.row-between { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 20px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-2); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.link { font-size: 13px; color: var(--accent); }
+.link:hover { text-decoration: underline; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; height: 44px; border-radius: var(--radius-pill); border: none;
+  font-size: 15px; font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.btn-primary { background: var(--accent); color: var(--accent-on); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-active); }
+.divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--meta); font-size: 12px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.sso-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.btn-sso {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 42px; border-radius: var(--radius-pill); border: 1px solid var(--border);
+  background: var(--surface); color: var(--fg-2); font-size: 13px; font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.btn-sso:hover { background: rgba(48,48,52,.05); color: var(--fg); }
+.note { margin-top: 20px; font-size: 12px; color: var(--meta); text-align: center; line-height: 1.6; }
+.note a { color: var(--muted); }
+.note a:hover { color: var(--accent); }
+.inline-error {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,36,66,.08); color: var(--danger);
+  font-size: 13px; padding: 10px 14px; border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: 1fr; }
+  .brand-panel { display: none; }
+  .brand-visual { display: none; }
+  .form-panel { padding: 32px 16px; min-height: 100vh; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <aside class="brand-panel" data-od-id="brand-panel">
+    <div class="logo">
+      <span class="mark" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V12M9 17V7M14 17V9M19 17V5"/></svg>
+      </span>
+      微舆
+    </div>
+    <div class="brand-visual" aria-hidden="true">
+      <img src="assets/brand-hero.svg" alt="" role="presentation">
+    </div>
+    <div class="copy">
+      <span class="kicker">AI 原生舆情监测</span>
+      <h1>你的品牌，<br>正在被怎样讨论。</h1>
+      <p class="lead">微舆把「监测」升级为「研判」——多智能体协作分析全网声量、情感与话题，让你在每个热点到来前，先看懂它。</p>
+      <div class="points">
+        <div class="point">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></span>
+          <div><b>多源采集</b><span>微博、新闻、微信、抖音、小红书、论坛，一次分析全覆盖。</span></div>
+        </div>
+        <div class="point">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <div><b>多智能体研判</b><span>深度辩论式分析，产出可读的情感、话题与趋势结论。</span></div>
+        </div>
+        <div class="point">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 21h14"/></svg></span>
+          <div><b>一键成报告</b><span>HTML / PDF / Word，随时导出，汇报不加班。</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">微舆 · 舆情监测平台 — 示例界面，数据为演示用途</div>
+  </aside>
+
+  <main class="form-panel">
+    <div class="auth-card" data-od-id="auth-card">
+
+      <div class="tabs" role="tablist" data-od-id="auth-tabs">
+        <button class="active" data-tab="login" id="tab-login">登录</button>
+        <button data-tab="register" id="tab-register">注册</button>
+      </div>
+
+      <!-- 登录 -->
+      <form id="form-login" novalidate>
+        <h2>欢迎回来</h2>
+        <p class="sub">登录你的工作台，继续追踪今天的声量。</p>
+        <div style="margin-top:24px">
+          <div class="field">
+            <label for="login-email">邮箱</label>
+            <input class="input" id="login-email" type="email" placeholder="you@example.com" value="ops@example.com">
+          </div>
+          <div class="field">
+            <label for="login-pwd">密码</label>
+            <input class="input" id="login-pwd" type="password" placeholder="输入密码">
+          </div>
+          <div class="row-between">
+            <label class="check"><input type="checkbox" checked>记住我</label>
+            <a class="link" href="#">忘记密码？</a>
+          </div>
+          <button class="btn btn-primary" type="submit" data-od-id="btn-login">登录</button>
+        </div>
+        <div class="divider">或使用以下方式</div>
+        <div class="sso-row">
+          <button class="btn-sso" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg>
+            企业微信
+          </button>
+          <button class="btn-sso" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12h8M8 16h5"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>
+            飞书
+          </button>
+        </div>
+        <p class="note">还没有账号？<a href="#" id="goto-register">注册一个新工作台</a>，注册即自动创建团队租户。</p>
+      </form>
+
+      <!-- 注册 -->
+      <form id="form-register" hidden novalidate>
+        <h2>创建你的工作台</h2>
+        <p class="sub">注册即自动创建团队租户与独立数据库，数据互不干扰。</p>
+        <div style="margin-top:24px">
+          <div class="field">
+            <label for="reg-team">团队名称</label>
+            <input class="input" id="reg-team" type="text" placeholder="例如：云朵咖啡市场部">
+          </div>
+          <div class="field">
+            <label for="reg-email">工作邮箱</label>
+            <input class="input" id="reg-email" type="email" placeholder="you@example.com">
+          </div>
+          <div class="field">
+            <label for="reg-pwd">设置密码</label>
+            <input class="input" id="reg-pwd" type="password" placeholder="至少 8 位">
+          </div>
+          <div class="field">
+            <label for="reg-pwd2">确认密码</label>
+            <input class="input" id="reg-pwd2" type="password" placeholder="再次输入密码">
+          </div>
+          <div class="row-between" style="margin-top:4px">
+            <label class="check"><input type="checkbox" checked>我已阅读并同意《服务协议》与《隐私政策》</label>
+          </div>
+          <button class="btn btn-primary" type="submit" data-od-id="btn-register">注册并开始免费体验</button>
+        </div>
+        <p class="note">免费体验含 5 次月度分析与 1M Token 配额，随时可升级。</p>
+      </form>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('[data-tab]');
+  const loginForm = document.getElementById('form-login');
+  const registerForm = document.getElementById('form-register');
+  function switchTab(name) {
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    loginForm.hidden = name !== 'login';
+    registerForm.hidden = name !== 'register';
+  }
+  tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+  document.getElementById('goto-register').addEventListener('click', e => { e.preventDefault(); switchTab('register'); });
+  loginForm.addEventListener('submit', e => { e.preventDefault(); location.href = 'dashboard.html'; });
+  registerForm.addEventListener('submit', e => { e.preventDefault(); location.href = 'dashboard.html'; });
+</script>
+</body>
+</html>

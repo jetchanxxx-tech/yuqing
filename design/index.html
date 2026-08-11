@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微舆 · 设计系统 — 样式契约与构建指南</title>
+<style>
+/* ── 设计系统 Token（绑定：小红书 RED） ─────────────────────────────── */
+:root {
+  --bg:           #f5f5f5;
+  --surface:      #ffffff;
+  --surface-warm: #fafafa;
+  --fg:    rgba(0, 0, 0, 0.8);
+  --fg-2:  rgba(0, 0, 0, 0.62);
+  --muted: rgba(0, 0, 0, 0.45);
+  --meta:  rgba(0, 0, 0, 0.27);
+  --border:      rgba(0, 0, 0, 0.08);
+  --border-soft: rgba(0, 0, 0, 0.05);
+  --accent:        #ff2442;
+  --accent-on:     #ffffff;
+  --accent-hover:  #ff2e4d;
+  --accent-active: #e6203a;
+  --success: #02b940;
+  --warn:    #ff7d03;
+  --danger:  #ff2442;
+  --font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-lg:   18px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  28px;
+  --text-4xl:  32px;
+  --leading-body:     1.5;
+  --leading-tight:    1.25;
+  --tracking-display: 0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-pill: 9999px;
+  --elev-flat:   none;
+  --elev-ring:   0 0 0 1px var(--border);
+  --elev-raised: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+  --motion-fast:   150ms;
+  --motion-base:   200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max:            1200px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet:  16px;
+  --container-gutter-phone:   12px;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm);
+}
+.num { font-variant-numeric: tabular-nums; }
+
+/* ── Hero ────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 100;
+}
+.topbar .brand-sm {
+  font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px;
+}
+.topbar .brand-sm .mark {
+  width: 26px; height: 26px; border-radius: 7px; background: var(--accent);
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.topbar nav { display: flex; gap: 4px; margin-left: auto; }
+.topbar nav a {
+  padding: 6px 14px; border-radius: var(--radius-pill);
+  font-size: 13px; color: var(--fg-2);
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.topbar nav a:hover { background: rgba(48,48,52,.05); color: var(--fg); }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.hero { padding: 64px 24px 48px; text-align: center; }
+.hero .eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 14px; border-radius: 9999px;
+  background: rgba(255,36,66,.08); color: var(--accent);
+  font-size: 12px; font-weight: 500;
+}
+.hero h1 {
+  font-size: 40px; font-weight: 600; line-height: 1.3;
+  margin: 20px auto 16px; max-width: 720px; letter-spacing: 0;
+}
+.hero p { font-size: 16px; color: var(--fg-2); max-width: 620px; margin: 0 auto; }
+.hero .actions { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* ── buttons ─────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 40px; padding: 0 24px; border-radius: var(--radius-pill);
+  border: none; font-size: 14px; font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: var(--accent-on); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-active); }
+.btn-secondary { background: rgba(48,48,52,.10); color: var(--fg); }
+.btn-secondary:hover { background: rgba(48,48,52,.16); }
+.btn-ghost { background: transparent; color: var(--fg-2); }
+.btn-ghost:hover { background: rgba(48,48,52,.05); color: var(--fg); }
+.btn-outline { background: var(--surface); border: 1px solid var(--accent); color: var(--accent); }
+.btn-outline:hover { background: rgba(255,36,66,.06); }
+.btn-danger-ghost { background: transparent; color: var(--danger); border: 1px solid rgba(255,36,66,.4); }
+.btn-danger-ghost:hover { background: rgba(255,36,66,.06); }
+
+/* ── cards ───────────────────────────────────────────────────── */
+.card {
+  background: var(--surface); border-radius: var(--radius-md);
+  padding: 20px 24px;
+}
+.card + .card { margin-top: 16px; }
+.card h3 { font-size: 16px; font-weight: 600; line-height: 1.4; margin-bottom: 4px; }
+.card .desc { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+/* ── sections ────────────────────────────────────────────────── */
+section.block { margin: 48px auto; }
+section.block h2 {
+  font-size: 24px; font-weight: 600; line-height: 1.3;
+  margin-bottom: 6px; letter-spacing: 0;
+}
+section.block > .sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* ── color swatches ──────────────────────────────────────────── */
+.swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.swatch { border-radius: var(--radius-md); overflow: hidden; background: var(--surface); box-shadow: var(--elev-ring); }
+.swatch .chip { height: 64px; }
+.swatch .name { padding: 10px 14px; }
+.swatch .name b { display: block; font-size: 13px; font-weight: 500; color: var(--fg); }
+.swatch .name span { font-size: 11px; color: var(--muted); font-family: var(--font-mono); word-break: break-all; }
+
+/* ── type scale ──────────────────────────────────────────────── */
+.type-row { display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--border-soft); }
+.type-row .size { width: 76px; flex: none; color: var(--muted); font-size: 12px; font-family: var(--font-mono); }
+.type-row .sample { flex: 1; min-width: 0; }
+.type-row .sample .zh { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── component showcase ──────────────────────────────────────── */
+.demo-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 9999px; font-size: 12px;
+  background: rgba(48,48,52,.10); color: var(--fg-2);
+}
+.chip.trending { background: var(--accent); color: #fff; }
+
+.pill-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500;
+}
+.pill-status .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.pill-status .dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.pill-success { background: #EAF8EF; color: var(--success); }
+.pill-active { background: rgba(255,36,66,.08); color: var(--accent); }
+.pill-neutral { background: rgba(48,48,52,.10); color: var(--fg-2); }
+.pill-warn { background: #FFF2E6; color: var(--warn); }
+
+.input-demo {
+  height: 40px; padding: 0 14px; border: none; border-radius: var(--radius-sm);
+  background: var(--bg); font: inherit; font-size: 14px; color: var(--fg);
+  min-width: 240px;
+}
+.input-demo::placeholder { color: var(--meta); }
+
+.tabs { display: flex; gap: 32px; border-bottom: 1px solid var(--border); }
+.tabs a {
+  position: relative; padding: 8px 2px; font-size: 14px; color: var(--muted);
+  font-weight: 400; white-space: nowrap;
+}
+.tabs a:hover { color: var(--fg-2); }
+.tabs a.active { color: var(--fg); font-weight: 600; }
+.tabs a.active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--accent); border-radius: 2px;
+}
+
+.progress { display: flex; align-items: center; gap: 12px; }
+.progress .track { flex: 1; height: 6px; border-radius: 3px; background: rgba(48,48,52,.10); overflow: hidden; min-width: 120px; }
+.progress .fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.progress .fill.green { background: var(--success); }
+.progress .label { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── chart palette ───────────────────────────────────────────── */
+.chart-palette { display: flex; gap: 8px; flex-wrap: wrap; }
+.chart-palette .cp-swatch {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  border: 1px solid rgba(0,0,0,.08);
+}
+
+/* ── page tiles ──────────────────────────────────────────────── */
+.page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.page-tile {
+  background: var(--surface); border-radius: var(--radius-md);
+  padding: 18px 20px; display: block;
+  border: 1px solid transparent;
+  transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+.page-tile:hover { transform: translateY(-2px); box-shadow: var(--elev-raised); }
+.page-tile .tag {
+  display: inline-block; font-size: 11px; color: var(--accent);
+  background: rgba(255,36,66,.08); padding: 2px 8px; border-radius: 9999px; margin-bottom: 10px;
+}
+.page-tile h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.page-tile p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* ── build guide ─────────────────────────────────────────────── */
+.build-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.build-table th {
+  text-align: left; font-size: 11px; font-weight: 500; color: var(--muted);
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  background: var(--surface-warm);
+}
+.build-table td {
+  padding: 10px 12px; border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+.build-table td:first-child { font-family: var(--font-mono); font-size: 12px; color: var(--fg); white-space: nowrap; font-weight: 500; }
+.build-table td:nth-child(2) { color: var(--fg-2); font-size: 13px; }
+
+/* ── interaction checklist ───────────────────────────────────── */
+.checklist { display: grid; gap: 8px; }
+.checklist li {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13px; color: var(--fg-2); padding: 8px 0; border-bottom: 1px solid var(--border-soft);
+}
+.checklist li:last-child { border-bottom: none; }
+.checklist .icon-pass { color: var(--success); font-weight: 600; flex: none; }
+
+/* ── code block ──────────────────────────────────────────────── */
+.code-block {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 16px; margin-top: 10px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+  color: var(--fg-2); overflow-x: auto;
+  white-space: pre;
+}
+.code-block .hl { color: var(--accent); }
+
+/* ── footer ──────────────────────────────────────────────────── */
+footer { text-align: center; color: var(--muted); font-size: 12px; padding: 48px 0 64px; }
+
+@media (max-width: 720px) {
+  .hero { padding: 36px 16px 28px; }
+  .hero h1 { font-size: 28px; }
+  .container { padding: 0 16px; }
+  .topbar { padding: 10px 16px; }
+  .topbar nav { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand-sm">
+    <span class="mark">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V12M9 17V7M14 17V9M19 17V5"/></svg>
+    </span>
+    微舆 · 设计系统
+  </span>
+  <nav>
+    <a href="#pages">页面</a>
+    <a href="#colors">色彩</a>
+    <a href="#type">字体</a>
+    <a href="#charts">图表</a>
+    <a href="#components">组件</a>
+    <a href="#build">构建</a>
+  </nav>
+</div>
+
+<header class="hero">
+  <span class="eyebrow">设计系统 · 小红书 RED · v1.0</span>
+  <h1>微舆 · 舆情监测平台<br>设计规范与构建指南</h1>
+  <p>基于小红书（RED）设计语言的 SaaS 舆情监测工作台。本页作为设计系统文档中心，供构建方（前端、智能体）查阅色彩、字体、组件契约、图表色板以及 Ant Design 映射指南。</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="dashboard.html">进入数据面板原型</a>
+    <a class="btn btn-outline" href="design-spec.md">阅读完整设计规范</a>
+    <a class="btn btn-secondary" href="shared.css">下载 shared.css</a>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- ── 页面索引 ──────────────────────────────────────────────── -->
+  <section class="block" id="pages" data-od-id="section-pages">
+    <h2>页面索引 · 12 个原型文件</h2>
+    <p class="sub">每屏为独立 HTML 文件，自包含 Token 与样式，可直接在浏览器打开。构建方按文件名即可定位对应页面。</p>
+    <div class="page-grid">
+      <a class="page-tile" href="login.html" data-od-id="page-login">
+        <span class="tag">认证</span>
+        <h3>login.html</h3>
+        <p>登录 / 注册双 Tab，注册即创建租户，左侧品牌价值陈述。</p>
+      </a>
+      <a class="page-tile" href="dashboard.html" data-od-id="page-dashboard">
+        <span class="tag">核心</span>
+        <h3>dashboard.html</h3>
+        <p>指标卡 + 声量趋势堆叠面积 + 来源环形 + 热门话题 + 实时告警。</p>
+      </a>
+      <a class="page-tile" href="analysis-new.html" data-od-id="page-analysis-new">
+        <span class="tag">核心</span>
+        <h3>analysis-new.html</h3>
+        <p>新建分析 4 步向导：类型 → 监测设置 → 成本预估 → 确认提交。</p>
+      </a>
+      <a class="page-tile" href="analysis-list.html" data-od-id="page-analysis-list">
+        <span class="tag">核心</span>
+        <h3>analysis-list.html</h3>
+        <p>分析任务列表，搜索 + 状态筛选 + 进度条 + 分页。</p>
+      </a>
+      <a class="page-tile" href="analysis-detail.html" data-od-id="page-analysis-detail">
+        <span class="tag">核心</span>
+        <h3>analysis-detail.html</h3>
+        <p>SSE 7 步实时时间线 + 情感环形 + 话题云 + AI 研判摘要 + 原始文档表。</p>
+      </a>
+      <a class="page-tile" href="reports.html" data-od-id="page-reports">
+        <span class="tag">报告</span>
+        <h3>reports.html</h3>
+        <p>报告中心，历史列表 + 格式徽标（HTML/MD/PDF）+ 按套餐限制下载。</p>
+      </a>
+      <a class="page-tile" href="plans.html" data-od-id="page-plans">
+        <span class="tag">计费</span>
+        <h3>plans.html</h3>
+        <p>四档套餐对比卡（Free/Pro/Business/Enterprise）+ 升级确认流程。</p>
+      </a>
+      <a class="page-tile" href="usage.html" data-od-id="page-usage">
+        <span class="tag">计费</span>
+        <h3>usage.html</h3>
+        <p>用量中心：Token 用量 / 配额进度 / 分模型用量 / 成本汇总。</p>
+      </a>
+      <a class="page-tile" href="invoices.html" data-od-id="page-invoices">
+        <span class="tag">计费</span>
+        <h3>invoices.html</h3>
+        <p>账单列表（期间/金额/状态）+ PDF 下载。</p>
+      </a>
+      <a class="page-tile" href="settings.html" data-od-id="page-settings">
+        <span class="tag">管理</span>
+        <h3>settings.html</h3>
+        <p>团队设置：个人资料 / 成员管理 / API 密钥 / 安全。</p>
+      </a>
+      <a class="page-tile" href="admin.html" data-od-id="page-admin">
+        <span class="tag">管理</span>
+        <h3>admin.html</h3>
+        <p>平台管理后台：租户管理 / 平台用量 / 系统状态 / 挂起/恢复。</p>
+      </a>
+      <a class="page-tile" href="shared.css" data-od-id="page-shared" style="border: 1px dashed var(--border);">
+        <span class="tag" style="background:rgba(48,48,52,.08);color:var(--fg-2)">契约</span>
+        <h3>shared.css</h3>
+        <p>全局 CSS 契约：Token 块 + 重置 + 外壳 + 通用组件，构建方可直接复制。</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- ── 色彩 ──────────────────────────────────────────────────── -->
+  <section class="block" id="colors" data-od-id="section-colors">
+    <h2>色彩 Token</h2>
+    <p class="sub">品牌红是唯一强调色（每屏 ≤ 2 处）；中性色全部由半透明黑表达；语义色极少生产环境可见。</p>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="chip" style="background:#f5f5f5"></div><div class="name"><b>画布 --bg</b><span>#f5f5f5</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ffffff"></div><div class="name"><b>卡片 --surface</b><span>#ffffff</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ff2442"></div><div class="name"><b>强调 --accent</b><span>#ff2442（Token 红）</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ff2e4d"></div><div class="name"><b>Hover / 组件层</b><span>#ff2e4d（略粉，仅按钮+Tab 下划线）</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(0,0,0,.8)"></div><div class="name"><b>标题 --fg</b><span>rgba(0,0,0,.80)</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(0,0,0,.62)"></div><div class="name"><b>正文 --fg-2</b><span>rgba(0,0,0,.62)</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(0,0,0,.45)"></div><div class="name"><b>辅助 --muted</b><span>rgba(0,0,0,.45)</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(0,0,0,.27)"></div><div class="name"><b>禁用 --meta</b><span>rgba(0,0,0,.27)</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#02b940"></div><div class="name"><b>正面/成功</b><span>#02b940（背景 #EAF8EF）</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#ff7d03"></div><div class="name"><b>警告 --warn</b><span>#ff7d03（背景 #FFF2E6）</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(48,48,52,.10)"></div><div class="name"><b>填充 hover/disable</b><span>rgba(48,48,52,.10)</span></div></div>
+      <div class="swatch"><div class="chip" style="background:rgba(0,0,0,.08)"></div><div class="name"><b>分隔线 --border</b><span>rgba(0,0,0,.08)</span></div></div>
+    </div>
+  </section>
+
+  <!-- ── 字体 ──────────────────────────────────────────────────── -->
+  <section class="block" id="type" data-od-id="section-type">
+    <h2>字体层级</h2>
+    <p class="sub">全站 PingFang SC 栈；仅 400/500/600 三个字重；追踪为 0；中文标题行高 ≥ 1.3。</p>
+    <div class="card">
+      <div class="type-row"><span class="size">40 / 600</span><div class="sample"><div class="zh" style="font-size:40px;font-weight:600;line-height:1.3">舆情，一眼看清</div></div></div>
+      <div class="type-row"><span class="size">32 / 600</span><div class="sample"><div class="zh" style="font-size:32px;font-weight:600;line-height:1.3">页面标题 H1</div></div></div>
+      <div class="type-row"><span class="size">24 / 600</span><div class="sample"><div class="zh" style="font-size:24px;font-weight:600;line-height:1.3">区块标题 H2</div></div></div>
+      <div class="type-row"><span class="size">20 / 600</span><div class="sample"><div class="zh" style="font-size:20px;font-weight:600;line-height:1.4">卡片标题 H3</div></div></div>
+      <div class="type-row"><span class="size">16 / 500</span><div class="sample"><div class="zh" style="font-size:16px;font-weight:500;line-height:1.5">次级标签 T2 · 导航 · 按钮</div></div></div>
+      <div class="type-row"><span class="size">14 / 400</span><div class="sample"><div class="zh" style="font-size:14px;line-height:1.5">正文 B2 · 你的品牌正在被怎样讨论——正面与负面同时增长。</div></div></div>
+      <div class="type-row"><span class="size">12 / 400</span><div class="sample"><div class="zh" style="font-size:12px;color:var(--muted)">辅助说明 C2 · 更新于 5 分钟前 · 示例数据</div></div></div>
+    </div>
+  </section>
+
+  <!-- ── 图表色板 ──────────────────────────────────────────────── -->
+  <section class="block" id="charts" data-od-id="section-chart-palette">
+    <h2>图表色板</h2>
+    <p class="sub">ECharts 配置专用。情感三色为唯一语义映射；来源分布使用冷灰色阶；主题色在图表中不出现（图表用语义色）。</p>
+
+    <div class="card">
+      <h3>情感三色（堆叠面积 / 环形）</h3>
+      <p class="desc">正面=绿 / 中性=灰 / 负面=品牌红。填充用低透明度，边框用纯色。</p>
+      <div class="demo-row" style="margin-top:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="chart-palette"><i class="cp-swatch" style="background:rgba(2,185,64,.16)"></i><i class="cp-swatch" style="background:rgba(2,185,64,.40)"></i><i class="cp-swatch" style="background:#02b940"></i></span>
+          <span style="font-size:13px;color:var(--fg-2)">正面 <span class="num" style="font-family:var(--font-mono)">#02b940</span></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:24px">
+          <span class="chart-palette"><i class="cp-swatch" style="background:rgba(48,48,52,.07)"></i><i class="cp-swatch" style="background:rgba(48,48,52,.18)"></i><i class="cp-swatch" style="background:rgba(48,48,52,.35)"></i></span>
+          <span style="font-size:13px;color:var(--fg-2)">中性</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:24px">
+          <span class="chart-palette"><i class="cp-swatch" style="background:rgba(255,36,66,.12)"></i><i class="cp-swatch" style="background:rgba(255,36,66,.40)"></i><i class="cp-swatch" style="background:#ff2442"></i></span>
+          <span style="font-size:13px;color:var(--fg-2)">负面 <span class="num" style="font-family:var(--font-mono)">#ff2442</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>来源分布 — 6 级冷灰</h3>
+      <p class="desc">环形图按来源使用，从浅到深对应占比从低到高。</p>
+      <div class="demo-row" style="margin-top:12px">
+        <span class="chart-palette">
+          <i class="cp-swatch" style="background:rgba(48,48,52,.07)"></i>
+          <i class="cp-swatch" style="background:rgba(48,48,52,.13)"></i>
+          <i class="cp-swatch" style="background:rgba(48,48,52,.19)"></i>
+          <i class="cp-swatch" style="background:rgba(48,48,52,.25)"></i>
+          <i class="cp-swatch" style="background:rgba(48,48,52,.31)"></i>
+          <i class="cp-swatch" style="background:rgba(48,48,52,.37)"></i>
+        </span>
+        <span style="font-size:12px;color:var(--muted)">微博 / 新闻 / 微信 / 抖音 / 小红书 / 知乎</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>条形 / 进度 — 主题色</h3>
+      <p class="desc">横向条形（话题提及量、模型用量）使用品牌红或成功绿。</p>
+      <div class="demo-row" style="margin-top:12px">
+        <div class="progress"><span class="label num">分析进度</span><div class="track"><div class="fill" style="width:62%"></div></div><span class="label num">62%</span></div>
+        <div class="progress" style="margin-left:24px"><span class="label num">配额已用</span><div class="track"><div class="fill green" style="width:72%"></div></div><span class="label num">72%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 组件 ──────────────────────────────────────────────────── -->
+  <section class="block" id="components" data-od-id="section-components">
+    <h2>组件契约</h2>
+    <p class="sub">所有可交互元素均以 CSS 类名作为契约。构建方按类名语义映射为 Ant Design / 自定义组件。</p>
+
+    <div class="card">
+      <h3>按钮（全药丸，4 变体 + 危险变体）</h3>
+      <p class="desc">主 CTA 每视口仅一个实心按钮。危险操作用描边 + 图标区分（与主 CTA 同色）。</p>
+      <div class="demo-row" style="margin-top:12px">
+        <button class="btn btn-primary" data-od-id="btn-primary">新建分析（主 CTA）</button>
+        <button class="btn btn-secondary">次要操作</button>
+        <button class="btn btn-outline">查看详情</button>
+        <button class="btn btn-ghost">取消</button>
+        <button class="btn btn-danger-ghost">⚠ 删除任务</button>
+      </div>
+      <div class="code-block" style="margin-top:16px">
+<span class="hl">.btn-primary</span>      background: var(--accent)  color: #fff      →  AntD type="primary" shape="round"
+<span class="hl">.btn-secondary</span>    background: rgba(48,48,52,.10)              →  AntD type="default" shape="round"
+<span class="hl">.btn-outline</span>      border: 1px solid var(--accent)             →  AntD type="default" + red border
+<span class="hl">.btn-ghost</span>        transparent bg                               →  AntD type="text"
+<span class="hl">.btn-danger-ghost</span>  transparent + red border                    →  AntD danger + type="default"
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>状态徽标（5 种语义）</h3>
+      <div class="demo-row" style="margin-top:12px">
+        <span class="pill-status pill-success"><span class="dot"></span>已完成</span>
+        <span class="pill-status pill-active"><span class="dot pulse"></span>分析中</span>
+        <span class="pill-status pill-neutral"><span class="dot"></span>排队中</span>
+        <span class="pill-status pill-warn"><span class="dot"></span>预警</span>
+        <span class="pill-status pill-neutral">已取消</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>话题 Chip / 标签</h3>
+      <div class="demo-row" style="margin-top:12px">
+        <span class="chip trending"># 联名周边开售</span>
+        <span class="chip"># 冬季新品</span>
+        <span class="chip"># 门店排队</span>
+        <span class="chip"># 创始人专访</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>输入框（灰色底·无边框·focus 红环）</h3>
+      <div class="demo-row" style="margin-top:12px">
+        <input class="input-demo" type="text" placeholder="输入关键词，回车添加" data-od-id="input-keyword">
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Tab 导航（文本 + 2px 红下划线）</h3>
+      <div class="tabs" style="margin-top:12px">
+        <a href="#" class="active">全部状态</a>
+        <a href="#">进行中</a>
+        <a href="#">已完成</a>
+        <a href="#">失败</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>进度条（6px 高·圆角·品牌红填充）</h3>
+      <div class="demo-row" style="margin-top:12px">
+        <div class="progress"><span class="label num">配额</span><div class="track"><div class="fill" style="width:62%"></div></div><span class="label num">6.2M / 10M</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>表格（白卡内·行 hover·无外边框）</h3>
+      <p class="desc">表头 12px/500 --muted；行高 52px；hover rgba(48,48,52,.04)；首列标题可加粗。</p>
+    </div>
+  </section>
+
+  <!-- ── 构建指南 ──────────────────────────────────────────────── -->
+  <section class="block" id="build" data-od-id="section-build">
+    <h2>构建方映射指南</h2>
+    <p class="sub">技术栈：React 18 + TypeScript + Ant Design 5 + ECharts 5。下表为 CSS 契约到代码组件的映射。</p>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="build-table">
+        <thead>
+          <tr>
+            <th style="width:140px">CSS 类名 / Token</th>
+            <th style="width:200px">Ant Design 映射</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>--accent: #ff2442</td><td>ConfigProvider token.colorPrimary</td><td>全局主题色；AntD 组件自动继承</td></tr>
+          <tr><td>--font-body</td><td>ConfigProvider token.fontFamily</td><td>PingFang SC 栈；确保 CJK 回退链</td></tr>
+          <tr><td>.btn-primary</td><td>&lt;Button type="primary" shape="round" /&gt;</td><td>AntD round 自带药丸；需要覆盖 hover 色 #ff2e4d</td></tr>
+          <tr><td>.btn-secondary</td><td>&lt;Button shape="round" /&gt;</td><td>需覆写默认灰为 rgba(48,48,52,.10)</td></tr>
+          <tr><td>.btn-outline</td><td>&lt;Button shape="round" style="…" /&gt;</td><td>自定义 border + color 为 --accent</td></tr>
+          <tr><td>.btn-ghost</td><td>&lt;Button type="text" /&gt;</td><td>AntD text 类型即无背景</td></tr>
+          <tr><td>.card</td><td>&lt;Card /&gt; 或自定义 div</td><td>borderRadius: 12, 无 boxShadow（AntD 默认含阴影，需覆写）</td></tr>
+          <tr><td>.chip (status pill)</td><td>&lt;Tag /&gt;</td><td>AntD Tag 自带圆角；语义色按 status 映射</td></tr>
+          <tr><td>--motion-fast: 150ms</td><td>ConfigProvider token.motionDurationShort</td><td>150ms 过渡，cubic-bezier(0.2,0,0,1)</td></tr>
+          <tr><td>.topnav-tabs</td><td>&lt;Tabs /&gt; + 自定义 tabBarStyle</td><td>2px 下划线指示器，颜色 --accent-hover</td></tr>
+          <tr><td>.progress (.track + .fill)</td><td>&lt;Progress percent={n} /&gt;</td><td>strokeColor: --accent, trailColor: rgba(48,48,52,.10)</td></tr>
+          <tr><td>.field</td><td>&lt;Input /&gt; + variant="filled" 或自定义</td><td>背景 var(--bg)，无边框，focus 红环</td></tr>
+          <tr><td>.sidebar</td><td>&lt;Layout.Sider width={224} /&gt;</td><td>固定 224px，白底，右分隔线</td></tr>
+          <tr><td>Search / .search-pill</td><td>&lt;Input.Search /&gt;</td><td>圆角 9999px，背景 var(--bg)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>ECharts 图表配置速查</h3>
+      <table class="build-table" style="margin-top:12px">
+        <thead>
+          <tr><th style="width:180px">图表场景</th><th style="width:300px">ECharts 关键配置</th><th>映射页面</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>声量趋势（堆叠面积）</td><td>series.type: 'line', areaStyle + stack + smooth; 三色填充；隐藏 splitLine</td><td>dashboard.html</td></tr>
+          <tr><td>情感占比（环形）</td><td>series.type: 'pie', radius: ['55%','75%'], itemStyle.borderRadius: 6; 中心 title 放总数</td><td>dashboard / analysis-detail</td></tr>
+          <tr><td>来源分布（环形）</td><td>同 pie，color 使用 6 级冷灰阶 rgba(48,48,52, .07–.37)</td><td>dashboard.html</td></tr>
+          <tr><td>话题/条形（横向）</td><td>series.type: 'bar', xAxis + yAxis 互换；itemStyle.borderRadius: 4; color: --accent</td><td>dashboard / usage</td></tr>
+          <tr><td>模型用量（条形）</td><td>同 bar，color 按模型区分（品牌红 + 灰色阶）</td><td>usage.html</td></tr>
+          <tr><td>关键数字（大号）</td><td>纯 CSS：font-size 24–32/600, tabular-nums, color: --fg</td><td>所有指标卡</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>全局 Ant Design ConfigProvider 模板</h3>
+      <div class="code-block">
+<span class="hl">// theme.ts — 粘贴到 React 项目入口</span>
+import type { ThemeConfig } from 'antd';
+
+export const weiyuTheme: ThemeConfig = {
+  token: {
+    colorPrimary: '#ff2442',
+    colorPrimaryHover: '#ff2e4d',
+    colorPrimaryActive: '#e6203a',
+    colorSuccess: '#02b940',
+    colorWarning: '#ff7d03',
+    colorError: '#ff2442',
+    colorBgContainer: '#ffffff',
+    colorBgLayout: '#f5f5f5',
+    fontFamily: `"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif`,
+    borderRadius: 8,
+    borderRadiusLG: 12,
+    motionDurationSlow: '200ms',
+    motionDurationMid: '150ms',
+    boxShadow: 'none',
+    boxShadowSecondary: '0 4px 12px rgba(0,0,0,0.08)',
+  },
+  components: {
+    Button: {
+      borderRadius: 9999,
+      borderRadiusLG: 9999,
+      borderRadiusSM: 9999,
+      contentFontSize: 14,
+      fontWeight: 500,
+    },
+    Card: {
+      borderRadiusLG: 12,
+      boxShadow: 'none',
+    },
+    Table: {
+      headerColor: 'rgba(0,0,0,0.45)',
+      headerBg: '#fafafa',
+      rowHoverBg: 'rgba(48,48,52,0.04)',
+    },
+    Tabs: {
+      inkBarColor: '#ff2e4d',
+      itemActiveColor: 'rgba(0,0,0,0.8)',
+      itemColor: 'rgba(0,0,0,0.45)',
+    },
+    Tag: {
+      borderRadiusSM: 9999,
+    },
+  },
+};
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 交付清单 ──────────────────────────────────────────────── -->
+  <section class="block" data-od-id="section-checklist">
+    <h2>交互状态检查表（每屏必查）</h2>
+    <ul class="checklist card">
+      <li><span class="icon-pass">✓</span> primary hover → --accent-hover，按下 → --accent-active；前景永不变浅</li>
+      <li><span class="icon-pass">✓</span> 所有可聚焦元素有 :focus-visible 焦点环（--focus-ring）</li>
+      <li><span class="icon-pass">✓</span> 禁用态唯一允许降对比度（--meta + rgba(48,48,52,.10)）</li>
+      <li><span class="icon-pass">✓</span> 每屏红色使用 ≤ 2 处（典型：1 主 CTA + 1 激活态/红点）</li>
+      <li><span class="icon-pass">✓</span> 正文对比 ≥ 4.5:1（--fg/--fg-2 在白底上达标）</li>
+      <li><span class="icon-pass">✓</span> 图标/大字号对比 ≥ 3:1</li>
+      <li><span class="icon-pass">✓</span> 无元素重叠、无文本裁切、无横向溢出</li>
+      <li><span class="icon-pass">✓</span> 中文标题行高 ≥ 1.3</li>
+      <li><span class="icon-pass">✓</span> 卡片 hover 仅用于可点击卡片：translateY(-2px) + --elev-raised</li>
+      <li><span class="icon-pass">✓</span> 主 CTA 每视口仅一个实心按钮；其余入口用 ghost/outline/文字链接</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>微舆 · 舆情监测平台 — 设计规范套件 · 供构建智能体阅读与代码实现调用 · 全部文案为示例数据</footer>
+
+</body>
+</html>

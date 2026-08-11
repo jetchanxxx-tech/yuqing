@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>团队设置 · 微舆舆情监测</title>
+<style>
+:root{
+--bg:#f5f5f5;--surface:#fff;--surface-warm:#fafafa;
+--fg:rgba(0,0,0,.8);--fg-2:rgba(0,0,0,.62);--muted:rgba(0,0,0,.45);--meta:rgba(0,0,0,.27);
+--border:rgba(0,0,0,.08);--border-soft:rgba(0,0,0,.05);
+--accent:#ff2442;--accent-on:#fff;--accent-hover:#ff2e4d;--accent-active:#e6203a;
+--success:#02b940;--warn:#ff7d03;--danger:#ff2442;
+--font-display:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+--font-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+--font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Monaco,Consolas,monospace;
+--text-xs:12px;--text-sm:14px;--text-base:16px;--text-lg:18px;--text-xl:20px;--text-2xl:24px;--text-3xl:28px;--text-4xl:32px;
+--leading-body:1.5;--leading-tight:1.25;--tracking-display:0;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;
+--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-pill:9999px;
+--elev-flat:none;--elev-ring:0 0 0 1px var(--border);--elev-raised:0 4px 12px rgba(0,0,0,.08);
+--focus-ring:0 0 0 3px color-mix(in oklab,var(--accent),transparent 70%);
+--motion-fast:150ms;--motion-base:200ms;--ease-standard:cubic-bezier(.2,0,0,1);
+--container-max:1200px;--container-gutter-desktop:24px;--container-gutter-tablet:16px;--container-gutter-phone:12px;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font-family:var(--font-body);background:var(--bg);color:var(--fg);font-size:var(--text-sm);line-height:var(--leading-body);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:var(--focus-ring);outline-offset:2px;border-radius:var(--radius-sm)}
+.num{font-variant-numeric:tabular-nums}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:224px;flex:none;position:fixed;top:0;bottom:0;left:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;font-size:17px;font-weight:600}
+.brand .mark{width:30px;height:30px;border-radius:9px;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.sidebar .create{margin:0 4px 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 20px;border-radius:var(--radius-pill);border:none;font-size:14px;font-weight:500;transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard);text-decoration:none}
+.btn-primary{background:var(--accent);color:var(--accent-on);width:100%}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-secondary{background:rgba(48,48,52,.10);color:var(--fg)}
+.btn-secondary:hover{background:rgba(48,48,52,.16)}
+.btn-ghost{background:transparent;color:var(--fg-2)}
+.btn-ghost:hover{background:rgba(48,48,52,.05);color:var(--fg)}
+.btn-sm{height:32px;padding:0 14px;font-size:13px}
+.btn-danger-ghost{background:transparent;color:var(--danger);border:1px solid rgba(255,36,66,.4)}
+.btn-danger-ghost:hover{background:rgba(255,36,66,.06)}
+.nav{display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--fg-2);font-size:14px;transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard)}
+.nav-item:hover{background:rgba(48,48,52,.05);color:var(--fg)}
+.nav-item.active{background:rgba(255,36,66,.08);color:var(--accent);font-weight:600}
+.nav-item svg{flex:none}
+.user-card{display:flex;align-items:center;gap:10px;padding:12px 10px 2px;border-top:1px solid var(--border);margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;flex:none;background:var(--accent);color:#fff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;justify-content:center}
+.user-card .who{min-width:0;flex:1}
+.user-card b{display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-card span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main{flex:1;margin-left:224px;padding:24px 32px 56px;min-width:0}
+.container{max-width:1200px;margin:0 auto}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.page-head h1{font-size:24px;font-weight:600;line-height:1.3;letter-spacing:0}
+.page-head .sub{font-size:14px;color:var(--muted);margin-top:4px}
+.card{background:var(--surface);border-radius:var(--radius-md);padding:20px 24px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.card-title{font-size:16px;font-weight:600;line-height:1.4}
+.card-title small{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
+.sub-nav{background:var(--surface);border-radius:var(--radius-md);padding:8px;position:sticky;top:24px}
+.sub-nav button{display:flex;align-items:center;gap:10px;width:100%;border:none;background:transparent;padding:11px 12px;border-radius:10px;font-size:14px;color:var(--fg-2);text-align:left;transition:all var(--motion-fast) var(--ease-standard)}
+.sub-nav button:hover{background:rgba(48,48,52,.05);color:var(--fg)}
+.sub-nav button.active{background:rgba(255,36,66,.08);color:var(--accent);font-weight:600}
+.panel{display:none}
+.panel.active{display:block}
+.member-table{width:100%;border-collapse:collapse;margin-top:4px}
+.member-table th{text-align:left;font-size:12px;font-weight:500;color:var(--muted);padding:0 12px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.member-table td{padding:12px;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+.member-table tr:last-child td{border-bottom:none}
+.member{display:flex;align-items:center;gap:12px;min-width:200px}
+.member .avatar{width:36px;height:36px}
+.member b{display:block;font-size:14px;font-weight:500}
+.member span{display:block;font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip-success{color:var(--success);background:#EAF8EF}
+.chip-warn{color:var(--warn);background:#FFF2E6}
+.chip-neutral{color:var(--fg-2);background:rgba(48,48,52,.08)}
+.chip-danger{color:var(--danger);background:rgba(255,36,66,.08)}
+.invite{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.invite input{height:38px;flex:1;min-width:200px;border:1px solid var(--border);border-radius:9999px;padding:0 16px;font-size:14px;font-family:inherit}
+.invite select{height:38px;border:1px solid var(--border);border-radius:9999px;padding:0 12px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--fg)}
+.role-note{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);font-size:12px;color:var(--muted)}
+.role-note b{color:var(--fg-2);font-weight:500}
+.switch-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--border-soft)}
+.switch-row:last-child{border-bottom:none}
+.switch-row .txt{flex:1;min-width:0}
+.switch-row b{display:block;font-size:14px;font-weight:500}
+.switch-row span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.switch{position:relative;width:40px;height:22px;flex:none}
+.switch input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.switch .slider{position:absolute;inset:0;border-radius:9999px;background:rgba(48,48,52,.22);transition:background var(--motion-base) var(--ease-standard)}
+.switch .slider::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform var(--motion-base) var(--ease-standard);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch input:checked + .slider{background:var(--success)}
+.switch input:checked + .slider::after{transform:translateX(18px)}
+.source-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border-soft)}
+.source-row:last-child{border-bottom:none}
+.source-row .src{width:130px;flex:none;font-size:14px;font-weight:500}
+.source-row .scope{flex:1;font-size:12px;color:var(--muted)}
+@media(max-width:1000px){.layout{grid-template-columns:1fr}.sub-nav{position:static;display:flex;overflow-x:auto}.sub-nav button{flex:none;width:auto}}
+@media(max-width:760px){.sidebar{display:none}.main{margin-left:0;padding:16px 12px 40px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+<div class="brand"><span class="mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V12M9 17V7M14 17V9M19 17V5"/></svg></span>微舆</div>
+<a class="btn btn-primary create" href="analysis-new.html" data-od-id="btn-create-analysis"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>新建分析</a>
+<nav class="nav">
+<a class="nav-item" href="dashboard.html" data-od-id="nav-dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>数据面板</a>
+<a class="nav-item" href="analysis-list.html" data-od-id="nav-list"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>分析任务</a>
+<a class="nav-item" href="reports.html" data-od-id="nav-reports"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>报告中心</a>
+<a class="nav-item" href="usage.html" data-od-id="nav-usage"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>用量中心</a>
+<a class="nav-item" href="invoices.html" data-od-id="nav-invoices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-3.5-2-3.5 2-3.5-2L5 21V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg>套餐与账单</a>
+<a class="nav-item active" href="settings.html" data-od-id="nav-settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>团队设置</a>
+<a class="nav-item" href="admin.html" data-od-id="nav-admin"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l2 2 3.5-4"/></svg>管理后台</a>
+</nav>
+<div class="user-card"><span class="avatar">林</span><div class="who"><b>林晓</b><span>ops@example.com · Pro</span></div></div>
+</aside>
+
+<main class="main">
+<div class="container">
+<header class="page-head" data-od-id="page-head">
+  <div>
+    <h1>团队设置</h1>
+    <p class="sub">成员与权限、通知与数据源授权<span style="color:var(--meta);font-size:12px;margin-left:4px">示例数据</span></p>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sub-nav" data-od-id="sub-nav">
+    <button class="active" data-panel="members"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>成员与权限</button>
+    <button data-panel="notify"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>通知设置</button>
+    <button data-panel="sources"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8"/></svg>数据源授权</button>
+  </nav>
+
+  <section class="card" data-od-id="panel-wrap">
+
+    <div class="panel active" id="panel-members">
+      <div class="card-head">
+        <div class="card-title">成员<small>4 人 · 角色：所有者 / 管理员 / 成员</small></div>
+      </div>
+      <table class="member-table">
+        <thead><tr><th>成员</th><th>角色</th><th>状态</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr data-od-id="member-lin"><td><div class="member"><span class="avatar">林</span><div><b>林晓</b><span>ops@example.com</span></div></div></td><td><span class="chip chip-neutral">所有者</span></td><td><span class="chip chip-success">已激活</span></td><td style="text-align:right"><span class="muted" style="font-size:13px">—</span></td></tr>
+          <tr data-od-id="member-zhang"><td><div class="member"><span class="avatar" style="background:#02b940">张</span><div><b>张薇</b><span>zhangwei@example.com</span></div></div></td><td><span class="chip chip-neutral">管理员</span></td><td><span class="chip chip-success">已激活</span></td><td style="text-align:right"><a class="link" href="#" style="font-size:13px;color:var(--fg-2)">编辑</a></td></tr>
+          <tr data-od-id="member-wang"><td><div class="member"><span class="avatar" style="background:#ff7d03">王</span><div><b>王腾</b><span>wangteng@example.com</span></div></div></td><td><span class="chip chip-neutral">成员</span></td><td><span class="chip chip-success">已激活</span></td><td style="text-align:right"><a class="link" href="#" style="font-size:13px;color:var(--fg-2)">编辑</a></td></tr>
+          <tr data-od-id="member-liu"><td><div class="member"><span class="avatar" style="background:rgba(48,48,52,.55)">刘</span><div><b>刘畅</b><span>liuchang@example.com</span></div></div></td><td><span class="chip chip-neutral">成员</span></td><td><span class="chip chip-warn">待激活</span></td><td style="text-align:right"><button class="btn btn-danger-ghost btn-sm" data-od-id="btn-cancel-invite">撤销邀请</button></td></tr>
+        </tbody>
+      </table>
+      <div class="invite" data-od-id="invite-form">
+        <input type="text" placeholder="请输入成员邮箱，可逗号分隔多个">
+        <select aria-label="角色"><option>成员</option><option>管理员</option></select>
+        <button class="btn btn-secondary" data-od-id="btn-invite">发送邀请</button>
+      </div>
+      <div class="role-note">
+        <span><b>所有者</b>：仅一人 · 管理套餐与账单、可转让</span>
+        <span><b>管理员</b>：管理成员与全部分析任务</span>
+        <span><b>成员</b>：创建与查看自己的分析</span>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-notify">
+      <div class="card-head"><div class="card-title">通知设置<small>通过邮件发送，可在个人中心关闭</small></div></div>
+      <div class="switch-row" data-od-id="notify-digest"><div class="txt"><b>每日舆情摘要</b><span>每天 09:00 推送昨日热点与新增负面</span></div><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="switch-row" data-od-id="notify-done"><div class="txt"><b>分析完成提醒</b><span>报告生成后通知创建人及订阅成员</span></div><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="switch-row" data-od-id="notify-budget"><div class="txt"><b>预算用量预警</b><span>用量达到 70% 与 90% 时提醒管理员</span></div><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="switch-row" data-od-id="notify-invoice"><div class="txt"><b>账单与发票通知</b><span>出账、扣款成功、发票开具时通知</span></div><label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
+    </div>
+
+    <div class="panel" id="panel-sources">
+      <div class="card-head"><div class="card-title">数据源授权<small>已开通 7 类数据源 · 采集授权由平台统一维护</small></div></div>
+      <div class="source-row"><span class="src">微博</span><span class="scope">公开博文与评论 · 采集频次 15 分钟</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">新闻</span><span class="scope">主流媒体与门户 · 采集频次 30 分钟</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">微信</span><span class="scope">公众号文章（合规授权范围）· 每日</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">抖音</span><span class="scope">视频标题与评论 · 采集频次 30 分钟</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">小红书</span><span class="scope">笔记与评论 · 采集频次 30 分钟</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">知乎</span><span class="scope">回答与热榜 · 采集频次 1 小时</span><span class="chip chip-success">已授权</span></div>
+      <div class="source-row"><span class="src">论坛</span><span class="scope">贴吧 / 虎扑 / NGA 等 · 采集频次 1 小时</span><span class="chip chip-success">已授权</span></div>
+    </div>
+
+  </section>
+</div>
+
+</div>
+</main>
+</div>
+<script>
+document.querySelectorAll('.sub-nav button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.sub-nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('panel-'+b.dataset.panel).classList.add('active');
+}));
+</script>
+</body>
+</html>

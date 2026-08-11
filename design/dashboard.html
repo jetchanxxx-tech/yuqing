@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据面板 · 微舆舆情监测</title>
+<style>
+/* ── 设计系统 Token（绑定：小红书 RED） ─────────────────────────────── */
+:root {
+  --bg:           #f5f5f5;
+  --surface:      #ffffff;
+  --surface-warm: #fafafa;
+  --fg:    rgba(0, 0, 0, 0.8);
+  --fg-2:  rgba(0, 0, 0, 0.62);
+  --muted: rgba(0, 0, 0, 0.45);
+  --meta:  rgba(0, 0, 0, 0.27);
+  --border:      rgba(0, 0, 0, 0.08);
+  --border-soft: rgba(0, 0, 0, 0.05);
+  --accent:        #ff2442;
+  --accent-on:     #ffffff;
+  --accent-hover:  #ff2e4d;
+  --accent-active: #e6203a;
+  --success: #02b940;
+  --warn:    #ff7d03;
+  --danger:  #ff2442;
+  --font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-lg:   18px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  28px;
+  --text-4xl:  32px;
+  --leading-body:     1.5;
+  --leading-tight:    1.25;
+  --tracking-display: 0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --section-y-desktop: 64px;
+  --section-y-tablet:  48px;
+  --section-y-phone:   32px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-pill: 9999px;
+  --elev-flat:   none;
+  --elev-ring:   0 0 0 1px var(--border);
+  --elev-raised: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+  --motion-fast:   150ms;
+  --motion-base:   200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max:            1200px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet:  16px;
+  --container-gutter-phone:   12px;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ── 应用外壳 ─────────────────────────────────────────── */
+.shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 224px; flex: none; position: fixed; top: 0; bottom: 0; left: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 20px 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font-size: 17px; font-weight: 600; }
+.brand .mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.sidebar .create { margin: 0 4px 20px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 38px; padding: 0 20px; border-radius: var(--radius-pill);
+  border: none; font-size: 14px; font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: var(--accent-on); width: 100%; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-active); }
+.btn-secondary { background: rgba(48,48,52,.10); color: var(--fg); }
+.btn-secondary:hover { background: rgba(48,48,52,.16); }
+.btn-ghost { background: transparent; color: var(--fg-2); }
+.btn-ghost:hover { background: rgba(48,48,52,.05); color: var(--fg); }
+.btn-sm { height: 32px; padding: 0 14px; font-size: 13px; }
+.nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
+.nav-label { padding: 14px 10px 6px; font-size: 11px; color: var(--meta); }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 10px;
+  color: var(--fg-2); font-size: 14px;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.nav-item:hover { background: rgba(48,48,52,.05); color: var(--fg); }
+.nav-item.active { background: rgba(255,36,66,.08); color: var(--accent); font-weight: 600; }
+.nav-item svg { flex: none; }
+.user-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 10px 2px; border-top: 1px solid var(--border); margin-top: 8px;
+}
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.avatar.grey { background: rgba(48,48,52,.12); color: var(--fg-2); }
+.user-card .who { min-width: 0; flex: 1; }
+.user-card b { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-card span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-card .logout { color: var(--meta); display: inline-flex; padding: 6px; border-radius: 8px; }
+.user-card .logout:hover { color: var(--fg-2); background: rgba(48,48,52,.05); }
+
+.main { flex: 1; margin-left: 224px; padding: 24px 32px 56px; min-width: 0; }
+.container { max-width: 1200px; margin: 0 auto; }
+
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.page-head h1 { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
+.page-head .sub { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.head-actions { display: flex; align-items: center; gap: 12px; }
+.plan-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 9999px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 12px; color: var(--fg-2); font-weight: 500;
+}
+.plan-badge b { color: var(--accent); font-weight: 600; }
+.icon-btn {
+  position: relative; width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: var(--surface); color: var(--fg-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.icon-btn:hover { background: rgba(48,48,52,.08); color: var(--fg); }
+.icon-btn .dot { position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+
+.sample-tag {
+  display: inline-flex; align-items: center; padding: 1px 8px; margin-left: 6px;
+  border-radius: 9999px; background: var(--surface); border: 1px dashed var(--border);
+  font-size: 11px; color: var(--meta); vertical-align: middle;
+}
+
+/* ── 指标卡 ─────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.card { background: var(--surface); border-radius: var(--radius-md); padding: 20px 24px; }
+.stat .stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stat-label { font-size: 13px; color: var(--fg-2); }
+.trend { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.trend.up { color: var(--success); }
+.trend.down { color: var(--accent); }
+.stat-value { font-size: 32px; font-weight: 600; line-height: 1.25; margin: 12px 0 4px; letter-spacing: 0; }
+.stat-sub { font-size: 12px; color: var(--muted); }
+.stat-sub a { color: var(--muted); }
+.stat-sub a:hover { color: var(--accent); }
+.pos-bar { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.pos-bar .track { flex: 1; height: 6px; border-radius: 3px; background: rgba(48,48,52,.10); overflow: hidden; }
+.pos-bar .fill { height: 100%; border-radius: 3px; background: var(--success); }
+.pos-bar .val { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── 图表区 ─────────────────────────────────────────── */
+.charts { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 16px; margin-bottom: 16px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.card-title { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.card-title small { display: block; font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+.seg { display: inline-flex; background: rgba(48,48,52,.06); border-radius: 9999px; padding: 3px; }
+.seg button {
+  border: none; background: transparent; color: var(--fg-2);
+  height: 26px; padding: 0 12px; border-radius: 9999px; font-size: 12px;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.seg button:hover { color: var(--fg); }
+.seg button.active { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.chart { width: 100%; height: auto; display: block; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.legend .sw { width: 10px; height: 10px; border-radius: 3px; }
+.axis-note { font-size: 12px; color: var(--meta); }
+
+.donut-wrap { display: flex; align-items: center; gap: 20px; }
+.donut-wrap svg { flex: none; }
+.donut-legend { flex: 1; min-width: 0; display: grid; gap: 10px; }
+.donut-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.donut-item .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.donut-item .name { color: var(--fg-2); flex: 1; }
+.donut-item .val { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ── 底部双栏 ─────────────────────────────────────────── */
+.bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.hot-list { display: grid; }
+.hot-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid var(--border-soft);
+}
+.hot-item:last-child { border-bottom: none; padding-bottom: 2px; }
+.hot-item .rank { width: 22px; font-size: 13px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.hot-item .rank.top { color: var(--accent); font-weight: 600; }
+.hot-item .body { flex: 1; min-width: 0; }
+.hot-item .body b { display: block; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hot-item .body span { font-size: 12px; color: var(--muted); }
+.hot-item .vol { text-align: right; flex: none; }
+.hot-item .vol b { display: block; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px;
+  font-size: 11px; font-weight: 500; margin-left: 8px;
+}
+.chip.pos { background: #EAF8EF; color: var(--success); }
+.chip.neu { background: rgba(48,48,52,.10); color: var(--fg-2); }
+.chip.neg { background: rgba(255,36,66,.08); color: var(--accent); }
+.chip.trending { background: var(--accent); color: #fff; }
+
+.alert-list { display: grid; }
+.alert-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border-soft); }
+.alert-item:last-child { border-bottom: none; padding-bottom: 2px; }
+.alert-item .sev {
+  flex: none; align-self: flex-start; padding: 3px 10px; border-radius: 9999px;
+  font-size: 11px; font-weight: 500;
+}
+.alert-item .sev.high { background: rgba(255,36,66,.10); color: var(--accent); }
+.alert-item .sev.mid { background: #FFF2E6; color: var(--warn); }
+.alert-item .body { flex: 1; min-width: 0; }
+.alert-item .body b { display: block; font-size: 13.5px; font-weight: 500; line-height: 1.5; }
+.alert-item .body span { font-size: 12px; color: var(--muted); }
+.card .foot-link { display: block; margin-top: 14px; font-size: 13px; color: var(--accent); text-align: right; }
+.card .foot-link:hover { text-decoration: underline; }
+
+/* ── 响应式 ─────────────────────────────────────────── */
+@media (max-width: 1120px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .charts { grid-template-columns: 1fr; }
+  .bottom { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 16px 12px 40px; }
+  .stats { grid-template-columns: 1fr; }
+  .head-actions .plan-badge { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar" data-od-id="sidebar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V12M9 17V7M14 17V9M19 17V5"/></svg>
+      </span>
+      微舆
+    </div>
+    <a class="btn btn-primary create" href="analysis-new.html" data-od-id="btn-create-analysis">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新建分析
+    </a>
+    <nav class="nav" aria-label="主导航">
+      <a class="nav-item active" href="dashboard.html" data-od-id="nav-dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+        数据面板
+      </a>
+      <a class="nav-item" href="analysis-list.html" data-od-id="nav-list">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>
+        分析任务
+      </a>
+      <a class="nav-item" href="reports.html" data-od-id="nav-reports">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        报告中心
+      </a>
+      <a class="nav-item" href="usage.html" data-od-id="nav-usage">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+        用量中心
+      </a>
+      <a class="nav-item" href="invoices.html" data-od-id="nav-invoices">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-3.5-2-3.5 2-3.5-2L5 21V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg>
+        套餐与账单
+      </a>
+      <a class="nav-item" href="settings.html" data-od-id="nav-settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        团队设置
+      </a>
+      <a class="nav-item" href="admin.html" data-od-id="nav-admin">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
+        管理后台
+      </a>
+    </nav>
+    <div class="user-card">
+      <span class="avatar">林</span>
+      <div class="who"><b>林晓</b><span>ops@example.com · Pro</span></div>
+      <a class="logout" href="login.html" aria-label="退出登录">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <div class="container">
+
+      <header class="page-head" data-od-id="page-head">
+        <div>
+          <h1>数据面板</h1>
+          <p class="sub">早上好，林晓。这是你的品牌「云朵咖啡」最近 30 天的声量表现<span class="sample-tag">示例数据</span></p>
+        </div>
+        <div class="head-actions">
+          <span class="plan-badge">当前套餐 <b>Pro</b></span>
+          <button class="icon-btn" aria-label="通知">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            <span class="dot"></span>
+          </button>
+          <span class="avatar">林</span>
+        </div>
+      </header>
+
+      <!-- 指标卡 -->
+      <section class="stats" data-od-id="stats">
+        <div class="card stat">
+          <div class="stat-top"><span class="stat-label">今日新增提及</span><span class="trend up">▲ 12.6%</span></div>
+          <div class="stat-value num">1,284</div>
+          <div class="stat-sub">较昨日新增 143 篇</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-top"><span class="stat-label">近 30 天总声量</span><span class="trend up">▲ 8.2%</span></div>
+          <div class="stat-value num">38,214</div>
+          <div class="stat-sub">环比上一周期提升</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-top"><span class="stat-label">正面声量占比</span><span class="trend up">▲ 2.4pt</span></div>
+          <div class="stat-value num">58%</div>
+          <div class="pos-bar">
+            <div class="track"><div class="fill" style="width:58%"></div></div>
+            <span class="val num">负面仅 6%</span>
+          </div>
+        </div>
+        <div class="card stat">
+          <div class="stat-top"><span class="stat-label">实时预警</span></div>
+          <div class="stat-value num" style="color:var(--accent)">3</div>
+          <div class="stat-sub"><a href="#alerts">2 条高危，1 条中危，查看全部 →</a></div>
+        </div>
+      </section>
+
+      <!-- 图表区 -->
+      <section class="charts" data-od-id="charts">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">舆情声量走势<small>近 30 天 · 每日提及篇数 · 按情感分层</small></div>
+            <div class="seg" role="group" aria-label="时间粒度">
+              <button>按周</button>
+              <button class="active">按日</button>
+            </div>
+          </div>
+          <div class="legend" style="margin-bottom:8px">
+            <span><i class="sw" style="background:#02b940"></i>正面</span>
+            <span><i class="sw" style="background:rgba(48,48,52,.35)"></i>中性</span>
+            <span><i class="sw" style="background:#FF2442"></i>负面</span>
+          </div>
+          <svg class="chart" id="trendChart" viewBox="0 0 560 240" role="img" aria-label="近30天舆情声量堆叠面积图"></svg>
+          <div class="axis-note num" style="margin-top:4px">标注为每 4 天一个刻度 · 单位：篇</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">来源分布<small>近 30 天 · 按平台</small></div>
+          </div>
+          <div class="donut-wrap">
+            <svg class="chart" id="sourceDonut" viewBox="0 0 168 168" style="width:150px" role="img" aria-label="来源分布环形图"></svg>
+            <div class="donut-legend" id="donutLegend"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 底部双栏 -->
+      <section class="bottom" data-od-id="bottom">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">热门话题<small>按提及量排序 · 近 30 天</small></div>
+            <a href="analysis-list.html" class="btn btn-ghost btn-sm">查看全部</a>
+          </div>
+          <div class="hot-list">
+            <div class="hot-item" data-od-id="hot-topic-1">
+              <span class="rank top">1</span>
+              <div class="body">
+                <b># 联名周边开售<span class="chip trending">热</span></b>
+                <span>提及 12,406 · 近 3 天上升</span>
+              </div>
+              <div class="vol"><b class="num">1.2万</b><span class="chip pos">正面 87%</span></div>
+            </div>
+            <div class="hot-item" data-od-id="hot-topic-2">
+              <span class="rank top">2</span>
+              <div class="body"><b># 冬季新品测评</b><span>提及 8,914 · 持平</span></div>
+              <div class="vol"><b class="num">8.9千</b><span class="chip neu">中性 64%</span></div>
+            </div>
+            <div class="hot-item" data-od-id="hot-topic-3">
+              <span class="rank top">3</span>
+              <div class="body"><b># 门店排队引发讨论</b><span>提及 6,532 · 近 3 天上升</span></div>
+              <div class="vol"><b class="num">6.5千</b><span class="chip neg">负面 41%</span></div>
+            </div>
+            <div class="hot-item" data-od-id="hot-topic-4">
+              <span class="rank">4</span>
+              <div class="body"><b># 创始人专访</b><span>提及 4,318 · 持平</span></div>
+              <div class="vol"><b class="num">4.3千</b><span class="chip pos">正面 72%</span></div>
+            </div>
+            <div class="hot-item" data-od-id="hot-topic-5">
+              <span class="rank">5</span>
+              <div class="body"><b># 门店扩建计划</b><span>提及 2,806 · 近 3 天上升</span></div>
+              <div class="vol"><b class="num">2.8千</b><span class="chip pos">正面 68%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="alerts">
+          <div class="card-head">
+            <div class="card-title">实时告警<small>触发即推送，无需盯屏</small></div>
+          </div>
+          <div class="alert-list">
+            <div class="alert-item" data-od-id="alert-1">
+              <span class="sev high">高</span>
+              <div class="body">
+                <b>负面声量 2 小时激增 180%，「门店排队」话题集中发酵</b>
+                <span>12 分钟前 · 微博 / 小红书</span>
+              </div>
+            </div>
+            <div class="alert-item" data-od-id="alert-2">
+              <span class="sev high">高</span>
+              <div class="body">
+                <b>「食品安全」相关负面提及环比上升 96%</b>
+                <span>2 小时前 · 新闻 / 知乎</span>
+              </div>
+            </div>
+            <div class="alert-item" data-od-id="alert-3">
+              <span class="sev mid">中</span>
+              <div class="body">
+                <b>竞品「九块九」活动上线，声量反超 26%</b>
+                <span>5 小时前 · 抖音</span>
+              </div>
+            </div>
+          </div>
+          <a href="analysis-new.html" class="foot-link">针对该话题发起一次深度分析 →</a>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // ── 堆叠面积图：近 30 天声量（16 个采样点，约每 2 天） ─────────────
+  const pos = [620,690,720,760,700,780,860,940,900,1020,1180,1240,1100,1200,1280,1320];
+  const neu = [380,420,440,430,450,470,520,560,540,560,600,620,590,610,630,640];
+  const neg = [60,70,80,90,110,80,120,140,180,160,140,260,320,300,240,200];
+  const labels = ["07-13","07-15","07-17","07-19","07-21","07-23","07-25","07-27","07-29","07-31","08-02","08-04","08-06","08-08","08-10","08-11"];
+  const W = 560, H = 240, padL = 40, padR = 10, padT = 14, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB, base = padT + plotH;
+  const n = pos.length;
+  const total = pos.map((_, i) => pos[i] + neu[i] + neg[i]);
+  const maxV = Math.max(...total) * 1.06;
+  const X = i => padL + (i / (n - 1)) * plotW;
+  const Y = v => padT + plotH - (v / maxV) * plotH;
+
+  function bandPath(bottomArr, topArr) {
+    let d = `M${X(0).toFixed(1)},${Y(bottomArr[0]).toFixed(1)}`;
+    for (let i = 1; i < n; i++) d += ` L${X(i).toFixed(1)},${Y(topArr[i]).toFixed(1)}`;
+    d += ` L${X(n-1).toFixed(1)},${Y(topArr[n-1]).toFixed(1)} L${X(n-1).toFixed(1)},${base} L${X(0).toFixed(1)},${base} Z`;
+    return d;
+  }
+  // 底层（正面）→ 中层（中性）→ 顶层（负面）
+  const neuTop = pos.map((v, i) => v + neu[i]);
+  const negTop = total;
+
+  const svg = document.getElementById('trendChart');
+  let inner = '';
+  // 填充面积
+  inner += `<path d="${bandPath(new Array(n).fill(0), pos)}" fill="rgba(2,185,64,0.16)"/>`;
+  inner += `<path d="${bandPath(pos, neuTop)}" fill="rgba(48,48,52,0.10)"/>`;
+  inner += `<path d="${bandPath(neuTop, negTop)}" fill="rgba(255,36,66,0.55)"/>`;
+  // 正面顶线
+  inner += `<path d="${pos.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ')}" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"/>`;
+  // 基线
+  inner += `<line x1="${padL}" y1="${base}" x2="${W - padR}" y2="${base}" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>`;
+  // X 轴刻度（每 4 天）
+  inner += `<g fill="rgba(0,0,0,0.35)" font-size="10">`;
+  for (let i = 0; i < n; i += 4) {
+    inner += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">${labels[i]}</text>`;
+  }
+  inner += `<text x="${W - padR}" y="${H - 8}" text-anchor="end">近30天</text></g>`;
+  // Y 轴刻度
+  inner += `<g fill="rgba(0,0,0,0.35)" font-size="10" text-anchor="end">`;
+  [0, 0.5, 1].forEach(t => {
+    const v = Math.round(maxV * t);
+    inner += `<text x="${padL - 6}" y="${Y(maxV * t) + 3}">${v}</text>`;
+  });
+  inner += `</g>`;
+  svg.innerHTML = inner;
+
+  // ── 来源分布环形图 ────────────────────────────────────────────────
+  const sources = [
+    { name: '微博', v: 32 }, { name: '新闻', v: 22 }, { name: '微信', v: 16 },
+    { name: '抖音', v: 14 }, { name: '小红书', v: 10 }, { name: '知乎', v: 6 }
+  ];
+  const greys = ['rgba(48,48,52,0.07)','rgba(48,48,52,0.13)','rgba(48,48,52,0.19)','rgba(48,48,52,0.25)','rgba(48,48,52,0.31)','rgba(48,48,52,0.37)'];
+  const r = 54, C = 2 * Math.PI * r, cx = 84, cy = 84;
+  let acc = 0, donutInner = `<g transform="rotate(-90 ${cx} ${cy})">`;
+  sources.forEach((s, i) => {
+    const len = (s.v / 100) * C;
+    const gap = 2;
+    donutInner += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${greys[i]}" stroke-width="20" stroke-dasharray="${(len - gap).toFixed(1)} ${(C - len + gap).toFixed(1)}" stroke-dashoffset="${(-acc).toFixed(1)}"/>`;
+    acc += len;
+  });
+  donutInner += `</g>`;
+  donutInner += `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="rgba(0,0,0,0.8)" font-size="22" font-weight="600" font-variant-numeric="tabular-nums">38,214</text>`;
+  donutInner += `<text x="${cx}" y="${cy + 16}" text-anchor="middle" fill="rgba(0,0,0,0.45)" font-size="11">提及篇数</text>`;
+  document.getElementById('sourceDonut').innerHTML = donutInner;
+
+  const lg = document.getElementById('donutLegend');
+  lg.innerHTML = sources.map(s =>
+    `<div class="donut-item"><i class="sw" style="background:${greys[sources.indexOf(s)]}"></i><span class="name">${s.name}</span><span class="val">${s.v}%</span></div>`
+  ).join('');
+</script>
+</body>
+</html>
