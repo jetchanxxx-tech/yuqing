@@ -1,0 +1,16 @@
+[Unit]
+Description=yuging API server
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=yuging
+WorkingDirectory=/opt/yuging
+ExecStart=/opt/yuging/bin/yuging-server
+Restart=always
+RestartSec=5
+Environment=YUGING_CONFIG=/opt/yuging/config/config.yaml
+
+[Install]
+WantedBy=multi-user.target
