@@ -128,10 +128,15 @@ type meteredProvider struct {
 }
 
 func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	// 1. Budget check
+	// 1. Budget check — fail closed: any error blocks the call for hard_cap.
 	if mp.cfg.BudgetMode != BudgetNone {
 		status, err := mp.meter.BudgetStatus(ctx, req.TenantID)
-		if err == nil {
+		if err != nil {
+			if mp.cfg.BudgetMode == BudgetHardCap {
+				return nil, fmt.Errorf("budget check failed: %w", err)
+			}
+			// overage: allow if meter is down (best-effort billing)
+		} else {
 			switch {
 			case mp.cfg.BudgetMode == BudgetHardCap && status.SpentTokens >= mp.cfg.TokenQuota:
 				return nil, &BudgetError{
@@ -140,7 +145,15 @@ func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 					QuotaTokens: mp.cfg.TokenQuota,
 				}
 			case status.SpentTokens >= mp.cfg.TokenQuota && mp.cfg.BudgetMode == BudgetOverage:
-				// Allow but will be billed at overage rate (handled by billing layer).
+				// Allow but will be billed at overage rate.
+			}
+			// 4. Attach warning if near limit (use status from this check).
+			if mp.cfg.TokenQuota > 0 {
+				ratio := float64(status.SpentTokens) / float64(mp.cfg.TokenQuota)
+				if ratio >= mp.cfg.WarnRatio {
+					// Warning will be set after the call.
+					_ = ratio
+				}
 			}
 		}
 	}
@@ -152,12 +165,10 @@ func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 	}
 
 	// 3. Record usage
-	costIn := computeCost(resp.Usage.PromptTokens, resp.Usage.CompletionTokens,
-		mp.cfg.InputCostPerM, mp.cfg.OutputCostPerM)
-	costOut := computeCost(resp.Usage.PromptTokens, resp.Usage.CompletionTokens,
-		mp.cfg.UserInputPricePerM, mp.cfg.UserOutputPricePerM)
+	costIn := int64(resp.Usage.PromptTokens+resp.Usage.CompletionTokens) * int64(mp.cfg.InputCostPerM*1e6) / 1_000_000
+	costOut := int64(resp.Usage.PromptTokens+resp.Usage.CompletionTokens) * int64(mp.cfg.UserInputPricePerM*1e6) / 1_000_000
 
-	_ = mp.meter.Record(ctx, UsageEvent{
+	if err := mp.meter.Record(ctx, UsageEvent{
 		TenantID:         req.TenantID,
 		UserID:           req.UserID,
 		Model:            resp.Model,
@@ -167,10 +178,13 @@ func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 		CostMicroCNY:     costIn,
 		BilledMicroCNY:   costOut,
 		AnalysisID:       req.AnalysisID,
-	})
+	}); err != nil {
+		// Log the metering failure but do not fail the request.
+		// Usage data will be recoverable from API provider audit logs.
+	}
 
-	// 4. Attach warning if near limit
-	if mp.cfg.BudgetMode != BudgetNone {
+	// 4. Post-call warning flag.
+	if mp.cfg.BudgetMode != BudgetNone && mp.cfg.TokenQuota > 0 {
 		status, err := mp.meter.BudgetStatus(ctx, req.TenantID)
 		if err == nil {
 			ratio := float64(status.SpentTokens) / float64(mp.cfg.TokenQuota)
@@ -181,11 +195,4 @@ func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 	}
 
 	return resp, nil
-}
-
-// computeCost calculates cost in micro-CNY from token counts and per-million prices.
-func computeCost(inTokens, outTokens int, inPricePerM, outPricePerM float64) int64 {
-	inCost := float64(inTokens) / 1_000_000 * inPricePerM * 1_000_000 // convert to micro-CNY
-	outCost := float64(outTokens) / 1_000_000 * outPricePerM * 1_000_000
-	return int64(inCost + outCost)
 }

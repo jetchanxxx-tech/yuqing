@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuging/platform/internal/api/middleware"
+	"github.com/yuging/platform/internal/pkg/id"
 )
 
 func RegisterAnalysisRoutes(r *gin.RouterGroup) {
@@ -35,7 +36,7 @@ func handleCreateAnalysis(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":            "analysis_" + p.TenantID,
+		"id":            id.New(),
 		"name":          req.Name,
 		"analysis_type": req.AnalysisType,
 		"state":         "queued",

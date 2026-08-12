@@ -40,10 +40,10 @@ var terminalStates = map[State]bool{
 var transitions = map[State][]State{
 	StateDraft:            {StateQueued, StateFailed, StateCanceled},
 	StateQueued:           {StateAcquiringBudget, StateFailed, StateCanceled},
-	StateAcquiringBudget:  {StateFetching, StateFailed},
+	StateAcquiringBudget:  {StateFetching, StateFailed, StateCanceled},
 	StateFetching:         {StateAnalyzing, StateFailed, StateCanceled},
-	StateAnalyzing:        {StateGeneratingReport, StateFailed},
-	StateGeneratingReport: {StateCompleted, StateFailed},
+	StateAnalyzing:        {StateGeneratingReport, StateFailed, StateCanceled},
+	StateGeneratingReport: {StateCompleted, StateFailed, StateCanceled},
 }
 
 // IsValidState returns true if s is a recognised analysis state.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yuging/platform/internal/pkg/id"
 	"github.com/yuging/platform/internal/platform/auth"
 )
 
@@ -135,10 +136,7 @@ func RequestID() gin.HandlerFunc {
 }
 
 func generateShortID() string {
-	// Quick random ID — use ULID for production.
-	b := make([]byte, 6)
-	_ = b // simplified
-	return time.Now().Format("20060102150405")
+	return id.New()
 }
 
 // Recovery logs panics and returns 500.
@@ -146,10 +144,12 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.Error("panic recovered",
-					slog.Any("panic", r),
-					slog.String("path", c.Request.URL.Path),
-				)
+				if logger != nil {
+					logger.Error("panic recovered",
+						slog.Any("panic", r),
+						slog.String("path", c.Request.URL.Path),
+					)
+				}
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 					"code":    "INTERNAL",
 					"message": "internal server error",
