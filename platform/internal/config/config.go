@@ -11,16 +11,22 @@ import (
 
 // Config is the root configuration structure.
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	DB      DBConfig      `yaml:"db"`
-	Cache   CacheConfig   `yaml:"cache"`
-	Queue   QueueConfig   `yaml:"queue"`
-	LLM     LLMConfig     `yaml:"llm"`
-	Storage StorageConfig `yaml:"storage"`
-	Search  SearchConfig  `yaml:"search"`
-	Auth    AuthConfig    `yaml:"auth"`
-	Billing BillingConfig `yaml:"billing"`
-	Engines EnginesConfig `yaml:"engines"`
+	Server    ServerConfig    `yaml:"server"`
+	DB        DBConfig        `yaml:"db"`
+	Cache     CacheConfig     `yaml:"cache"`
+	Queue     QueueConfig     `yaml:"queue"`
+	LLM       LLMConfig       `yaml:"llm"`
+	Storage   StorageConfig   `yaml:"storage"`
+	Search    SearchConfig    `yaml:"search"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Billing   BillingConfig   `yaml:"billing"`
+	Engines   EnginesConfig   `yaml:"engines"`
+	RateLimit RateLimitConfig `yaml:"rateLimit"`
+}
+
+// RateLimitConfig holds rate limiting settings.
+type RateLimitConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // ServerConfig holds HTTP server settings.
