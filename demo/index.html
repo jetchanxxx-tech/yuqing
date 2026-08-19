@@ -223,7 +223,7 @@
     </div>
     <div class="footer-nav">
       <button class="btn" onclick="goToStep(4)">← 辩论回放</button>
-      <button class="btn primary" onclick="goToStep(6)">查看用量与套餐 →</button>
+      <button class="btn primary" onclick="goToStep(6)">查看用量消耗 →</button>
     </div>
   </div>
 </div>
@@ -267,48 +267,6 @@
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <div class="card-title">💎 升级套餐 <span class="sub">体验版每月仅 5 次分析，升级解锁更多</span></div>
-    <div class="plan-grid">
-      <div class="plan-card">
-        <div class="plan-name">体验版</div>
-        <div class="plan-price">¥0<span class="unit">/月</span></div>
-        <div class="plan-feat">5 次分析/月</div>
-        <div class="plan-feat">1M tokens</div>
-        <div class="plan-feat">HTML 报告</div>
-        <button class="btn sm" style="margin-top:12px" disabled>当前套餐</button>
-      </div>
-      <div class="plan-card recommended">
-        <span class="rec-badge">推荐</span>
-        <div class="plan-name">专业版</div>
-        <div class="plan-price">¥99<span class="unit">/月</span></div>
-        <div class="plan-feat">50 次分析/月</div>
-        <div class="plan-feat">10M tokens</div>
-        <div class="plan-feat">HTML + MD 报告</div>
-        <div class="plan-feat">✅ 多 Agent 辩论</div>
-        <button class="btn sm primary" style="margin-top:12px" onclick="alert('Demo: 升级流程演示')">立即升级</button>
-      </div>
-      <div class="plan-card">
-        <div class="plan-name">企业版</div>
-        <div class="plan-price">¥499<span class="unit">/月</span></div>
-        <div class="plan-feat">500 次分析/月</div>
-        <div class="plan-feat">100M tokens</div>
-        <div class="plan-feat">PDF + DOCX</div>
-        <div class="plan-feat">API 访问</div>
-        <button class="btn sm" style="margin-top:12px" onclick="alert('Demo: 升级流程演示')">选择</button>
-      </div>
-      <div class="plan-card">
-        <div class="plan-name">旗舰版</div>
-        <div class="plan-price">议价<span class="unit"></span></div>
-        <div class="plan-feat">无限制分析</div>
-        <div class="plan-feat">无限制 tokens</div>
-        <div class="plan-feat">自定义模型</div>
-        <div class="plan-feat">私有部署</div>
-        <button class="btn sm" style="margin-top:12px" onclick="alert('Demo: 联系销售')">联系销售</button>
-      </div>
-    </div>
-  </div>
-
   <div class="footer-nav">
     <button class="btn" onclick="goToStep(5)">← 报告预览</button>
     <button class="btn primary" onclick="location.reload()">🔄 重新演示</button>
@@ -318,7 +276,7 @@
 <script>
 /* ═══════════ 演示流程控制 ═══════════ */
 const STEP_NAMES = ['hero','create','progress','result','debate','report','billing'];
-const STEP_LABELS = ['开场','新建分析','分析进度','结果总览','辩论研判','报告预览','用量套餐'];
+const STEP_LABELS = ['开场','新建分析','分析进度','结果总览','辩论研判','报告预览','用量消耗'];
 let currentStep = 0;
 
 function goToStep(n) {

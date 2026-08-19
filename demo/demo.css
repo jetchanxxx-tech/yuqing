@@ -86,11 +86,12 @@ body {
 
 /* ===== 开场屏 ===== */
 #step-hero {
-  min-height: 100vh; display: flex; flex-direction: column;
+  min-height: 100vh;
   align-items: center; justify-content: center; text-align: center;
   background: linear-gradient(180deg, #fff 0%, var(--bg) 100%);
   max-width: none; padding: 48px 24px;
 }
+#step-hero.active { display: flex; flex-direction: column; }
 #step-hero .logo {
   width: 64px; height: 64px; border-radius: 20px;
   background: var(--accent); color: #fff;
