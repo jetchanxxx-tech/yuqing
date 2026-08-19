@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微舆舆情 · 产品演示 — "雅阁后排"舆情案例</title>
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<div class="topbar" id="topbar" style="display:none">
+  <div class="brand">微舆舆情 <span style="font-size:12px;color:var(--meta);font-weight:400">· Demo</span></div>
+  <div class="step-indicator" id="stepDots">
+    <span class="step-dot"></span><span class="step-dot"></span><span class="step-dot"></span>
+    <span class="step-dot"></span><span class="step-dot"></span><span class="step-dot"></span>
+  </div>
+  <div style="font-size:12px;color:var(--meta)" id="stepLabel"></div>
+</div>
+
+<!-- ═══════════ STEP 1: 开场屏 ═══════════ -->
+<div class="step active" id="step-hero">
+  <div class="logo">舆</div>
+  <h1>微<span class="brand-red">舆</span>舆情</h1>
+  <p class="tagline">用多 Agent 辩论协作，把"监测"升级为"研判"</p>
+  <div class="features">
+    <span class="feature-chip">📡 10+ 平台数据采集</span>
+    <span class="feature-chip">🤖 多 Agent 辩论研判</span>
+    <span class="feature-chip">📊 一键报告生成</span>
+    <span class="feature-chip">💴 ¥99/月起 · 注册即用</span>
+  </div>
+  <button class="btn primary lg" onclick="goToStep(1)">开始演示 →</button>
+  <p class="hint">演示案例：「雅阁后排」舆情事件 · 全程约 40 秒</p>
+</div>
+
+<!-- ═══════════ STEP 2: 新建分析 ═══════════ -->
+<div class="step" id="step-create">
+  <div class="card">
+    <div class="card-title">新建舆情分析 <span class="sub">输入关键词，AI 自动完成多平台采集与研判</span></div>
+    <div class="form-row">
+      <label class="form-label">分析名称</label>
+      <input class="input" id="analysisName" value="雅阁后排舆情监测">
+    </div>
+    <div class="form-row">
+      <label class="form-label">关键词 <span style="color:var(--accent)">（已预填演示案例，可直接开始）</span></label>
+      <input class="input prefilled" id="keywordInput" value="雅阁后排" readonly>
+    </div>
+    <div class="form-row">
+      <label class="form-label">分析类型</label>
+      <div class="chip-row" id="typeChips">
+        <span class="chip" data-v="event">舆情事件分析</span>
+        <span class="chip selected" data-v="brand">品牌声誉监测</span>
+        <span class="chip" data-v="competitor">竞品动态追踪</span>
+        <span class="chip" data-v="industry">行业趋势洞察</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">数据源</label>
+      <div class="chip-row" id="sourceChips">
+        <span class="chip selected" data-v="weibo">微博</span>
+        <span class="chip selected" data-v="news">新闻</span>
+        <span class="chip selected" data-v="xhs">小红书</span>
+        <span class="chip selected" data-v="bilibili">B站</span>
+        <span class="chip" data-v="wechat">公众号</span>
+        <span class="chip" data-v="douyin">抖音</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">时间范围</label>
+      <div class="chip-row" id="dateChips">
+        <span class="chip" data-v="7d">近 7 天</span>
+        <span class="chip selected" data-v="14d">近 14 天</span>
+        <span class="chip" data-v="30d">近 30 天</span>
+      </div>
+    </div>
+    <div class="cost-estimate">
+      <div>
+        <div style="font-weight:600;font-size:14px">预估消耗</div>
+        <div class="desc">约 12,400 tokens · 覆盖 4 个平台</div>
+      </div>
+      <div class="price">¥2.6</div>
+    </div>
+    <div style="text-align:center;margin-top:24px">
+      <button class="btn primary lg" onclick="startAnalysis()">开始分析 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ STEP 3: 分析进度 ═══════════ -->
+<div class="step" id="step-progress">
+  <div class="card">
+    <div class="card-title">分析进行中 <span class="sub" id="progressSub">状态机实时流转</span></div>
+    <div class="state-machine" id="stateMachine">
+      <div class="state-node" data-state="queued"><div class="dot">⏳</div><div class="label">排队中</div></div>
+      <div class="state-arrow"></div>
+      <div class="state-node" data-state="budget"><div class="dot">💰</div><div class="label">获取预算</div></div>
+      <div class="state-arrow"></div>
+      <div class="state-node" data-state="fetching"><div class="dot">📡</div><div class="label">数据采集</div></div>
+      <div class="state-arrow"></div>
+      <div class="state-node" data-state="analyzing"><div class="dot">🧠</div><div class="label">智能分析</div></div>
+      <div class="state-arrow"></div>
+      <div class="state-node" data-state="report"><div class="dot">📝</div><div class="label">生成报告</div></div>
+      <div class="state-arrow"></div>
+      <div class="state-node" data-state="completed"><div class="dot">✅</div><div class="label">完成</div></div>
+    </div>
+    <div class="crawl-log" id="crawlLog"></div>
+    <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════ STEP 4: 结果总览 ═══════════ -->
+<div class="step" id="step-result">
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="value" id="mTotal">32,180</div>
+      <div class="label">声量总数（近14天）</div>
+      <div class="delta up">▲ 峰值日 3.2 万条</div>
+    </div>
+    <div class="metric-card">
+      <div class="value" style="color:var(--danger)" id="mNeg">78%</div>
+      <div class="label">负面情绪占比</div>
+      <div class="delta up">▲ 较上周 +31%</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">4</div>
+      <div class="label">核心话题聚类</div>
+      <div class="delta" style="color:var(--muted)">情绪扩散中</div>
+    </div>
+    <div class="metric-card">
+      <div class="value" style="color:var(--success)">3.2h</div>
+      <div class="label">分析耗时</div>
+      <div class="delta down">▼ 远快于人工 2 天</div>
+    </div>
+  </div>
+
+  <div class="chart-row" style="margin-top:16px">
+    <div class="chart-box">
+      <div class="chart-title">📈 声量趋势（5月1日–5月14日）</div>
+      <svg id="trendChart" width="100%" viewBox="0 0 480 220" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">🎭 情感分布</div>
+      <div style="display:flex;align-items:center;gap:20px">
+        <svg id="pieChart" width="160" height="160" viewBox="0 0 160 160"></svg>
+        <div id="pieLegend" style="flex:1"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-row" style="margin-top:16px">
+    <div class="chart-box">
+      <div class="chart-title">📱 平台来源分布</div>
+      <div id="platformBars"></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">🔥 话题聚类 Top 4</div>
+      <div class="topic-list" id="topicList"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">🔥 热门内容 Top 5</div>
+    <div id="hotList"></div>
+  </div>
+
+  <div class="footer-nav">
+    <button class="btn" onclick="goToStep(2)">← 上一步</button>
+    <button class="btn primary" onclick="startDebate()">查看多 Agent 辩论研判 →</button>
+  </div>
+</div>
+
+<!-- ═══════════ STEP 5: 多 Agent 辩论 ═══════════ -->
+<div class="step" id="step-debate">
+  <div class="card">
+    <div class="card-title">🧠 多 Agent 辩论研判 <span class="sub">4 位专家 Agent × 3 轮辩论，主持人综合研判</span></div>
+    <div id="debateArea"></div>
+    <div class="footer-nav" id="debateNav" style="display:none">
+      <button class="btn" onclick="goToStep(3)">← 查看数据</button>
+      <button class="btn primary" onclick="goToStep(5)">查看报告 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ STEP 6: 报告预览 ═══════════ -->
+<div class="step" id="step-report">
+  <div class="card">
+    <div class="card-title">📄 报告预览 <span class="sub">自动生成 · 支持 HTML / Markdown / PDF 导出</span></div>
+    <div class="report-doc">
+      <span class="ai-tag">🤖 AI 生成 · 数据可溯源</span>
+      <h1>「雅阁后排」舆情研判报告</h1>
+      <div class="meta">监测周期：2026年5月1日 – 5月14日 · 数据来源：微博 / 新闻 / 小红书 / B站 · 生成时间：2026-05-14 18:30</div>
+      <div class="key-data">
+        <div class="kd"><div class="num">32,180</div><div class="cap">总声量</div></div>
+        <div class="kd"><div class="num">78%</div><div class="cap">负面占比</div></div>
+        <div class="kd"><div class="num">3.2万</div><div class="cap">峰值单日声量</div></div>
+        <div class="kd"><div class="num">4</div><div class="cap">核心话题</div></div>
+      </div>
+      <h2>一、事件概述</h2>
+      <p>5月8日，一位雅阁车主在短视频平台吐槽后排空间，视频评论区迅速聚集大量车主共鸣。随后"雅阁后排"成为网络玩梗热词，相关讨论从"空间体验"扩散至"品牌形象"层面。5月10日官方账号回应后，讨论进入二轮发酵，负面情绪占比一度达到 83%。</p>
+      <h2>二、传播路径</h2>
+      <ul>
+        <li><b>首发</b>：抖音车主视频（5月8日 09:12）→ 24h 内获 120 万播放</li>
+        <li><b>扩散</b>：微博话题 #雅阁后排# 登上热搜第 7 位（5月9日）</li>
+        <li><b>二创</b>：B站 200+ 个二创视频，累计播放 2,400 万</li>
+        <li><b>深度讨论</b>：知乎问题"如何看待雅阁后排事件"获 1,800+ 回答</li>
+      </ul>
+      <h2>三、情绪演变</h2>
+      <p>事件情绪呈现"调侃为主、愤怒为辅"特征。78% 负面情绪中，<b>62% 为戏谑调侃</b>（玩梗、二创），仅 16% 为真实投诉情绪。这一特征意味着：舆情热度高但真实伤害度中等，处置策略应以"借势回应"为主，而非"严肃辟谣"。</p>
+      <h2>四、话题聚类</h2>
+      <ul>
+        <li><b>后排空间吐槽</b>（9,210 条）：车主真实体验分享与对比测试</li>
+        <li><b>本田官方回应</b>（6,850 条）：对官方声明的解读与二次讨论</li>
+        <li><b>玩梗二创</b>（5,420 条）：表情包、段子、视频二创</li>
+        <li><b>竞品借势对比</b>（3,880 条）：其他品牌车型空间对比</li>
+      </ul>
+      <h2>五、处置建议</h2>
+      <ul>
+        <li><b>短期（24h 内）</b>：官方以"自黑"式回应承接玩梗情绪，避免对抗</li>
+        <li><b>中期（1 周内）</b>：发布真实空间实测数据，邀请 KOL 试驾体验</li>
+        <li><b>长期</b>：将"空间"纳入下一代产品重点升级项，转化为品牌诚意信号</li>
+      </ul>
+      <p style="color:var(--meta);font-size:12px;margin-top:16px">* 以上内容由 AI 多 Agent 辩论研判自动生成，所有数据可点击溯源至原始内容。</p>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" onclick="goToStep(4)">← 辩论回放</button>
+      <button class="btn primary" onclick="goToStep(6)">查看用量与套餐 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ STEP 7: 用量与套餐 ═══════════ -->
+<div class="step" id="step-billing">
+  <div class="chart-row">
+    <div class="card" style="margin:0">
+      <div class="card-title">💰 本次分析消耗</div>
+      <div class="meter-wrap">
+        <div class="meter-ring">
+          <svg width="160" height="160">
+            <circle cx="80" cy="80" r="70" fill="none" stroke="var(--border-soft)" stroke-width="12"/>
+            <circle id="tokenRing" cx="80" cy="80" r="70" fill="none" stroke="var(--accent)" stroke-width="12"
+              stroke-linecap="round" stroke-dasharray="439.8" stroke-dashoffset="439.8"/>
+          </svg>
+          <div class="center-num">
+            <div class="big" id="tokenNum">0</div>
+            <div class="cap">tokens 已扣减</div>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--muted)">本月配额：1,000,000 tokens（体验版）</p>
+        <p style="font-size:12px;color:var(--meta)" id="tokenPct">已使用 0%</p>
+      </div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title">📊 本月用量概览</div>
+      <div style="padding:12px 0">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+          <span style="color:var(--muted)">分析次数</span><span><b>1</b> / 5 次</span>
+        </div>
+        <div class="progress-bar"><div class="fill" style="width:20%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin:16px 0 8px">
+          <span style="color:var(--muted)">Token 消耗</span><span><b id="usageTokens">0</b> / 1,000,000</span>
+        </div>
+        <div class="progress-bar"><div class="fill" id="usageBar" style="width:0%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin:16px 0 8px">
+          <span style="color:var(--muted)">报告导出</span><span><b>1</b> 份</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">💎 升级套餐 <span class="sub">体验版每月仅 5 次分析，升级解锁更多</span></div>
+    <div class="plan-grid">
+      <div class="plan-card">
+        <div class="plan-name">体验版</div>
+        <div class="plan-price">¥0<span class="unit">/月</span></div>
+        <div class="plan-feat">5 次分析/月</div>
+        <div class="plan-feat">1M tokens</div>
+        <div class="plan-feat">HTML 报告</div>
+        <button class="btn sm" style="margin-top:12px" disabled>当前套餐</button>
+      </div>
+      <div class="plan-card recommended">
+        <span class="rec-badge">推荐</span>
+        <div class="plan-name">专业版</div>
+        <div class="plan-price">¥99<span class="unit">/月</span></div>
+        <div class="plan-feat">50 次分析/月</div>
+        <div class="plan-feat">10M tokens</div>
+        <div class="plan-feat">HTML + MD 报告</div>
+        <div class="plan-feat">✅ 多 Agent 辩论</div>
+        <button class="btn sm primary" style="margin-top:12px" onclick="alert('Demo: 升级流程演示')">立即升级</button>
+      </div>
+      <div class="plan-card">
+        <div class="plan-name">企业版</div>
+        <div class="plan-price">¥499<span class="unit">/月</span></div>
+        <div class="plan-feat">500 次分析/月</div>
+        <div class="plan-feat">100M tokens</div>
+        <div class="plan-feat">PDF + DOCX</div>
+        <div class="plan-feat">API 访问</div>
+        <button class="btn sm" style="margin-top:12px" onclick="alert('Demo: 升级流程演示')">选择</button>
+      </div>
+      <div class="plan-card">
+        <div class="plan-name">旗舰版</div>
+        <div class="plan-price">议价<span class="unit"></span></div>
+        <div class="plan-feat">无限制分析</div>
+        <div class="plan-feat">无限制 tokens</div>
+        <div class="plan-feat">自定义模型</div>
+        <div class="plan-feat">私有部署</div>
+        <button class="btn sm" style="margin-top:12px" onclick="alert('Demo: 联系销售')">联系销售</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-nav">
+    <button class="btn" onclick="goToStep(5)">← 报告预览</button>
+    <button class="btn primary" onclick="location.reload()">🔄 重新演示</button>
+  </div>
+</div>
+
+<script>
+/* ═══════════ 演示流程控制 ═══════════ */
+const STEP_NAMES = ['hero','create','progress','result','debate','report','billing'];
+const STEP_LABELS = ['开场','新建分析','分析进度','结果总览','辩论研判','报告预览','用量套餐'];
+let currentStep = 0;
+
+function goToStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-' + STEP_NAMES[n]).classList.add('active');
+  currentStep = n;
+  // Topbar
+  const tb = document.getElementById('topbar');
+  if (n === 0) {
+    tb.style.display = 'none';
+  } else {
+    tb.style.display = 'flex';
+    document.getElementById('stepLabel').textContent = '步骤 ' + n + ' / 6 · ' + STEP_LABELS[n];
+    const dots = document.querySelectorAll('#stepDots .step-dot');
+    dots.forEach((d, i) => {
+      d.className = 'step-dot' + (i < n - 1 ? ' done' : '') + (i === n - 1 ? ' current' : '');
+    });
+  }
+  window.scrollTo(0, 0);
+  if (n === 3) drawResultCharts();
+}
+
+/* ═══════════ STEP 2: chips 交互 ═══════════ */
+document.querySelectorAll('.chip-row').forEach(row => {
+  row.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    if (row.id === 'typeChips') {
+      row.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+    } else {
+      chip.classList.toggle('selected');
+    }
+  });
+});
+
+/* ═══════════ STEP 3: 分析状态机 ═══════════ */
+const STATES = ['queued','budget','fetching','analyzing','report','completed'];
+const STATE_TEXT = ['排队中','获取预算','数据采集','智能分析','生成报告','完成'];
+const CRAWL_LOGS = [
+  ['09:31:02','info','任务已入队，任务ID: 01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+  ['09:31:03','ok','预算检查通过 · 预计消耗 12,400 tokens（本月剩余 987,600）'],
+  ['09:31:04','info','启动采集 · 关键词「雅阁后排」· 4 个平台'],
+  ['09:31:05','ok','微博 · 抓取 12,340 条 · 去重后 9,870 条'],
+  ['09:31:07','ok','新闻 · 抓取 3,210 条 · 去重后 2,890 条'],
+  ['09:31:09','ok','小红书 · 抓取 5,876 条 · 去重后 5,120 条'],
+  ['09:31:11','ok','B站 · 抓取 2,431 条 · 视频转写 412 个'],
+  ['09:31:13','info','内容去重完成 · 有效文档 18,292 条 · 丢弃重复 5,565 条'],
+  ['09:31:14','info','启动情感分析 · 批处理 18,292 条文档'],
+  ['09:31:18','ok','情感分类完成 · 负面 78.2% / 中性 14.8% / 正面 7.0%'],
+  ['09:31:20','info','话题聚类中 · K-Means + LLM 语义合并'],
+  ['09:31:24','ok','话题聚类完成 · 识别 4 个核心话题'],
+  ['09:31:26','info','多 Agent 辩论启动 · 4 位专家 Agent 就位'],
+  ['09:31:32','ok','辩论完成 · 3 轮 × 12 条发言 · 研判置信度 0.87'],
+  ['09:31:35','info','生成研判报告 · 模板: 品牌声誉监测'],
+  ['09:31:42','ok','报告生成完成 · HTML / Markdown / PDF'],
+  ['09:31:43','ok','任务完成 ✅ · 总耗时 41 秒 · 实际消耗 12,310 tokens'],
+];
+
+function startAnalysis() {
+  goToStep(2);
+  const log = document.getElementById('crawlLog');
+  const fill = document.getElementById('progressFill');
+  const machine = document.getElementById('stateMachine');
+  log.innerHTML = '';
+  fill.style.width = '0%';
+
+  let logIdx = 0, stateIdx = 0;
+  const logTimer = setInterval(() => {
+    if (logIdx < CRAWL_LOGS.length) {
+      const [t, cls, msg] = CRAWL_LOGS[logIdx];
+      const line = document.createElement('div');
+      line.className = 'line';
+      line.innerHTML = '<span class="time">' + t + '</span>' +
+        '<span class="' + cls + '">' + (cls === 'ok' ? '✓' : '›') + '</span> ' + msg;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+      logIdx++;
+    }
+  }, 500);
+
+  const stateTimer = setInterval(() => {
+    if (stateIdx < STATES.length) {
+      const nodes = machine.querySelectorAll('.state-node');
+      const arrows = machine.querySelectorAll('.state-arrow');
+      nodes.forEach(n => n.classList.remove('active'));
+      if (stateIdx > 0) {
+        nodes[stateIdx - 1].classList.remove('active');
+        nodes[stateIdx - 1].classList.add('done');
+        if (arrows[stateIdx - 1]) arrows[stateIdx - 1].classList.add('done');
+      }
+      nodes[stateIdx].classList.add('active');
+      document.getElementById('progressSub').textContent = STATE_TEXT[stateIdx] + '...';
+      fill.style.width = ((stateIdx + 1) / STATES.length * 100) + '%';
+      stateIdx++;
+    } else {
+      clearInterval(stateTimer);
+      clearInterval(logTimer);
+      document.getElementById('progressSub').textContent = '分析完成，3 秒后展示结果';
+      setTimeout(() => goToStep(3), 3000);
+    }
+  }, 2400);
+}
+
+/* ═══════════ STEP 4: 结果图表（纯 SVG） ═══════════ */
+function drawResultCharts() {
+  drawTrendChart();
+  drawPieChart();
+  drawPlatformBars();
+  drawTopics();
+  drawHotList();
+  animateNumbers();
+}
+
+function drawTrendChart() {
+  const data = [890, 1020, 950, 1340, 1890, 2100, 2450, 32000, 21400, 15200, 9800, 7200, 5300, 4100];
+  const w = 480, h = 220, pad = 40;
+  const max = Math.max(...data);
+  const pts = data.map((v, i) => [
+    pad + i * (w - 2 * pad) / (data.length - 1),
+    h - pad - (v / max) * (h - 2 * pad)
+  ]);
+  let path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  // Area fill
+  const area = path + ' L' + pts[pts.length-1][0].toFixed(1) + ',' + (h - pad) +
+    ' L' + pts[0][0].toFixed(1) + ',' + (h - pad) + ' Z';
+  let svg = '<defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0%" stop-color="#ff2442" stop-opacity="0.25"/>' +
+    '<stop offset="100%" stop-color="#ff2442" stop-opacity="0"/></linearGradient></defs>';
+  svg += '<path d="' + area + '" fill="url(#grad)"/>';
+  svg += '<path d="' + path + '" fill="none" stroke="#ff2442" stroke-width="2.5" stroke-linecap="round"/>';
+  // Peak marker
+  const peak = pts[7];
+  svg += '<circle cx="' + peak[0] + '" cy="' + peak[1] + '" r="5" fill="#ff2442"/>';
+  svg += '<text x="' + peak[0] + '" y="' + (peak[1] - 12) + '" text-anchor="middle" font-size="11" fill="#ff2442" font-weight="700">峰值 32,000</text>';
+  // X labels
+  ['5/1','5/4','5/7','5/10','5/14'].forEach((label, i) => {
+    const x = pad + i * (w - 2 * pad) / 4;
+    svg += '<text x="' + x + '" y="' + (h - 12) + '" text-anchor="middle" font-size="10" fill="rgba(0,0,0,0.45)">' + label + '</text>';
+  });
+  // Grid lines
+  for (let i = 1; i <= 3; i++) {
+    const y = pad + i * (h - 2 * pad) / 4;
+    svg += '<line x1="' + pad + '" y1="' + y + '" x2="' + (w - pad) + '" y2="' + y + '" stroke="rgba(0,0,0,0.06)"/>';
+  }
+  document.getElementById('trendChart').innerHTML = svg;
+}
+
+function drawPieChart() {
+  const slices = [
+    { v: 78, c: '#ff2442', l: '负面' },
+    { v: 15, c: '#9ca3af', l: '中性' },
+    { v: 7,  c: '#02b940', l: '正面' },
+  ];
+  const cx = 80, cy = 80, r = 62;
+  let angle = -90, svg = '';
+  slices.forEach(s => {
+    const a = s.v / 100 * 360;
+    const x1 = cx + r * Math.cos(angle * Math.PI / 180);
+    const y1 = cy + r * Math.sin(angle * Math.PI / 180);
+    angle += a;
+    const x2 = cx + r * Math.cos(angle * Math.PI / 180);
+    const y2 = cy + r * Math.sin(angle * Math.PI / 180);
+    const large = a > 180 ? 1 : 0;
+    svg += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 +
+      ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x2 + ',' + y2 + ' Z" fill="' + s.c + '"/>';
+  });
+  svg += '<text x="80" y="75" text-anchor="middle" font-size="22" font-weight="700" fill="#ff2442">78%</text>';
+  svg += '<text x="80" y="93" text-anchor="middle" font-size="10" fill="rgba(0,0,0,0.45)">负面占比</text>';
+  document.getElementById('pieChart').innerHTML = svg;
+
+  document.getElementById('pieLegend').innerHTML = slices.map(s =>
+    '<div style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px">' +
+    '<span style="width:10px;height:10px;border-radius:3px;background:' + s.c + ';display:inline-block"></span>' +
+    s.l + ' <b style="margin-left:auto">' + s.v + '%</b></div>'
+  ).join('');
+}
+
+function drawPlatformBars() {
+  const data = [
+    { n: '微博', v: 12340, pct: 52 },
+    { n: '小红书', v: 5876, pct: 25 },
+    { n: '新闻', v: 3210, pct: 14 },
+    { n: 'B站', v: 2431, pct: 10 },
+  ];
+  document.getElementById('platformBars').innerHTML = data.map(d =>
+    '<div style="margin:10px 0">' +
+    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">' +
+    '<span>' + d.n + '</span><span style="color:var(--muted)">' + d.v.toLocaleString() + ' 条 · ' + d.pct + '%</span></div>' +
+    '<div style="height:8px;background:var(--border-soft);border-radius:999px;overflow:hidden">' +
+    '<div style="height:100%;width:' + d.pct + '%;background:#ff2442;border-radius:999px"></div></div></div>'
+  ).join('');
+}
+
+function drawTopics() {
+  const topics = [
+    { n: '后排空间吐槽', c: 9210, pct: 92, color: '#ff2442' },
+    { n: '本田官方回应', c: 6850, pct: 68, color: '#ff7d03' },
+    { n: '玩梗二创', c: 5420, pct: 54, color: '#8b5cf6' },
+    { n: '竞品借势对比', c: 3880, pct: 39, color: '#0ea5e9' },
+  ];
+  document.getElementById('topicList').innerHTML = topics.map((t, i) =>
+    '<div class="topic-item">' +
+    '<div class="rank">' + (i + 1) + '</div>' +
+    '<div class="name">' + t.n + '</div>' +
+    '<div class="bar"><div class="fill" style="width:' + t.pct + '%;background:' + t.color + '"></div></div>' +
+    '<div class="count">' + t.c.toLocaleString() + ' 条</div></div>'
+  ).join('');
+}
+
+function drawHotList() {
+  const items = [
+    { p: '微博', t: '#雅阁后排# 车主吐槽视频走红，网友：这是A级车的空间吧', i: '12.4万转 · 8.7万评' },
+    { p: 'B站', t: '「雅阁后排」梗的由来，一个视频带崩全网讨论', i: '286万播放 · 3.2万弹幕' },
+    { p: '小红书', t: '实测雅阁后排：坐进去的那一刻我笑了', i: '9.8万赞 · 2.1万收藏' },
+    { p: '新闻', t: '本田中国回应"雅阁后排"争议：空间数据以官方实测为准', i: '1,240 评论' },
+    { p: '微博', t: '竞品销售连夜发对比图：这波泼天流量我们接住了', i: '5.6万转 · 4.3万评' },
+  ];
+  document.getElementById('hotList').innerHTML = items.map(x =>
+    '<div class="hot-item"><span class="platform-tag">' + x.p + '</span>' +
+    '<span class="title">' + x.t + '</span>' +
+    '<span class="interactions">' + x.i + '</span></div>'
+  ).join('');
+}
+
+function animateNumbers() {
+  const total = document.getElementById('mTotal');
+  const target = 32180, duration = 1500, start = performance.now();
+  function tick(now) {
+    const p = Math.min((now - start) / duration, 1);
+    total.textContent = Math.round(target * p).toLocaleString();
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ═══════════ STEP 5: 多 Agent 辩论回放 ═══════════ */
+const AGENTS = [
+  { name: '事实核查员', role: '证据与数据核验', emoji: '🔍', color: '#0ea5e9' },
+  { name: '情绪分析师', role: '公众情绪与心理', emoji: '💭', color: '#8b5cf6' },
+  { name: '传播路径专家', role: '渠道与扩散机制', emoji: '📡', color: '#ff7d03' },
+  { name: '处置建议官', role: '公关策略与行动', emoji: '🎯', color: '#02b940' },
+];
+
+const DEBATE_ROUNDS = [
+  { round: 1, label: '第 1 轮 · 事实与证据核查', speeches: [
+    { a: 0, t: '我先核验核心事实：引发事件的视频发布于 5 月 8 日，车主实测展示后排腿部空间。通过对比多家汽车媒体的实测数据，雅阁后排腿部空间在同级车中确实处于中游偏下，但并非"无法坐人"。部分网络传播内容存在夸大。', e: '证据：太平洋汽车实测数据、视频原始链接、车主后续澄清' },
+    { a: 1, t: '情绪数据上，负面占比 78%，但深入分析发现其中 62% 是戏谑调侃情绪，真实愤怒投诉仅占 16%。这说明公众更多是在"玩梗"而非"声讨"，舆情烈度高但破坏力中等。', e: '证据：情感分类模型输出 18,292 条文档标签分布' },
+    { a: 2, t: '传播路径清晰：抖音首发 → 24h 内微博热搜第 7 → B站二创 200+ 视频 → 知乎深度讨论 1,800+ 回答。这是典型的"短视频情绪引爆 + 社交平台放大 + 社区深度发酵"三段式。', e: '证据：时间线 5/8 09:12 首发，5/9 热搜，5/10-12 二创高峰' },
+    { a: 3, t: '基于三位判断：不建议严肃辟谣。玩梗情绪下，官方越严肃反而越容易被二次创作。建议 24h 内以"自黑式"回应承接情绪。', e: '策略参考：同类案例中自黑式回应平均可降低负面情绪 23%' },
+  ]},
+  { round: 2, label: '第 2 轮 · 交叉质询', speeches: [
+    { a: 1, t: '我质疑处置建议官："自黑式回应"是否有数据支撑？我检索到 3 个汽车品牌类似案例，其中 2 个自黑回应后话题热度 3 天内下降 70%+，1 个严肃回应反而引发第二轮负面。数据支持该策略。', e: '证据：3 个可比案例的声量与情绪追踪数据' },
+    { a: 0, t: '补充一点：官方 5 月 10 日的首次回应措辞偏官方化（"以官方实测为准"），评论区出现了"避重就轻"的负面解读，印证了严肃回应的风险。', e: '证据：官方回应评论区前 100 条高赞评论分析' },
+    { a: 2, t: '我提醒：竞品正在借势。监测到至少 5 个竞品官方号发布空间对比内容，抢占流量。时间窗口在收窄，建议 48h 内完成回应。', e: '证据：竞品官方号发帖时间线与互动数据' },
+    { a: 3, t: '综合修正建议：回应要快（48h 内）+ 要软（自黑承接）+ 要实（附真实数据）。三要素缺一不可。', e: '' },
+  ]},
+  { round: 3, label: '第 3 轮 · 综合研判', speeches: [
+    { a: 3, t: '形成最终方案：① 24h 内官方号发布自黑式图文，承认"后排确实可以更好"；② 同步发布真实空间实测数据长图；③ 邀请 3 位 KOL 实车体验直播。', e: '' },
+    { a: 1, t: '同意。预测：方案执行后 72h 负面情绪占比可下降至 45% 以下，正面情绪（"敢自黑""诚意"）将上升至 30% 以上。', e: '依据：可比案例情绪迁移曲线' },
+    { a: 2, t: '传播预测：自黑式回应本身会成为新的传播点，预计带来第二轮正向流量，可将危机转化为品牌曝光机会。', e: '' },
+    { a: 0, t: '最终核验通过。所有结论均有数据支撑，可溯源。建议置信度评级：0.87。', e: '' },
+  ]},
+];
+
+const VERDICT = '「雅阁后排」事件本质是"产品短板被情绪放大"的典型戏谑型舆情。负面情绪中真实愤怒仅占 16%，处置核心不是辟谣而是"借势"。建议 48 小时内以自黑式回应承接玩梗情绪，同步发布真实数据，将危机转化为品牌"听得进批评"的正面形象资产。预期 72h 负面占比降至 45% 以下，并产生第二轮正向传播。';
+
+function startDebate() {
+  goToStep(4);
+  const area = document.getElementById('debateArea');
+  const nav = document.getElementById('debateNav');
+  area.innerHTML = '';
+  nav.style.display = 'none';
+
+  // Build all speeches in order
+  let all = [];
+  DEBATE_ROUNDS.forEach(r => {
+    all.push({ type: 'round', label: r.label });
+    r.speeches.forEach(s => all.push({ type: 'speech', ...s }));
+  });
+  all.push({ type: 'verdict' });
+
+  let idx = 0;
+  function next() {
+    if (idx >= all.length) {
+      nav.style.display = 'flex';
+      return;
+    }
+    const item = all[idx++];
+    if (item.type === 'round') {
+      const lbl = document.createElement('div');
+      lbl.className = 'debate-round-label';
+      lbl.textContent = '—— ' + item.label + ' ——';
+      area.appendChild(lbl);
+      next();
+      return;
+    }
+    if (item.type === 'verdict') {
+      const box = document.createElement('div');
+      box.className = 'verdict-box';
+      box.style.animation = 'fadeIn .6s ease';
+      box.innerHTML = '<div class="label">🎤 主持人 · 最终研判</div><div class="text"></div>';
+      area.appendChild(box);
+      typewrite(box.querySelector('.text'), VERDICT, () => next());
+      return;
+    }
+    // Speech
+    const ag = AGENTS[item.a];
+    const div = document.createElement('div');
+    div.className = 'speech';
+    div.innerHTML =
+      '<div class="agent-avatar" style="background:' + ag.color + '">' + ag.emoji + '</div>' +
+      '<div style="flex:1"><div style="display:flex;align-items:baseline;gap:8px">' +
+      '<span class="agent-name">' + ag.name + '</span>' +
+      '<span class="agent-role">' + ag.role + '</span></div>' +
+      '<div class="bubble"><span class="bubble-text"></span>' +
+      (item.e ? '<div class="evidence">📎 ' + item.e + '</div>' : '') +
+      '</div></div>';
+    area.appendChild(div);
+    typewrite(div.querySelector('.bubble-text'), item.t, () => {
+      next();
+    });
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+
+  function typewrite(el, text, cb) {
+    let i = 0;
+    const timer = setInterval(() => {
+      el.textContent += text[i];
+      i++;
+      if (i >= text.length) {
+        clearInterval(timer);
+        cb();
+      }
+    }, 18);
+  }
+
+  next();
+}
+
+/* ═══════════ STEP 7: Token 动画 ═══════════ */
+let billingAnimated = false;
+function animateToken() {
+  if (billingAnimated) return;
+  billingAnimated = true;
+  const target = 12310, totalQuota = 1000000;
+  const duration = 2000, start = performance.now();
+  const ring = document.getElementById('tokenRing');
+  const C = 439.8;
+  function tick(now) {
+    const p = Math.min((now - start) / duration, 1);
+    const v = Math.round(target * p);
+    document.getElementById('tokenNum').textContent = v.toLocaleString();
+    document.getElementById('usageTokens').textContent = v.toLocaleString();
+    const pct = v / totalQuota * 100;
+    document.getElementById('tokenPct').textContent = '已使用 ' + pct.toFixed(2) + '%';
+    ring.style.strokeDashoffset = C * (1 - p);
+    document.getElementById('usageBar').style.width = pct + '%';
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Override goToStep to trigger token animation when entering billing
+const _origGoTo = goToStep;
+goToStep = function(n) {
+  _origGoTo(n);
+  if (n === 6) animateToken();
+};
+</script>
+</body>
+</html>
