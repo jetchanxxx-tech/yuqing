@@ -8,7 +8,7 @@ import (
 
 // Message represents a chat message.
 type Message struct {
-	Role    string `json:"role"`    // system, user, assistant
+	Role    string `json:"role"` // system, user, assistant
 	Content string `json:"content"`
 }
 
@@ -56,8 +56,8 @@ type BudgetMode string
 
 const (
 	BudgetHardCap BudgetMode = "hard_cap" // block new calls
-	BudgetOverage BudgetMode = "overage"   // allow but bill extra
-	BudgetNone    BudgetMode = "none"      // no limit (Enterprise)
+	BudgetOverage BudgetMode = "overage"  // allow but bill extra
+	BudgetNone    BudgetMode = "none"     // no limit (Enterprise)
 )
 
 // UsageEvent is recorded by the Meter after each LLM call.
@@ -88,13 +88,19 @@ type Meter interface {
 
 // MeterConfig configures the MeteredProvider.
 type MeterConfig struct {
-	BudgetMode BudgetMode
-	TokenQuota int64
-	WarnRatio  float64 // 0.0–1.0, default 0.8
-	InputCostPerM  float64
-	OutputCostPerM float64
+	BudgetMode          BudgetMode
+	TokenQuota          int64
+	WarnRatio           float64 // 0.0–1.0, default 0.8
+	InputCostPerM       float64
+	OutputCostPerM      float64
 	UserInputPricePerM  float64
 	UserOutputPricePerM float64
+}
+
+// microCNY converts a token split into micro-CNY at per-1M-token prices.
+// Prompt tokens price at inPerM, completion tokens at outPerM.
+func microCNY(promptTokens, completionTokens int, inPerM, outPerM float64) int64 {
+	return int64(float64(promptTokens)*inPerM + float64(completionTokens)*outPerM)
 }
 
 // BudgetError is returned when a hard-cap budget is exceeded.
@@ -164,9 +170,13 @@ func (mp *meteredProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 		return nil, err
 	}
 
-	// 3. Record usage
-	costIn := int64(resp.Usage.PromptTokens+resp.Usage.CompletionTokens) * int64(mp.cfg.InputCostPerM*1e6) / 1_000_000
-	costOut := int64(resp.Usage.PromptTokens+resp.Usage.CompletionTokens) * int64(mp.cfg.UserInputPricePerM*1e6) / 1_000_000
+	// 3. Record usage. Prices are CNY per 1M tokens, so the micro-CNY cost of
+	// a call is tokens × pricePerM, priced per token class (prompt tokens at
+	// the input rate, completion tokens at the output rate).
+	costIn := microCNY(resp.Usage.PromptTokens, resp.Usage.CompletionTokens,
+		mp.cfg.InputCostPerM, mp.cfg.OutputCostPerM)
+	costOut := microCNY(resp.Usage.PromptTokens, resp.Usage.CompletionTokens,
+		mp.cfg.UserInputPricePerM, mp.cfg.UserOutputPricePerM)
 
 	if err := mp.meter.Record(ctx, UsageEvent{
 		TenantID:         req.TenantID,

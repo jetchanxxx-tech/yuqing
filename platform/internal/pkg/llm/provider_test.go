@@ -47,8 +47,8 @@ func TestMeteredProvider_callsUnderlyingProvider(t *testing.T) {
 func TestMeteredProvider_recordsUsage(t *testing.T) {
 	mock := &mockProvider{
 		resp: &ChatResponse{
-			Model: "kimi",
-			Usage: Usage{PromptTokens: 50, CompletionTokens: 100, TotalTokens: 150},
+			Model:   "kimi",
+			Usage:   Usage{PromptTokens: 50, CompletionTokens: 100, TotalTokens: 150},
 			Choices: []Choice{{Message: Message{Role: "assistant", Content: "ok"}}},
 		},
 	}
@@ -79,6 +79,49 @@ func TestMeteredProvider_recordsUsage(t *testing.T) {
 	}
 	if rec.CompletionTokens != 100 {
 		t.Errorf("completion_tokens = %d, want 100", rec.CompletionTokens)
+	}
+}
+
+// TestMeteredProvider_costsPriceByTokenClass: prompt tokens must be charged
+// at the input rate and completion tokens at the output rate — for both the
+// platform cost and the billed amount. Regression for the total-tokens ×
+// input-rate bug.
+func TestMeteredProvider_costsPriceByTokenClass(t *testing.T) {
+	mock := &mockProvider{
+		resp: &ChatResponse{
+			Model:   "deepseek-chat",
+			Usage:   Usage{PromptTokens: 400, CompletionTokens: 100, TotalTokens: 500},
+			Choices: []Choice{{Message: Message{Role: "assistant", Content: "ok"}}},
+		},
+	}
+	meter := &mockMeter{}
+	mp := NewMeteredProvider(mock, meter, MeterConfig{
+		BudgetMode:          BudgetHardCap,
+		TokenQuota:          1000000,
+		InputCostPerM:       4,  // ¥4 / 1M input tokens
+		OutputCostPerM:      16, // ¥16 / 1M output tokens
+		UserInputPricePerM:  8,  // billed ¥8 / 1M input tokens
+		UserOutputPricePerM: 32, // billed ¥32 / 1M output tokens
+	})
+
+	if _, err := mp.Chat(context.Background(), ChatRequest{
+		Model:    "deepseek-chat",
+		Messages: []Message{{Role: "user", Content: "test"}},
+		TenantID: "t_cost",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(meter.records) != 1 {
+		t.Fatalf("recorded %d events, want 1", len(meter.records))
+	}
+	rec := meter.records[0]
+	// platform: 400×4 + 100×16 = 3200 micro-CNY
+	if rec.CostMicroCNY != 3200 {
+		t.Errorf("CostMicroCNY = %d, want 3200 (400 prompt×4 + 100 completion×16)", rec.CostMicroCNY)
+	}
+	// billed: 400×8 + 100×32 = 6400 micro-CNY
+	if rec.BilledMicroCNY != 6400 {
+		t.Errorf("BilledMicroCNY = %d, want 6400 (400 prompt×8 + 100 completion×32)", rec.BilledMicroCNY)
 	}
 }
 

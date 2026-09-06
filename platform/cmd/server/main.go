@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yuging/platform/internal/api"
+	"github.com/yuging/platform/internal/app"
 	"github.com/yuging/platform/internal/config"
 	"github.com/yuging/platform/internal/pkg/observ"
 )
@@ -30,8 +31,9 @@ func main() {
 	// Build logger.
 	logger := observ.New(os.Stdout, slog.LevelInfo)
 
-	// Build router.
-	router := api.NewRouter(cfg, logger)
+	// Wire services (composition root) and build the router.
+	deps := app.Build(cfg)
+	router := api.NewRouter(cfg, logger, deps)
 
 	// Create HTTP server.
 	srv := &http.Server{

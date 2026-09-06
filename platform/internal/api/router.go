@@ -10,8 +10,10 @@ import (
 	"github.com/yuging/platform/internal/config"
 )
 
-// NewRouter builds the Gin engine with all middleware and route groups.
-func NewRouter(cfg *config.Config, log *slog.Logger) *gin.Engine {
+// NewRouter builds the Gin engine with all middleware, route groups and the
+// service graph. deps carries the wired services (internal/app/container.go);
+// it is required — handlers are thin and delegate to it.
+func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Engine {
 	r := gin.New()
 
 	// Global middleware.
@@ -26,21 +28,24 @@ func NewRouter(cfg *config.Config, log *slog.Logger) *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Auth routes (unauthenticated).
+	// Auth routes (unauthenticated): register / login / refresh.
 	authGroup := r.Group("/api/v1/auth")
-	v1.RegisterAuthRoutes(authGroup, authCfg)
+	v1.RegisterAuthRoutes(authGroup, deps)
 
 	// Authenticated routes.
 	api := r.Group("/api/v1")
 	api.Use(middleware.AuthRequired(authCfg))
 	api.Use(middleware.RateLimit(middleware.RateLimiterConfig{Enabled: cfg.RateLimit.Enabled}))
 	{
-		// TODO: wire real services (Phase 1 continuation).
-		v1.RegisterAnalysisRoutes(api)
-		v1.RegisterReportRoutes(api)
-		v1.RegisterDashboardRoutes(api)
-		v1.RegisterBillingRoutes(api)
-		v1.RegisterAdminRoutes(api)
+		// Session endpoints that read the authenticated principal.
+		session := api.Group("/auth")
+		v1.RegisterSessionRoutes(session, deps)
+
+		v1.RegisterAnalysisRoutes(api, deps)
+		v1.RegisterReportRoutes(api, deps)
+		v1.RegisterDashboardRoutes(api, deps)
+		v1.RegisterBillingRoutes(api, deps)
+		v1.RegisterAdminRoutes(api, deps)
 	}
 
 	return r
