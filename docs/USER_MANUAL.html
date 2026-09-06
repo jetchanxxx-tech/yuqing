@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微舆舆情 · 用户手册</title>
+<style>
+  :root {
+    --bg:           #f5f5f5;
+    --surface:      #ffffff;
+    --surface-warm: #fafafa;
+    --fg:    rgba(0, 0, 0, 0.8);
+    --fg-2:  rgba(0, 0, 0, 0.62);
+    --muted: rgba(0, 0, 0, 0.45);
+    --meta:  rgba(0, 0, 0, 0.27);
+    --border:      rgba(0, 0, 0, 0.08);
+    --border-soft: rgba(0, 0, 0, 0.05);
+    --accent:        #ff2442;
+    --accent-on:     #ffffff;
+    --accent-hover:  #ff2e4d;
+    --accent-soft:   rgba(255, 36, 66, 0.08);
+    --success: #02b940;
+    --success-bg: #EAF8EF;
+    --warn:    #ff7d03;
+    --warn-bg: #FFF2E6;
+    --danger:  #ff2442;
+    --danger-bg: #FFEDF0;
+    --neutral-bg: rgba(48, 48, 52, 0.08);
+    --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-pill: 9999px;
+    --elev-raised: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg-2);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); }
+  img { max-width: 100%; }
+  b, strong { color: var(--fg); font-weight: 600; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); }
+  .num { font-variant-numeric: tabular-nums; }
+  svg text { font-family: var(--font); }
+
+  /* ===== 布局：左侧目录 + 右侧内容 ===== */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 256px; flex: 0 0 256px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    padding: 20px 16px 32px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px 16px; margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-dot {
+    width: 28px; height: 28px; border-radius: 9px;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 15px; flex: 0 0 28px;
+  }
+  .brand-name { font-size: 17px; font-weight: 600; color: var(--accent); line-height: 1.3; }
+  .toc-title {
+    font-size: 12px; color: var(--muted); font-weight: 500;
+    padding: 10px 8px 6px;
+  }
+  .toc ol { list-style: none; }
+  .toc li { margin: 1px 0; }
+  .toc a {
+    display: block; padding: 6px 10px; border-radius: 10px;
+    color: var(--fg-2); font-size: 14px; line-height: 1.45;
+  }
+  .toc a:hover { background: var(--neutral-bg); color: var(--fg); }
+  .toc a.sub { padding-left: 24px; font-size: 13px; color: var(--muted); }
+  .main {
+    flex: 1 1 auto; min-width: 0;
+    padding: 40px 48px 80px;
+  }
+  .main-inner { max-width: 1080px; margin: 0 auto; }
+
+  /* ===== 封面 ===== */
+  .cover {
+    background: var(--surface); border-radius: var(--radius-lg);
+    padding: 36px 40px 30px; margin-bottom: 32px;
+  }
+  .cover h1 { font-size: 30px; font-weight: 600; color: var(--fg); line-height: 1.3; }
+  .cover .tagline { font-size: 15px; margin-top: 10px; max-width: 860px; }
+  .cover .tagline b { color: var(--accent); font-weight: 500; }
+  .meta-chips { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-warm); border-radius: var(--radius-pill);
+    padding: 4px 14px; font-size: 12px; color: var(--fg-2);
+    border: 1px solid var(--border);
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--meta); }
+  .chip.red::before { background: var(--accent); }
+  .chip.green::before { background: var(--success); }
+
+  /* ===== 章节 ===== */
+  section.doc { margin-bottom: 52px; scroll-margin-top: 16px; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .sec-no {
+    flex: 0 0 auto;
+    width: 30px; height: 30px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 15px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+    align-self: center;
+  }
+  .sec-head h2 { font-size: 23px; font-weight: 600; color: var(--fg); line-height: 1.35; }
+  .sec-head .sec-desc { font-size: 13px; color: var(--muted); }
+
+  h3 {
+    font-size: 18px; font-weight: 600; color: var(--fg);
+    margin: 30px 0 10px; line-height: 1.4;
+  }
+  h3::before { content: ""; display: inline-block; width: 5px; height: 16px; border-radius: 3px; background: var(--accent); margin-right: 8px; vertical-align: -2px; }
+  h4 { font-size: 15px; font-weight: 600; color: var(--fg); margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+
+  /* ===== 卡片 / 面板 ===== */
+  .panel {
+    background: var(--surface); border-radius: var(--radius-md);
+    padding: 20px 24px; margin: 14px 0;
+  }
+  .panel + .panel { margin-top: 14px; }
+
+  .callout { border-radius: var(--radius-md); padding: 12px 16px; margin: 12px 0; font-size: 14px; }
+  .callout p { margin: 2px 0; }
+  .callout .co-title { font-weight: 600; font-size: 14px; }
+  .callout.info { background: var(--neutral-bg); color: var(--fg-2); }
+  .callout.warn { background: var(--warn-bg); }
+  .callout.warn .co-title { color: var(--warn); }
+  .callout.ok { background: var(--success-bg); }
+  .callout.ok .co-title { color: var(--success); }
+  .callout.danger { background: var(--danger-bg); }
+  .callout.danger .co-title { color: var(--danger); }
+
+  ul.plain { padding-left: 20px; }
+  ul.plain li, ol.steps li { margin: 5px 0; }
+  ol.steps { padding-left: 22px; }
+
+  /* ===== 教程步骤卡（编号卡片） ===== */
+  .step-card {
+    background: var(--surface); border-radius: var(--radius-lg);
+    padding: 24px 28px 22px; margin: 18px 0;
+    position: relative;
+  }
+  .step-card .step-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .step-badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-weight: 600; font-size: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 32px;
+  }
+  .step-badge.done { background: var(--success); }
+  .step-badge.ghost { background: var(--neutral-bg); color: var(--fg-2); }
+  .step-title { font-size: 18px; font-weight: 600; color: var(--fg); }
+  .step-time {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    background: var(--surface-warm); border: 1px solid var(--border);
+    border-radius: var(--radius-pill); padding: 2px 12px;
+  }
+  .step-card ol, .step-card ul { margin: 6px 0 6px 4px; }
+
+  /* 四步向导微卡片 */
+  .wiz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 0; }
+  .wiz-cell {
+    background: var(--surface); border-radius: var(--radius-md);
+    padding: 14px 16px; border: 1px solid var(--border-soft);
+  }
+  .wiz-cell .wiz-no {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .wiz-cell .wiz-no.dim { background: var(--neutral-bg); color: var(--muted); }
+  .wiz-cell .wiz-name { font-size: 14px; font-weight: 600; color: var(--fg); margin-top: 8px; }
+  .wiz-cell .wiz-desc { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+  /* ===== 表格 ===== */
+  .tbl-wrap { overflow-x: auto; margin: 12px 0; border-radius: var(--radius-md); }
+  table.tbl {
+    width: 100%; border-collapse: collapse; background: var(--surface);
+    font-size: 13.5px; min-width: 560px;
+  }
+  table.tbl th {
+    text-align: left; font-size: 12px; font-weight: 500; color: var(--muted);
+    background: var(--surface-warm); border-bottom: 1px solid var(--border);
+    padding: 10px 14px; white-space: nowrap;
+  }
+  table.tbl td {
+    border-bottom: 1px solid var(--border-soft); padding: 10px 14px;
+    vertical-align: top; line-height: 1.55; color: var(--fg-2);
+  }
+  table.tbl tbody tr:hover { background: var(--neutral-bg); }
+  table.tbl tr:last-child td { border-bottom: none; }
+  td.mono, td .mono { font-family: var(--mono); font-size: 12.5px; }
+  td.strong { color: var(--fg); font-weight: 500; }
+
+  /* 套餐对比表高亮 */
+  table.plans th { text-align: center; }
+  table.plans td { text-align: center; }
+  table.plans td:first-child, table.plans th:first-child { text-align: left; }
+  table.plans th.hl { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  table.plans th.hl-2 { background: #fff7ec; color: var(--warn); font-weight: 600; }
+  .tier-name { font-weight: 600; color: var(--fg); font-size: 14px; }
+  .tier-price { color: var(--accent); font-weight: 600; font-size: 15px; }
+  .badge-tag {
+    display: inline-block; font-size: 11px; font-weight: 500;
+    border-radius: var(--radius-pill); padding: 1px 10px; margin-top: 4px;
+  }
+  .badge-tag.hot { background: var(--accent); color: #fff; }
+  .badge-tag.flag { background: var(--warn-bg); color: var(--warn); }
+
+  /* ===== 状态徽标（文档内小 pill） ===== */
+  .pill {
+    display: inline-block; border-radius: var(--radius-pill);
+    padding: 2px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
+  }
+  .pill.success { background: var(--success-bg); color: var(--success); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.danger { background: var(--danger-bg); color: var(--danger); }
+  .pill.neutral { background: var(--neutral-bg); color: var(--fg-2); }
+  .pill.accent { background: var(--accent-soft); color: var(--accent); }
+  .pill.gray { background: var(--surface-warm); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ===== 截图占位 ===== */
+  .shot {
+    margin: 14px 0; border: 1.5px dashed var(--meta);
+    border-radius: var(--radius-md); background: var(--surface-warm);
+    padding: 26px 18px; text-align: center;
+    color: var(--muted); font-size: 13px; letter-spacing: 0.02em;
+  }
+  .shot .shot-line {
+    display: inline-block; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-pill);
+    padding: 4px 18px; color: var(--fg-2); font-size: 13px;
+  }
+
+  /* ===== 折叠面板（FAQ / 术语） ===== */
+  details.faq, details.term {
+    background: var(--surface); border-radius: var(--radius-md);
+    margin: 10px 0; overflow: hidden;
+  }
+  details.faq summary, details.term summary {
+    list-style: none; cursor: pointer;
+    padding: 14px 20px; font-size: 14.5px; font-weight: 500;
+    display: flex; align-items: center; gap: 12px;
+    color: var(--fg); line-height: 1.5;
+  }
+  details.faq summary::-webkit-details-marker, details.term summary::-webkit-details-marker { display: none; }
+  details.faq summary::after, details.term summary::after {
+    content: "+"; margin-left: auto; color: var(--muted);
+    font-size: 18px; font-weight: 400; transition: transform .15s ease;
+  }
+  details[open].faq summary::after, details[open].term summary::after { transform: rotate(45deg); }
+  details.faq summary:hover, details.term summary:hover { background: var(--surface-warm); }
+  details.faq .a-body, details.term .a-body { padding: 2px 20px 16px; border-top: 1px solid var(--border-soft); margin: 0 0 0; }
+  details.faq .a-body { padding-top: 12px; }
+  .qno {
+    flex: 0 0 auto; min-width: 40px; text-align: center;
+    background: var(--accent-soft); color: var(--accent);
+    border-radius: var(--radius-pill); font-size: 12px; font-weight: 600;
+    padding: 2px 10px;
+  }
+  .term-name { flex: 0 0 auto; min-width: 120px; color: var(--fg); font-weight: 600; }
+  .term-short { color: var(--muted); font-size: 13px; flex: 1 1 auto; }
+  .term-where { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .term-where b { color: var(--fg-2); font-weight: 500; }
+
+  /* ===== SVG 状态机 ===== */
+  .flow-wrap {
+    background: var(--surface); border-radius: var(--radius-md);
+    padding: 20px 10px 6px; margin: 14px 0; overflow-x: auto;
+  }
+  .flow-wrap svg { display: block; margin: 0 auto; min-width: 860px; }
+  .flow-caption { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0 10px; }
+  .flow-legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 6px 0 14px; font-size: 12px; color: var(--fg-2); }
+  .flow-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+
+  /* 返回顶部 */
+  .to-top {
+    display: inline-block; margin-top: 8px;
+    border-radius: var(--radius-pill); padding: 6px 18px;
+    background: var(--surface); color: var(--fg-2);
+    border: 1px solid var(--border); font-size: 13px;
+  }
+  .to-top:hover { border-color: var(--accent); color: var(--accent); }
+
+  footer.doc-foot {
+    border-top: 1px solid var(--border); margin-top: 48px; padding-top: 18px;
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 980px) {
+    .wiz-grid { grid-template-columns: repeat(2, 1fr); }
+    .main { padding: 24px 20px 60px; }
+  }
+  @media (max-width: 860px) {
+    .layout { display: block; }
+    .sidebar { position: static; width: 100%; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    .toc ol { display: flex; flex-wrap: wrap; gap: 4px; }
+    .toc li { width: calc(50% - 4px); }
+    .cover { padding: 26px 22px; }
+    .cover h1 { font-size: 24px; }
+    .step-card { padding: 18px 18px 16px; }
+    .wiz-grid { grid-template-columns: 1fr; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .layout { display: block; }
+    .main { padding: 0; }
+    details.faq, details.term { border: 1px solid var(--border); }
+    .shot { border-style: solid; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ================= 左侧目录 ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot">微</span>
+      <span class="brand-name">微舆舆情 · 用户手册</span>
+    </div>
+    <div class="toc">
+      <div class="toc-title">本页目录</div>
+      <ol>
+        <li><a href="#s1">1. 快速上手（5 分钟）</a></li>
+        <li><a href="#s1-1">1.1 注册账号</a></li>
+        <li><a href="#s1-2">1.2 创建第一个分析</a></li>
+        <li><a href="#s1-3">1.3 查看分析结果</a></li>
+        <li><a href="#s2">2. 功能详解</a></li>
+        <li><a class="sub" href="#s2-1">2.1 登录后界面总览</a></li>
+        <li><a class="sub" href="#s2-2">2.2 数据面板</a></li>
+        <li><a class="sub" href="#s2-3">2.3 新建分析（4 步向导）</a></li>
+        <li><a class="sub" href="#s2-4">2.4 分析状态机（9 态）</a></li>
+        <li><a class="sub" href="#s2-5">2.5 分析详情页</a></li>
+        <li><a class="sub" href="#s2-6">2.6 报告中心</a></li>
+        <li><a class="sub" href="#s2-7">2.7 套餐与用量</a></li>
+        <li><a class="sub" href="#s2-8">2.8 账单</a></li>
+        <li><a class="sub" href="#s2-9">2.9 账户设置</a></li>
+        <li><a href="#s3">3. 告警配置教程</a></li>
+        <li><a href="#s4">4. 管理员手册</a></li>
+        <li><a href="#s5">5. 常见问题 FAQ</a></li>
+        <li><a href="#s6">6. 术语表</a></li>
+        <li><a href="#s7">7. 已知限制与即将推出的功能</a></li>
+      </ol>
+    </div>
+  </aside>
+
+  <!-- ================= 主内容 ================= -->
+  <main class="main">
+    <div class="main-inner">
+
+      <!-- 封面 -->
+      <div class="cover">
+        <h1>微舆舆情 · 用户手册</h1>
+        <p class="tagline">微舆舆情（Yuging）是一款面向中小企业与个人品牌的 <b>AI 舆情监测平台</b>：自动采集微博、公众号、新闻、小红书、B 站、抖音等平台的公开讨论，用 AI 完成情感研判、话题聚类与报告生成，把传统舆情工具每年数万元的门槛降到每月几十元。</p>
+        <div class="meta-chips">
+          <span class="chip red">适用版本：技术预览版（MVP · 2026-09）</span>
+          <span class="chip green">读者对象：品牌市场人员 / 公关 / 运营 / 管理者</span>
+          <span class="chip">阅读方式：在线浏览，建议先读第 1 章</span>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:14px;">如系统页面与本文描述不一致，以页面实际显示为准；标记「即将推出」的功能目前尚不可用，属正常情况，详见<a href="#s7">第 7 章</a>。</p>
+      </div>
+
+      <!-- ============ 1. 快速上手 ============ -->
+      <section class="doc" id="s1">
+        <div class="sec-head">
+          <span class="sec-no">1</span>
+          <div>
+            <h2>快速上手（5 分钟）</h2>
+            <span class="sec-desc">从零完成：注册 → 创建第一个分析 → 查看分析结果</span>
+          </div>
+        </div>
+
+        <div class="step-card" id="s1-1">
+          <div class="step-top">
+            <span class="step-badge">1</span>
+            <span class="step-title">注册账号</span>
+            <span class="step-time">约 1 分钟</span>
+          </div>
+          <ol class="steps">
+            <li>在浏览器中打开平台网址（例如 <span class="mono">https://your-domain.com</span>），进入登录页。</li>
+            <li>点击登录页中「<b>注册微舆舆情</b>」入口，进入注册页。</li>
+            <li>填写三项内容，然后点击「<b>注册</b>」：</li>
+          </ol>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:90px;">字段</th><th style="width:34%;">填写要求</th><th>示例</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">姓名</td><td>必填，用于团队内识别</td><td>王芳</td></tr>
+                <tr><td class="strong">邮箱</td><td>必填，需为有效邮箱格式，作为登录账号</td><td>wangfang@example.com</td></tr>
+                <tr><td class="strong">密码</td><td>必填，至少 8 位</td><td>建议字母 + 数字组合</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout ok">
+            <p class="co-title">注册成功 = 自动开通</p>
+            <p>系统自动完成三件事，无需任何额外操作：① 创建你的专属工作空间（术语叫「<b>租户</b>」，见<a href="#s6">术语表</a>）；② 将你设为该空间的<b>租户管理员</b>；③ 开通<b>免费版套餐</b>——每月 100 万 Token 额度 + 5 次分析次数（见<a href="#s2-7">2.7 套餐与用量</a>）。随后自动登录并进入「数据面板」。</p>
+          </div>
+          <div class="callout info">
+            <p><b>提示：</b>同一邮箱不能重复注册。如果提示「邮箱已存在」，请直接登录，或联系客服处理。</p>
+          </div>
+          <div class="shot"><span class="shot-line">[截图: 注册页 —— 姓名 / 邮箱 / 密码表单]</span></div>
+        </div>
+
+        <div class="step-card" id="s1-2">
+          <div class="step-top">
+            <span class="step-badge">2</span>
+            <span class="step-title">创建第一个分析</span>
+            <span class="step-time">约 2 分钟</span>
+          </div>
+          <ol class="steps">
+            <li>点击左侧菜单「<b>新建分析</b>」，进入 4 步创建向导。</li>
+            <li><b>第 1 步「分析类型」</b>：先给分析起名（至少 2 个字、最多 50 字），再在四种类型卡片中选择一种，例如「<b>品牌声誉监测</b>」，点击「下一步」。</li>
+            <li><b>第 2 步「关键词设置」</b>：输入想监测的关键词后<b>按回车键确认</b>（可添加多个）。页面下方提供「舆情、口碑、投诉、召回、涨价、新品」等常用补充词，点击即可快速添加。至少添加 1 个后点击「下一步」。</li>
+            <li><b>第 3 步「数据源选择」</b>：勾选至少 1 个平台（微博、公众号、新闻、小红书、B 站、抖音均可多选），点击「下一步」。</li>
+            <li><b>第 4 步「确认提交」</b>：核对名称、类型、关键词与数据源，页面会显示<b>成本预估</b>（预计消耗多少 Token、剩余额度多少）。点击「提交分析」。</li>
+          </ol>
+          <p style="font-size:13.5px;color:var(--fg-2);">提交后页面自动跳到该分析的详情页，任务状态显示为「<b>排队中</b>」。</p>
+          <div class="callout info">
+            <p><b>示例：</b>想监测你的品牌口碑？输入「品牌名 + 产品/场景词」，例如「雅阁 后排舒适性」，比单独输入「雅阁」更聚焦。</p>
+          </div>
+        </div>
+
+        <div class="step-card" id="s1-3">
+          <div class="step-top">
+            <span class="step-badge done">3</span>
+            <span class="step-title">查看分析结果</span>
+            <span class="step-time">约 2 分钟</span>
+          </div>
+          <ol class="steps">
+            <li>在详情页顶部查看任务状态标签（「排队中」「预算校验」「数据采集」…）与进度条。页面<b>每 5 秒自动刷新</b>，也可以点「刷新状态」手动刷新；执行中可随时点「<b>取消任务</b>」终止。</li>
+            <li>等待状态变为「<b>已完成</b>」（绿色标签）后，右侧显示 4 个结果标签页：文档列表（采集到的内容原文，可跳原始链接）、情感分析（正面 / 中性 / 负面占比）、话题聚类（讨论集中的话题及趋势）、分析报告（AI 生成的洞察报告）。</li>
+            <li>在「分析报告」标签页点「下载 HTML」（免费版支持 HTML 格式），即可将报告保存到本地。</li>
+          </ol>
+          <div class="callout info">
+            <p><b>预览阶段说明：</b>数据采集与 AI 研判当前使用内置演示内容，用于体验完整流程；真实数据采集与分析即将上线，见<a href="#s7">第 7 章</a>。若结果标签页显示「未采集到公开文档」或「暂无话题聚类结果」，均属该阶段的正常现象。</p>
+          </div>
+          <div class="shot"><span class="shot-line">[截图: 分析详情页 —— 已完成状态 + 4 个结果标签页]</span></div>
+          <div class="callout ok">
+            <p class="co-title">完成！</p>
+            <p>你已经走通「注册 → 分析 → 报告」的完整链路。接下来可阅读<a href="#s2">第 2 章</a>了解每个功能的细节。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 功能详解 ============ -->
+      <section class="doc" id="s2">
+        <div class="sec-head">
+          <span class="sec-no">2</span>
+          <div>
+            <h2>功能详解（按使用流程）</h2>
+            <span class="sec-desc">从登录到报表，每个页面每个元素都有说明</span>
+          </div>
+        </div>
+
+        <div class="panel" id="s2-1">
+          <h3 style="margin-top:0;">2.1 登录后的界面总览</h3>
+          <p>登录后进入系统主界面，<b>左侧为导航菜单</b>，右上角显示你的登录邮箱（点击可退出登录）；各页面右上角通常有「刷新」按钮用于手动更新数据。</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:110px;">菜单</th><th>用途</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">数据面板</td><td>全局监测概况：累计分析、文档量、情感、趋势、话题</td></tr>
+                <tr><td class="strong">新建分析</td><td>发起一次新的舆情分析（4 步向导）</td></tr>
+                <tr><td class="strong">分析任务</td><td>查看、管理所有历史分析任务</td></tr>
+                <tr><td class="strong">报告中心</td><td>查看与下载全部已生成报告</td></tr>
+                <tr><td class="strong">套餐升级</td><td>查看 4 档套餐并进行升级操作</td></tr>
+                <tr><td class="strong">用量</td><td>查看本月 Token 与分析次数用量</td></tr>
+                <tr><td class="strong">账单</td><td>查看订阅账单记录</td></tr>
+                <tr><td class="strong">设置</td><td>账户资料、角色信息、退出登录</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p>平台管理员还拥有「管理后台」页面（<span class="mono">/admin</span>），见<a href="#s4">第 4 章</a>。</p></div>
+          <div class="shot"><span class="shot-line">[截图: 登录后的主界面 —— 左侧导航 + 顶部邮箱]</span></div>
+        </div>
+
+        <div class="panel" id="s2-2">
+          <h3 style="margin-top:0;">2.2 数据面板</h3>
+          <p>「数据面板」是登录后的首页，汇总你名下全部监测任务的数据，适合每天花几分钟掌握舆论态势。整体分 5 个区域：<b>4 张概览卡、3 张图表、1 个话题榜单</b>。右上角显示「更新于」时间与「刷新」按钮（概览卡片约每 60 秒自动刷新一次）。</p>
+          <div class="shot"><span class="shot-line">[截图: 数据面板整体 —— 概览卡 / 趋势图 / 情感环形图 / 来源分布 / 热门话题]</span></div>
+
+          <h4>2.2.1 四张概览卡</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:120px;">卡片</th><th style="width:42%;">含义</th><th>怎么看</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">累计分析</td><td>一共发起过多少次分析任务</td><td>下方显示「<span class="pill accent">N 个任务运行中</span>」时点击可跳转任务列表查看</td></tr>
+                <tr><td class="strong">采集文档</td><td>全部监测任务累计采集到的内容条数</td><td>数字越大说明讨论越多</td></tr>
+                <tr><td class="strong">正面情绪占比</td><td>全部内容中情感为正面的比例（%），下方同时列出负面与中性占比</td><td>绿色数值；<b>负面占比是重点盯防对象</b></td></tr>
+                <tr><td class="strong">任务成功率</td><td>分析任务成功完成的比例（%）</td><td>长期偏低说明任务经常失败，可结合<a href="#s5">第 5 章 FAQ</a>排查</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>2.2.2 声量与情感趋势图（双轴折线）</h4>
+          <ul class="plain">
+            <li><b>左轴「声量」</b>（红色曲线）：每天采集到的内容条数。曲线起伏反映事件热度变化，<b>突然冲高往往意味着有事件发生</b>。</li>
+            <li><b>右轴「情感指数」</b>（绿色曲线）：当天整体情绪偏向，取值 0–1，越接近 1 越正面、越接近 0 越负面。</li>
+            <li>鼠标悬停图上任意一天可查看当日具体数值；该图是「事件爆发 → 应对 → 舆情回落」复盘的主要依据。</li>
+          </ul>
+
+          <h4>2.2.3 情感占比图（环形）</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:90px;">颜色</th><th style="width:110px;">情感</th><th>含义</th></tr></thead>
+              <tbody>
+                <tr><td><span class="pill success">绿色</span></td><td class="strong">正面</td><td>好评、推荐、认可</td></tr>
+                <tr><td><span class="pill neutral">灰色</span></td><td class="strong">中性</td><td>陈述、无明确立场</td></tr>
+                <tr><td><span class="pill danger">红色</span></td><td class="strong">负面</td><td>投诉、批评、负面事件</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>鼠标悬停到色块可查看具体占比。<b>当红色占比持续升高时，建议及时创建一次分析</b>，确认负面内容集中在哪些话题上。</p>
+
+          <h4>2.2.4 来源分布图（横向条形）</h4>
+          <p>按内容条数展示每个平台（微博 / 公众号 / 新闻 / 小红书 / B 站 / 抖音）贡献的声量，帮助判断<b>舆论主战场在哪个平台</b>。例如：新闻源声量高说明事件被媒体跟进；小红书声量高说明以用户口碑讨论为主。</p>
+
+          <h4>2.2.5 热门话题榜</h4>
+          <p>按讨论量排序的话题榜单。每条显示：排名（前 3 名高亮）、话题名、相关文档数（篇）、趋势标签：</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:110px;">趋势标签</th><th style="width:180px;">样式</th><th>含义</th></tr></thead>
+              <tbody>
+                <tr><td><span class="pill warn">上升</span></td><td>橙色</td><td>讨论正在增加，需要关注</td></tr>
+                <tr><td><span class="pill success">下降</span></td><td>绿色</td><td>讨论正在减少</td></tr>
+                <tr><td><span class="pill neutral">平稳</span></td><td>灰色</td><td>讨论量基本稳定</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p>图表若显示「暂无趋势数据，创建分析任务后即可查看」等空状态，说明还没有可用的监测数据——创建一次分析后回到本页点「刷新」即可。</p></div>
+        </div>
+
+        <div class="panel" id="s2-3">
+          <h3 style="margin-top:0;">2.3 新建分析（4 步向导详解）</h3>
+          <p>点击左侧「新建分析」进入向导，共 4 步；第 2 步起可随时点「上一步」返回修改，<b>确认前不会真正消耗额度</b>。</p>
+          <div class="wiz-grid">
+            <div class="wiz-cell"><span class="wiz-no">1</span><div class="wiz-name">分析类型</div><div class="wiz-desc">起名 + 四种类型卡片任选其一</div></div>
+            <div class="wiz-cell"><span class="wiz-no">2</span><div class="wiz-name">关键词设置</div><div class="wiz-desc">输入后回车确认，可加多个</div></div>
+            <div class="wiz-cell"><span class="wiz-no">3</span><div class="wiz-name">数据源选择</div><div class="wiz-desc">6 平台至少勾选 1 个</div></div>
+            <div class="wiz-cell"><span class="wiz-no">4</span><div class="wiz-name">确认提交</div><div class="wiz-desc">核对配置 + Token 成本预估</div></div>
+          </div>
+
+          <h4>第 1 步：分析类型</h4>
+          <p>先填写<b>分析名称</b>（必填，至少 2 个字、最多 50 字，例如「新品发布会舆情监测」），再选择类型：</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:150px;">类型</th><th style="width:34%;">适用场景举例</th><th>你能得到什么</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">舆情事件分析</td><td>突发负面事件、热点话题</td><td>事件传播路径、热度拐点与脉络</td></tr>
+                <tr><td class="strong">品牌声誉监测</td><td>日常口碑监测、声誉风险排查</td><td>品牌口碑走势、风险识别与应对效果评估</td></tr>
+                <tr><td class="strong">竞品动态追踪</td><td>盯住竞争对手动作</td><td>竞品新品 / 活动 / 口碑的市场反馈信号</td></tr>
+                <tr><td class="strong">行业趋势洞察</td><td>观察整个行业讨论</td><td>话题演变、用户关注点迁移</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>第 2 步：关键词设置</h4>
+          <p>输入关键词后按<b>回车</b>确认，生成一个标签；点标签上的「×」可删除。规则与技巧：</p>
+          <ul class="plain">
+            <li>至少 1 个，<b>最多 20 个</b>；建议 2–5 个组合使用；</li>
+            <li>关键词越具体结果越精准。单一宽泛词（如「汽车」）会混入大量无关内容；</li>
+            <li>推荐「<b>品牌词 + 产品词 / 场景词</b>」组合：如「雅阁 后排舒适性」比单独「雅阁」更聚焦；</li>
+            <li>系统提供「舆情、口碑、投诉、召回、涨价、新品」常用补充词，点击即加；</li>
+            <li>想扩大覆盖面，可加入产品别名、拼音缩写等变体。</li>
+          </ul>
+
+          <h4>第 3 步：数据源选择</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:110px;">数据源</th><th>内容特点</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">微博</td><td>实时热点与事件发酵主阵地，舆情爆发最先出现的地方</td></tr>
+                <tr><td class="strong">公众号</td><td>深度长文与行业观点</td></tr>
+                <tr><td class="strong">新闻</td><td>媒体报道与转载，权威性高</td></tr>
+                <tr><td class="strong">小红书</td><td>消费口碑与种草讨论，适合消费品牌</td></tr>
+                <tr><td class="strong">B 站</td><td>年轻用户深度讨论、测评向内容</td></tr>
+                <tr><td class="strong">抖音</td><td>短视频评论（数据采集能力即将推出，见<a href="#s7">第 7 章</a>）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>首次体验建议勾选 2–3 个与你最相关的平台，覆盖面与速度更均衡。</p>
+
+          <h4>第 4 步：确认提交（成本预估）</h4>
+          <div class="callout info">
+            <p>页面显示本次配置与成本预估：<br>
+            <span class="num" style="font-family:var(--mono);font-size:13px;">预计消耗约 X tokens（关键词 2 × 数据源 3 × 1200，另含报告生成约 3000）／ 当前剩余额度 Y tokens</span></p>
+          </div>
+          <p>估算规则：每个「关键词 × 数据源」组合约消耗 <b class="num">1,200 Token</b>（采集摘要 + 研判），另加报告生成固定约 <b class="num">3,000 Token</b>。若剩余额度可能不足，页面会以橙色提示建议「减少关键词 / 数据源」或「升级套餐」。</p>
+          <p style="font-size:13.5px;color:var(--muted);">排除词（屏蔽无关内容）、监测时间范围等高级参数将在后续版本提供，见<a href="#s7">第 7 章</a>。</p>
+        </div>
+
+        <div class="panel" id="s2-4">
+          <h3 style="margin-top:0;">2.4 分析状态机：9 种状态详解</h3>
+          <p>一次分析从提交到出结果会依次经过多个环节，系统用「状态」告诉你任务当前进行到哪一步。正向流程为「草稿 → 排队中 → 预算校验 → 数据采集 → 智能研判 → 报告生成 → 已完成」；<b>执行中任一环节都可能失败或被你取消</b>。</p>
+
+          <div class="flow-wrap">
+            <svg viewBox="0 0 1068 262" role="img" aria-label="分析状态机流程：7 个正向环节 + 失败与取消两个终止分支">
+              <defs>
+                <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#b9b9bd"></path>
+                </marker>
+                <marker id="arrDash" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#c9cacd"></path>
+                </marker>
+              </defs>
+
+              <!-- 正向主链 7 节点：y=44..100 -->
+              <!-- 1 draft -->
+              <rect x="40"  y="44" width="124" height="56" rx="12" fill="#ffffff" stroke="#d6d6da"/>
+              <text x="102" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.45)">草稿 draft</text>
+              <line x1="164" y1="72" x2="184" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 2 queued -->
+              <rect x="184" y="44" width="124" height="56" rx="12" fill="#f3f3f4" stroke="none"/>
+              <text x="246" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.62)">排队中 queued</text>
+              <line x1="308" y1="72" x2="328" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 3 acquiring -->
+              <rect x="328" y="44" width="124" height="56" rx="12" fill="#f3f3f4" stroke="none"/>
+              <text x="390" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.62)">预算校验</text>
+              <line x1="452" y1="72" x2="472" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 4 fetching -->
+              <rect x="472" y="44" width="124" height="56" rx="12" fill="#f3f3f4" stroke="none"/>
+              <text x="534" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.62)">数据采集</text>
+              <line x1="596" y1="72" x2="616" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 5 analyzing -->
+              <rect x="616" y="44" width="124" height="56" rx="12" fill="#f3f3f4" stroke="none"/>
+              <text x="678" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.62)">智能研判</text>
+              <line x1="740" y1="72" x2="760" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 6 generating -->
+              <rect x="760" y="44" width="124" height="56" rx="12" fill="#f3f3f4" stroke="none"/>
+              <text x="822" y="77" text-anchor="middle" font-size="13" fill="rgba(0,0,0,0.62)">报告生成</text>
+              <line x1="884" y1="72" x2="904" y2="72" stroke="#b9b9bd" stroke-width="1.6" marker-end="url(#arr)"/>
+              <!-- 7 completed -->
+              <rect x="904" y="44" width="124" height="56" rx="12" fill="#EAF8EF" stroke="#02b940"/>
+              <text x="966" y="77" text-anchor="middle" font-size="13" font-weight="600" fill="#02b940">已完成</text>
+
+              <!-- 终止分支：任意执行中 → 已取消 / 失败 -->
+              <path d="M750,104 L750,136" fill="none" stroke="#c9cacd" stroke-width="1.5" stroke-dasharray="4 4"/>
+              <path d="M392,136 L930,136" fill="none" stroke="#c9cacd" stroke-width="1.5" stroke-dasharray="4 4"/>
+              <path d="M392,136 L392,176" fill="none" stroke="#c9cacd" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrDash)"/>
+              <path d="M930,136 L930,176" fill="none" stroke="#c9cacd" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrDash)"/>
+              <text x="404" y="128" font-size="12" fill="rgba(0,0,0,0.45)">用户取消（执行中均可取消）</text>
+              <text x="762" y="128" font-size="12" fill="rgba(0,0,0,0.45)">任一环节出错</text>
+
+              <!-- 终态：已取消 / 失败 -->
+              <rect x="330" y="180" width="124" height="56" rx="12" fill="#FFF2E6" stroke="#ff7d03"/>
+              <text x="392" y="213" text-anchor="middle" font-size="13" font-weight="600" fill="#ff7d03">已取消</text>
+              <rect x="868" y="180" width="124" height="56" rx="12" fill="#FFEDF0" stroke="#ff2442"/>
+              <text x="930" y="213" text-anchor="middle" font-size="13" font-weight="600" fill="#ff2442">失败</text>
+
+              <text x="40" y="252" font-size="12" fill="rgba(0,0,0,0.45)">终态（已完成 / 失败 / 已取消）均可点击「重新运行」，按原参数重新回到排队中执行</text>
+            </svg>
+            <div class="flow-legend">
+              <span><i style="background:#02b940;"></i>已完成 / 成功</span>
+              <span><i style="background:#ff7d03;"></i>已取消 / 预警</span>
+              <span><i style="background:#ff2442;"></i>失败</span>
+              <span><i style="background:rgba(48,48,52,0.25);"></i>执行中环节</span>
+              <span><i style="border:1px solid #d6d6da;background:#fff;"></i>草稿（内部状态）</span>
+            </div>
+            <p class="flow-caption">图：分析任务状态流转总览（详情页时间线即该图的动态版，运行中的当前环节显示红色脉冲动效）</p>
+          </div>
+
+          <h4>9 种状态与「你能做什么」</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:130px;">状态（代码）</th><th style="width:100px;">页面标签</th><th style="width:36%;">含义</th><th>此时你能做什么</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">draft</td><td><span class="pill neutral">草稿</span></td><td>任务已创建尚未排队（内部状态，向导提交后不会停留在此）</td><td>一般不会看到</td></tr>
+                <tr><td class="mono">queued</td><td><span class="pill neutral">排队中</span></td><td>已进入执行队列等待调度。同时运行的任务数达到套餐上限（免费版 1 个 / 专业版 2 个 / 企业版 5 个）时，新任务会在此等待空位</td><td>可取消；等待页面自动刷新</td></tr>
+                <tr><td class="mono">acquiring_budget</td><td><span class="pill neutral">预算校验</span></td><td>正在校验本次分析的 Token 额度是否充足</td><td>可取消</td></tr>
+                <tr><td class="mono">fetching</td><td><span class="pill accent">数据采集</span></td><td>正在从各平台采集公开内容</td><td>可取消（将终止本次采集）</td></tr>
+                <tr><td class="mono">analyzing</td><td><span class="pill accent">智能研判</span></td><td>AI 正在对内容做情感与话题研判</td><td>可取消（将终止研判）</td></tr>
+                <tr><td class="mono">generating_report</td><td><span class="pill accent">报告生成</span></td><td>正在生成洞察报告</td><td>可取消</td></tr>
+                <tr><td class="mono">completed</td><td><span class="pill success">已完成</span></td><td>全部环节成功，结果与报告已就绪</td><td>查看结果、下载报告、重新运行</td></tr>
+                <tr><td class="mono">failed</td><td><span class="pill danger">失败</span></td><td>执行过程中出错（额度不足、采集异常等），页面会显示失败原因</td><td>查看失败原因；重新运行；反复失败可检查额度或联系客服</td></tr>
+                <tr><td class="mono">canceled</td><td><span class="pill warn">已取消</span></td><td>被你手动取消</td><td>重新运行</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn">
+            <p class="co-title">要点</p>
+            <p>取消仅对执行中任务开放，取消后不生成报告、已消耗额度不退回（见<a href="#s5">FAQ Q6</a>）；「重新运行」仅对终态任务开放，按原参数重新排队，会再次消耗 Token。</p>
+          </div>
+          <p style="font-size:13.5px;color:var(--muted);">任务列表与详情页在有任务运行时每 5 秒自动刷新，进入终态后停止自动刷新。</p>
+        </div>
+
+        <div class="panel" id="s2-5">
+          <h3 style="margin-top:0;">2.5 分析详情页</h3>
+          <p>从「分析任务」列表点击任务名称（或创建后自动跳转）进入详情页，页面分为三块：</p>
+          <ul class="plain">
+            <li><b>顶部概览卡</b>：任务名称、状态标签、任务 ID、创建时间、进度百分比与进度条；运行中显示「刷新状态」；执行中可「取消任务」，终态可「重新运行」；失败时用红框显示失败原因。</li>
+            <li><b>左侧「任务进度」时间线</b>：把执行环节画成时间线——已完成环节绿色、当前环节红色旋转动效、未开始环节灰色；失败 / 取消时对应终止点显示原因（如「失败：预算不足」）。</li>
+            <li><b>右侧内容区</b>随状态变化：运行中显示环节提示语（如「正在从各平台采集公开数据」）；已完成显示 4 个结果标签页；失败 / 已取消显示结果说明与操作按钮。</li>
+          </ul>
+
+          <h4>文档列表</h4>
+          <p>本次分析采集到的内容条目：标题（点击打开原始链接）、来源平台标签、来源账号与发布时间、正文摘要（可展开 / 收起）。这里是核对 AI 结论、追溯原始出处的地方。</p>
+          <h4>情感分析</h4>
+          <p>三张统计卡 + 环形图：正面 / 中性 / 负面占比（%），色卡与数据面板一致（绿 / 灰 / 红）。回答「大家讨论的口气是夸还是骂」。</p>
+          <h4>话题聚类</h4>
+          <p>表格列出本次讨论聚成的若干话题：话题名、相关文档数（带条形对比）、趋势（上升 / 下降 / 平稳）。回答「大家在聊哪几件事、哪件在发酵」。</p>
+          <h4>分析报告</h4>
+          <p>AI 生成的洞察报告，分析完成后自动生成，按套餐支持多种格式下载（见<a href="#s2-6">2.6</a>），也可点「前往报告中心」统一管理。</p>
+          <div class="shot"><span class="shot-line">[截图: 分析详情页 —— 顶部概览卡 + 左侧任务进度时间线]</span></div>
+        </div>
+
+        <div class="panel" id="s2-6">
+          <h3 style="margin-top:0;">2.6 报告中心</h3>
+          <p>「报告中心」列出全部已生成报告：报告标题（点击回到关联的分析）、关联分析 ID、格式、状态（<span class="pill success">已生成</span> / <span class="pill accent">生成中</span> / <span class="pill neutral">排队中</span> / <span class="pill danger">失败</span>）、生成时间。状态为「已生成」时，点「下载」可下拉选择格式。</p>
+
+          <h4>报告格式对比</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:120px;">格式</th><th style="width:26%;">特点</th><th>适合用途</th></tr></thead>
+              <tbody>
+                <tr><td><span class="pill neutral">HTML</span></td><td>图文排版最完整，浏览器直接打开</td><td>日常查看、邮件转发</td></tr>
+                <tr><td><span class="pill neutral">Markdown</span></td><td>纯文本标记，通用性好</td><td>复制进文档系统、笔记</td></tr>
+                <tr><td><span class="pill neutral">PDF</span></td><td>版式固定，打印与归档规范</td><td>存档、向上级汇报</td></tr>
+                <tr><td><span class="pill neutral">Word</span></td><td>可二次编辑</td><td>整合进周报 / 月报后修改</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>各套餐可用的报告格式</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:120px;">套餐</th><th>可用格式</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">免费版</td><td><span class="pill neutral">HTML</span></td></tr>
+                <tr><td class="strong">专业版</td><td><span class="pill neutral">HTML</span> + <span class="pill neutral">Markdown</span></td></tr>
+                <tr><td class="strong">企业版</td><td><span class="pill neutral">HTML</span> + <span class="pill neutral">Markdown</span> + <span class="pill neutral">PDF</span> + <span class="pill neutral">Word</span></td></tr>
+                <tr><td class="strong">旗舰版</td><td>全部格式（PPTX 导出即将推出，见<a href="#s7">第 7 章</a>）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p>点击下载失败且未弹出新窗口时，多为套餐不含该格式所致——到「套餐升级」页升级即可解锁（见<a href="#s5">FAQ Q2</a>）。报告在分析「已完成」时自动生成，同一分析在详情页「分析报告」标签页也能下载。报告模板（日报 / 周报）已内置，自定义模板即将推出。</p></div>
+          <div class="shot"><span class="shot-line">[截图: 报告中心 —— 报告列表 + 下载格式菜单]</span></div>
+        </div>
+
+        <div class="panel" id="s2-7">
+          <h3 style="margin-top:0;">2.7 套餐与用量</h3>
+
+          <h4>四档套餐对比</h4>
+          <p>「套餐升级」页以卡片展示四档套餐；当前套餐卡片带「当前套餐」标签，推荐档带「最受欢迎」/「旗舰之选」标识。权益对比如下：</p>
+          <div class="tbl-wrap">
+            <table class="tbl plans">
+              <thead>
+                <tr>
+                  <th>权益</th>
+                  <th>免费版 Free</th>
+                  <th class="hl">专业版 Pro<br>¥99/月<span class="badge-tag hot">最受欢迎</span></th>
+                  <th>企业版 Business<br>¥499/月</th>
+                  <th class="hl-2">旗舰版 Enterprise<br>联系商务<span class="badge-tag flag">旗舰之选</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="strong">月度分析次数</td><td>5 次</td><td>50 次</td><td>500 次</td><td>无限制</td></tr>
+                <tr><td class="strong">LLM Token 配额</td><td>100 万</td><td>1,000 万</td><td>1 亿</td><td>无限制（公平使用）</td></tr>
+                <tr><td class="strong">预算模式</td><td>硬上限</td><td>硬上限</td><td>超额计费</td><td>无上限</td></tr>
+                <tr><td class="strong">并发分析数</td><td>1</td><td>2</td><td>5</td><td>20+</td></tr>
+                <tr><td class="strong">团队席位</td><td>1</td><td>3</td><td>20</td><td>无限制</td></tr>
+                <tr><td class="strong">数据源范围</td><td>5 个常用平台</td><td>全部公开平台</td><td>全部 + 优先抓取</td><td>全部 + 自定义源</td></tr>
+                <tr><td class="strong">数据保留</td><td>30 天</td><td>90 天</td><td>365 天</td><td>永久</td></tr>
+                <tr><td class="strong">报告格式</td><td>HTML</td><td>HTML + Markdown</td><td>另含 PDF + Word</td><td>全部</td></tr>
+                <tr><td class="strong">多 Agent 辩论研判</td><td>不支持</td><td>支持（计 3 次分析）</td><td>支持</td><td>支持</td></tr>
+                <tr><td class="strong">API 访问</td><td>不支持</td><td>不支持</td><td>只读</td><td>完整（即将推出）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p>套餐页面卡片上的权益文案为固定摘要（如免费版显示「2 次分析/月」），个别文案与实际配额存在出入，<b>实际额度以「用量」页显示为准</b>（免费版为 5 次/月）。该文案正在统一中。</p></div>
+
+          <h4>Token 是什么，怎么消耗</h4>
+          <p>Token 是大模型（AI）理解文字的最小计量单位，约等于 1 个汉字或 1 个英文单词的一部分，代表你的「AI 算力配额」。每次分析中，AI 会在三个环节消耗 Token：<b>采集内容的摘要理解、智能研判（情感 / 话题分析）、报告生成</b>。创建分析向导第 4 步会给出本次预估消耗。</p>
+
+          <h4>三种预算模式</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:140px;">模式</th><th style="width:34%;">含义</th><th>用到上限时</th></tr></thead>
+              <tbody>
+                <tr><td><span class="pill neutral">硬上限</span><br><span style="font-size:12px;color:var(--muted);">免费版 / 专业版</span></td><td>额度是硬性天花板</td><td>新分析无法开始（提示预算 / 配额不足），不会产生额外费用；可升级套餐或等待下月重置</td></tr>
+                <tr><td><span class="pill warn">超额计费</span><br><span style="font-size:12px;color:var(--muted);">企业版</span></td><td>超出的部分按套餐费率另计</td><td>分析照常进行，超额部分计入账单</td></tr>
+                <tr><td><span class="pill success">无上限</span><br><span style="font-size:12px;color:var(--muted);">旗舰版</span></td><td>企业专属额度</td><td>按约定结算，专属支持</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>系统会在额度剩余不足 20% 时预警（用量页仪表盘变橙色），建议提前规划升级，避免关键分析被拦下。</p>
+
+          <h4>用量页怎么看</h4>
+          <ul class="plain">
+            <li><b>Token 用量（本月）</b>：已用 / 总额度 + 环形进度；超过 80% 时数字与进度环变橙色提醒。</li>
+            <li><b>分析次数（本月）</b>：已用 / 总额度 + 环形进度。<b>分析次数按任务创建计次</b>——重新运行不增加次数，取消不退次数。</li>
+            <li><b>当前套餐</b>：当前档位；非旗舰版下方提供「升级套餐」按钮。</li>
+          </ul>
+          <p style="font-size:13.5px;">额度用尽时页面顶部出现橙色警示条，引导升级套餐。页面底部说明：Token 用量按每次大模型调用计量，覆盖采集摘要、智能研判与报告生成。</p>
+          <div class="shot"><span class="shot-line">[截图: 用量页 —— Token / 分析次数双仪表 + 当前套餐卡]</span></div>
+
+          <h4>升级流程</h4>
+          <ol class="steps">
+            <li>打开「套餐升级」页（或用量页点「升级套餐」）；</li>
+            <li>在目标套餐卡片上点击「升级到某某版」按钮；</li>
+            <li>页面提示「订阅请求已提交」即完成申请。</li>
+          </ol>
+          <div class="callout warn">
+            <p class="co-title">当前版本说明</p>
+            <p>技术预览阶段订阅请求会被系统受理，但<b>自动扣费与套餐即时切换正在接入</b>。付费套餐的开通目前走线下人工流程（支付网关为人工模式）：按「设置」页帮助指引联系客服完成支付与开通，开通后新套餐立即生效。</p>
+          </div>
+        </div>
+
+        <div class="panel" id="s2-8">
+          <h3 style="margin-top:0;">2.8 账单</h3>
+          <p>「账单」页列出你的订阅账单记录，<b>在正式计费上线后按月出账</b>（订阅套餐后每月出账）。各列含义：</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:120px;">列</th><th>含义</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">账单编号</td><td>账单唯一编号（前缀 INV- + 序号），联系客服时提供</td></tr>
+                <tr><td class="strong">周期</td><td>账单对应的计费月份（如 2026-09）</td></tr>
+                <tr><td class="strong">金额</td><td>本期应付金额（人民币，如 ¥99.00）</td></tr>
+                <tr><td class="strong">状态</td><td><span class="pill success">已支付</span> / <span class="pill warn">待支付</span> / <span class="pill danger">支付失败</span></td></tr>
+                <tr><td class="strong">出账时间</td><td>账单生成时间</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p>页面为空（显示「暂无账单，订阅套餐后每月出账」）属正常现象——预览阶段尚未产生真实账单；账单文件下载即将推出（见<a href="#s7">第 7 章</a>）。</p></div>
+          <div class="shot"><span class="shot-line">[截图: 账单页 —— 账单记录表格（空状态示例）]</span></div>
+        </div>
+
+        <div class="panel" id="s2-9">
+          <h3 style="margin-top:0;">2.9 账户设置</h3>
+          <p>「设置」页包含账户资料、使用帮助与退出登录三块。</p>
+          <h4>账户信息</h4>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:110px;">字段</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">邮箱</td><td>你的登录账号</td></tr>
+                <tr><td class="strong">当前套餐</td><td>当前档位，旁边有「切换套餐」快捷入口</td></tr>
+                <tr><td class="strong">角色</td><td>团队内权限标识：租户管理员 / 平台管理员 / 分析师 / 只读成员</td></tr>
+                <tr><td class="strong">用户 ID / 租户 ID</td><td>系统内部编号；联系客服反馈问题时粘贴可加速定位</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h4>使用帮助（三条重要规则）</h4>
+          <ul class="plain">
+            <li>报告与原始文档的保存时长取决于套餐的数据保留策略（30 / 90 / 365 天）；</li>
+            <li>Token 用量明细可在「用量」页查看；</li>
+            <li>更多帮助可通过页面提示的客服渠道联系。</li>
+          </ul>
+          <h4>成员管理</h4>
+          <p>团队成员邀请与席位管理正在开发中（各套餐席位：免费版 1 席 / 专业版 3 席 / 企业版 20 席 / 旗舰版无限制）。当前阶段一个租户由注册账号（租户管理员）管理，多成员协作即将推出。</p>
+          <h4>退出登录</h4>
+          <p>「危险操作」区域提供「退出登录」：清除本地登录状态，下次访问需重新登录。</p>
+          <div class="callout info"><p>修改姓名、更换邮箱、重置密码目前不支持自助操作（即将推出），需要时联系客服处理。</p></div>
+          <div class="shot"><span class="shot-line">[截图: 设置页 —— 账户信息 / 使用帮助 / 退出登录]</span></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 告警配置教程 ============ -->
+      <section class="doc" id="s3">
+        <div class="sec-head">
+          <span class="sec-no">3</span>
+          <div>
+            <h2>告警配置教程</h2>
+            <span class="sec-desc">阈值规则创建 · 触发条件解释 · 收件人配置</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">3.1 告警是什么</h3>
+          <p>告警是系统的「哨兵」：当某次分析发现<b>负面情绪占比达到你设定的阈值</b>时，系统会触发告警并发送提醒邮件，让你不必时时盯看面板，也能在负面舆情超标的第一时间知道。</p>
+          <div class="callout warn">
+            <p class="co-title">当前版本状态</p>
+            <p>阈值规则的创建、存储与触发检查已在系统中实现并通过测试；<b>邮件发送通道尚未接通</b>（触发已生效、发信待配置），Web 端自助配置入口即将推出。以下说明规则包含哪些配置、如何取值；预览期间如需配置规则，可通过客服渠道提交给平台管理员代为配置（字段与本文一致）。</p>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-top">
+            <span class="step-badge">1</span>
+            <span class="step-title">创建一条阈值规则</span>
+            <span class="step-time">自助入口即将推出</span>
+          </div>
+          <p style="margin-top:0;">进入告警规则管理页（后续版本从「数据面板」进入）后：</p>
+          <ol class="steps">
+            <li>点击「<b>新建告警规则</b>」；</li>
+            <li>填写<b>规则名称</b>：用于在列表中区分，建议写明用途，例如「品牌危机红线」；</li>
+            <li>设置<b>触发阈值</b>：即负面情绪占比的警戒线。系统内部按 0–1 的小数记录（0.3 = 30%），配置时按百分比填写即可；</li>
+            <li>填写<b>通知邮箱</b>：触发后接收提醒邮件的邮箱，建议使用团队值班邮箱而非个人邮箱；</li>
+            <li>点击「保存」。规则创建后立即生效，用于后续的分析结果检查。</li>
+          </ol>
+          <div class="shot"><span class="shot-line">[截图: 新建告警规则表单 —— 名称 / 阈值 / 通知邮箱]</span></div>
+
+          <h4 style="margin-top:16px;">阈值怎么选</h4>
+          <p>阈值决定告警的「敏感度」，可参考下表起步，再按品牌实际情况调整：</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:180px;">场景</th><th style="width:150px;">建议阈值</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">高敏感品牌 / 高危期</td><td class="num">30%（0.3）</td><td>负面稍有抬头即提醒，宁多收信不漏报</td></tr>
+                <tr><td class="strong">常规监控</td><td class="num">50%（0.5）</td><td>负面过半才提醒，兼顾噪声与灵敏度</td></tr>
+                <tr><td class="strong">危机红线</td><td class="num">70%（0.7）</td><td>只在大规模负面爆发时触发，用于危机确认</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout info"><p><b>经验法则：</b>阈值越低越早收到提醒，但个别差评也会频繁打扰；阈值过高则可能漏掉从 40% 一路爬升的负面趋势。建议先用 50% 跑一段时间，再按实际收信频次调整。</p></div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-top">
+            <span class="step-badge ghost">2</span>
+            <span class="step-title">理解触发条件</span>
+          </div>
+          <p style="margin-top:0;">规则触发遵循以下逻辑，理解它有助于避免误判：</p>
+          <ul class="plain">
+            <li>每次分析产生情绪结果后，系统计算<b>负面内容占比</b>；</li>
+            <li>若占比<b>大于等于</b>阈值，规则触发：记录触发时间，并向通知邮箱发送提醒邮件（内容含规则名称与当前负面占比）；</li>
+            <li>一条规则只判断自己：阈值 70% 的规则不会因负面占比 30% 触发，即使另一条阈值 30% 的规则已经触发；</li>
+            <li>多条规则可同时触发：负面占比 85% 时，30% / 50% / 70% 三条规则各自独立触发；</li>
+            <li>只要触发条件成立就会再次提醒（当前无冷却间隔）：连续多次超标会连续收信，直到占比回落。若正处危机期且邮件过密，可临时提高阈值或联系客服调整。</li>
+          </ul>
+        </div>
+
+        <div class="step-card">
+          <div class="step-top">
+            <span class="step-badge ghost">3</span>
+            <span class="step-title">收件人配置与验证</span>
+          </div>
+          <ul class="plain" style="margin-top:0;">
+            <li>每条规则当前支持<b>一个通知邮箱</b>；一个团队可配置多条规则、各配不同收件人（如「公关值班邮箱」「老板邮箱」各一条）；</li>
+            <li>建议先填自己的邮箱做一次测试（临时调低阈值触发一次），确认收信正常后再调整为正式阈值；</li>
+            <li>触发邮件可能被误判为垃圾邮件，首次使用请将平台发件地址加入通讯录。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 4. 管理员手册 ============ -->
+      <section class="doc" id="s4">
+        <div class="sec-head">
+          <span class="sec-no">4</span>
+          <div>
+            <h2>管理员手册</h2>
+            <span class="sec-desc">面向平台管理员的租户与套餐管理说明</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">4.1 入口与权限</h3>
+          <ul class="plain">
+            <li>入口：登录后访问 <span class="mono">https://你的域名/admin</span>（侧边栏当前未放置入口图标，后续版本会加入）；</li>
+            <li>仅<b>平台管理员</b>角色可进入；其他角色一律看到 403「无访问权限」页面；</li>
+            <li>管理后台可见全平台所有租户，与普通用户只能看到自己团队的数据完全不同，请勿泄露页面内容。</li>
+          </ul>
+          <div class="shot"><span class="shot-line">[截图: 管理后台 —— 租户列表（含套餐与状态列）]</span></div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">4.2 租户管理</h3>
+          <p>租户列表表格列：</p>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="width:120px;">列</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">租户</td><td>注册时填写的姓名 / 组织名（当前以注册人姓名为准）</td></tr>
+                <tr><td class="strong">租户 ID</td><td>系统内部唯一编号</td></tr>
+                <tr><td class="strong">套餐</td><td>该租户当前套餐（免费版 / 专业版 / 企业版 / 旗舰版标签）</td></tr>
+                <tr><td class="strong">状态</td><td><span class="pill success">正常</span> / <span class="pill warn">已挂起</span></td></tr>
+                <tr><td class="strong">创建时间</td><td>注册时间</td></tr>
+                <tr><td class="strong">操作</td><td>对「正常」租户显示「挂起」按钮</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>挂起一个租户</h4>
+          <ol class="steps">
+            <li>在目标租户所在行点击「<b>挂起</b>」；</li>
+            <li>弹窗确认「挂起该租户？挂起后租户将无法登录与使用服务」；</li>
+            <li>点击「挂起」完成操作，该租户状态立即变为「已挂起」。</li>
+          </ol>
+          <p><b>挂起的效果（即时生效）：</b></p>
+          <ul class="plain">
+            <li>该租户所有成员无法登录，已登录成员的所有请求也会被拒绝；</li>
+            <li>用户端提示为「租户已被停用 / 挂起」类错误；</li>
+            <li>挂起用于欠费停服、违规处置等场景，<b>请谨慎操作</b>。</li>
+          </ul>
+          <div class="callout warn">
+            <p class="co-title">恢复租户</p>
+            <p>「恢复租户」接口已就绪（将状态置回「正常」），Web 端的恢复按钮即将推出。当前如需恢复租户，请联系平台技术支持在运维侧执行；恢复后成员即可重新登录，历史数据不受影响。</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">4.3 套餐与用量管理</h3>
+          <ul class="plain">
+            <li>管理后台当前支持查看全平台租户列表及各自套餐档位，并可查看系统内置的 4 档套餐目录（价格与 Token 配额）；</li>
+            <li><b>套餐的新增与修改</b>、<b>全平台用量统计</b>即将推出——届时管理员可在线调整套餐目录、查看各租户用量与营收汇总；</li>
+            <li>当前阶段的套餐调整可通过平台技术支持在配置层面完成。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 5. FAQ ============ -->
+      <section class="doc" id="s5">
+        <div class="sec-head">
+          <span class="sec-no">5</span>
+          <div>
+            <h2>常见问题 FAQ</h2>
+            <span class="sec-desc">点击问题展开答案（共 16 条）</span>
+          </div>
+        </div>
+
+        <details class="faq" open>
+          <summary><span class="qno">Q1</span>Token 用完了怎么办？</summary>
+          <div class="a-body">
+            <p>看你的套餐属于哪种预算模式：</p>
+            <ul class="plain">
+              <li><b>免费版 / 专业版（硬上限）</b>：额度用尽后新分析无法开始，系统提示预算或配额不足。解决方式：升级到更高套餐获得更大额度，或等待下个计费月额度重置（按自然月刷新）。</li>
+              <li><b>企业版（超额计费）</b>：超出部分按套餐费率计入账单，分析不会中断。</li>
+              <li><b>旗舰版</b>：无上限，按约定结算。</li>
+            </ul>
+            <p>此外，创建分析时关键词 × 数据源越多消耗越大，额度紧张时可适当精简。用量页仪表盘变橙色（已用超 80%）就是预警信号。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q2</span>为什么下载不了 PDF / Word 报告？</summary>
+          <div class="a-body">
+            <p>报告格式按套餐开放：免费版仅 HTML，专业版为 HTML + Markdown，<b>PDF 与 Word 需企业版及以上</b>。如你的套餐不含该格式，下载会失败。请先到「用量」或「设置」页确认当前套餐，再到「套餐升级」页升级。</p>
+            <p>另一可能：报告状态还不是「已生成」（生成中 / 排队中 / 失败不可下载），请稍后刷新重试。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q3</span>分析为什么会失败？失败了怎么办？</summary>
+          <div class="a-body">
+            <p>常见失败原因：</p>
+            <ul class="plain">
+              <li><b>额度不足</b>：Token 配额用尽，任务在预算校验环节被拦截（显示预算不足类原因）；</li>
+              <li><b>数据采集异常</b>：所选平台或关键词未能采到内容；</li>
+              <li><b>系统内部错误</b>：极少见，可稍后重试。</li>
+            </ul>
+            <p>失败后详情页会红框显示失败原因，操作区提供「重新运行」按钮——按原参数重新排队执行，会再次消耗 Token。若反复失败：先检查用量页额度是否充足；仍无法解决请联系客服并附上任务 ID（详情页顶部可复制）。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q4</span>数据从哪来？是真实的吗？</summary>
+          <div class="a-body">
+            <p>系统面向微博、公众号、新闻、小红书、B 站、抖音 6 个平台的<b>公开内容</b>做采集与分析。<b>当前技术预览阶段使用内置演示数据</b>（真实采集爬虫正在联调），预览环境的结果用于体验流程而非实际舆情；真实采集与真实 AI 研判上线后，分析结果将来自真实的公开讨论内容。见<a href="#s7">第 7 章</a>。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q5</span>任务一直停在「排队中」或「数据采集」怎么办？</summary>
+          <div class="a-body">
+            <ul class="plain">
+              <li>先确认是否有其他任务正在运行：并发分析数受套餐限制（免费版 1 个 / 专业版 2 个 / 企业版 5 个），超出部分会排队等待空位，属正常现象；</li>
+              <li>详情页与列表页会自动每 5 秒刷新，也可手动点「刷新状态」；</li>
+              <li>若长时间（如超过 30 分钟）无任何变化，可取消后「重新运行」；仍有问题请联系客服并提供任务 ID。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q6</span>取消任务会退次数或 Token 吗？</summary>
+          <div class="a-body">
+            <p>不会。<b>分析次数按任务创建计次</b>——一经创建即计入当月分析次数，取消不退回；执行中已消耗的 Token 也不退回。「重新运行」不增加分析次数，但会再次消耗 Token。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q7</span>状态已是「已完成」，为什么结果标签页是空的？</summary>
+          <div class="a-body">
+            <p>技术预览阶段的分析结果聚合管线尚未完成：文档列表、情感占比、话题聚类可能为空或零值（提示「未采集到公开文档」等），报告下载链路已可用。真实聚合上线后，每次完成的分析都会自动填充结果。见<a href="#s7">第 7 章</a>。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q8</span>报告的结论准确吗？能不能溯源？</summary>
+          <div class="a-body">
+            <p>报告由 AI 基于本次采集的内容自动生成，页面会标注为 AI 生成内容，供参考研判；正式上线后可在「分析详情 → 文档列表」核对原始内容与出处链接，重要处置决策建议结合原文核实。多 Agent 辩论研判（多位专家 AI 分角色辩论后给出结论）将为专业版及以上提供更可靠的研判结果，正在接入中（见<a href="#s7">第 7 章</a>）。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q9</span>报告在哪里下载？会保存多久？</summary>
+          <div class="a-body">
+            <p>两个入口：完成的分析详情页「分析报告」标签页、左侧菜单「报告中心」。报告与原始文档的保存时长取决于套餐的数据保留策略（免费 30 天 / 专业 90 天 / 企业 365 天 / 旗舰永久），到期自动清理，重要报告请及时下载存档。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q10</span>一个账号能几个人一起用？成员怎么加？</summary>
+          <div class="a-body">
+            <p>各套餐的团队席位：免费版 1 席、专业版 3 席、企业版 20 席、旗舰版无限制。<b>成员邀请与团队管理即将推出</b>；当前一个团队由注册账号（租户管理员）统一管理。正式版上线后可在「设置」页邀请成员并分配角色（分析师 / 只读成员等）。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q11</span>忘记密码或想修改注册邮箱怎么办？</summary>
+          <div class="a-body">
+            <p>密码找回与资料自助修改功能即将推出。当前阶段请联系客服，提供注册邮箱与租户 ID（「设置」页可查）完成重置或修改。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q12</span>升级套餐后多久生效？怎么支付？</summary>
+          <div class="a-body">
+            <p>在「套餐升级」页提交订阅请求后系统即受理（提示「订阅请求已提交」）。当前预览阶段为<b>线下开通流程</b>：按「设置」页帮助指引联系客服完成支付与开通，开通后新套餐立即生效，额度、格式等权益随之更新。在线自动支付正在接入，正式上线后支持自助即时开通。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q13</span>发票怎么开？</summary>
+          <div class="a-body">
+            <p>账单在正式计费上线后按月出账（「账单」页可查记录），<b>发票文件下载即将推出</b>。当前如需开票，请在支付时向客服说明开票信息（抬头、税号等），由人工开具。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q14</span>提示「账号已被停用 / 租户已挂起」是什么意思？</summary>
+          <div class="a-body">
+            <p>说明你的团队空间被平台管理员挂起（常见于欠费或违规处置）。请联系团队负责人或平台客服了解原因与恢复流程；恢复后即可正常登录，数据不会丢失。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q15</span>「声量」「情感」「话题」这些结果是怎么算出来的？</summary>
+          <div class="a-body">
+            <p>简要流程：按你设定的关键词与数据源采集内容 → AI 逐条理解并打上情感标签（正面 / 中性 / 负面）→ 将内容按讨论主题聚成话题并观察变化趋势 → 汇总成面板图表与报告。<b>声量</b>指内容条数（讨论热度），<b>情感占比</b>指正面 / 中性 / 负面各占多少，<b>话题聚类</b>把零散讨论归类成主题。面板与详情页的空状态提示均表示当前还没有可用于统计的分析结果。</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary><span class="qno">Q16</span>为什么用一会儿就要重新登录？</summary>
+          <div class="a-body">
+            <p>为保障安全，登录状态会定时刷新续期；正常使用中页面会自动续期，无需反复输入密码。长时间未操作后提示重新登录，属安全机制的正常表现。</p>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ 6. 术语表 ============ -->
+      <section class="doc" id="s6">
+        <div class="sec-head">
+          <span class="sec-no">6</span>
+          <div>
+            <h2>术语表</h2>
+            <span class="sec-desc">点击术语查看完整解释（共 19 条）</span>
+          </div>
+        </div>
+
+        <details class="term"><summary><span class="term-name">舆情 / 舆情监测</span><span class="term-short">公众在网上的公开讨论及其动向</span></summary>
+          <div class="a-body"><p>「舆情」指公众在互联网上的公开讨论及整体倾向；「监测」即持续采集并分析这些讨论。本产品把监测升级为研判——不仅看数量，还用 AI 判断性质与趋势。</p></div>
+        </details>
+        <details class="term"><summary><span class="term-name">声量</span><span class="term-short">与你相关内容的条数，衡量讨论热度</span></summary>
+          <div class="a-body"><p>一段时间内命中关键词的内容数量。声量突然升高通常意味着有事件发生。</p><span class="term-where"><b>出现位置：</b>数据面板趋势图、概览卡</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">情感分析</span><span class="term-short">AI 判断内容是正面、中性还是负面并汇总</span></summary>
+          <div class="a-body"><p>AI 逐条理解内容语气，分为正面 / 中性 / 负面三档并计算占比（%）。颜色约定：绿 = 正面、灰 = 中性、红 = 负面。</p><span class="term-where"><b>出现位置：</b>数据面板情感占比图、详情页情感分析标签页</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">情感指数</span><span class="term-short">一天整体情绪偏向的综合分（0–1）</span></summary>
+          <div class="a-body"><p>越接近 1 越正面、越接近 0 越负面，与声量曲线对照可判断「热度高的讨论是夸还是骂」。</p><span class="term-where"><b>出现位置：</b>数据面板趋势图右轴</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">话题聚类</span><span class="term-short">把零散讨论按主题归类</span></summary>
+          <div class="a-body"><p>AI 找出内容之间的共同主题并归类，告诉你大家主要在聊哪几件事、每件事有多少内容、趋势如何。</p><span class="term-where"><b>出现位置：</b>详情页「话题聚类」标签页、数据面板热门话题榜</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">数据源</span><span class="term-short">采集内容的平台</span></summary>
+          <div class="a-body"><p>目前 6 个：微博、公众号、新闻、小红书、B 站、抖音（抖音采集即将推出）。</p><span class="term-where"><b>出现位置：</b>新建分析第 3 步</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">关键词</span><span class="term-short">你想追踪的词或词组</span></summary>
+          <div class="a-body"><p>内容命中关键词才会被采集。支持多个关键词（最多 20 个），建议 2–5 个组合。</p><span class="term-where"><b>出现位置：</b>新建分析第 2 步</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">分析 / 监测任务</span><span class="term-short">一次完整的采集 → 研判 → 报告流程</span></summary>
+          <div class="a-body"><p>在系统里叫「分析」或「任务」，每次提交都会生成一条任务记录并计入当月分析次数。</p><span class="term-where"><b>出现位置：</b>分析任务列表</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">状态机</span><span class="term-short">任务从排队到完成的状态流转体系</span></summary>
+          <div class="a-body"><p>9 种状态（草稿 → 排队中 → 预算校验 → 数据采集 → 智能研判 → 报告生成 → 已完成，以及失败 / 已取消），让你随时知道任务进行到哪一步。</p><span class="term-where"><b>出现位置：</b>详情页状态时间线</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">Token</span><span class="term-short">大模型计量的最小单位，即你的 AI 算力额度</span></summary>
+          <div class="a-body"><p>约等于 1 个汉字或 1 个英文单词的一部分。AI 每次阅读 / 写作都消耗 Token，各套餐按月配给。你可在创建分析前看到预估消耗。</p><span class="term-where"><b>出现位置：</b>新建分析成本预估、用量页</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">预算模式</span><span class="term-short">套餐对额度用完后的管理方式</span></summary>
+          <div class="a-body"><p>三种：<b>hard_cap</b>（硬上限：超额即停止新任务）、<b>overage</b>（超额计费：超出部分按费率计入账单）、<b>无上限</b>（旗舰版，公平使用）。</p><span class="term-where"><b>出现位置：</b>套餐对比表、FAQ Q1</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">多 Agent 辩论</span><span class="term-short">多位专家 AI 辩论后给出研判结论</span></summary>
+          <div class="a-body"><p>产品核心特色（P1 上线）：主持人协调多位扮演不同角色（品牌、公关、舆情专家等）的 AI 分轮辩论，再综合给出研判，比单次 AI 总结更可靠、结论可解释。专业版及以上开放，每次辩论计 3 次分析次数。</p><span class="term-where"><b>出现位置：</b>套餐权益「辩论分析」、研判环节（接入中）</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">数据保留</span><span class="term-short">报告与内容在系统内的保存时长</span></summary>
+          <div class="a-body"><p>免费 30 天 / 专业 90 天 / 企业 365 天 / 旗舰永久；到期自动清理。</p><span class="term-where"><b>出现位置：</b>设置页帮助、套餐对比表</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">报告模板</span><span class="term-short">报告版式</span></summary>
+          <div class="a-body"><p>内置日报 / 周报模板；自定义模板即将推出。</p><span class="term-where"><b>出现位置：</b>报告中心</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">报告格式</span><span class="term-short">报告导出的文件类型</span></summary>
+          <div class="a-body"><p>HTML / Markdown / PDF / Word 四种，可用范围按套餐分级（见<a href="#s2-6">2.6</a>）。</p><span class="term-where"><b>出现位置：</b>报告下载菜单</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">租户</span><span class="term-short">你的团队工作空间</span></summary>
+          <div class="a-body"><p>注册时自动创建。每个租户的数据物理隔离、互不可见，是数据安全的基础。</p><span class="term-where"><b>出现位置：</b>设置页「租户 ID」</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">席位与角色</span><span class="term-short">可加入的账号数与账号权限</span></summary>
+          <div class="a-body"><p>席位 = 套餐允许加入团队的账号数（1 / 3 / 20 / 无限制）；角色 = 账号权限，包括租户管理员、平台管理员、分析师、只读成员。成员邀请即将推出。</p><span class="term-where"><b>出现位置：</b>设置页角色标签、套餐对比表</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">配额</span><span class="term-short">套餐对你的额度限制</span></summary>
+          <div class="a-body"><p>包括分析次数（按创建计次）、Token 额度、并发分析数（同时运行的任务数上限）。</p><span class="term-where"><b>出现位置：</b>用量页、套餐对比表</span></div>
+        </details>
+        <details class="term"><summary><span class="term-name">概览卡</span><span class="term-short">数据面板顶部的 4 张汇总卡</span></summary>
+          <div class="a-body"><p>累计分析、采集文档、正面情绪占比、任务成功率。</p><span class="term-where"><b>出现位置：</b>数据面板</span></div>
+        </details>
+      </section>
+
+      <!-- ============ 7. 已知限制 ============ -->
+      <section class="doc" id="s7">
+        <div class="sec-head">
+          <span class="sec-no">7</span>
+          <div>
+            <h2>已知限制与即将推出的功能</h2>
+            <span class="sec-desc">如实说明当前版本边界，避免使用时产生误解</span>
+          </div>
+        </div>
+
+        <p>以下能力已规划并陆续开发中。<b>预览阶段看不到以下功能属正常现象</b>，正式上线前将逐步开放，本手册会随版本同步更新。</p>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:44px;">#</th><th style="width:22%;">能力</th><th style="width:120px;">当前状态</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">1</td><td class="strong">真实数据采集</td><td><span class="pill warn">即将推出</span></td><td>真实爬虫正在联调；当前预览环境使用内置演示采集器，不会抓取真实平台内容</td></tr>
+              <tr><td class="mono">2</td><td class="strong">真实 AI 研判（LLM 摘要）</td><td><span class="pill warn">即将推出</span></td><td>当前研判返回固定的演示内容；正式版将接入 DeepSeek / Kimi / Moonshot 等多模型</td></tr>
+              <tr><td class="mono">3</td><td class="strong">分析结果真实聚合</td><td><span class="pill warn">即将推出</span></td><td>文档存储与聚合管线待实现；预览中「文档列表 / 情感分析 / 话题聚类」可能为空</td></tr>
+              <tr><td class="mono">4</td><td class="strong">多 Agent 辩论研判</td><td><span class="pill warn">即将推出</span></td><td>产品核心差异化能力，专业版及以上开放（计 3 次分析次数）</td></tr>
+              <tr><td class="mono">5</td><td class="strong">实时进度推送（SSE）</td><td><span class="pill warn">即将推出</span></td><td>当前详情页每 5 秒自动刷新，效果接近实时；SSE 上线后更即时</td></tr>
+              <tr><td class="mono">6</td><td class="strong">告警邮件发送</td><td><span class="pill warn">即将推出</span></td><td>阈值规则的创建与触发检查已可用，邮件发送通道待配置；Web 自助配置入口即将推出</td></tr>
+              <tr><td class="mono">7</td><td class="strong">在线支付与套餐即时变更</td><td><span class="pill warn">即将推出</span></td><td>当前订阅请求由系统受理、开通为线下人工流程；自动计费（含企业版超额计费）即将接入</td></tr>
+              <tr><td class="mono">8</td><td class="strong">用量实时累计展示</td><td><span class="pill warn">即将推出</span></td><td>Token 计量引擎已实现并通过测试；用量页当前显示初始配额（注册即赠 100 万 Token / 5 次分析），实时扣减展示随真实引擎接通上线</td></tr>
+              <tr><td class="mono">9</td><td class="strong">账单生成与发票下载</td><td><span class="pill warn">即将推出</span></td><td>当前账单页为空属正常；出账与发票文件存储待实现</td></tr>
+              <tr><td class="mono">10</td><td class="strong">平台用量统计与套餐编辑</td><td><span class="pill warn">即将推出</span></td><td>/admin 的租户挂起、套餐目录查看已可用；平台用量总览、套餐增改即将推出</td></tr>
+              <tr><td class="mono">11</td><td class="strong">Token 吊销机制</td><td><span class="pill warn">即将推出</span></td><td>当前退出登录为本地清理；服务端吊销上线前，历史登录令牌在有效期内（访问令牌 15 分钟、刷新令牌 30 天）仍可能有效</td></tr>
+              <tr><td class="mono">12</td><td class="strong">成员邀请与团队管理</td><td><span class="pill warn">即将推出</span></td><td>席位已在套餐中定义（1 / 3 / 20 / 无限制），邀请成员、角色分配即将上线</td></tr>
+              <tr><td class="mono">13</td><td class="strong">高级监测参数</td><td><span class="pill warn">即将推出</span></td><td>排除词、监测时间范围、自定义采集频率等尚未在向导中开放</td></tr>
+              <tr><td class="mono">14</td><td class="strong">更多报告能力</td><td><span class="pill warn">即将推出</span></td><td>报告模板（日报 / 周报）自定义、旗舰版 PPTX 导出即将推出</td></tr>
+              <tr><td class="mono">15</td><td class="strong">演示环境数据持久化</td><td><span class="pill warn">即将推出</span></td><td>预览环境运行在内存存储上，服务重启后数据重置；正式版将切换为 PostgreSQL 持久化存储（部署脚本已就绪）</td></tr>
+              <tr><td class="mono">16</td><td class="strong">页面文案勘误</td><td><span class="pill gray">待修正</span></td><td>套餐卡片权益文案与后台配额存在个别出入（如免费版「2 次分析/月」文案，实际配额 5 次/月），正在统一中</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <a class="to-top" href="#top">返回顶部</a>
+
+      <footer class="doc-foot">
+        <p>文档维护：本文档随版本更新。如你在使用中发现描述与系统行为不一致，欢迎通过「设置」页的帮助渠道反馈。 · 微舆舆情（Yuging） · 技术预览版 2026-09</p>
+      </footer>
+    </div>
+  </main>
+</div>
+</body>
+</html>
