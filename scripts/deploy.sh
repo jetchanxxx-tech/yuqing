@@ -95,6 +95,13 @@ else
 fi
 export PATH="/usr/local/go/bin:$PATH"
 
+# 国内网络加速：proxy.golang.org 在境内不可达（实测 dial tcp i/o timeout）。
+# 用 YUGING_GOPROXY 覆盖，设为 "direct" 即关闭镜像。
+go env -w GOPROXY="${YUGING_GOPROXY:-https://goproxy.cn,direct}" \
+          GOSUMDB=sum.golang.google.cn \
+          GOTOOLCHAIN=local
+log_info "Go 代理已配置: $(go env GOPROXY)"
+
 # --- Node.js（要求 ≥20.19，apt 自带 18.19 不够） ---
 need_node=1
 if command -v node &>/dev/null; then
@@ -109,6 +116,10 @@ if [ "$need_node" -eq 1 ]; then
 else
   log_skip "Node.js 已满足要求: $(node -v)（npm $(npm -v 2>/dev/null || echo ?)）"
 fi
+
+# 国内网络加速：registry.npmjs.org 在境内常超时。用 YUGING_NPM_REGISTRY 覆盖。
+npm config set registry "${YUGING_NPM_REGISTRY:-https://registry.npmmirror.com}" 2>/dev/null || true
+log_info "npm 源已配置: $(npm config get registry 2>/dev/null || echo '(npm 未就绪)')"
 
 # --- Python 3 venv ---
 if python3 -c 'import venv' 2>/dev/null; then
