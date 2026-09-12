@@ -18,3 +18,25 @@ export async function listTenants(): Promise<Tenant[]> {
 export async function suspendTenant(id: string): Promise<void> {
   await client.post(`/admin/tenants/${id}/suspend`);
 }
+
+// ── 平台配置（数据源 API Key 等）─────────────────────────
+// 与后端 platform/internal/platform/settings 对应：
+//   GET  /api/v1/admin/settings → {settings:{key:value}}
+//   PUT  /api/v1/admin/settings ← {key:value}  （合并写入，零重启生效）
+
+export interface AdminSettings {
+  bocha_api_key?: string;
+  [key: string]: string | undefined;
+}
+
+export async function getAdminSettings(): Promise<AdminSettings> {
+  const { data } = await client.get<{ settings: AdminSettings }>('/admin/settings');
+  return data.settings ?? {};
+}
+
+export async function updateAdminSettings(
+  patch: Record<string, string>,
+): Promise<AdminSettings> {
+  const { data } = await client.put<{ settings: AdminSettings }>('/admin/settings', patch);
+  return data.settings ?? {};
+}

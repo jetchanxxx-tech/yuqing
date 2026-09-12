@@ -259,6 +259,44 @@ test.describe('五、管理后台', () => {
     expect(body).not.toContain('无访问权限');
     expect(body).not.toContain('403');
   });
+
+  test('5.2 数据源配置页展示 Bocha 配置项', async ({ page }) => {
+    await page.goto('/admin');
+    await page.waitForTimeout(1500);
+    // 切到「数据源配置」页签
+    await page.getByRole('tab', { name: '数据源配置' }).click();
+    await page.waitForTimeout(2000);
+
+    const body = await page.locator('body').innerText();
+    expect(body, '应出现 Bocha 配置区').toContain('Bocha');
+    expect(body, '应显示配置状态').toMatch(/已配置|未配置/);
+    expect(body, '应提示注册地址').toContain('open.bochaai.com');
+
+    // 应有 Key 输入框与保存按钮
+    await expect(page.locator('input[type="password"]').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /保存配置/ })).toBeVisible();
+
+    await page.screenshot({ path: 'e2e/shots/admin-datasource.png', fullPage: true });
+  });
+
+  test('5.3 数据源配置保存后状态更新', async ({ page }) => {
+    await page.goto('/admin');
+    await page.getByRole('tab', { name: '数据源配置' }).click();
+    await page.waitForTimeout(2000);
+
+    // 写入当前生效的 Key（幂等：值不变，但验证保存链路通畅）
+    const key = process.env.E2E_BOCHA_KEY || '';
+    if (!key) {
+      test.skip(true, '未设置 E2E_BOCHA_KEY，跳过写入验证');
+      return;
+    }
+    await page.locator('input[type="password"]').first().fill(key);
+    await page.getByRole('button', { name: /保存配置/ }).click();
+    await page.waitForTimeout(2500);
+
+    const body = await page.locator('body').innerText();
+    expect(body, '保存后应显示已配置').toContain('已配置');
+  });
 });
 
 // ════════════════════════════════════════════════════════════
