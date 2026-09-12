@@ -25,6 +25,10 @@ DB_PASSWORD="${YUGING_DB_PASSWORD:-yuging}"
 JWT_SECRET="${YUGING_JWT_SECRET:-}"
 
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; NC='\033[0m'
+
+# 日志目录必须先存在 — log_* 通过 tee 写入 $LOG_FILE，缺失时 pipefail 会中断脚本
+mkdir -p "$APP_ROOT"/{bin,config,data/{storage,logs},web}
+
 log_info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG_FILE"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*" | tee -a "$LOG_FILE"; }
 log_skip()  { echo -e "${YELLOW}[SKIP]${NC} $*" | tee -a "$LOG_FILE"; }
@@ -40,8 +44,6 @@ case "${VERSION_ID:-}" in
   *) log_warn "非 Ubuntu 24.04（检测到 ${VERSION_ID:-未知}），继续但组件版本可能不匹配" ;;
 esac
 [ -n "$DOMAIN" ] || log_warn "未设置 YUGING_DOMAIN，nginx 将使用默认 server_name _，SSL 将跳过"
-
-mkdir -p "$APP_ROOT"/{bin,config,data/{storage,logs},web}
 
 # ============================================================
 # 1. 系统依赖（每个组件独立检测，已满足则跳过）
