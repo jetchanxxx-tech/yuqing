@@ -155,7 +155,12 @@ Go Pipeline (state=fetching)
 - Bocha key 三级来源：环境变量 `BOCHA_API_KEY` → 平台 settings（`PUT /api/v1/admin/settings`，零重启生效）→ 请求参数。Admin UI 在「管理后台 → 数据源配置」
 - 文档存在 `analysis.documentStore`（内存），`Documents()` 返回 `[]` 而非 nil —— 前端 `.map()` 遇 null 会崩
 
-### 服务层（全部内存 store，TDD）
+### 服务层（memory/postgres 双 store，TDD）
+
+`store.driver: memory|postgres` 切换（config.yaml）。postgres 模式全部服务落平台库
+（`yuqing_platform`，业务表带 tenant_id 列；database-per-tenant 物理隔离是长期演进），
+重启不丢账号/任务/文档 —— 生产已启用。pgx store 契约测试用 `YUQING_TEST_PG_URL`
+gate（未设置时 skip，本地无 PG 也能全绿）。
 
 | 服务 | 核心职责 |
 |------|---------|
@@ -213,7 +218,7 @@ any active state → failed | canceled
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
 | F16 | 数据源在线配置（Admin UI） | ✅ Bocha + DeepSeek |
 | F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ DeepSeek 真实调用，管线全链路已接入 |
-| — | PostgreSQL store（持久化） | ❌ 内存 store，重启即丢数据 |
+| — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
 | — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 DeepSeek，Go 侧计量未接线 |
 
 ## 部署与运维
