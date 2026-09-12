@@ -83,6 +83,18 @@ func (s *Service) SetBootstrapAdminEmail(email string) {
 	s.bootstrapAdminEmail = normalizeEmail(email)
 }
 
+// rolesFor 返回用户的完整角色集：基础角色 + 命中引导邮箱时的 platform_admin。
+//
+// Register 与 Login 必须共用此逻辑。成员表只存基础角色，若 Login 仅回显该
+// 角色，用户重新登录后 platform_admin 会丢失、管理后台再次 403（实测踩过）。
+func (s *Service) rolesFor(email, baseRole string) []string {
+	roles := []string{baseRole}
+	if s.bootstrapAdminEmail != "" && normalizeEmail(email) == s.bootstrapAdminEmail {
+		roles = append(roles, rolePlatformAdmin)
+	}
+	return roles
+}
+
 // NewService creates an auth service with its own usage meter.
 // The meter is where Register applies the free-plan token quota.
 func NewService(store Store, secret, accessTTL, refreshTTL string) *Service {
@@ -141,11 +153,8 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	// Free plan: 1M token hard cap applied at provisioning time.
 	s.meter.SetQuota(tenantID, freePlanTokenQuota, llm.BudgetHardCap)
 
-	// 引导管理员：邮箱命中配置时额外授予 platform_admin（email 已归一化）
-	roles := []string{roleTenantAdmin}
-	if s.bootstrapAdminEmail != "" && email == s.bootstrapAdminEmail {
-		roles = append(roles, rolePlatformAdmin)
-	}
+	// 引导管理员：邮箱命中配置时额外授予 platform_admin
+	roles := s.rolesFor(email, roleTenantAdmin)
 
 	p := &Principal{
 		UserID:       userID,
@@ -196,7 +205,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*Principal
 		UserID:       u.ID,
 		TenantID:     t.ID,
 		Email:        u.Email,
-		Roles:        []string{role},
+		Roles:        s.rolesFor(u.Email, role),
 		PlanCode:     t.PlanCode,
 		TenantStatus: t.Status,
 	}

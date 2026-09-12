@@ -374,3 +374,38 @@ func TestServiceRegister_emptyBootstrapEmailGrantsNothing(t *testing.T) {
 		t.Errorf("roles = %v, want NOT to contain %q（引导邮箱为空时）", p.Roles, rolePlatformAdmin)
 	}
 }
+
+// Login 必须与 Register 应用同一套引导逻辑：成员表里只存基础角色，
+// 若 Login 只回显该角色，则用户重新登录后 platform_admin 丢失、管理后台
+// 再次 403（实测：注册返回 [tenant_admin platform_admin]，登录只返回
+// [tenant_admin]）。
+func TestServiceLogin_bootstrapAdminKeepsPlatformRole(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+	mustRegister(t, svc, "root@pangu.com", testPassword, "Root")
+
+	p, _, err := svc.Login(context.Background(), "root@pangu.com", testPassword)
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+	if !hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("login roles = %v, want to contain %q", p.Roles, rolePlatformAdmin)
+	}
+	if !hasRole(p.Roles, roleTenantAdmin) {
+		t.Errorf("login roles = %v, want to contain %q", p.Roles, roleTenantAdmin)
+	}
+}
+
+func TestServiceLogin_normalUserHasNoPlatformRole(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+	mustRegister(t, svc, testEmail, testPassword, testUserName)
+
+	p, _, err := svc.Login(context.Background(), testEmail, testPassword)
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+	if hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("login roles = %v, want NOT to contain %q", p.Roles, rolePlatformAdmin)
+	}
+}
