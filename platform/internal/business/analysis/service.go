@@ -3,6 +3,7 @@ package analysis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 // topicAnalysisTasks is the queue topic for newly scheduled analysis runs.
 const topicAnalysisTasks = "analysis.tasks"
 
+// TopicAnalysisTasks 是分析任务的队列主题（导出供组合根订阅）。
+const TopicAnalysisTasks = topicAnalysisTasks
+
 // Service orchestrates analysis tasks through their lifecycle.
 // Runs are persisted in an in-memory store keyed by tenant, then published
 // to the queue. The queue stays the only cross-process handoff point.
@@ -21,6 +25,7 @@ type Service struct {
 	queue       queue.Queue
 	concurrency int
 	store       *memoryStore
+	docs        *documentStore
 }
 
 // NewService creates an analysis orchestration service.
@@ -29,6 +34,7 @@ func NewService(q queue.Queue, concurrency int) *Service {
 		queue:       q,
 		concurrency: concurrency,
 		store:       newMemoryStore(),
+		docs:        newDocumentStore(),
 	}
 }
 
@@ -55,6 +61,12 @@ type AnalysisResult struct {
 	StartedAt    time.Time `json:"started_at,omitempty"`
 	FinishedAt   time.Time `json:"finished_at,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+
+	// 采集参数 —— 管线据此知道搜什么。
+	// 不持久化关键词则任务无法被处理（管线只拿到 ID，无从得知检索词）。
+	Keywords []string `json:"keywords,omitempty"`
+	Sources  []string `json:"sources,omitempty"`
+	DocCount int      `json:"doc_count"`
 }
 
 // Create validates parameters, persists the analysis as queued, and
@@ -75,14 +87,20 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		State:        StateQueued,
 		Progress:     0,
 		CreatedAt:    now,
+		Keywords:     req.Keywords,
+		Sources:      req.Sources,
 	}
 
 	if err := s.store.put(ctx, req.TenantID, result); err != nil {
 		return nil, err
 	}
 
-	err := s.queue.Publish(ctx, topicAnalysisTasks, []byte(result.ID))
+	// 消息必须带 tenantID：store 按租户分桶，仅凭 analysisID 无法定位任务。
+	payload, err := json.Marshal(TaskMessage{AnalysisID: result.ID, TenantID: req.TenantID})
 	if err != nil {
+		return nil, fmt.Errorf("analysis: marshal task: %w", err)
+	}
+	if err := s.queue.Publish(ctx, topicAnalysisTasks, payload); err != nil {
 		return nil, fmt.Errorf("analysis: failed to enqueue: %w", err)
 	}
 	return result, nil
@@ -150,9 +168,51 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error 
 		return err
 	}
 
-	// Re-enqueue: same payload contract as Create.
-	if err := s.queue.Publish(ctx, topicAnalysisTasks, []byte(analysisID)); err != nil {
+	// Re-enqueue: same payload contract as Create（JSON + tenantID）。
+	payload, err := json.Marshal(TaskMessage{AnalysisID: analysisID, TenantID: tenantID})
+	if err != nil {
+		return fmt.Errorf("analysis: marshal task: %w", err)
+	}
+	if err := s.queue.Publish(ctx, topicAnalysisTasks, payload); err != nil {
 		return fmt.Errorf("analysis: failed to re-enqueue: %w", err)
 	}
 	return nil
+}
+
+// advance 推进状态并写入进度（管线专用；外部修改状态请用 Transition）。
+func (s *Service) advance(ctx context.Context, tenantID, analysisID string, to State, progress int) error {
+	now := time.Now().UTC()
+	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+		if IsTerminal(string(a.State)) {
+			// 任务已被取消/已完成（用户操作或重复投递），不再推进
+			return pkgerrors.Wrap(pkgerrors.ErrConflict,
+				fmt.Sprintf("analysis already terminal (%s)", a.State))
+		}
+		if !CanTransition(string(a.State), string(to)) {
+			return pkgerrors.Wrap(pkgerrors.ErrConflict,
+				fmt.Sprintf("analysis cannot transition from %s to %s", a.State, to))
+		}
+		a.State = to
+		a.Progress = progress
+		if a.StartedAt.IsZero() {
+			a.StartedAt = now
+		}
+		if IsTerminal(string(to)) {
+			a.FinishedAt = now
+		}
+		return nil
+	})
+}
+
+// markFailed 标记任务失败并记录错误码。已是终态时不做改动（幂等）。
+func (s *Service) markFailed(ctx context.Context, tenantID, analysisID, code string) error {
+	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+		if IsTerminal(string(a.State)) {
+			return nil // 用户已取消或任务已完成，保留原状态
+		}
+		a.State = StateFailed
+		a.ErrorCode = code
+		a.FinishedAt = time.Now().UTC()
+		return nil
+	})
 }

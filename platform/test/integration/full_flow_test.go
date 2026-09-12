@@ -81,9 +81,17 @@ func TestIntegration_analysisLifecycleFullChain(t *testing.T) {
 
 	t.Run("create published a task to the queue", func(t *testing.T) {
 		select {
-		case taskID := <-taskCh:
-			if taskID != created.ID {
-				t.Fatalf("task payload = %q, want analysis id %q", taskID, created.ID)
+		case payload := <-taskCh:
+			// 载荷是 JSON（analysis_id + tenant_id）；管线需 tenantID 定位任务
+			msg, err := analysis.DecodeTaskMessage([]byte(payload))
+			if err != nil {
+				t.Fatalf("task payload not decodable: %v (payload=%q)", err, payload)
+			}
+			if msg.AnalysisID != created.ID {
+				t.Fatalf("task analysis_id = %q, want %q", msg.AnalysisID, created.ID)
+			}
+			if msg.TenantID != tid {
+				t.Fatalf("task tenant_id = %q, want %q", msg.TenantID, tid)
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("no analysis task received on queue")
@@ -121,9 +129,13 @@ func TestIntegration_analysisLifecycleFullChain(t *testing.T) {
 			t.Fatalf("state after rerun = %+v, want queued without FinishedAt", got)
 		}
 		select {
-		case taskID := <-taskCh:
-			if taskID != created.ID {
-				t.Fatalf("rerun task payload = %q, want %q", taskID, created.ID)
+		case payload := <-taskCh:
+			msg, err := analysis.DecodeTaskMessage([]byte(payload))
+			if err != nil {
+				t.Fatalf("rerun payload not decodable: %v (payload=%q)", err, payload)
+			}
+			if msg.AnalysisID != created.ID {
+				t.Fatalf("rerun analysis_id = %q, want %q", msg.AnalysisID, created.ID)
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("no rerun task received on queue")

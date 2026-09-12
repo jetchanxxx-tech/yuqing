@@ -49,12 +49,12 @@ type searchReq struct {
 
 // searchResp matches the Python engine's SearchResponse model.
 type searchResp struct {
-	Documents  []map[string]any `json:"documents"`
-	TotalCount int              `json:"total_count"`
+	Documents  []Document `json:"documents"`
+	TotalCount int        `json:"total_count"`
 }
 
-// Crawl sends a crawl request to the Python query engine.
-func (e *RealCrawlerEngine) Crawl(ctx context.Context, req *CrawlReq) error {
+// Search 调用 Python query 引擎采集数据并返回文档。
+func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Document, error) {
 	body := searchReq{
 		Keywords:   req.Keywords,
 		Sources:    req.Sources,
@@ -67,12 +67,12 @@ func (e *RealCrawlerEngine) Crawl(ctx context.Context, req *CrawlReq) error {
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("crawler: marshal request: %w", err)
+		return nil, fmt.Errorf("crawler: marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", e.baseURL+"/search", bytes.NewReader(b))
 	if err != nil {
-		return fmt.Errorf("crawler: new request: %w", err)
+		return nil, fmt.Errorf("crawler: new request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if e.authToken != "" {
@@ -81,21 +81,27 @@ func (e *RealCrawlerEngine) Crawl(ctx context.Context, req *CrawlReq) error {
 
 	resp, err := e.httpClient.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("crawler: fetch: %w", err)
+		return nil, fmt.Errorf("crawler: fetch: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("crawler: engine returned %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("crawler: engine returned %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result searchResp
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("crawler: decode response: %w", err)
+		return nil, fmt.Errorf("crawler: decode response: %w", err)
 	}
+	return result.Documents, nil
+}
 
-	return nil // Documents are ingested downstream by the analysis worker.
+// Crawl 实现 CrawlerEngine 接口；采集结果由 Search 返回给管线消费。
+// 保留此方法是为了接口兼容（旧调用方只关心是否触发成功）。
+func (e *RealCrawlerEngine) Crawl(ctx context.Context, req *CrawlReq) error {
+	_, err := e.Search(ctx, req)
+	return err
 }
 
 // Compile-time interface check.

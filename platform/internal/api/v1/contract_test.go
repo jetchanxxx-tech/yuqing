@@ -46,7 +46,7 @@ func newContractEnv(t *testing.T) (*gin.Engine, *v1.Services) {
 	cfg.Auth.RefreshTTL = "720h"
 	cfg.RateLimit.Enabled = false
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	deps := app.Build(cfg)
+	deps := app.Build(cfg, logger)
 	return api.NewRouter(cfg, logger, deps), deps
 }
 

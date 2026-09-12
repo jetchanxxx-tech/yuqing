@@ -32,7 +32,7 @@ func main() {
 	logger := observ.New(os.Stdout, slog.LevelInfo)
 
 	// Wire services (composition root) and build the router.
-	deps := app.Build(cfg)
+	deps := app.Build(cfg, logger)
 	router := api.NewRouter(cfg, logger, deps)
 
 	// Create HTTP server.

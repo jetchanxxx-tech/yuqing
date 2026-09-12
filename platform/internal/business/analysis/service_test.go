@@ -106,8 +106,19 @@ func TestServiceCreate_publishesTaskToQueue(t *testing.T) {
 	ch := subscribeTasks(t, q)
 
 	got := createAnalysis(t, svc, "tenant-1")
-	if body := nextTask(t, ch); body != got.ID {
-		t.Errorf("published task = %q, want analysis ID %q", body, got.ID)
+	body := nextTask(t, ch)
+
+	// 载荷为 JSON（含 analysis_id + tenant_id），不再是裸 ID：
+	// 管线需要 tenantID 才能定位任务（store 按租户分桶）。
+	msg, err := DecodeTaskMessage([]byte(body))
+	if err != nil {
+		t.Fatalf("published payload not decodable: %v (payload=%q)", err, body)
+	}
+	if msg.AnalysisID != got.ID {
+		t.Errorf("analysis_id = %q, want %q", msg.AnalysisID, got.ID)
+	}
+	if msg.TenantID != "tenant-1" {
+		t.Errorf("tenant_id = %q, want tenant-1", msg.TenantID)
 	}
 }
 
@@ -308,8 +319,17 @@ func TestServiceRerun_fromTerminalStates(t *testing.T) {
 			if !got.FinishedAt.IsZero() || !got.StartedAt.IsZero() {
 				t.Error("rerun should clear StartedAt/FinishedAt")
 			}
-			if body := nextTask(t, ch); body != a.ID {
-				t.Errorf("rerun task = %q, want %q", body, a.ID)
+			// 载荷为 JSON（analysis_id + tenant_id）
+			body := nextTask(t, ch)
+			msg, err := DecodeTaskMessage([]byte(body))
+			if err != nil {
+				t.Fatalf("rerun payload not decodable: %v (payload=%q)", err, body)
+			}
+			if msg.AnalysisID != a.ID {
+				t.Errorf("rerun analysis_id = %q, want %q", msg.AnalysisID, a.ID)
+			}
+			if msg.TenantID != "tenant-1" {
+				t.Errorf("rerun tenant_id = %q, want tenant-1", msg.TenantID)
 			}
 		})
 	}

@@ -10,9 +10,12 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"os"
+	"time"
 
 	"github.com/yuging/platform/internal/api/v1"
+	"github.com/yuging/platform/internal/engine"
 	"github.com/yuging/platform/internal/business/alert"
 	"github.com/yuging/platform/internal/business/analysis"
 	"github.com/yuging/platform/internal/business/dashboard"
@@ -28,7 +31,8 @@ import (
 )
 
 // Build wires the full MVP service graph over in-memory stores.
-func Build(cfg *config.Config) *v1.Services {
+// logger 用于管线与适配器的运行日志；nil 时退回 slog.Default。
+func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	q := queue.NewMemory()
 
 	// One shared tenant store: auth.Register provisions tenants into it and
@@ -73,6 +77,36 @@ func Build(cfg *config.Config) *v1.Services {
 	// target; REVIEW_REPORT §5 tracks unifying auth's private meter.
 	apiKeySvc := apikey.NewService(apikey.NewMemoryStore())
 	usageMeter := usage.NewMeter()
+
+	// ── 分析管线 ────────────────────────────────────────────
+	// 在同一进程内消费 analysis.tasks。内存 store/queue 都是进程私有的，
+	// 独立 worker 进程既收不到消息也看不到任务 —— 这正是「任务永久停在
+	// queued」的根因（实测 worker 收到任务数为 0）。
+	//
+	// 仅当配置了 query 引擎地址时启动：测试构造的精简配置不含该地址，
+	// 若强行启动会让管线发起真实 HTTP 调用并快速失败，把任务标记为
+	// failed，破坏断言 queued 的用例。
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if cfg.Engines.Query.URL == "" {
+		logger.Warn("pipeline: 未配置 engines.query.url，分析任务将停留在 queued")
+	} else {
+		bochaKeyFunc := func() string {
+			v, _ := platformSettings.Get(context.Background(), "bocha_api_key")
+			return v
+		}
+		crawler := engine.NewRealCrawlerEngine(
+			cfg.Engines.Query.URL,
+			"", // 引擎内网认证：MVP 未启用
+			bochaKeyFunc,
+		)
+		pipeTimeout := 3 * time.Minute
+		if d, err := time.ParseDuration(cfg.Engines.Query.Timeout); err == nil && d > 0 {
+			pipeTimeout = d
+		}
+		startPipeline(context.Background(), q, analysisSvc, crawler, pipeTimeout, logger)
+	}
 
 	return &v1.Services{
 		Auth:      authSvc,
