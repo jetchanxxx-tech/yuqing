@@ -272,6 +272,22 @@ systemctl restart yuging-server yuging-worker 2>/dev/null || true
 # ============================================================
 # 9. nginx 站点配置（已有配置绝不覆盖）
 # ============================================================
+# 先排掉 default_server 冲突：Ubuntu 自带的 sites-enabled/default 占着
+# 0.0.0.0:80 的 default_server，IP 直连时请求会落到 /var/www/html 欢迎页
+# 而非本应用（实测：外部访问首页返回 "Welcome to nginx!"）。
+# 处理方式：把冲突站点移出 sites-enabled 目录并备份到 /root/（不是改名，
+# 因为 include 会加载该目录下所有文件）。
+if [ -d /etc/nginx/sites-enabled ]; then
+  for site in /etc/nginx/sites-enabled/*; do
+    [ -f "$site" ] || continue
+    if grep -q 'default_server' "$site" 2>/dev/null; then
+      backup="/root/nginx-$(basename "$site").disabled-by-pangu"
+      mv "$site" "$backup"
+      log_warn "已停用占用 default_server 的站点: $site → $backup"
+    fi
+  done
+fi
+
 NGINX_CONF=/etc/nginx/conf.d/yuging.conf
 # 有证书才用 HTTPS 模板：nginx.conf 里的 ssl_certificate 指向不存在的文件会让
 # `nginx -t` 直接失败，进而整个 reload 被拒绝、站点完全不工作（实测）。
