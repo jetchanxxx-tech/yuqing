@@ -283,6 +283,20 @@ if [ -n "${BOCHA_API_KEY:-}" ]; then
   log_info "引擎环境变量已写入: $APP_ROOT/config/engines.env"
 fi
 
+# ── 旧命名（yuging-*）遗留服务清理 ─────────────────────────
+# 项目全局改名 yuging → yuqing 后，旧 unit 不再维护。若服务器上还留着
+# 旧服务（占 8080 端口导致新服务启动失败），停止并移除，避免新旧并存。
+for old in yuging-server yuging-worker yuging-query yuging-media yuging-insight yuging-report yuging-forum; do
+  if systemctl list-unit-files "$old.service" 2>/dev/null | grep -q "$old"; then
+    log_warn "检测到旧命名服务 $old（改名 yuqing 前的遗留），停止并移除"
+    systemctl stop "$old" 2>/dev/null || true
+    systemctl disable "$old" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$old.service"
+  fi
+done
+[ -d /etc/systemd/system/yuging-server.service.d ] && rm -rf /etc/systemd/system/yuging-server.service.d || true
+systemctl daemon-reload
+
 if systemctl list-unit-files yuqing-server.service 2>/dev/null | grep -q yuqing-server; then
   log_skip "systemd units 已注册，仅 daemon-reload + 重启"
 else
