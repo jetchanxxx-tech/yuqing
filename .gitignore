@@ -25,3 +25,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ── Python 编译产物 ──────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
