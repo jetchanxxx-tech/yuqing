@@ -29,7 +29,7 @@ export default function LoginPage() {
     >
       <Card style={{ width: 400, borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
         <Typography.Title level={3} style={{ textAlign: 'center', color: '#FF2442', marginTop: 0 }}>
-          微舆舆情
+          盘古舆情
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
           多 Agent 协作研判 · AI 原生舆情监测

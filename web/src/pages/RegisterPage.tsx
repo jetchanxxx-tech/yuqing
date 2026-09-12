@@ -19,7 +19,7 @@ export default function RegisterPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
       <Card style={{ width: 400, borderRadius: 16 }}>
-        <Typography.Title level={3} style={{ textAlign: 'center', color: '#FF2442' }}>注册微舆舆情</Typography.Title>
+        <Typography.Title level={3} style={{ textAlign: 'center', color: '#FF2442' }}>注册盘古舆情</Typography.Title>
         <Form onFinish={onFinish} layout="vertical">
           <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
             <Input size="large" />

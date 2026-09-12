@@ -25,7 +25,7 @@ export function MainLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       <Sider width={200} style={{ background: '#fff', borderRight: '1px solid rgba(0,0,0,0.08)' }}>
         <div style={{ padding: '20px 16px', fontWeight: 700, fontSize: 18, color: '#FF2442' }}>
-          微舆舆情
+          盘古舆情
         </div>
         <Menu
           mode="inline"
