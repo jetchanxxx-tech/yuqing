@@ -38,6 +38,10 @@ func Build(cfg *config.Config) *v1.Services {
 	authStore := auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 
+	// 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
+	// 用该邮箱注册的账号即获得平台管理权限（YUGING_BOOTSTRAP_ADMIN_EMAIL）。
+	authSvc.SetBootstrapAdminEmail(os.Getenv("YUGING_BOOTSTRAP_ADMIN_EMAIL"))
+
 	tenantSvc := tenant.NewService(tenants)
 	analysisSvc := analysis.NewService(q, 4)
 

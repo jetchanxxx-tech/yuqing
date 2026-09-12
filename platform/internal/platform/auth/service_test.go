@@ -310,3 +310,67 @@ func TestServiceRegister_freePlanQuotaHardCapMode(t *testing.T) {
 		t.Errorf("Status = %q, want exceeded (1M hard cap)", status.Status)
 	}
 }
+
+// ── 引导管理员（platform_admin）──────────────────────────────
+// MVP 用内存 store，管理员角色无法通过 CLI 或 DB 直接写入（store 在服务进程内），
+// 因此提供环境变量引导：注册邮箱命中引导邮箱时授予 platform_admin。
+// 否则管理后台（/admin/*）永远 403 —— 实测首次部署即遇到该问题。
+
+func hasRole(roles []string, want string) bool {
+	for _, r := range roles {
+		if r == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestServiceRegister_bootstrapAdminGetsPlatformRole(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+
+	p, _ := mustRegister(t, svc, "root@pangu.com", testPassword, "Root")
+
+	if !hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("roles = %v, want to contain %q", p.Roles, rolePlatformAdmin)
+	}
+	// 同时保留其自有租户的管理权
+	if !hasRole(p.Roles, roleTenantAdmin) {
+		t.Errorf("roles = %v, want to contain %q", p.Roles, roleTenantAdmin)
+	}
+}
+
+func TestServiceRegister_nonBootstrapUserHasNoPlatformRole(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+
+	p, _ := mustRegister(t, svc, testEmail, testPassword, testUserName)
+
+	if hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("roles = %v, want NOT to contain %q", p.Roles, rolePlatformAdmin)
+	}
+	if !hasRole(p.Roles, roleTenantAdmin) {
+		t.Errorf("roles = %v, want to contain %q", p.Roles, roleTenantAdmin)
+	}
+}
+
+func TestServiceRegister_bootstrapEmailIsCaseInsensitive(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("Root@Pangu.com")
+
+	p, _ := mustRegister(t, svc, "ROOT@pangu.COM", testPassword, "Root")
+
+	if !hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("roles = %v, want to contain %q（邮箱应大小写不敏感）", p.Roles, rolePlatformAdmin)
+	}
+}
+
+func TestServiceRegister_emptyBootstrapEmailGrantsNothing(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	// 未配置引导邮箱（默认空）时不得授予任何平台权限
+	p, _ := mustRegister(t, svc, "anyone@example.com", testPassword, "Anyone")
+
+	if hasRole(p.Roles, rolePlatformAdmin) {
+		t.Errorf("roles = %v, want NOT to contain %q（引导邮箱为空时）", p.Roles, rolePlatformAdmin)
+	}
+}

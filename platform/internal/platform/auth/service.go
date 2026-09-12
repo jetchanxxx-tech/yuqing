@@ -16,6 +16,10 @@ import (
 // Fixed role granted to the self-registered tenant owner.
 const roleTenantAdmin = "tenant_admin"
 
+// rolePlatformAdmin 授予平台级管理权限（/admin/* 全部端点）。
+// MVP 内存 store 下无法通过 CLI/DB 直接写入，只能由引导邮箱注册时获得。
+const rolePlatformAdmin = "platform_admin"
+
 // Default free-plan token quota for new tenants: 1M tokens, hard cap.
 const freePlanTokenQuota = 1_000_000
 
@@ -66,6 +70,17 @@ type Service struct {
 	accessTTL  string
 	refreshTTL string
 	meter      *usage.Meter
+
+	// bootstrapAdminEmail: 用该邮箱注册的用户额外获得 platform_admin 角色。
+	// 空值表示不启用（默认）。见 SetBootstrapAdminEmail。
+	bootstrapAdminEmail string
+}
+
+// SetBootstrapAdminEmail 配置引导管理员邮箱（大小写不敏感）。
+// 用于解决「内存 store 下无法创建平台管理员」的引导问题：设好后，
+// 用该邮箱注册的账号即为平台管理员，可访问 /admin/* 全部端点。
+func (s *Service) SetBootstrapAdminEmail(email string) {
+	s.bootstrapAdminEmail = normalizeEmail(email)
 }
 
 // NewService creates an auth service with its own usage meter.
@@ -126,11 +141,17 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	// Free plan: 1M token hard cap applied at provisioning time.
 	s.meter.SetQuota(tenantID, freePlanTokenQuota, llm.BudgetHardCap)
 
+	// 引导管理员：邮箱命中配置时额外授予 platform_admin（email 已归一化）
+	roles := []string{roleTenantAdmin}
+	if s.bootstrapAdminEmail != "" && email == s.bootstrapAdminEmail {
+		roles = append(roles, rolePlatformAdmin)
+	}
+
 	p := &Principal{
 		UserID:       userID,
 		TenantID:     tenantID,
 		Email:        email,
-		Roles:        []string{roleTenantAdmin},
+		Roles:        roles,
 		PlanCode:     t.PlanCode,
 		TenantStatus: t.Status,
 	}
