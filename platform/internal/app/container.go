@@ -10,6 +10,7 @@ package app
 
 import (
 	"context"
+	"os"
 
 	"github.com/yuging/platform/internal/api/v1"
 	"github.com/yuging/platform/internal/business/alert"
@@ -20,6 +21,7 @@ import (
 	"github.com/yuging/platform/internal/pkg/queue"
 	"github.com/yuging/platform/internal/platform/auth"
 	"github.com/yuging/platform/internal/platform/billing"
+	"github.com/yuging/platform/internal/platform/settings"
 	"github.com/yuging/platform/internal/platform/tenant"
 )
 
@@ -52,8 +54,13 @@ func Build(cfg *config.Config) *v1.Services {
 	reportSvc := report.NewService(report.NewMemoryStore(), planCodeFor, planProvider)
 
 	dashboardSvc := dashboard.NewService(analysisSvc, reportSvc)
-	// MVP: no real email transport; nil sender silently discards alerts.
 	alertSvc := alert.NewService(alert.NewMemoryStore(), nil)
+
+	// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
+	// Admins can override via PUT /api/v1/admin/settings.
+	platformSettings := settings.NewMemoryStore(map[string]string{
+		"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
+	})
 
 	return &v1.Services{
 		Auth:      authSvc,
@@ -62,5 +69,6 @@ func Build(cfg *config.Config) *v1.Services {
 		Report:    reportSvc,
 		Tenant:    tenantSvc,
 		Alert:     alertSvc,
+		Settings:  platformSettings,
 	}
 }

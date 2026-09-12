@@ -8,6 +8,7 @@ import (
 	"github.com/yuging/platform/internal/api/middleware"
 	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
 	"github.com/yuging/platform/internal/platform/auth"
+	"github.com/yuging/platform/internal/platform/settings"
 	"github.com/yuging/platform/internal/platform/tenant"
 
 	"github.com/yuging/platform/internal/business/alert"
@@ -25,6 +26,7 @@ type Services struct {
 	Report    *report.Service
 	Tenant    *tenant.Service
 	Alert     *alert.Service
+	Settings  settings.Store
 }
 
 // requestID reads the request_id propagated by middleware.RequestID.
@@ -33,7 +35,6 @@ func requestID(c *gin.Context) string {
 }
 
 // respondError maps a typed sentinel error to the API error envelope.
-// Unwrapped errors map to INTERNAL/500 via pkgerrors.CodeFor.
 func respondError(c *gin.Context, err error) {
 	code, status := pkgerrors.CodeFor(err)
 	if code == "" {

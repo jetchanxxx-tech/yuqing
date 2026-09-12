@@ -20,6 +20,8 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svcs *Services) {
 	admin.GET("/usage", middleware.RequirePermission("billing:manage"), svcs.handlePlatformUsage)
 	admin.GET("/plans", middleware.RequirePermission("admin:plans:manage"), svcs.handleAdminListPlans)
 	admin.POST("/plans", middleware.RequirePermission("admin:plans:manage"), svcs.handleAdminCreatePlan)
+	admin.GET("/settings", middleware.RequirePermission("admin:plans:manage"), svcs.handleGetSettings)
+	admin.PUT("/settings", middleware.RequirePermission("admin:plans:manage"), svcs.handleUpdateSettings)
 }
 
 // adminTenant is the admin list row (web/src/api/admin.ts Tenant).
@@ -122,4 +124,35 @@ func sortedPlans() []*billing.Plan {
 		}
 	}
 	return out
+}
+
+// ── Platform Settings (API keys, feature toggles) ──────────────
+
+// handleGetSettings returns all platform settings visible to admins.
+func (s *Services) handleGetSettings(c *gin.Context) {
+	all, err := s.Settings.All(c.Request.Context())
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"settings": all})
+}
+
+// handleUpdateSettings merges new values into platform settings.
+// Request body: {"bocha_api_key": "sk-xxx", "feature_x": "true"}
+func (s *Services) handleUpdateSettings(c *gin.Context) {
+	var req map[string]string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": "BAD_REQUEST", "message": "body must be JSON object",
+		})
+		return
+	}
+	for k, v := range req {
+		if err := s.Settings.Set(c.Request.Context(), k, v); err != nil {
+			respondError(c, err)
+			return
+		}
+	}
+	s.handleGetSettings(c) // return updated settings
 }

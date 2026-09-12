@@ -13,17 +13,21 @@ import (
 // RealCrawlerEngine is an HTTP transport to the Python query engine.
 // It replaces FakeCrawlerEngine once the Python engine is deployed.
 type RealCrawlerEngine struct {
-	baseURL    string
-	authToken  string
-	httpClient *http.Client
-	timeout    time.Duration
+	baseURL      string
+	authToken    string
+	httpClient   *http.Client
+	timeout      time.Duration
+	bochaKeyFunc func() string // nil = env BOCHA_API_KEY
 }
 
 // NewRealCrawlerEngine creates a crawler backed by the Python query_engine /search endpoint.
-func NewRealCrawlerEngine(baseURL, authToken string) *RealCrawlerEngine {
+// bochaKeyFunc returns the current Bocha API key from platform settings (admin-configurable).
+// If nil, the Python engine reads BOCHA_API_KEY from its own environment.
+func NewRealCrawlerEngine(baseURL, authToken string, bochaKeyFunc func() string) *RealCrawlerEngine {
 	return &RealCrawlerEngine{
-		baseURL:   baseURL,
-		authToken: authToken,
+		baseURL:      baseURL,
+		authToken:    authToken,
+		bochaKeyFunc: bochaKeyFunc,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -31,7 +35,7 @@ func NewRealCrawlerEngine(baseURL, authToken string) *RealCrawlerEngine {
 	}
 }
 
-// searchReq matches the Python engine's SearchRequest model.
+// searchReq matches the Python engine's SearchRequest model (v0.3.0).
 type searchReq struct {
 	Keywords     []string `json:"keywords"`
 	Sources      []string `json:"sources"`
@@ -40,6 +44,7 @@ type searchReq struct {
 	DateTo       string   `json:"date_to,omitempty"`
 	AnalysisID   string   `json:"analysis_id"`
 	ExcludeWords []string `json:"exclude_words,omitempty"`
+	BochaAPIKey  string   `json:"bocha_api_key,omitempty"`
 }
 
 // searchResp matches the Python engine's SearchResponse model.
@@ -55,6 +60,10 @@ func (e *RealCrawlerEngine) Crawl(ctx context.Context, req *CrawlReq) error {
 		Sources:    req.Sources,
 		MaxResults: req.MaxDepth,
 		AnalysisID: req.AnalysisID,
+	}
+	// Inject Bocha API key from admin-configurable platform settings.
+	if e.bochaKeyFunc != nil {
+		body.BochaAPIKey = e.bochaKeyFunc()
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
