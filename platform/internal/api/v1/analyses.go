@@ -98,8 +98,8 @@ func (s *Services) handleGetAnalysis(c *gin.Context) {
 }
 
 // handleGetAnalysisResult 返回分析结果。
-// 文档来自管线的采集结果（内存 store）；情感与话题尚未接入分析引擎，
-// 返回零值而非伪造数据。
+// 文档来自采集结果；情感/话题/摘要/报告来自管线（洞察与报告引擎）。
+// 引擎未配置或调用失败时任务仍完成，但 warning 说明降级原因。
 func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 	p := middleware.GetPrincipal(c)
 	if p == nil {
@@ -120,13 +120,44 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 	// 采集到的原始文档（无结果时为空切片，保证 JSON 是 [] 而非 null）
 	docs := s.Analysis.Documents(ctx, p.TenantID, a.ID)
 
+	// 情感分布汇总（positive/negative/neutral 计数 + 逐文档明细）
+	pos, neg, neu := 0, 0, 0
+	for _, st := range a.Sentiments {
+		switch st.Sentiment {
+		case "positive":
+			pos++
+		case "negative":
+			neg++
+		default:
+			neu++
+		}
+	}
+	items := a.Sentiments
+	if items == nil {
+		items = []analysis.Sentiment{}
+	}
+	topics := a.Topics
+	if topics == nil {
+		topics = []analysis.Topic{}
+	}
+	var report any
+	if a.ReportID != "" {
+		report = gin.H{"id": a.ReportID, "format": "html", "content": a.ReportContent}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"id":         a.ID,
-		"state":      a.State,
-		"doc_count":  len(docs),
-		"documents":  docs,
-		"sentiments": gin.H{"positive": 0, "negative": 0, "neutral": 0},
-		"topics":     []gin.H{},
+		"id":        a.ID,
+		"state":     a.State,
+		"doc_count": len(docs),
+		"documents": docs,
+		"summary":   a.Summary,
+		"warning":   a.Warning,
+		"sentiments": gin.H{
+			"positive": pos, "negative": neg, "neutral": neu,
+			"items": items,
+		},
+		"topics": topics,
+		"report": report,
 	})
 }
 

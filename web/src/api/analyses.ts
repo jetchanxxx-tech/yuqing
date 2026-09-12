@@ -44,12 +44,30 @@ export interface SentimentDoc {
   content: string;
 }
 
+/** 单篇文档的情感分类明细 */
+export interface SentimentItem {
+  document_id: string;
+  sentiment: string;
+  score: number;
+}
+
+/** 分析报告（内嵌 HTML 内容，来自 report 引擎） */
+export interface AnalysisReport {
+  id: string;
+  format: string;
+  content: string;
+}
+
 export interface AnalysisResult {
   id: string;
   state: string;
+  doc_count?: number;
   documents: SentimentDoc[];
-  sentiments: { positive: number; negative: number; neutral: number };
+  summary?: string;
+  warning?: string;
+  sentiments: { positive: number; negative: number; neutral: number; items?: SentimentItem[] };
   topics: Topic[];
+  report?: AnalysisReport | null;
 }
 
 export interface Topic {

@@ -69,7 +69,8 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
 	// Admins can override via PUT /api/v1/admin/settings.
 	platformSettings := settings.NewMemoryStore(map[string]string{
-		"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
+		"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
+		"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
 	})
 
 	// Tenant API keys (pangu_…) + the platform usage meter the admin
@@ -92,20 +93,37 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	if cfg.Engines.Query.URL == "" {
 		logger.Warn("pipeline: 未配置 engines.query.url，分析任务将停留在 queued")
 	} else {
-		bochaKeyFunc := func() string {
-			v, _ := platformSettings.Get(context.Background(), "bocha_api_key")
-			return v
+		keyFor := func(name string) func() string {
+			return func() string {
+				v, _ := platformSettings.Get(context.Background(), name)
+				return v
+			}
 		}
 		crawler := engine.NewRealCrawlerEngine(
 			cfg.Engines.Query.URL,
 			"", // 引擎内网认证：MVP 未启用
-			bochaKeyFunc,
+			keyFor("bocha_api_key"),
 		)
+		// insight/report 引擎未配置时传 nil —— 管线跳过对应步骤并记录 warning
+		var insight *engine.RealInsightEngine
+		var report *engine.RealReportEngine
+		if cfg.Engines.Insight.URL != "" {
+			insight = engine.NewRealInsightEngine(
+				cfg.Engines.Insight.URL, "", keyFor("deepseek_api_key"))
+		} else {
+			logger.Warn("pipeline: 未配置 engines.insight.url，情感/话题分析将降级")
+		}
+		if cfg.Engines.Report.URL != "" {
+			report = engine.NewRealReportEngine(
+				cfg.Engines.Report.URL, "", keyFor("deepseek_api_key"))
+		} else {
+			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
+		}
 		pipeTimeout := 3 * time.Minute
 		if d, err := time.ParseDuration(cfg.Engines.Query.Timeout); err == nil && d > 0 {
 			pipeTimeout = d
 		}
-		startPipeline(context.Background(), q, analysisSvc, crawler, pipeTimeout, logger)
+		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report, pipeTimeout, logger)
 	}
 
 	return &v1.Services{

@@ -75,10 +75,12 @@ const (
 // 独立 worker 进程看不到 server 创建的任务（实测：worker 收到任务数为 0）。
 // 接入 PostgreSQL store 后可将本管线移入独立 worker。
 type Pipeline struct {
-	svc     *Service
-	fetcher Fetcher
-	timeout time.Duration
-	log     *slog.Logger
+	svc       *Service
+	fetcher   Fetcher
+	analyzer  InsightAnalyzer  // nil = 未配置，跳过分析并记录 warning
+	generator ReportGenerator  // nil = 未配置，跳过报告并记录 warning
+	timeout   time.Duration
+	log       *slog.Logger
 }
 
 // NewPipeline 创建管线。timeout <= 0 时使用默认 3 分钟。
@@ -90,6 +92,19 @@ func NewPipeline(svc *Service, fetcher Fetcher, timeout time.Duration, log *slog
 		log = slog.Default()
 	}
 	return &Pipeline{svc: svc, fetcher: fetcher, timeout: timeout, log: log}
+}
+
+// WithAnalyzer 注入洞察分析器（情感/话题/摘要）。builder 风格保证
+// 既有 NewPipeline 调用零改动。
+func (p *Pipeline) WithAnalyzer(a InsightAnalyzer) *Pipeline {
+	p.analyzer = a
+	return p
+}
+
+// WithGenerator 注入报告生成器。
+func (p *Pipeline) WithGenerator(g ReportGenerator) *Pipeline {
+	p.generator = g
+	return p
 }
 
 // Handle 处理一条任务消息。返回 error 表示任务未能正常走完
@@ -139,14 +154,26 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	p.setDocCount(ctx, msg, len(docs))
 	p.log.Info("pipeline: fetched", slog.String("analysis_id", msg.AnalysisID), slog.Int("docs", len(docs)))
 
-	// ③ 分析（情感/话题，MVP 阶段直接推进）
+	// ③ 分析（情感/话题/摘要）。失败**不致命**：任务仍完成，
+	// 但 warning 记录降级原因 —— 采集结果已落库，不能因分析失败丢弃。
 	if err := p.step(ctx, msg, StateAnalyzing, progressAnalyze); err != nil {
 		return p.fail(msg, "pipeline_error", err)
 	}
+	insight, warn := p.runInsight(ctx, msg, docs)
+	if warn != "" {
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
+	} else {
+		if err := p.svc.SetInsight(ctx, msg.TenantID, msg.AnalysisID, insight); err != nil {
+			p.log.Warn("pipeline: store insight failed", slog.String("err", err.Error()))
+		}
+	}
 
-	// ④ 报告生成
+	// ④ 报告生成（同样非致命降级）
 	if err := p.step(ctx, msg, StateGeneratingReport, progressReport); err != nil {
 		return p.fail(msg, "pipeline_error", err)
+	}
+	if warn := p.runReport(ctx, msg, docs, insight); warn != "" {
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
 	// ⑤ 完成
@@ -163,6 +190,69 @@ func (p *Pipeline) step(ctx context.Context, msg TaskMessage, to State, progress
 		return err // 超时或取消，交由 fail 归类
 	}
 	return p.svc.advance(ctx, msg.TenantID, msg.AnalysisID, to, progress)
+}
+
+// runInsight 执行情感/话题/摘要分析。返回 warning 非空表示降级
+// （未配置或调用失败），此时 insight 为零值。
+func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Document) (InsightResult, string) {
+	if p.analyzer == nil {
+		return InsightResult{}, "insight engine not configured"
+	}
+	res, err := p.analyzer.Analyze(ctx, InsightRequest{
+		TenantID:     msg.TenantID,
+		AnalysisID:   msg.AnalysisID,
+		AnalysisType: p.analysisType(ctx, msg),
+		Documents:    docs,
+	})
+	if err != nil {
+		p.log.Warn("pipeline: insight analysis failed",
+			slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
+		return InsightResult{}, "insight analysis failed: " + err.Error()
+	}
+	return res, ""
+}
+
+// runReport 生成报告。warning 非空表示降级（报告未生成）。
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Document, insight InsightResult) string {
+	if p.generator == nil {
+		return "report engine not configured"
+	}
+	res, err := p.generator.Generate(ctx, ReportRequest{
+		TenantID:   msg.TenantID,
+		AnalysisID: msg.AnalysisID,
+		Title:      p.analysisName(ctx, msg) + " 舆情监测报告",
+		Documents:  docs,
+		Sentiments: insight.Sentiments,
+		Topics:     insight.Topics,
+	})
+	if err != nil {
+		p.log.Warn("pipeline: report generation failed",
+			slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
+		return "report generation failed: " + err.Error()
+	}
+	if err := p.svc.SetReport(ctx, msg.TenantID, msg.AnalysisID, res.ReportID, res.Content); err != nil {
+		p.log.Warn("pipeline: store report failed", slog.String("err", err.Error()))
+		return ""
+	}
+	return ""
+}
+
+// analysisType 读取任务的类型（供分析器提示词使用）。
+func (p *Pipeline) analysisType(ctx context.Context, msg TaskMessage) string {
+	a, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
+	if err != nil {
+		return ""
+	}
+	return a.AnalysisType
+}
+
+// analysisName 读取任务名称（用作报告标题）。
+func (p *Pipeline) analysisName(ctx context.Context, msg TaskMessage) string {
+	a, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
+	if err != nil {
+		return "舆情分析"
+	}
+	return a.Name
 }
 
 // fail 把任务标记为失败并记录错误码。任务已是终态时不做改动（幂等）。

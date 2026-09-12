@@ -43,6 +43,87 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 	return out, nil
 }
 
+// engineInsightAdapter 把引擎客户端适配为 analysis.InsightAnalyzer。
+type engineInsightAdapter struct {
+	ins *engine.RealInsightEngine
+}
+
+func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
+	docs := toEngineDocuments(req.Documents)
+	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
+		Documents:    docs,
+		AnalysisID:   req.AnalysisID,
+		AnalysisType: req.AnalysisType,
+	})
+	if err != nil {
+		return analysis.InsightResult{}, err
+	}
+	out := analysis.InsightResult{
+		Summary:    resp.Summary,
+		Sentiments: make([]analysis.Sentiment, 0, len(resp.Sentiments)),
+		Topics:     make([]analysis.Topic, 0, len(resp.Topics)),
+	}
+	for _, s := range resp.Sentiments {
+		out.Sentiments = append(out.Sentiments, analysis.Sentiment{
+			DocumentID: s.DocumentID, Sentiment: s.Sentiment, Score: s.Score,
+		})
+	}
+	for _, t := range resp.Topics {
+		out.Topics = append(out.Topics, analysis.Topic{
+			ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, Trend: t.Trend,
+		})
+	}
+	return out, nil
+}
+
+// engineReportAdapter 把引擎客户端适配为 analysis.ReportGenerator。
+type engineReportAdapter struct {
+	rep *engine.RealReportEngine
+}
+
+func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
+	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
+		Title:      req.Title,
+		Format:     "html",
+		Documents:  toEngineDocuments(req.Documents),
+		Sentiments: toEngineSentiments(req.Sentiments),
+		Topics:     toEngineTopics(req.Topics),
+		AnalysisID: req.AnalysisID,
+	})
+	if err != nil {
+		return analysis.ReportResult{}, err
+	}
+	return analysis.ReportResult{ReportID: resp.ReportID, Content: resp.Content}, nil
+}
+
+func toEngineDocuments(docs []analysis.Document) []engine.Document {
+	out := make([]engine.Document, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, engine.Document{
+			ID: d.ID, Title: d.Title, URL: d.URL, Content: d.Content,
+			Author: d.Author, SourceType: d.SourceType, SourceName: d.SourceName,
+			PublishedAt: d.PublishedAt, ContentHash: d.ContentHash,
+		})
+	}
+	return out
+}
+
+func toEngineSentiments(items []analysis.Sentiment) []engine.SentimentResult {
+	out := make([]engine.SentimentResult, 0, len(items))
+	for _, s := range items {
+		out = append(out, engine.SentimentResult{DocumentID: s.DocumentID, Sentiment: s.Sentiment, Score: s.Score})
+	}
+	return out
+}
+
+func toEngineTopics(items []analysis.Topic) []engine.TopicResult {
+	out := make([]engine.TopicResult, 0, len(items))
+	for _, t := range items {
+		out = append(out, engine.TopicResult{ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, Trend: t.Trend})
+	}
+	return out
+}
+
 // startPipeline 在 server 进程内消费 analysis.tasks 并推进任务状态机。
 //
 // 为什么必须在同一进程：内存 store 与内存 queue 都是进程私有的。
@@ -51,15 +132,25 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 //
 // 接入 PostgreSQL store + 远程队列（Redis/RabbitMQ）后，本管线可搬回
 // 独立 worker 进程，届时无需改动管线自身。
+//
+// insight/report 传 nil 时对应步骤跳过并记录 warning（本地开发未配引擎）。
 func startPipeline(
 	ctx context.Context,
 	q queue.Queue,
 	svc *analysis.Service,
 	crawler *engine.RealCrawlerEngine,
+	insight *engine.RealInsightEngine,
+	report *engine.RealReportEngine,
 	timeout time.Duration,
 	log *slog.Logger,
 ) *analysis.Pipeline {
 	p := analysis.NewPipeline(svc, &engineFetcher{crawler: crawler}, timeout, log)
+	if insight != nil {
+		p = p.WithAnalyzer(&engineInsightAdapter{ins: insight})
+	}
+	if report != nil {
+		p = p.WithGenerator(&engineReportAdapter{rep: report})
+	}
 
 	err := q.Subscribe(ctx, analysis.TopicAnalysisTasks, func(ctx context.Context, msg queue.Message) error {
 		task, err := analysis.DecodeTaskMessage(msg.Body)

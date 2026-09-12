@@ -34,9 +34,11 @@ type MediaAnalyzeResp struct {
 
 // InsightAnalyzeReq requests deep analysis + sentiment + topics.
 type InsightAnalyzeReq struct {
-	DocumentIDs  []string `json:"document_ids"`
-	AnalysisID   string   `json:"analysis_id"`
-	AnalysisType string   `json:"analysis_type"`
+	DocumentIDs  []string   `json:"document_ids"`
+	Documents    []Document `json:"documents,omitempty"`
+	AnalysisID   string     `json:"analysis_id"`
+	AnalysisType string     `json:"analysis_type"`
+	APIKey       string     `json:"api_key,omitempty"`
 }
 
 // InsightAnalyzeResp is the deep analysis response.
@@ -48,9 +50,10 @@ type InsightAnalyzeResp struct {
 
 // SentimentReq requests batched sentiment classification.
 type SentimentReq struct {
-	Documents  []Document   `json:"documents"`
-	Model      string       `json:"model,omitempty"`
-	AnalysisID string       `json:"analysis_id"`
+	Documents  []Document `json:"documents"`
+	Model      string     `json:"model,omitempty"`
+	AnalysisID string     `json:"analysis_id"`
+	APIKey     string     `json:"api_key,omitempty"`
 }
 
 // SentimentResp is the batched sentiment response.
@@ -60,13 +63,14 @@ type SentimentResp struct {
 
 // ReportGenerateReq requests report generation from document IR.
 type ReportGenerateReq struct {
-	Title      string   `json:"title"`
-	TemplateID string   `json:"template_id"`
-	Format     string   `json:"format"` // html, markdown, pdf, docx
-	Documents  []Document `json:"documents"`
+	Title      string            `json:"title"`
+	TemplateID string            `json:"template_id"`
+	Format     string            `json:"format"` // html, markdown, pdf, docx
+	Documents  []Document        `json:"documents"`
 	Sentiments []SentimentResult `json:"sentiments"`
-	Topics     []TopicResult `json:"topics"`
-	AnalysisID string   `json:"analysis_id"`
+	Topics     []TopicResult     `json:"topics"`
+	AnalysisID string            `json:"analysis_id"`
+	APIKey     string            `json:"api_key,omitempty"`
 }
 
 // ReportGenerateResp is the report generation response.
@@ -74,6 +78,7 @@ type ReportGenerateResp struct {
 	ReportID string `json:"report_id"`
 	FileKey  string `json:"file_key"`
 	Format   string `json:"format"`
+	Content  string `json:"content"`
 }
 
 // ForumRunReq requests a multi-agent forum debate.

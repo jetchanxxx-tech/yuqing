@@ -167,6 +167,7 @@ function DataSourceTab() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [bochaInput, setBochaInput] = useState('');
+  const [deepseekInput, setDeepseekInput] = useState('');
 
   const settingsQ = useQuery({ queryKey: ['admin', 'settings'], queryFn: getAdminSettings });
 
@@ -175,6 +176,7 @@ function DataSourceTab() {
     onSuccess: () => {
       message.success('配置已保存，下一个分析任务即刻生效（无需重启）');
       setBochaInput('');
+      setDeepseekInput('');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
     },
     onError: () => message.error('保存失败，请检查权限或稍后重试'),
@@ -182,6 +184,8 @@ function DataSourceTab() {
 
   const currentKey = settingsQ.data?.bocha_api_key;
   const configured = !!currentKey;
+  const currentDeepseekKey = settingsQ.data?.deepseek_api_key;
+  const deepseekConfigured = !!currentDeepseekKey;
 
   const onSave = () => {
     const value = bochaInput.trim();
@@ -190,6 +194,15 @@ function DataSourceTab() {
       return;
     }
     saveQ.mutate({ bocha_api_key: value });
+  };
+
+  const onSaveDeepseek = () => {
+    const value = deepseekInput.trim();
+    if (!value) {
+      message.warning('请填写 DeepSeek API Key');
+      return;
+    }
+    saveQ.mutate({ deepseek_api_key: value });
   };
 
   return (
@@ -257,6 +270,54 @@ function DataSourceTab() {
                   重新读取
                 </Button>
               </Space>
+            </Space>
+          </>
+        )}
+      </Card>
+
+      <Card
+        style={{ borderRadius: 16, marginTop: 16 }}
+        title={<Space><ApiOutlined />DeepSeek AI 分析</Space>}
+      >
+        {settingsQ.isLoading ? (
+          <LoadingBlock rows={3} />
+        ) : (
+          <>
+            <Descriptions column={1} size="small" style={{ marginBottom: 20 }}>
+              <Descriptions.Item label="当前状态">
+                <Tag color={deepseekConfigured ? 'success' : 'warning'}>
+                  {deepseekConfigured ? '已配置' : '未配置'}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="API Key">
+                <Typography.Text code>{maskKey(currentDeepseekKey)}</Typography.Text>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <div>
+                <Typography.Text strong>更新 API Key</Typography.Text>
+                <Typography.Paragraph type="secondary" style={{ fontSize: 13, margin: '4px 0 8px' }}>
+                  DeepSeek 驱动情感分析、话题聚类与 AI 研判报告。未配置时任务仍完成采集，
+                  但分析与报告将降级并标注原因。
+                </Typography.Paragraph>
+                <Input.Password
+                  size="large"
+                  placeholder="sk-..."
+                  value={deepseekInput}
+                  onChange={(e) => setDeepseekInput(e.target.value)}
+                  onPressEnter={onSaveDeepseek}
+                  style={{ maxWidth: 520 }}
+                />
+              </div>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={saveQ.isPending}
+                onClick={onSaveDeepseek}
+              >
+                保存配置
+              </Button>
             </Space>
           </>
         )}

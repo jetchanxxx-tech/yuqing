@@ -44,9 +44,10 @@ class TestScraperFetchNoScrapling:
         assert isinstance(doc, ScrapedDocument)
         assert doc.url == "https://example.com"
 
-    def test_search_and_fetch_returns_empty_when_not_installed(self):
+    @pytest.mark.asyncio
+    async def test_search_and_fetch_returns_empty_when_not_installed(self):
         scraper = PageScraper()
-        docs = scraper.search_and_fetch("test", sources=["news"], max_per_source=2)
+        docs = await scraper.search_and_fetch("test", sources=["news"], max_per_source=2)
         assert isinstance(docs, list)
         # Without Scrapling, docs should be empty or error docs
         for d in docs:

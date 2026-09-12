@@ -300,13 +300,102 @@ test.describe('五、管理后台', () => {
 });
 
 // ════════════════════════════════════════════════════════════
-// 六、全局健壮性
+// 六、洞察与报告（真实 LLM 链路）
 // ════════════════════════════════════════════════════════════
 
-test.describe('六、全局健壮性', () => {
+test.describe('六、洞察与报告', () => {
   test.beforeEach(async ({ page }) => await login(page));
 
-  test('6.1 全部菜单项可导航且无 JS 错误', async ({ page }) => {
+  test('6.1 新建分析并等待真实链路完成', async ({ page }) => {
+    test.setTimeout(300_000);
+
+    // 创建分析
+    await navTo(page, MENU.newAnalysis);
+    await page.getByPlaceholder('例如：新品发布会舆情监测').fill(`E2E洞察-${Date.now()}`);
+    await page.getByText('品牌声誉监测', { exact: true }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.locator('.ant-select').first().click();
+    await page.keyboard.type('雅阁后排');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.locator('.ant-tag-checkable').first().click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /开始分析|提交|创建/ }).last().click();
+    await page.waitForURL(/\/analyses\/[A-Z0-9]+/, { timeout: 25_000 });
+
+    // 等待管线完成：详情页轮询状态，completed 或 failed 即终态
+    // 真实链路含 Bocha 采集 + Scrapling 抓取 + DeepSeek 分析/报告，最长 4 分钟
+    const terminal = page.getByText(/已完成|失败/, { exact: false }).first();
+    await terminal.waitFor({ state: 'visible', timeout: 240_000 });
+
+    // 终态必须是 completed 而非 failed
+    const body = await page.locator('body').innerText();
+    expect(body, '任务应成功完成（不出现失败标记）').not.toContain('失败');
+    await page.screenshot({ path: 'e2e/shots/insight-completed.png', fullPage: true });
+  });
+
+  test('6.2 结果页展示研判摘要', async ({ page }) => {
+    // 打开最近一次分析详情
+    await navTo(page, MENU.analyses);
+    await page.waitForTimeout(1500);
+    const firstLink = page.locator('tbody tr').first().locator('a').first();
+    await firstLink.click();
+    await page.waitForTimeout(3000);
+
+    // 研判摘要 Tab 应存在且内容非空
+    await page.getByRole('tab', { name: '研判摘要' }).click();
+    await page.waitForTimeout(2000);
+    const body = await page.locator('body').innerText();
+    expect(body, '应显示 AI 研判摘要而非占位文案').not.toContain('暂无研判摘要');
+  });
+
+  test('6.3 情感分析与话题聚类有真实数据', async ({ page }) => {
+    await navTo(page, MENU.analyses);
+    await page.waitForTimeout(1500);
+    await page.locator('tbody tr').first().locator('a').first().click();
+    await page.waitForTimeout(3000);
+
+    // 情感分析 Tab
+    await page.getByRole('tab', { name: /情感分析/ }).click();
+    await page.waitForTimeout(2000);
+    const body = await page.locator('body').innerText();
+    expect(body, '情感 Tab 不应是空占位').not.toContain('暂无情感数据');
+
+    // 话题聚类 Tab 应有话题行
+    await page.getByRole('tab', { name: /话题聚类/ }).click();
+    await page.waitForTimeout(2000);
+    const body2 = await page.locator('body').innerText();
+    expect(body2, '话题聚类不应是空占位').not.toContain('暂无话题聚类结果');
+    await page.screenshot({ path: 'e2e/shots/insight-topics.png', fullPage: true });
+  });
+
+  test('6.4 分析报告 Tab 渲染 HTML 报告', async ({ page }) => {
+    await navTo(page, MENU.analyses);
+    await page.waitForTimeout(1500);
+    await page.locator('tbody tr').first().locator('a').first().click();
+    await page.waitForTimeout(3000);
+
+    await page.getByRole('tab', { name: /分析报告/ }).click();
+    await page.waitForTimeout(3000);
+    // 报告 iframe 应渲染（srcDoc 注入 HTML）
+    const frame = page.locator('iframe[title="分析报告预览"]');
+    await expect(frame, '报告预览 iframe 应存在').toBeVisible();
+    await page.screenshot({ path: 'e2e/shots/insight-report.png', fullPage: true });
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 七、全局健壮性
+// ════════════════════════════════════════════════════════════
+
+test.describe('七、全局健壮性', () => {
+  test.beforeEach(async ({ page }) => await login(page));
+
+  test('7.1 全部菜单项可导航且无 JS 错误', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -322,14 +411,14 @@ test.describe('六、全局健壮性', () => {
     expect(errors, `导航过程出现 JS 错误: ${errors.join('; ')}`).toHaveLength(0);
   });
 
-  test('6.2 刷新后保持登录状态', async ({ page }) => {
+  test('7.2 刷新后保持登录状态', async ({ page }) => {
     await page.reload();
     await page.waitForTimeout(2500);
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByRole('heading', { name: '数据面板' })).toBeVisible();
   });
 
-  test('6.3 页面标题已设置', async ({ page }) => {
+  test('7.3 页面标题已设置', async ({ page }) => {
     const title = await page.title();
     // 记录实际标题（当前为 Vite 默认值 "web"，属待改进项）
     console.log(`[INFO] 页面标题: "${title}"`);

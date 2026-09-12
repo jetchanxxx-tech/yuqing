@@ -67,6 +67,14 @@ type AnalysisResult struct {
 	Keywords []string `json:"keywords,omitempty"`
 	Sources  []string `json:"sources,omitempty"`
 	DocCount int      `json:"doc_count"`
+
+	// 洞察与报告 —— 管线 analyzing/generating_report 步骤写入。
+	Summary       string      `json:"summary,omitempty"`
+	Warning       string      `json:"warning,omitempty"`
+	Sentiments    []Sentiment `json:"sentiments,omitempty"`
+	Topics        []Topic     `json:"topics,omitempty"`
+	ReportID      string      `json:"report_id,omitempty"`
+	ReportContent string      `json:"report_content,omitempty"`
 }
 
 // Create validates parameters, persists the analysis as queued, and

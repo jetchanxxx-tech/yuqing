@@ -102,7 +102,8 @@ POST /analyses → store 写入(state=queued) → queue 发布 TaskMessage{analy
 - `TaskMessage` 必须携带 `tenant_id`：store 按租户分桶，仅凭 analysis_id 无法定位。`DecodeTaskMessage` 兼容历史的裸 ID 格式，但调用方会拒绝无 tenant_id 的消息并记 warn
 - 管线对已终态任务幂等（重复投递直接跳过）
 - 进度百分比常量定义在 `pipeline.go`，前端据此渲染进度条
-- **当前缺口**：`analyzing` 与 `generating_report` 两步只推进状态，**不调用任何引擎**，因此任务会显示"完成"但无分析内容
+- `analyzing` 调 `InsightAnalyzer`（情感/话题/摘要），`generating_report` 调 `ReportGenerator`（HTML 报告）。两者**失败不致命**：任务仍 completed，warning 记录降级原因（采集结果不能因分析失败丢弃）。引擎未配置（URL 为空）时对应步骤跳过并记 warning
+- 洞察/报告经 `app/pipeline.go` 的 adapter 适配（engine → analysis 接口），business 层不 import engine 包
 
 ## Layer Boundaries (critical)
 
@@ -127,12 +128,12 @@ Python 引擎**不是**同等完成度。改动前先确认：
 | 引擎 | 端口 | 状态 |
 |------|------|------|
 | `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
+| `insight_engine` | 8002 | ✅ **真实实现** — DeepSeek 情感分析 + 话题聚类 + 研判摘要（2 次 LLM 调用：情感+话题、摘要） |
+| `report_engine` | 8003 | ✅ **真实实现** — DeepSeek 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告 |
 | `forum_engine` | 8004 | ⚠️ Mock — 预置"雅阁后排"4 Agent × 3 轮辩论 |
 | `media_engine` | 8001 | ⚠️ Mock — 5 条预置多模态结果 |
-| `insight_engine` | 8002 | ❌ **空桩** — `/analyze`、`/sentiment` 返回 `{"sentiments":[],"topics":[]}` |
-| `report_engine` | 8003 | ❌ **空桩** — `/generate` 返回空 |
 
-同样，`/analyses/:id/result` 的 `sentiments` 与 `topics` 字段目前是硬编码零值，`documents` 已接真实数据。
+`/analyses/:id/result` 返回真实 `summary`/`sentiments`(计数+明细)/`topics`/`report`(HTML)/`warning`（降级原因）。
 
 ## Key Design Patterns
 
@@ -210,10 +211,10 @@ any active state → failed | canceled
 | F13 | SSE 实时推送 | ✅ 轮询实现 |
 | F14 | API Key 管理 | ✅ pangu_ 格式 |
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
-| F16 | 数据源在线配置（Admin UI） | ✅ |
-| — | 情感分析 / 话题聚类 / 报告生成 | ❌ insight、report 引擎仍是空桩，管线未接入 |
+| F16 | 数据源在线配置（Admin UI） | ✅ Bocha + DeepSeek |
+| F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ DeepSeek 真实调用，管线全链路已接入 |
 | — | PostgreSQL store（持久化） | ❌ 内存 store，重启即丢数据 |
-| — | Python 引擎真实 LLM 调用 | 🔜 待 DeepSeek/Kimi API key |
+| — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 DeepSeek，Go 侧计量未接线 |
 
 ## 部署与运维
 

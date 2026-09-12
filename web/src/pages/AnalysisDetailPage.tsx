@@ -40,6 +40,7 @@ import {
   getAnalysisResult,
   rerunAnalysis,
   type AnalysisResult,
+  type SentimentItem,
 } from '../api/analyses';
 import { listReports, openReportDownload, type Report } from '../api/reports';
 import {
@@ -357,6 +358,30 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
     <Tabs
       items={[
         {
+          key: 'summary',
+          label: '研判摘要',
+          children: (
+            <div>
+              {result.warning ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="部分分析未完成"
+                  description={result.warning}
+                  style={{ marginBottom: 16 }}
+                />
+              ) : null}
+              {result.summary ? (
+                <Typography.Paragraph style={{ fontSize: 15, lineHeight: 2 }}>
+                  {result.summary}
+                </Typography.Paragraph>
+              ) : (
+                <EmptyBlock description="暂无研判摘要（分析引擎未产出）" />
+              )}
+            </div>
+          ),
+        },
+        {
           key: 'docs',
           label: `文档列表（${docs.length}）`,
           children:
@@ -466,24 +491,24 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
         },
         {
           key: 'report',
-          label: `分析报告（${relatedReports.length}）`,
+          label: `分析报告（${result.report ? 1 : relatedReports.length}）`,
           children: (
             <div>
               <Alert
                 type="success"
                 showIcon
                 message="分析已完成，洞察报告已生成"
-                description="支持 HTML / Markdown / PDF / Word 四种格式下载，也可前往报告中心统一管理。"
-                action={
-                  <Link to="/reports">
-                    <Button type="primary" size="small">
-                      前往报告中心
-                    </Button>
-                  </Link>
-                }
+                description="报告由 AI 基于采集文档与情感/话题分析自动生成。"
                 style={{ marginBottom: 16 }}
               />
-              {reportsLoading ? (
+              {result.report?.content ? (
+                <iframe
+                  title="分析报告预览"
+                  srcDoc={result.report.content}
+                  sandbox=""
+                  style={{ width: '100%', height: 560, border: '1px solid #f0f0f0', borderRadius: 12 }}
+                />
+              ) : reportsLoading ? (
                 <LoadingBlock rows={3} />
               ) : relatedReports.length === 0 ? (
                 <EmptyBlock description="暂无该分析对应的报告记录" />
@@ -509,7 +534,12 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
 }
 
 /* ================== 情感视图 ================== */
-function SentimentView({ sentiments }: { sentiments: { positive: number; negative: number; neutral: number } }) {
+interface SentimentViewProps {
+  sentiments: { positive: number; negative: number; neutral: number; items?: SentimentItem[] };
+}
+
+function SentimentView({ sentiments }: SentimentViewProps) {
+  const items = sentiments.items ?? [];
   const entries = (Object.keys(SENTIMENT_META) as SentimentKey[]).map((k) => ({
     key: k,
     meta: SENTIMENT_META[k],
@@ -553,6 +583,54 @@ function SentimentView({ sentiments }: { sentiments: { positive: number; negativ
           <EChart option={option} height={280} />
         )}
       </Col>
+      {items.length > 0 && (
+        <Col span={24}>
+          <Card size="small" style={{ borderRadius: 12 }} title="逐文档情感明细">
+            <Table
+              rowKey="document_id"
+              size="small"
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              dataSource={items}
+              columns={[
+                {
+                  title: '文档 ID',
+                  dataIndex: 'document_id',
+                  key: 'document_id',
+                  width: 240,
+                  render: (v: string) => <Typography.Text code style={{ fontSize: 12 }}>{v}</Typography.Text>,
+                },
+                {
+                  title: '情感',
+                  dataIndex: 'sentiment',
+                  key: 'sentiment',
+                  width: 110,
+                  render: (s: string) => (
+                    <Tag
+                      color={s === 'positive' ? 'success' : s === 'negative' ? 'error' : 'default'}
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {s === 'positive' ? '正面' : s === 'negative' ? '负面' : '中性'}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: '强度',
+                  dataIndex: 'score',
+                  key: 'score',
+                  width: 180,
+                  render: (v: number) => (
+                    <Progress
+                      percent={Math.round((v ?? 0) * 100)}
+                      size="small"
+                      strokeColor="#1677ff"
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </Col>
+      )}
     </Row>
   );
 }
