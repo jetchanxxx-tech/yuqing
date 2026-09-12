@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
 	"github.com/yuging/platform/internal/pkg/id"
 	"github.com/yuging/platform/internal/pkg/queue"
@@ -18,24 +20,51 @@ const topicAnalysisTasks = "analysis.tasks"
 // TopicAnalysisTasks 是分析任务的队列主题（导出供组合根订阅）。
 const TopicAnalysisTasks = topicAnalysisTasks
 
+// analysisStore 是分析任务的持久化契约：内存实现 memoryStore（重启即失），
+// PostgreSQL 实现 pgStore（store_pg.go）。
+//
+// 方法保持包私有：装配只经 NewService（内存）/ NewPGService（PostgreSQL），
+// 上层（api/pipeline）一律走 Service 方法，不直接触碰 store。
+type analysisStore interface {
+	put(ctx context.Context, tenantID string, a *AnalysisResult) error
+	get(ctx context.Context, tenantID, analysisID string) (*AnalysisResult, error)
+	list(ctx context.Context, tenantID string) ([]AnalysisResult, error)
+	mutate(ctx context.Context, tenantID, analysisID string, fn func(*AnalysisResult) error) error
+}
+
 // Service orchestrates analysis tasks through their lifecycle.
-// Runs are persisted in an in-memory store keyed by tenant, then published
+// Runs are persisted in the injected store keyed by tenant, then published
 // to the queue. The queue stays the only cross-process handoff point.
 type Service struct {
 	queue       queue.Queue
 	concurrency int
-	store       *memoryStore
-	docs        *documentStore
+	store       analysisStore
+	docs        documentStore
 }
 
-// NewService creates an analysis orchestration service.
+// NewService creates an analysis orchestration service over in-memory stores
+// (进程重启即丢数据，生产接线见 NewPGService).
 func NewService(q queue.Queue, concurrency int) *Service {
+	return NewServiceWithStore(q, concurrency, newMemoryStore(), newMemoryDocumentStore())
+}
+
+// NewServiceWithStore 用指定 store 装配分析服务（store 与 docs 都必须非 nil，
+// 传 nil 会在首次读写时 panic —— 不做静默退回内存实现，那等于悄悄丢持久化）。
+//
+// 参数类型包私有：外部包请用 NewService（内存）或 NewPGService（PostgreSQL）。
+func NewServiceWithStore(q queue.Queue, concurrency int, store analysisStore, docs documentStore) *Service {
 	return &Service{
 		queue:       q,
 		concurrency: concurrency,
-		store:       newMemoryStore(),
-		docs:        newDocumentStore(),
+		store:       store,
+		docs:        docs,
 	}
+}
+
+// NewPGService 装配 PostgreSQL 持久化的分析服务：任务与采集文档跨进程重启
+// 存活（组合根取池后调用，池来自 db.Manager.Platform(ctx) 或 pgxpool.New）。
+func NewPGService(pool *pgxpool.Pool, q queue.Queue, concurrency int) *Service {
+	return NewServiceWithStore(q, concurrency, newPGStore(pool), newPGDocumentStore(pool))
 }
 
 // CreateAnalysisRequest holds the parameters for a new analysis.
