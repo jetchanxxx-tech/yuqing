@@ -257,6 +257,32 @@ fi
 # ============================================================
 # 8. systemd 服务（unit 已存在则刷新但不覆盖手工修改）
 # ============================================================
+# 引擎源码需对运行用户可读（unit 以 yuging 身份启动 uvicorn）
+chmod -R a+rX "$REPO_ROOT/engines" 2>/dev/null || true
+
+# 启动前做 Python 语法检查：引擎里的中文文案若混入 ASCII 双引号，会提前终止
+# 字符串字面量导致 SyntaxError，服务反复重启且日志被堆栈淹没（实测发生过）。
+PY_SYNTAX_BAD=0
+for py in "$REPO_ROOT"/engines/*/main.py "$REPO_ROOT"/engines/common/*.py; do
+  [ -f "$py" ] || continue
+  if ! "$PYTHON_VENV/bin/python" -m py_compile "$py" 2>/dev/null; then
+    log_error "Python 语法错误: $py"
+    PY_SYNTAX_BAD=1
+  fi
+done
+if [ "$PY_SYNTAX_BAD" -eq 1 ]; then
+  log_warn "存在语法错误的引擎将无法启动，请修复后重跑（其余服务继续部署）"
+  "$PYTHON_VENV/bin/python" -m py_compile "$REPO_ROOT"/engines/*/main.py || true
+fi
+
+# Bocha API Key 交给引擎进程（Bocha 搜索 + Scrapling 采集链路需要）
+if [ -n "${BOCHA_API_KEY:-}" ]; then
+  printf 'BOCHA_API_KEY=%s\n' "$BOCHA_API_KEY" > "$APP_ROOT/config/engines.env"
+  chmod 600 "$APP_ROOT/config/engines.env"
+  chown yuging:yuging "$APP_ROOT/config/engines.env" 2>/dev/null || true
+  log_info "引擎环境变量已写入: $APP_ROOT/config/engines.env"
+fi
+
 if systemctl list-unit-files yuging-server.service 2>/dev/null | grep -q yuging-server; then
   log_skip "systemd units 已注册，仅 daemon-reload + 重启"
 else
@@ -266,8 +292,21 @@ else
   log_info "systemd units 已注册: $(ls "$REPO_ROOT"/scripts/systemd/)"
 fi
 systemctl daemon-reload
+
+# Go 平台进程
 systemctl enable --now yuging-server yuging-worker 2>/dev/null || log_warn "服务启动失败，请查看 journalctl -u yuging-server"
 systemctl restart yuging-server yuging-worker 2>/dev/null || true
+
+# Python 引擎（5 个）— 数据采集/分析/报告/辩论链路
+ENGINE_UNITS="yuging-query yuging-media yuging-insight yuging-report yuging-forum"
+systemctl enable --now $ENGINE_UNITS 2>/dev/null || log_warn "部分引擎启动失败，逐个排查: systemctl status yuging-query"
+for u in $ENGINE_UNITS; do
+  if systemctl is-active --quiet "$u"; then
+    log_info "引擎已启动: $u"
+  else
+    log_warn "引擎未启动: $u（查看 journalctl -u $u）"
+  fi
+done
 
 # ============================================================
 # 9. nginx 站点配置（已有配置绝不覆盖）
