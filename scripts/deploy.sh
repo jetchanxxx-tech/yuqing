@@ -161,7 +161,12 @@ if [ -x "$APP_ROOT/bin/yuging-server" ] && [ -x "$APP_ROOT/bin/yuging-worker" ] 
 else
   log_info "交叉编译 Go 二进制（linux/amd64, CGO off）..."
   cd "$REPO_ROOT/platform"
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$APP_ROOT/bin/" ./cmd/...
+  # 逐个显式命名：`-o dir/ ./cmd/...` 会按包目录名产出 cli/server/worker，
+  # 而 systemd unit 与下方检查都引用 yuging-* 前缀（实测因此启动失败）。
+  for pkg in server worker cli; do
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
+      -o "$APP_ROOT/bin/yuging-$pkg" "./cmd/$pkg"
+  done
   log_info "Go 二进制构建完成: $(ls "$APP_ROOT/bin")"
 fi
 
@@ -201,11 +206,19 @@ log_info "Python 依赖已安装"
 
 # Scrapling 浏览器二进制（首次安装 ~150MB，后续跳过）
 if "$PYTHON_VENV/bin/python" -c "from scrapling.fetchers import Fetcher" 2>/dev/null; then
-  if [ -d "$APP_ROOT/engines/chromium" ] || "$PYTHON_VENV/bin/scrapling" check 2>/dev/null; then
-    log_skip "Scrapling 浏览器已安装"
+  # 以 Playwright 浏览器缓存目录判定，避免依赖 scrapling 的 CLI 子命令名。
+  PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+  if [ -d "$PW_CACHE" ] && [ -n "$(ls -A "$PW_CACHE" 2>/dev/null)" ]; then
+    log_skip "Scrapling 浏览器已安装 ($PW_CACHE)"
   else
-    log_info "安装 Scrapling Playwright Chromium（首次 ~150MB）..."
-    "$PYTHON_VENV/bin/scrapling" install --chromium 2>/dev/null || log_warn "Scrapling 浏览器安装失败（非阻塞，可后装）"
+    log_info "安装 Scrapling 浏览器（首次 ~150MB）..."
+    # 不加 --chromium：scrapling install 不接受该参数，误传会直接失败。
+    # 不吞 stderr：失败原因必须可见，否则只能看到一句无信息的 WARN。
+    if "$PYTHON_VENV/bin/scrapling" install 2>&1 | tail -5; then
+      log_info "Scrapling 浏览器安装完成"
+    else
+      log_warn "Scrapling 浏览器安装失败（非阻塞，可稍后手动执行: $PYTHON_VENV/bin/scrapling install）"
+    fi
   fi
 else
   log_warn "Scrapling 未安装，数据采集不可用（检查 requirements.txt）"
@@ -260,13 +273,23 @@ systemctl restart yuging-server yuging-worker 2>/dev/null || true
 # 9. nginx 站点配置（已有配置绝不覆盖）
 # ============================================================
 NGINX_CONF=/etc/nginx/conf.d/yuging.conf
+# 有证书才用 HTTPS 模板：nginx.conf 里的 ssl_certificate 指向不存在的文件会让
+# `nginx -t` 直接失败，进而整个 reload 被拒绝、站点完全不工作（实测）。
+if [ -n "$DOMAIN" ] && [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+  NGINX_TEMPLATE="$REPO_ROOT/scripts/nginx.conf"
+  log_info "检测到 $DOMAIN 的证书，使用 HTTPS 模板"
+else
+  NGINX_TEMPLATE="$REPO_ROOT/scripts/nginx-http.conf"
+  log_warn "未检测到证书，使用 HTTP-only 模板（后续签发证书后重跑本脚本即可切换）"
+fi
+
 if [ -f "$NGINX_CONF" ]; then
   log_warn "nginx 站点配置已存在: $NGINX_CONF — 不覆盖"
-  log_warn "  变更请手工对比: diff $REPO_ROOT/scripts/nginx.conf $NGINX_CONF"
+  log_warn "  变更请手工对比: diff $NGINX_TEMPLATE $NGINX_CONF"
 else
   sed -e "s/your-domain.com/${DOMAIN:-_}/g" \
       -e "s|/etc/letsencrypt/live/your-domain.com|/etc/letsencrypt/live/${DOMAIN:-_}|g" \
-      "$REPO_ROOT/scripts/nginx.conf" > "$NGINX_CONF"
+      "$NGINX_TEMPLATE" > "$NGINX_CONF"
   log_info "nginx 站点配置已部署: $NGINX_CONF"
 fi
 if [ -n "$DOMAIN" ] && [ "${SKIP_SSL:-}" = "" ]; then
