@@ -71,7 +71,7 @@ tr:last-child td{border-bottom:none}
       <tr><td>部署方式</td><td>Go 二进制 + systemd，无容器</td></tr>
       <tr><td>运行服务</td><td>8 个（Go ×2 + Python 引擎 ×5 + nginx）</td></tr>
       <tr><td>部署轮次</td><td>5 轮（前 4 轮逐步暴露脚本缺陷）</td></tr>
-      <tr><td>发现并修复问题</td><td><b>14 项</b>（12 项代码/脚本缺陷 + 2 项环境障碍）</td></tr>
+      <tr><td>发现并修复问题</td><td><b>15 项</b>（13 项代码/脚本缺陷 + 2 项环境障碍）</td></tr>
       <tr><td>最终结果</td><td>全链路可用，管理后台已解锁</td></tr>
     </table>
   </div>
@@ -215,8 +215,16 @@ tr:last-child td{border-bottom:none}
         <td>配置校验失败：<code>unknown directive "http2"</code></td>
         <td>该指令需 nginx 1.25.1+。改用 <code>listen 443 ssl http2</code> 参数形式</td>
       </tr>
+      <tr>
+        <td>15</td>
+        <td><span class="badge fix">功能</span> Login 丢失 platform_admin</td>
+        <td>注册返回 <code>[tenant_admin platform_admin]</code>，<b>重新登录只剩 <code>[tenant_admin]</code></b> → 管理后台再次 403</td>
+        <td>第 13 项修复只改了 <code>Register</code>，<code>Login</code> 仍只回显成员表里的基础角色。抽出 <code>rolesFor()</code> 共享方法供两者调用</td>
+      </tr>
     </table>
   </div>
+
+  <div class="note warn"><b>第 15 项的启示</b>：这是修复第 13 项时<b>自己引入</b>的回归 —— 只改了写入路径（注册），漏了读取路径（登录）。同一份角色逻辑存在两处实现，改一处必然漏另一处。修复方式不是「再补一处」，而是<b>抽出共享方法</b>消除重复。</div>
 
   <div class="note warn"><b>另有 1 项误判（非服务器问题）</b>：本机 curl 访问 HTTPS 报 <code>CRYPT_E_REVOCATION_OFFLINE</code>。经查是 <b>Windows Schannel 客户端</b>无法连接证书吊销服务器所致，服务器本身正常（服务器本地 curl 与 openssl 均通过）。Windows 客户端需加 <code>--ssl-no-revoke</code>。</div>
 
@@ -314,12 +322,13 @@ tr:last-child td{border-bottom:none}
       <li><b>字符编码陷阱</b>（#8）—— 中文文案里的半角引号</li>
     </ul>
 
-    <h3>三条可复用的教训</h3>
+    <h3>四条可复用的教训</h3>
     <table>
       <tr><th width="30">#</th><th>教训</th></tr>
       <tr><td>1</td><td><b>构建成功 ≠ 部署成功。</b>「Go 二进制构建完成: cli server worker」这行日志看起来是成功，实际产出的文件名与 systemd 期望的完全不同。日志应输出<b>预期路径</b>而非目录列表。</td></tr>
       <tr><td>2</td><td><b>幂等检查要查「可用」而非「存在」。</b>残缺 venv 有 <code>bin/python</code> 却没有 <code>bin/pip</code>；只判断存在会跳过重建，把损坏状态固化下来。</td></tr>
       <tr><td>3</td><td><b>配置文件不应假设单一部署形态。</b><code>nginx.conf</code> 假设「一定有证书」，导致无域名部署（完全合理的场景）整个站点不可用。模板应按条件选择。</td></tr>
+      <tr><td>4</td><td><b>改一处不如抽一处。</b>角色构建逻辑同时存在于 Register 和 Login，修复时只改前者导致回归（第 15 项）。发现同一逻辑有两份实现时，正确做法是抽成共享方法，而非分别修补。</td></tr>
     </table>
 
     <div class="note ok"><b>结论</b>：<code>deploy.sh</code> 现已覆盖从系统依赖到 HTTPS 证书的完整流程，且所有修复都有真实环境的失败证据支撑。重复部署不会再遇到上述问题。</div>
