@@ -6,7 +6,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,39 +29,14 @@ type AuthConfig struct {
 // AuthRequired validates the JWT Bearer token and injects Principal into context.
 func AuthRequired(cfg AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		if header == "" {
+		token, why := bearerToken(c)
+		if why != "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": "UNAUTHORIZED", "message": "missing authorization header",
+				"code": "UNAUTHORIZED", "message": why,
 			})
 			return
 		}
-
-		parts := strings.SplitN(header, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": "UNAUTHORIZED", "message": "invalid authorization format",
-			})
-			return
-		}
-
-		p, err := auth.ValidateAccessToken(parts[1], cfg.JWTSecret)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": "UNAUTHORIZED", "message": "invalid or expired token",
-			})
-			return
-		}
-
-		if p.TenantStatus == "suspended" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code": "TENANT_SUSPENDED", "message": "tenant account is suspended",
-			})
-			return
-		}
-
-		c.Set(string(CtxPrincipal), p)
-		c.Next()
+		authenticateJWT(c, cfg, token)
 	}
 }
 

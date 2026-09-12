@@ -2,14 +2,17 @@ package v1
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/yuging/platform/internal/api/middleware"
 	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	"github.com/yuging/platform/internal/platform/apikey"
 	"github.com/yuging/platform/internal/platform/auth"
 	"github.com/yuging/platform/internal/platform/settings"
 	"github.com/yuging/platform/internal/platform/tenant"
+	"github.com/yuging/platform/internal/platform/usage"
 
 	"github.com/yuging/platform/internal/business/alert"
 	"github.com/yuging/platform/internal/business/analysis"
@@ -27,6 +30,12 @@ type Services struct {
 	Tenant    *tenant.Service
 	Alert     *alert.Service
 	Settings  settings.Store
+	APIKey    *apikey.Service
+	Usage     *usage.Meter
+
+	// SSEPollInterval is how often /analyses/:id/events re-reads the state
+	// machine while streaming. Zero selects the default (1s); tests shrink it.
+	SSEPollInterval time.Duration
 }
 
 // requestID reads the request_id propagated by middleware.RequestID.

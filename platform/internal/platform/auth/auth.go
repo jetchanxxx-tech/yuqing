@@ -185,12 +185,14 @@ var rolePermissions = map[string][]string{
 		"billing:read", "billing:manage",
 		"admin:tenants:list", "admin:tenants:suspend", "admin:tenants:provision",
 		"admin:plans:manage",
+		"apikeys:manage",
 	},
 	"tenant_admin": {
 		"analyses:create", "analyses:list", "analyses:delete",
 		"reports:read", "reports:download",
 		"members:manage", "members:invite",
 		"billing:read",
+		"apikeys:manage",
 	},
 	"analyst": {
 		"analyses:create", "analyses:list",
@@ -199,6 +201,12 @@ var rolePermissions = map[string][]string{
 	"viewer": {
 		"analyses:list",
 		"reports:read",
+	},
+	// api_service is the least-privilege role granted to API-key principals
+	// (machine-to-machine): the read/create surface, never key management.
+	"api_service": {
+		"analyses:create", "analyses:list",
+		"reports:read", "reports:download",
 	},
 }
 

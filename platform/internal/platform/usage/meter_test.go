@@ -79,3 +79,40 @@ func TestMeter_isolatesTenants(t *testing.T) {
 		t.Errorf("bob spent = %d, want 100", bob.SpentTokens)
 	}
 }
+
+// --- Aggregate (platform-wide rollup for /admin/usage) -------------------------
+
+func TestMeter_Aggregate_empty(t *testing.T) {
+	m := NewMeter()
+	if agg := m.Aggregate(); len(agg) != 0 {
+		t.Errorf("fresh meter aggregates = %v, want empty", agg)
+	}
+}
+
+func TestMeter_Aggregate_perTenantSpend(t *testing.T) {
+	ctx := context.Background()
+	m := NewMeter()
+	m.SetQuota("t1", 1000, llm.BudgetHardCap)
+	m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 100, CompletionTokens: 50})
+	m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 10})
+	m.Record(ctx, llm.UsageEvent{TenantID: "t2", PromptTokens: 10, CacheTokens: 5})
+
+	agg := m.Aggregate()
+	if len(agg) != 2 {
+		t.Fatalf("tenants = %d, want 2 (%v)", len(agg), agg)
+	}
+	if agg["t1"] != 160 {
+		t.Errorf("t1 spent = %d, want 160", agg["t1"])
+	}
+	if agg["t2"] != 15 {
+		t.Errorf("t2 spent = %d, want 15", agg["t2"])
+	}
+
+	t.Run("copy is detached", func(t *testing.T) {
+		agg["t1"] = 999
+		m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 1})
+		if got := m.Aggregate()["t1"]; got != 161 {
+			t.Errorf("t1 after external mutation = %d, want 161", got)
+		}
+	})
+}

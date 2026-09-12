@@ -32,9 +32,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	authGroup := r.Group("/api/v1/auth")
 	v1.RegisterAuthRoutes(authGroup, deps)
 
-	// Authenticated routes.
+	// Authenticated routes. AuthAny accepts a JWT access token or a tenant
+	// API key (Authorization: Bearer pangu_…); deps.APIKey may be nil, in
+	// which case key credentials fail closed and JWT behavior is unchanged.
 	api := r.Group("/api/v1")
-	api.Use(middleware.AuthRequired(authCfg))
+	api.Use(middleware.AuthAny(authCfg, deps.APIKey, deps.Tenant))
 	api.Use(middleware.RateLimit(middleware.RateLimiterConfig{Enabled: cfg.RateLimit.Enabled}))
 	{
 		// Session endpoints that read the authenticated principal.
@@ -42,6 +44,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 		v1.RegisterSessionRoutes(session, deps)
 
 		v1.RegisterAnalysisRoutes(api, deps)
+		v1.RegisterAPIKeyRoutes(api, deps)
 		v1.RegisterReportRoutes(api, deps)
 		v1.RegisterDashboardRoutes(api, deps)
 		v1.RegisterBillingRoutes(api, deps)

@@ -86,6 +86,19 @@ func (m *Meter) Record(ctx context.Context, e llm.UsageEvent) error {
 	return nil
 }
 
+// Aggregate returns spent tokens per tenant — the rollup view for the
+// platform admin usage endpoint. The returned map is a detached copy.
+func (m *Meter) Aggregate() map[string]int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make(map[string]int64, len(m.counts))
+	for tenantID, c := range m.counts {
+		out[tenantID] = c.spentTokens
+	}
+	return out
+}
+
 var _ llm.Meter = (*Meter)(nil)
 
 // Ensure valid at compile time.

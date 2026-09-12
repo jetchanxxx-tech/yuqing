@@ -17,7 +17,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuging/platform/internal/api"
@@ -25,6 +27,7 @@ import (
 	"github.com/yuging/platform/internal/app"
 	"github.com/yuging/platform/internal/business/analysis"
 	"github.com/yuging/platform/internal/config"
+	"github.com/yuging/platform/internal/pkg/llm"
 	"github.com/yuging/platform/internal/platform/auth"
 )
 
@@ -377,6 +380,165 @@ func TestContract_auth_logout(t *testing.T) {
 	})
 }
 
+// --- 2b. API Keys (machine credentials) --------------------------------------
+
+// TestContract_apikeys_crudLifecycle drives create → list → use → revoke over
+// HTTP: the raw pangu_ key is returned exactly once, listings carry no secret,
+// the key authenticates machine calls while live, and revocation kills it.
+func TestContract_apikeys_crudLifecycle(t *testing.T) {
+	r := newContractRouter(t)
+	// A registered tenant (not a synthetic principal): API-key auth resolves
+	// the key's tenant row and fails closed when it does not exist.
+	tok, _, user := mustRegister(t, r, "apikey-owner@example.com", "密钥主")
+	ownerTenantID, _ := user["tenant_id"].(string)
+
+	var keyID, rawKey string
+
+	t.Run("create returns raw key exactly once", func(t *testing.T) {
+		w := doReq(t, r, http.MethodPost, "/api/v1/apikeys", tok, map[string]any{
+			"name":   "ci-bot",
+			"scopes": []string{"analyses:create", "analyses:list"},
+		})
+		if w.Code != http.StatusCreated {
+			t.Fatalf("POST /apikeys status = %d, want 201\nbody: %s", w.Code, w.Body.String())
+		}
+		body := decodeBody(t, w)
+		keyID, _ = body["id"].(string)
+		rawKey, _ = body["api_key"].(string)
+		if keyID == "" {
+			t.Error("create response missing non-empty id")
+		}
+		if !strings.HasPrefix(rawKey, "pangu_") {
+			t.Errorf("api_key = %q, want pangu_ prefix", rawKey)
+		}
+		for _, f := range []string{"tenant_id", "name", "prefix", "created_at"} {
+			if v, ok := body[f]; !ok || v == nil || v == "" {
+				t.Errorf(`create response missing non-empty %q`, f)
+			}
+		}
+		if body["tenant_id"] != ownerTenantID {
+			t.Errorf("tenant_id = %v, want %s", body["tenant_id"], ownerTenantID)
+		}
+		if scopes, ok := body["scopes"].([]any); !ok || len(scopes) != 2 {
+			t.Errorf(`scopes = %v, want the two requested`, body["scopes"])
+		}
+	})
+
+	t.Run("list never leaks secrets", func(t *testing.T) {
+		w := doReq(t, r, http.MethodGet, "/api/v1/apikeys", tok, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /apikeys status = %d, want 200\nbody: %s", w.Code, w.Body.String())
+		}
+		body := decodeBody(t, w)
+		keys, _ := body["keys"].([]any)
+		if len(keys) != 1 {
+			t.Fatalf("keys count = %d, want 1", len(keys))
+		}
+		row := keys[0].(map[string]any)
+		if row["id"] != keyID || row["prefix"] == "" {
+			t.Errorf("listed row = %v, want id=%s with display prefix", row, keyID)
+		}
+		if strings.Contains(w.Body.String(), rawKey) {
+			t.Error("list body contains the raw key")
+		}
+		if strings.Contains(w.Body.String(), "key_hash") {
+			t.Error("list body exposes the key hash field")
+		}
+	})
+
+	t.Run("live key authenticates machine calls", func(t *testing.T) {
+		lw := doReq(t, r, http.MethodGet, "/api/v1/analyses", rawKey, nil)
+		if lw.Code != http.StatusOK {
+			t.Fatalf("GET /analyses with api key status = %d, want 200", lw.Code)
+		}
+		cw := doReq(t, r, http.MethodPost, "/api/v1/analyses", rawKey, analysisRequest())
+		if cw.Code != http.StatusCreated {
+			t.Fatalf("POST /analyses with api key status = %d, want 201\nbody: %s", cw.Code, cw.Body.String())
+		}
+	})
+
+	t.Run("revoke kills the key", func(t *testing.T) {
+		w := doReq(t, r, http.MethodDelete, "/api/v1/apikeys/"+keyID, tok, nil)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("DELETE /apikeys/:id status = %d, want 204", w.Code)
+		}
+		gw := doReq(t, r, http.MethodGet, "/api/v1/analyses", rawKey, nil)
+		if gw.Code != http.StatusUnauthorized {
+			t.Fatalf("revoked key status = %d, want 401", gw.Code)
+		}
+		if code := envelopeCode(decodeBody(t, gw)); code != "UNAUTHORIZED" {
+			t.Errorf("code = %q, want UNAUTHORIZED", code)
+		}
+		lw := doReq(t, r, http.MethodGet, "/api/v1/apikeys", tok, nil)
+		lrow := decodeBody(t, lw)["keys"].([]any)[0].(map[string]any)
+		if lrow["revoked_at"] == nil || lrow["revoked_at"] == "" {
+			t.Error("revoked key missing revoked_at in listing")
+		}
+	})
+
+	t.Run("validation and auth failures", func(t *testing.T) {
+		nw := doReq(t, r, http.MethodPost, "/api/v1/apikeys", tok, map[string]any{"scopes": []string{"x"}})
+		if nw.Code != http.StatusBadRequest {
+			t.Fatalf("create without name status = %d, want 400", nw.Code)
+		}
+		uw := doReq(t, r, http.MethodDelete, "/api/v1/apikeys/does-not-exist", tok, nil)
+		if uw.Code != http.StatusNotFound {
+			t.Fatalf("revoke unknown id status = %d, want 404", uw.Code)
+		}
+	})
+}
+
+// TestContract_apikeys_rbac: key management needs apikeys:manage; viewers are
+// rejected and unauthenticated requests never reach the handler.
+func TestContract_apikeys_rbac(t *testing.T) {
+	r := newContractRouter(t)
+	viewer := issueToken(t, principal("viewer"))
+
+	for _, m := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/v1/apikeys"},
+		{http.MethodGet, "/api/v1/apikeys"},
+		{http.MethodDelete, "/api/v1/apikeys/k1"},
+	} {
+		w := doReq(t, r, m.method, m.path, viewer, nil)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("viewer %s %s status = %d, want 403", m.method, m.path, w.Code)
+		}
+	}
+	aw := doReq(t, r, http.MethodGet, "/api/v1/apikeys", "", nil)
+	if aw.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated GET /apikeys status = %d, want 401", aw.Code)
+	}
+}
+
+// TestContract_apikeys_crossTenantIsolation: tenant B can neither see nor
+// revoke tenant A's keys — foreign ids answer 404, not 403.
+func TestContract_apikeys_crossTenantIsolation(t *testing.T) {
+	r := newContractRouter(t)
+	tokA := issueToken(t, principal("tenant_admin"))
+	tokB := issueToken(t, auth.Principal{
+		UserID: "u_other", TenantID: "t_other", Email: "other@example.com",
+		Roles: []string{"tenant_admin"}, PlanCode: "free", TenantStatus: "active",
+	})
+
+	cw := doReq(t, r, http.MethodPost, "/api/v1/apikeys", tokA, map[string]any{"name": "owned-by-a"})
+	if cw.Code != http.StatusCreated {
+		t.Fatalf("A create status = %d, want 201", cw.Code)
+	}
+	keyID := decodeBody(t, cw)["id"].(string)
+
+	lw := doReq(t, r, http.MethodGet, "/api/v1/apikeys", tokB, nil)
+	if keys := decodeBody(t, lw)["keys"].([]any); len(keys) != 0 {
+		t.Errorf("B sees %d keys, want 0 (tenant isolation)", len(keys))
+	}
+	dw := doReq(t, r, http.MethodDelete, "/api/v1/apikeys/"+keyID, tokB, nil)
+	if dw.Code != http.StatusNotFound {
+		t.Errorf("B revoking A's key status = %d, want 404", dw.Code)
+	}
+}
+
 // --- 3. Analyses -------------------------------------------------------------
 
 // analysisRequest is a valid create payload the frontend sends.
@@ -540,19 +702,185 @@ func TestContract_analyses_resultShape(t *testing.T) {
 	}
 }
 
-// TestContract_analyses_events_undocumented501: the SSE events channel has no
-// defined contract yet; it must answer a JSON envelope, never HTML.
-func TestContract_analyses_events_undocumented501(t *testing.T) {
-	r := newContractRouter(t)
+// --- SSE (GET /analyses/:id/events) -------------------------------------------
+
+// sseRecorder is a flush-capable recorder whose body is safe to read from
+// another goroutine while the handler is streaming (disconnect test).
+type sseRecorder struct {
+	mu     sync.Mutex
+	code   int
+	header http.Header
+	body   bytes.Buffer
+}
+
+func newSSERecorder() *sseRecorder {
+	return &sseRecorder{code: http.StatusOK, header: http.Header{}}
+}
+
+func (rec *sseRecorder) Header() http.Header { return rec.header }
+
+func (rec *sseRecorder) Write(b []byte) (int, error) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	return rec.body.Write(b)
+}
+
+func (rec *sseRecorder) WriteHeader(status int) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	rec.code = status
+}
+
+func (rec *sseRecorder) Flush() {}
+
+func (rec *sseRecorder) snapshot() (int, string) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	return rec.code, rec.body.String()
+}
+
+// waitFor polls the recorder body until it contains want or the deadline hits.
+func waitFor(t *testing.T, rec *sseRecorder, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		_, body := rec.snapshot()
+		if strings.Contains(body, want) {
+			return body
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	_, body := rec.snapshot()
+	t.Fatalf("timed out waiting for %q in SSE stream\ngot: %q", want, body)
+	return body
+}
+
+// advanceToCompleted walks a queued analysis to the completed terminal state
+// through the real state machine (the worker's Transition write path).
+func advanceToCompleted(t *testing.T, deps *v1.Services, tenantID, id string) {
+	t.Helper()
+	ctx := context.Background()
+	for _, st := range []string{"acquiring_budget", "fetching", "analyzing", "generating_report", "completed"} {
+		if err := deps.Analysis.Transition(ctx, tenantID, id, st); err != nil {
+			t.Fatalf("transition %s: %v", st, err)
+		}
+	}
+}
+
+// TestContract_analyses_events_completedStream: a terminal analysis gets one
+// final event over the text/event-stream channel and the connection closes
+// (handler returns — the recorder completes without any cancellation).
+func TestContract_analyses_events_completedStream(t *testing.T) {
+	r, deps := newContractEnv(t)
 	tok := issueToken(t, principal("analyst"))
-	w := doReq(t, r, http.MethodGet, "/api/v1/analyses/a1/events", tok, nil)
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("events status = %d, want 501", w.Code)
+	id := seedAnalysis(t, deps, "已完成流")
+	advanceToCompleted(t, deps, "t_contract", id)
+
+	w := doReq(t, r, http.MethodGet, "/api/v1/analyses/"+id+"/events", tok, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("events status = %d, want 200\nbody: %s", w.Code, w.Body.String())
 	}
-	body := decodeBody(t, w)
-	if envelopeCode(body) != "NOT_IMPLEMENTED" {
-		t.Errorf("code = %q, want NOT_IMPLEMENTED", envelopeCode(body))
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
 	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", cc)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "event: final") {
+		t.Errorf("missing final event:\n%s", body)
+	}
+	if !strings.Contains(body, `"state":"completed"`) {
+		t.Errorf("final event missing completed state:\n%s", body)
+	}
+	if !strings.HasSuffix(body, "\n\n") {
+		t.Errorf("SSE frames must end with a blank line:\n%q", body)
+	}
+}
+
+// TestContract_analyses_events_progressStream: an in-flight analysis streams
+// progress frames and closes with a final frame when the pipeline completes.
+func TestContract_analyses_events_progressStream(t *testing.T) {
+	r, deps := newContractEnv(t)
+	deps.SSEPollInterval = 10 * time.Millisecond
+	tok := issueToken(t, principal("analyst"))
+	id := seedAnalysis(t, deps, "进行中流")
+
+	rec := newSSERecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analyses/"+id+"/events", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.ServeHTTP(rec, req)
+	}()
+
+	body := waitFor(t, rec, "event: progress")
+	if !strings.Contains(body, `"state":"queued"`) {
+		t.Errorf("initial frame should carry the current state:\n%s", body)
+	}
+
+	advanceToCompleted(t, deps, "t_contract", id)
+	body = waitFor(t, rec, "event: final")
+	if !strings.Contains(body, `"state":"completed"`) {
+		t.Errorf("final frame missing completed state:\n%s", body)
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("handler did not close the stream after the terminal event")
+	}
+}
+
+// TestContract_analyses_events_clientDisconnect: canceling the request
+// context (client hung up) must stop the polling loop promptly.
+func TestContract_analyses_events_clientDisconnect(t *testing.T) {
+	r, deps := newContractEnv(t)
+	deps.SSEPollInterval = 10 * time.Millisecond
+	tok := issueToken(t, principal("analyst"))
+	id := seedAnalysis(t, deps, "断开流")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analyses/"+id+"/events", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := newSSERecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.ServeHTTP(rec, req)
+	}()
+
+	waitFor(t, rec, "event: progress") // stream is live
+	cancel()                            // client disconnects
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("handler kept polling after the client disconnected")
+	}
+}
+
+// TestContract_analyses_events_guards: unknown ids answer the 404 JSON
+// envelope (no SSE headers), and a role without analyses:list is refused
+// before the handler runs.
+func TestContract_analyses_events_guards(t *testing.T) {
+	r, deps := newContractEnv(t)
+	analyst := issueToken(t, principal("analyst"))
+
+	w := doReq(t, r, http.MethodGet, "/api/v1/analyses/no-such-id/events", analyst, nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown id status = %d, want 404", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Error("404 must not open an SSE stream")
+	}
+
+	guest := issueToken(t, principal("guest")) // role with no permissions at all
+	gw := doReq(t, r, http.MethodGet, "/api/v1/analyses/whatever/events", guest, nil)
+	if gw.Code != http.StatusForbidden {
+		t.Fatalf("permissionless role status = %d, want 403", gw.Code)
+	}
+	_ = deps
 }
 
 // --- 4. Dashboard (wired to the live dashboard service) ----------------------
@@ -747,6 +1075,7 @@ func TestContract_protectedEndpoint_withoutToken_401Envelope(t *testing.T) {
 	r := newContractRouter(t)
 	for _, path := range []string{
 		"/api/v1/analyses",
+		"/api/v1/apikeys",
 		"/api/v1/dashboard/overview",
 		"/api/v1/billing/plans",
 		"/api/v1/admin/tenants",
@@ -920,17 +1249,48 @@ func TestContract_adminPlans_readOnly(t *testing.T) {
 	}
 }
 
-// TestContract_adminUsage_pending: platform-wide usage aggregation needs the
-// usage rollup consumer — guarded, JSON 501 until then.
-func TestContract_adminUsage_pending(t *testing.T) {
-	r := newContractRouter(t)
+// TestContract_adminUsage_aggregatesRealData: platform rollup sums tenants,
+// active tenants, meter tokens and analyses from the live stores.
+func TestContract_adminUsage_aggregatesRealData(t *testing.T) {
+	r, deps := newContractEnv(t)
 	admin := issueToken(t, principal("platform_admin"))
-	w := doReq(t, r, http.MethodGet, "/api/v1/admin/usage", admin, nil)
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("GET /admin/usage status = %d, want 501", w.Code)
+	_, _, user := mustRegister(t, r, "usage-target@example.com", "用量租户")
+	usageTenant, _ := user["tenant_id"].(string)
+
+	ctx := context.Background()
+	// 400 prompt + 80 completion = 480 tokens spent for the registered tenant.
+	if err := deps.Usage.Record(ctx, llm.UsageEvent{
+		TenantID: usageTenant, PromptTokens: 400, CompletionTokens: 80,
+	}); err != nil {
+		t.Fatalf("meter record: %v", err)
 	}
-	if code := envelopeCode(decodeBody(t, w)); code != "NOT_IMPLEMENTED" {
-		t.Errorf("code = %q, want NOT_IMPLEMENTED", code)
+	if _, err := deps.Analysis.Create(ctx, analysis.CreateAnalysisRequest{
+		TenantID: usageTenant, UserID: "u_seed", Name: "计入用量", AnalysisType: "sentiment",
+	}); err != nil {
+		t.Fatalf("create analysis: %v", err)
+	}
+
+	w := doReq(t, r, http.MethodGet, "/api/v1/admin/usage", admin, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /admin/usage status = %d, want 200\nbody: %s", w.Code, w.Body.String())
+	}
+	body := decodeBody(t, w)
+	for _, f := range []string{"total_tenants", "active_tenants", "total_tokens_used", "total_analyses"} {
+		if _, ok := body[f].(float64); !ok {
+			t.Errorf("%q = %v, want number", f, body[f])
+		}
+	}
+	if body["total_tenants"] != float64(1) {
+		t.Errorf("total_tenants = %v, want 1", body["total_tenants"])
+	}
+	if body["active_tenants"] != float64(1) {
+		t.Errorf("active_tenants = %v, want 1", body["active_tenants"])
+	}
+	if body["total_tokens_used"] != float64(480) {
+		t.Errorf("total_tokens_used = %v, want 480", body["total_tokens_used"])
+	}
+	if body["total_analyses"] != float64(1) {
+		t.Errorf("total_analyses = %v, want 1", body["total_analyses"])
 	}
 }
 
@@ -946,7 +1306,6 @@ func TestContract_stubEndpoints_jsonEnvelope(t *testing.T) {
 		path   string
 		body   any
 	}{
-		{http.MethodGet, "/api/v1/analyses/a1/events", nil},
 		{http.MethodGet, "/api/v1/billing/invoices/i1/download", nil},
 	}
 	for _, ep := range endpoints {
@@ -983,16 +1342,6 @@ var contractGapRegistry = []contractGap{
 		endpoint: "GET /api/v1/analyses/:id/result",
 		severity: "MAJOR", status: "PENDING",
 		detail: "documents/sentiments/topics return empty arrays — real aggregation waits for the documents store + engine pipeline",
-	},
-	{
-		endpoint: "GET /api/v1/analyses/:id/events",
-		severity: "MINOR", status: "STUB",
-		detail: "SSE channel has no defined contract; detail page polls /analyses/:id instead",
-	},
-	{
-		endpoint: "GET /api/v1/admin/usage",
-		severity: "MAJOR", status: "STUB",
-		detail: "platform-wide usage aggregation needs the usage.events queue rollup consumer",
 	},
 	{
 		endpoint: "POST /api/v1/admin/plans",

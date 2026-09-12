@@ -19,10 +19,12 @@ import (
 	"github.com/yuging/platform/internal/business/report"
 	"github.com/yuging/platform/internal/config"
 	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuging/platform/internal/platform/apikey"
 	"github.com/yuging/platform/internal/platform/auth"
 	"github.com/yuging/platform/internal/platform/billing"
 	"github.com/yuging/platform/internal/platform/settings"
 	"github.com/yuging/platform/internal/platform/tenant"
+	"github.com/yuging/platform/internal/platform/usage"
 )
 
 // Build wires the full MVP service graph over in-memory stores.
@@ -62,6 +64,12 @@ func Build(cfg *config.Config) *v1.Services {
 		"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
 	})
 
+	// Tenant API keys (pangu_…) + the platform usage meter the admin
+	// rollup reads. The meter is shared with Auth's quota provisioning
+	// target; REVIEW_REPORT §5 tracks unifying auth's private meter.
+	apiKeySvc := apikey.NewService(apikey.NewMemoryStore())
+	usageMeter := usage.NewMeter()
+
 	return &v1.Services{
 		Auth:      authSvc,
 		Analysis:  analysisSvc,
@@ -70,5 +78,7 @@ func Build(cfg *config.Config) *v1.Services {
 		Tenant:    tenantSvc,
 		Alert:     alertSvc,
 		Settings:  platformSettings,
+		APIKey:    apiKeySvc,
+		Usage:     usageMeter,
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/yuging/platform/internal/api/middleware"
 	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
 	"github.com/yuging/platform/internal/platform/billing"
+	"github.com/yuging/platform/internal/platform/tenant"
 )
 
 // RegisterAdminRoutes mounts the platform-admin endpoints. Every route is
@@ -103,13 +104,54 @@ func (s *Services) handleAdminCreatePlan(c *gin.Context) {
 	})
 }
 
-// handlePlatformUsage: platform-wide usage aggregation needs the usage rollup
-// consumer. Answer the JSON envelope until then.
+// handlePlatformUsage aggregates platform-wide consumption from the live
+// stores: tenant roster (status/plan), usage meter token spend and per-tenant
+// analysis counts. Memory mode: the meter is the counter ledger itself; in
+// PostgreSQL mode the same shape reads usage_daily (the rollup consumer).
 func (s *Services) handlePlatformUsage(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":       "NOT_IMPLEMENTED",
-		"message":    "admin:usage not implemented (usage rollup consumer pending)",
-		"request_id": requestID(c),
+	ctx := c.Request.Context()
+	tenants, err := s.Tenant.List(ctx)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	spend := map[string]int64{}
+	if s.Usage != nil {
+		spend = s.Usage.Aggregate()
+	}
+
+	var totalTokens, totalAnalyses int64
+	activeTenants := 0
+	rows := make([]gin.H, 0, len(tenants))
+	for _, t := range tenants {
+		if t.Status == tenant.StatusActive {
+			activeTenants++
+		}
+		tokens := spend[t.ID]
+		totalTokens += tokens
+		analyses, err := s.Analysis.List(ctx, t.ID)
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		totalAnalyses += int64(len(analyses))
+		rows = append(rows, gin.H{
+			"tenant_id":   t.ID,
+			"name":        t.Name,
+			"plan_code":   t.PlanCode,
+			"status":      string(t.Status),
+			"tokens_used": tokens,
+			"analyses":    len(analyses),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_tenants":     len(tenants),
+		"active_tenants":    activeTenants,
+		"total_tokens_used": totalTokens,
+		"total_analyses":    totalAnalyses,
+		"per_tenant":        rows,
 	})
 }
 
