@@ -183,13 +183,20 @@ fi
 # 5. Python 引擎 venv + Scrapling（真实数据采集）
 # ============================================================
 PYTHON_VENV="$APP_ROOT/engines/venv"
-if [ -f "$PYTHON_VENV/bin/python" ]; then
+# 以 bin/pip 判定 venv 是否完好：venv 创建中途失败（如缺 ensurepip）会留下
+# 含 bin/python 但无 pip 的残缺目录。只测 bin/python 会把残venv当完成品跳过，
+# 下一步调用 pip 时报 "No such file or directory"（实测）。残缺则删掉重建。
+if [ -x "$PYTHON_VENV/bin/pip" ]; then
   log_skip "Python 引擎 venv 已存在"
 else
+  [ -d "$PYTHON_VENV" ] && { log_warn "检测到残缺 venv，删除重建"; rm -rf "$PYTHON_VENV"; }
   python3 -m venv "$PYTHON_VENV"
   log_info "Python venv 已创建"
 fi
-"$PYTHON_VENV/bin/pip" install -q -r "$REPO_ROOT/engines/requirements.txt"
+# PyPI 官方源境内同样慢：默认走清华镜像，用 YUGING_PIP_INDEX 覆盖。
+"$PYTHON_VENV/bin/pip" install -q \
+  -i "${YUGING_PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" \
+  -r "$REPO_ROOT/engines/requirements.txt"
 log_info "Python 依赖已安装"
 
 # Scrapling 浏览器二进制（首次安装 ~150MB，后续跳过）
