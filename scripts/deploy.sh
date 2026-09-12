@@ -328,36 +328,83 @@ if [ -d /etc/nginx/sites-enabled ]; then
 fi
 
 NGINX_CONF=/etc/nginx/conf.d/yuging.conf
-# 有证书才用 HTTPS 模板：nginx.conf 里的 ssl_certificate 指向不存在的文件会让
-# `nginx -t` 直接失败，进而整个 reload 被拒绝、站点完全不工作（实测）。
-if [ -n "$DOMAIN" ] && [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-  NGINX_TEMPLATE="$REPO_ROOT/scripts/nginx.conf"
-  log_info "检测到 $DOMAIN 的证书，使用 HTTPS 模板"
+CERT_DIR="/etc/nginx/ssl/$DOMAIN"
+ACME="$HOME/.acme.sh/acme.sh"
+
+# ── 证书签发（acme.sh，仅真实域名可签；IP 直连自动跳过）──
+# 判断依据：域名中不含字母则视为 IP 地址，Let's Encrypt 不对 IP 签发证书。
+ACMES=0
+if [ "${SKIP_SSL:-}" != "" ]; then
+  log_skip "SSL 跳过（SKIP_SSL 已设置）"
+elif [ -z "$DOMAIN" ]; then
+  log_skip "SSL 跳过（未设置 YUGING_DOMAIN）"
+elif ! echo "$DOMAIN" | grep -q '[a-zA-Z]'; then
+  log_warn "YUGING_DOMAIN=$DOMAIN 是 IP 地址，Let's Encrypt 不签发 IP 证书，使用 HTTP-only"
+else
+  # acme.sh 安装（get.acme.sh 走 GitHub，境内不通，改用 Gitee 镜像）
+  if [ ! -f "$ACME" ]; then
+    log_info "安装 acme.sh（Gitee 镜像）..."
+    apt-get install -y -qq socat cron >/dev/null 2>&1 || true
+    rm -rf /opt/acme.sh-src
+    if git clone --depth 1 https://gitee.com/neilpang/acme.sh.git /opt/acme.sh-src 2>/dev/null; then
+      (cd /opt/acme.sh-src && ./acme.sh --install -m "${ACME_EMAIL:-admin@$DOMAIN}") >/dev/null 2>&1
+      "$ACME" --set-default-ca --server letsencrypt >/dev/null 2>&1
+      log_info "acme.sh 已安装（CA: Let's Encrypt）"
+    else
+      log_warn "acme.sh 下载失败（Gitee 不可达），跳过 SSL"
+    fi
+  else
+    log_skip "acme.sh 已安装"
+  fi
+
+  if [ -f "$ACME" ]; then
+    if [ -f "$CERT_DIR/fullchain.pem" ]; then
+      log_skip "证书已存在: $CERT_DIR"
+    else
+      mkdir -p "$CERT_DIR"
+      log_info "签发证书: $DOMAIN"
+      # webroot 模式：ACME 挑战文件写入前端目录，由 nginx 的
+      # /.well-known/acme-challenge/ location 直接提供（见 nginx-ssl.conf）
+      if "$ACME" --issue -d "$DOMAIN" --webroot "$APP_ROOT/web/dist" --server letsencrypt >/dev/null 2>&1; then
+        log_info "证书签发成功"
+      else
+        log_warn "证书签发失败（DNS 未生效或 80 端口不通）；HTTP 仍可用"
+      fi
+    fi
+
+    # 安装证书 + 设置续期钩子：acme.sh 的 cron 每日检查，到期前 30 天自动续期，
+    # 续期成功后执行 reloadcmd 重载 nginx。证书 90 天有效期，因此约每 30 天续一次。
+    if [ -f "$CERT_DIR/fullchain.pem" ]; then
+      "$ACME" --install-cert -d "$DOMAIN" --ecc \
+        --key-file       "$CERT_DIR/key.pem" \
+        --fullchain-file "$CERT_DIR/fullchain.pem" \
+        --reloadcmd      "systemctl reload nginx" >/dev/null 2>&1 \
+        && log_info "证书已安装 + 自动续期已配置（每 30 天，续期后自动 reload nginx）" \
+        || log_warn "证书安装失败"
+    fi
+  fi
+fi
+
+# ── 模板选择：有证书才用 HTTPS 模板 ──
+# ssl_certificate 指向不存在的文件会让 `nginx -t` 直接失败，进而整个 reload
+# 被拒绝、站点完全不工作（实测）。
+if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/key.pem" ]; then
+  NGINX_TEMPLATE="$REPO_ROOT/scripts/nginx-ssl.conf"
+  log_info "使用 HTTPS 模板（证书: $CERT_DIR）"
 else
   NGINX_TEMPLATE="$REPO_ROOT/scripts/nginx-http.conf"
-  log_warn "未检测到证书，使用 HTTP-only 模板（后续签发证书后重跑本脚本即可切换）"
+  log_warn "使用 HTTP-only 模板（签发证书后重跑本脚本即自动切换）"
 fi
 
 if [ -f "$NGINX_CONF" ]; then
   log_warn "nginx 站点配置已存在: $NGINX_CONF — 不覆盖"
   log_warn "  变更请手工对比: diff $NGINX_TEMPLATE $NGINX_CONF"
 else
-  sed -e "s/your-domain.com/${DOMAIN:-_}/g" \
-      -e "s|/etc/letsencrypt/live/your-domain.com|/etc/letsencrypt/live/${DOMAIN:-_}|g" \
+  sed -e "s|__DOMAIN__|${DOMAIN:-_}|g" \
+      -e "s|__CERT_DIR__|${CERT_DIR}|g" \
+      -e "s/your-domain.com/${DOMAIN:-_}/g" \
       "$NGINX_TEMPLATE" > "$NGINX_CONF"
   log_info "nginx 站点配置已部署: $NGINX_CONF"
-fi
-if [ -n "$DOMAIN" ] && [ "${SKIP_SSL:-}" = "" ]; then
-  if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-    log_skip "SSL 证书已存在（$DOMAIN），跳过 certbot"
-  elif command -v certbot &>/dev/null; then
-    log_info "签发 SSL 证书..."
-    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect || log_warn "证书签发失败，HTTP 仍可用"
-  else
-    log_warn "未安装 certbot，跳过 SSL（HTTP 可用；需 HTTPS 请: apt install certbot python3-certbot-nginx 后重跑）"
-  fi
-else
-  log_skip "SSL 跳过（未设 YUGING_DOMAIN 或 SKIP_SSL=1）"
 fi
 nginx -t && systemctl reload nginx || log_error "nginx 配置校验失败，请检查 $NGINX_CONF"
 
