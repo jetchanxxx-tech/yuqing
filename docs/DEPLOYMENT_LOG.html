@@ -51,7 +51,7 @@ tr:last-child td{border-bottom:none}
     <a href="#summary">一、部署概要</a>
     <a href="#env">二、目标环境</a>
     <a href="#timeline">三、部署历程</a>
-    <a href="#issues">四、问题与修复（14 项）</a>
+    <a href="#issues">四、问题与修复（15 项）</a>
     <a href="#final">五、最终状态</a>
     <a href="#verify">六、验收结果</a>
     <a href="#checklist">七、MVP 对照</a>
@@ -110,7 +110,7 @@ tr:last-child td{border-bottom:none}
     <div class="note ok"><b>补充</b>：第 1 轮的失败还触发了 GitHub 访问中断，改用本地打包 + SCP 上传绕过，此后源码同步均走此通道。</div>
   </div>
 
-  <h2 id="issues">四、问题与修复（14 项）</h2>
+  <h2 id="issues">四、问题与修复（15 项）</h2>
 
   <h3>阻塞级（导致部署失败）</h3>
   <div class="card">
@@ -311,7 +311,7 @@ tr:last-child td{border-bottom:none}
 
   <h2 id="lessons">八、经验总结</h2>
   <div class="card">
-    <h3>这 14 个问题没有一个是静态检查能发现的</h3>
+    <h3>这 15 个问题没有一个是静态检查能发现的</h3>
     <p>部署前项目状态：<code>bash -n</code> 语法通过、<code>go vet</code> 干净、332 个单元测试全绿、5 角度代码审查无告警。但首次真实部署仍然连续失败 4 轮。</p>
     <p>原因是这些缺陷依赖<b>目标环境的特定条件</b>才会显现：</p>
     <ul style="padding-left:20px;color:var(--fg-2);font-size:14px">
