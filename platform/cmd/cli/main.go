@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,8 +65,14 @@ func handleMigrate(args []string) {
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
-	goose.SetBaseFS(migrations.FS)
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	// goose 在 fsys 根目录找 *.sql；embed FS 的根是 migrations 包目录，
+	// 迁移文件在 platform/ 子目录 —— 用 fs.Sub 切到子目录。
+	subFS, err := fs.Sub(migrations.FS, "platform")
+	if err != nil {
+		fmt.Printf("migrate: sub fs: %v\n", err)
+		os.Exit(1)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, subFS)
 	if err != nil {
 		fmt.Printf("migrate: create provider: %v\n", err)
 		os.Exit(1)
