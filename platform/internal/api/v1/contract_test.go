@@ -1335,15 +1335,10 @@ type contractGap struct {
 
 // contractGapRegistry is the single source of truth for contract gaps that
 // remain open after the dev-director review pass. Closed gaps (auth wiring,
-// dashboard, RBAC, billing field alignment, analyses lifecycle) are listed in
-// platform/REVIEW_REPORT.md.
+// dashboard, RBAC, billing field alignment, analyses lifecycle,
+// analyses result insight/report) are listed in platform/REVIEW_REPORT.md
+// and platform/REVIEW_REPORT_INSIGHT.md.
 var contractGapRegistry = []contractGap{
-	{
-		endpoint: "GET /api/v1/analyses/:id/result",
-		severity: "MINOR", status: "PARTIAL",
-		detail: "documents 已接入真实采集结果（管线写入，见 result_test.go）；" +
-			"sentiments/topics 仍返回零值，待分析引擎接入",
-	},
 	{
 		endpoint: "POST /api/v1/admin/plans",
 		severity: "MINOR", status: "STUB",

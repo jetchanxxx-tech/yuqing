@@ -71,6 +71,9 @@ type ReportGenerateReq struct {
 	Topics     []TopicResult     `json:"topics"`
 	AnalysisID string            `json:"analysis_id"`
 	APIKey     string            `json:"api_key,omitempty"`
+	// InsightAvailable = 洞察引擎是否成功产出（false 时报告引擎不得
+	// 把空情感数据渲染成 0/0/0）。
+	InsightAvailable bool `json:"insight_available"`
 }
 
 // ReportGenerateResp is the report generation response.
@@ -128,12 +131,14 @@ type MediaResult struct {
 }
 
 type SentimentResult struct {
-	DocumentID   string            `json:"document_id"`
-	Sentiment    string            `json:"sentiment"` // positive, negative, neutral
-	Score        float64           `json:"score"`
+	DocumentID   string             `json:"document_id"`
+	Sentiment    string             `json:"sentiment"` // positive, negative, neutral
+	Level        string             `json:"level,omitempty"`     // 非常正面|正面|中性|负面|非常负面
+	Confidence   float64            `json:"confidence,omitempty"` // 0-1 置信度
+	Score        float64            `json:"score"`
 	Emotions     map[string]float64 `json:"emotions,omitempty"`
-	Aspects      []AspectResult    `json:"aspects,omitempty"`
-	Model        string            `json:"model"`
+	Aspects      []AspectResult     `json:"aspects,omitempty"`
+	Model        string             `json:"model"`
 }
 
 type AspectResult struct {

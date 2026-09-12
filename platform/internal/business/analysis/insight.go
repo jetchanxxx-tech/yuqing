@@ -2,12 +2,15 @@ package analysis
 
 import (
 	"context"
+	"strings"
 )
 
 // Sentiment is one document's sentiment classification result.
 type Sentiment struct {
 	DocumentID string  `json:"document_id"`
 	Sentiment  string  `json:"sentiment"` // positive, negative, neutral
+	Level      string  `json:"level,omitempty"`     // 非常正面|正面|中性|负面|非常负面（5 级）
+	Confidence float64 `json:"confidence,omitempty"` // 0-1 置信度
 	Score      float64 `json:"score"`
 }
 
@@ -49,6 +52,9 @@ type ReportRequest struct {
 	Documents  []Document
 	Sentiments []Sentiment
 	Topics     []Topic
+	// InsightAvailable = 洞察引擎是否成功产出。false 时报告引擎不得把
+	// 空情感数据渲染成 0/0/0（与「全部中性」无法区分，属误导）。
+	InsightAvailable bool
 }
 
 // ReportResult is the generated report content.
@@ -83,9 +89,18 @@ func (s *Service) SetReport(ctx context.Context, tenantID, analysisID, reportID,
 }
 
 // SetWarning 记录非致命降级原因（如引擎未配置/调用失败）。
+// 追加语义：多条原因以「；」连接，相同原因不重复 —— 管线各步骤的
+// 降级原因都不应被后写的覆盖。
 func (s *Service) SetWarning(ctx context.Context, tenantID, analysisID, warning string) error {
 	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
-		a.Warning = warning
+		if warning == "" {
+			return nil
+		}
+		if a.Warning == "" {
+			a.Warning = warning
+		} else if !strings.Contains(a.Warning, warning) {
+			a.Warning = a.Warning + "；" + warning
+		}
 		return nil
 	})
 }

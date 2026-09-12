@@ -21,7 +21,7 @@ func TestRealInsightEngineAnalyze(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"sentiments": [{"document_id": "d1", "sentiment": "negative", "score": 0.8}],
+			"sentiments": [{"document_id": "d1", "sentiment": "negative", "level": "非常负面", "confidence": 0.92, "score": 0.8}],
 			"topics": [{"id": "t1", "name": "后排空间", "keywords": ["后排"], "doc_count": 1, "trend": "rising"}],
 			"summary": "舆情总体可控"
 		}`))
@@ -40,6 +40,9 @@ func TestRealInsightEngineAnalyze(t *testing.T) {
 	}
 	if len(resp.Sentiments) != 1 || resp.Sentiments[0].Sentiment != "negative" || resp.Sentiments[0].Score != 0.8 {
 		t.Errorf("sentiments = %+v, want 1 negative 0.8", resp.Sentiments)
+	}
+	if resp.Sentiments[0].Level != "非常负面" || resp.Sentiments[0].Confidence != 0.92 {
+		t.Errorf("sentiment level/confidence = %+v, want 非常负面/0.92", resp.Sentiments[0])
 	}
 	if len(resp.Topics) != 1 || resp.Topics[0].Name != "后排空间" || resp.Topics[0].DocCount != 1 {
 		t.Errorf("topics = %+v", resp.Topics)

@@ -69,12 +69,17 @@ type AnalysisResult struct {
 	DocCount int      `json:"doc_count"`
 
 	// 洞察与报告 —— 管线 analyzing/generating_report 步骤写入。
-	Summary       string      `json:"summary,omitempty"`
-	Warning       string      `json:"warning,omitempty"`
-	Sentiments    []Sentiment `json:"sentiments,omitempty"`
-	Topics        []Topic     `json:"topics,omitempty"`
-	ReportID      string      `json:"report_id,omitempty"`
-	ReportContent string      `json:"report_content,omitempty"`
+	Summary    string      `json:"summary,omitempty"`
+	Warning    string      `json:"warning,omitempty"`
+	Sentiments []Sentiment `json:"sentiments,omitempty"`
+	Topics     []Topic     `json:"topics,omitempty"`
+	ReportID   string      `json:"report_id,omitempty"`
+
+	// ReportContent 是 KB 级 HTML 正文，不随分析对象序列化：
+	// GET /analyses 与 /analyses/:id 是高频生命周期端点（详情页按秒轮询
+	// state），内联正文会让每次轮询都传输整份报告。
+	// 正文经 GET /analyses/:id/result 的 report.content 按需返回。
+	ReportContent string `json:"-"`
 }
 
 // Create validates parameters, persists the analysis as queued, and

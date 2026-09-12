@@ -82,6 +82,32 @@ func TestService_setWarningStoresWarning(t *testing.T) {
 	}
 }
 
+// 多条降级原因必须**追加**而非覆盖 —— 洞察失败后报告再失败，
+// 两条原因都应保留（审核发现 D2）。
+func TestService_setWarningAppendsMultipleReasons(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	ctx := context.Background()
+
+	created, _ := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
+
+	if err := svc.SetWarning(ctx, "t1", created.ID, "insight analysis failed: llm down"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWarning(ctx, "t1", created.ID, "report generation failed: timeout"); err != nil {
+		t.Fatal(err)
+	}
+	// 相同原因重复写入不重复追加
+	if err := svc.SetWarning(ctx, "t1", created.ID, "report generation failed: timeout"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := svc.Get(ctx, "t1", created.ID)
+	want := "insight analysis failed: llm down；report generation failed: timeout"
+	if got.Warning != want {
+		t.Errorf("warning = %q, want %q", got.Warning, want)
+	}
+}
+
 // ── 管线：分析步骤 ───────────────────────────────────────
 
 type fakeAnalyzer struct {
@@ -162,15 +188,20 @@ func TestPipeline_analyzeAndReportPopulateResults(t *testing.T) {
 	if generator.calls != 1 || len(generator.gotReq.Documents) != 2 {
 		t.Errorf("generator got %d calls, %d docs", generator.calls, len(generator.gotReq.Documents))
 	}
+	// 洞察成功 → 报告引擎被告知洞察可用（审核 D1：防止渲染 0/0/0 误导）
+	if !generator.gotReq.InsightAvailable {
+		t.Error("InsightAvailable should be true when insight succeeded")
+	}
 }
 
 // 分析失败不致命：任务仍 completed，但记录 warning。
 func TestPipeline_analyzeFailureRecordsWarningNotFailed(t *testing.T) {
 	fetcher := &fakeFetcher{docs: sampleDocs(1)}
 	analyzer := &fakeAnalyzer{err: errors.New("llm unavailable")}
+	generator := &fakeGenerator{res: ReportResult{ReportID: "rep-1", Content: "<html>x</html>"}}
 
 	p, svc := newTestPipeline(t, fetcher, 5e9)
-	p = p.WithAnalyzer(analyzer)
+	p = p.WithAnalyzer(analyzer).WithGenerator(generator)
 	ctx := context.Background()
 
 	created, _ := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
@@ -187,6 +218,10 @@ func TestPipeline_analyzeFailureRecordsWarningNotFailed(t *testing.T) {
 	}
 	if got.ErrorCode != "" {
 		t.Errorf("error_code = %q, want empty (non-fatal)", got.ErrorCode)
+	}
+	// 洞察失败 → 报告引擎被告知洞察不可用，避免渲染 0/0/0 误导
+	if generator.gotReq.InsightAvailable {
+		t.Error("InsightAvailable should be false when insight failed")
 	}
 }
 

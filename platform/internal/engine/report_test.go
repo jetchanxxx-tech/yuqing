@@ -24,12 +24,13 @@ func TestRealReportEngineGenerate(t *testing.T) {
 
 	e := NewRealReportEngine(srv.URL, "", func() string { return "sk-test" })
 	resp, err := e.Generate(context.Background(), &ReportGenerateReq{
-		Title:      "雅阁舆情报告",
-		Format:     "html",
-		Documents:  []Document{{ID: "d1", Title: "文档1"}},
-		Sentiments: []SentimentResult{{DocumentID: "d1", Sentiment: "negative", Score: 0.8}},
-		Topics:     []TopicResult{{ID: "t1", Name: "后排空间", DocCount: 1}},
-		AnalysisID: "a1",
+		Title:            "雅阁舆情报告",
+		Format:           "html",
+		Documents:        []Document{{ID: "d1", Title: "文档1"}},
+		Sentiments:       []SentimentResult{{DocumentID: "d1", Sentiment: "negative", Score: 0.8}},
+		Topics:           []TopicResult{{ID: "t1", Name: "后排空间", DocCount: 1}},
+		AnalysisID:       "a1",
+		InsightAvailable: true,
 	})
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
@@ -45,6 +46,10 @@ func TestRealReportEngineGenerate(t *testing.T) {
 	}
 	if got["title"] != "雅阁舆情报告" {
 		t.Errorf("request title = %v", got["title"])
+	}
+	// insight_available 必须透传（洞察失败时报告引擎不得渲染 0/0/0）
+	if got["insight_available"] != true {
+		t.Errorf("request insight_available = %v, want true", got["insight_available"])
 	}
 }
 

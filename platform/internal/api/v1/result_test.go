@@ -150,3 +150,51 @@ func TestContract_analyses_resultReturnsInsightData(t *testing.T) {
 		t.Errorf("report = %+v", report)
 	}
 }
+
+// 报告正文是 KB 级 HTML：只能经 /result 按需返回。
+// 列表与详情是被高频拉取的生命周期端点（详情页轮询 state），
+// 内联正文会放大每次轮询的响应体。
+func TestContract_analyses_lifecycleOmitsReportBody(t *testing.T) {
+	r, deps := newContractEnv(t)
+	access, _, user := mustRegister(t, r, "report-body@example.com", "Body")
+	tenantID, _ := user["tenant_id"].(string)
+
+	w := doReq(t, r, "POST", "/api/v1/analyses", access, map[string]any{
+		"name":          "报告体积",
+		"analysis_type": "brand",
+		"keywords":      []string{"雅阁"},
+		"sources":       []string{"news"},
+	})
+	id, _ := decodeBody(t, w)["id"].(string)
+
+	const reportBody = "<html><body>巨大报告正文</body></html>"
+	if err := deps.Analysis.SetReport(context.Background(), tenantID, id, "rep-body", reportBody); err != nil {
+		t.Fatal(err)
+	}
+
+	detail := doReq(t, r, "GET", "/api/v1/analyses/"+id, access, nil)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want 200", detail.Code)
+	}
+	if strings.Contains(detail.Body.String(), "report_content") {
+		t.Errorf("detail must not inline the report body: %s", detail.Body.String())
+	}
+
+	list := doReq(t, r, "GET", "/api/v1/analyses", access, nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", list.Code)
+	}
+	if strings.Contains(list.Body.String(), "report_content") {
+		t.Errorf("list must not inline the report body: %s", list.Body.String())
+	}
+
+	// 正文仍必须经 /result 提供 —— 前端报告 Tab 依赖它。
+	res := decodeBody(t, doReq(t, r, "GET", "/api/v1/analyses/"+id+"/result", access, nil))
+	report, ok := res["report"].(map[string]any)
+	if !ok {
+		t.Fatalf("report is %T, want object", res["report"])
+	}
+	if report["content"] != reportBody {
+		t.Errorf("report.content = %v, want the stored body", report["content"])
+	}
+}

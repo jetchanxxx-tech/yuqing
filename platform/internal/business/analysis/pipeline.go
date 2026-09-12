@@ -172,7 +172,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	if err := p.step(ctx, msg, StateGeneratingReport, progressReport); err != nil {
 		return p.fail(msg, "pipeline_error", err)
 	}
-	if warn := p.runReport(ctx, msg, docs, insight); warn != "" {
+	if warn := p.runReport(ctx, msg, docs, insight, warn == ""); warn != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
@@ -213,17 +213,19 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 }
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
-func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Document, insight InsightResult) string {
+// insightAvailable = 洞察步骤是否成功（失败时报告引擎不得渲染 0/0/0）。
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Document, insight InsightResult, insightAvailable bool) string {
 	if p.generator == nil {
 		return "report engine not configured"
 	}
 	res, err := p.generator.Generate(ctx, ReportRequest{
-		TenantID:   msg.TenantID,
-		AnalysisID: msg.AnalysisID,
-		Title:      p.analysisName(ctx, msg) + " 舆情监测报告",
-		Documents:  docs,
-		Sentiments: insight.Sentiments,
-		Topics:     insight.Topics,
+		TenantID:         msg.TenantID,
+		AnalysisID:       msg.AnalysisID,
+		Title:            p.analysisName(ctx, msg) + " 舆情监测报告",
+		Documents:        docs,
+		Sentiments:       insight.Sentiments,
+		Topics:           insight.Topics,
+		InsightAvailable: insightAvailable,
 	})
 	if err != nil {
 		p.log.Warn("pipeline: report generation failed",

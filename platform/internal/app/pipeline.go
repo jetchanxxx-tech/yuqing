@@ -6,9 +6,36 @@ import (
 	"time"
 
 	"github.com/yuging/platform/internal/business/analysis"
+	"github.com/yuging/platform/internal/config"
 	"github.com/yuging/platform/internal/engine"
 	"github.com/yuging/platform/internal/pkg/queue"
 )
+
+// pipelineBudget 计算整条管线的总预算：采集 + 分析 + 报告各阶段的超时之和。
+//
+// 不能只取 engines.query.timeout —— 那是「单个采集请求」的预算。管线依次执行
+// 采集（Bocha 搜索 + Scrapling 串行抓取）、洞察（2 次 LLM 调用）、报告（1 次 LLM 调用），
+// 三个阶段共用同一份 deadline；沿用单阶段预算会让慢分析在报告前耗尽 deadline，
+// 使 Pipeline.step 拿到 ctx.Err() 并把任务判为 failed(timeout)，
+// 与「采集结果不能因分析失败丢弃」的设计相悖。
+//
+// 未接线（URL 为空）的引擎不计入；返回 0 表示无有效配置，
+// 由 NewPipeline 兜底为默认 3 分钟。
+func pipelineBudget(cfg *config.Config) time.Duration {
+	total := time.Duration(0)
+	add := func(raw string, wired bool) {
+		if !wired {
+			return
+		}
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			total += d
+		}
+	}
+	add(cfg.Engines.Query.Timeout, cfg.Engines.Query.URL != "")
+	add(cfg.Engines.Insight.Timeout, cfg.Engines.Insight.URL != "")
+	add(cfg.Engines.Report.Timeout, cfg.Engines.Report.URL != "")
+	return total
+}
 
 // engineFetcher 把引擎客户端适配为 analysis.Fetcher，
 // 并完成 engine.Document → analysis.Document 的类型转换。
@@ -65,7 +92,8 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 	}
 	for _, s := range resp.Sentiments {
 		out.Sentiments = append(out.Sentiments, analysis.Sentiment{
-			DocumentID: s.DocumentID, Sentiment: s.Sentiment, Score: s.Score,
+			DocumentID: s.DocumentID, Sentiment: s.Sentiment,
+			Level: s.Level, Confidence: s.Confidence, Score: s.Score,
 		})
 	}
 	for _, t := range resp.Topics {
@@ -83,12 +111,13 @@ type engineReportAdapter struct {
 
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
-		Title:      req.Title,
-		Format:     "html",
-		Documents:  toEngineDocuments(req.Documents),
-		Sentiments: toEngineSentiments(req.Sentiments),
-		Topics:     toEngineTopics(req.Topics),
-		AnalysisID: req.AnalysisID,
+		Title:            req.Title,
+		Format:           "html",
+		Documents:        toEngineDocuments(req.Documents),
+		Sentiments:       toEngineSentiments(req.Sentiments),
+		Topics:           toEngineTopics(req.Topics),
+		AnalysisID:       req.AnalysisID,
+		InsightAvailable: req.InsightAvailable,
 	})
 	if err != nil {
 		return analysis.ReportResult{}, err
@@ -111,7 +140,10 @@ func toEngineDocuments(docs []analysis.Document) []engine.Document {
 func toEngineSentiments(items []analysis.Sentiment) []engine.SentimentResult {
 	out := make([]engine.SentimentResult, 0, len(items))
 	for _, s := range items {
-		out = append(out, engine.SentimentResult{DocumentID: s.DocumentID, Sentiment: s.Sentiment, Score: s.Score})
+		out = append(out, engine.SentimentResult{
+			DocumentID: s.DocumentID, Sentiment: s.Sentiment,
+			Level: s.Level, Confidence: s.Confidence, Score: s.Score,
+		})
 	}
 	return out
 }

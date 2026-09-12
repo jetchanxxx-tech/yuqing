@@ -40,12 +40,21 @@ class FakeLLM:
         self.calls.append(json.dumps(messages, ensure_ascii=False))
         if self.fail:
             raise RuntimeError("deepseek unavailable")
-        if "研判摘要" in self.calls[-1]:
-            return {"summary": "舆情总体偏中性，后排空间话题占比最高，需持续关注。"}
+        if "批判" in self.calls[-1] and "重写" in self.calls[-1]:
+            return {
+                "critique": "初稿过于官方化，缺少具体数字。",
+                "revised_summary": "舆情总体偏中性：后排空间负面占比高（2篇中1篇负面），需持续关注。",
+            }
         return {
             "sentiments": [
-                {"document_id": "d1", "sentiment": "negative", "score": 0.85, "emotions": {"不满": 0.7}},
-                {"document_id": "d2", "sentiment": "positive", "score": 0.9},
+                {
+                    "document_id": "d1", "sentiment": "negative", "level": "非常负面",
+                    "score": 0.85, "confidence": 0.92, "emotions": {"不满": 0.7},
+                },
+                {
+                    "document_id": "d2", "sentiment": "positive", "level": "正面",
+                    "score": 0.9, "confidence": 0.88,
+                },
             ],
             "topics": [
                 {"id": "t1", "name": "后排空间", "keywords": ["后排", "腿部"], "doc_count": 1, "trend": "rising"},
@@ -85,10 +94,14 @@ def test_analyze_with_documents_returns_sentiments_topics_summary(fake_llm):
     assert body["sentiments"][0]["document_id"] == "d1"
     assert body["sentiments"][0]["sentiment"] == "negative"
     assert body["sentiments"][0]["score"] == pytest.approx(0.85)
+    # 5 级情感 + 置信度（融合 BettaFish 的输出粒度）
+    assert body["sentiments"][0]["level"] == "非常负面"
+    assert body["sentiments"][0]["confidence"] == pytest.approx(0.92)
     assert len(body["topics"]) == 2
     assert body["topics"][0]["name"] == "后排空间"
-    assert body["summary"] != ""
-    # 情感+话题一次调用，摘要一次调用
+    # 摘要来自批判—重写后的 revised_summary
+    assert body["summary"] == "舆情总体偏中性：后排空间负面占比高（2篇中1篇负面），需持续关注。"
+    # 情感+话题一次调用，批判—重写摘要一次调用
     assert len(fake_llm.calls) == 2
 
 

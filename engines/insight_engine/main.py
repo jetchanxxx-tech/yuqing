@@ -15,8 +15,9 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Insight Engine", version="0.2.0")
 
-# 每篇文档正文截断长度 —— 控制输入 token，19 篇文档约 15K 字符仍在上下文内
-MAX_CONTENT_CHARS = 800
+# 每篇文档正文截断长度 —— DeepSeek 上下文充裕，放宽到 2000 字
+# 让分析 LLM 能读到正文细节（BettaFish 的写作 prompt 全程可见原文）
+MAX_CONTENT_CHARS = 2000
 
 
 class AnalyzeRequest(BaseModel):
@@ -61,16 +62,32 @@ _SENTIMENT_TOPIC_PROMPT = """请对以下舆情文档逐条做情感分析，并
 输出 JSON 对象（不得输出其他内容）：
 {{
   "sentiments": [
-    {{"document_id": "文档id", "sentiment": "positive|negative|neutral", "score": 0到1的情感强度, "emotions": {{"情绪词": 0到1的强度}}}}
+    {{"document_id": "文档id",
+      "sentiment": "positive|negative|neutral",
+      "level": "非常正面|正面|中性|负面|非常负面",
+      "score": 0到1的情感强度,
+      "confidence": 0到1的置信度,
+      "emotions": {{"情绪词": 0到1的强度}}}}
   ],
   "topics": [
     {{"id": "t1", "name": "话题名（简短）", "keywords": ["关键词"], "doc_count": 该话题包含的文档数, "trend": "rising|stable|falling"}}
   ]
 }}
-要求：sentiments 必须覆盖每一篇文档；topics 覆盖所有文档且 doc_count 总和等于文档总数。"""
+要求：sentiments 必须覆盖每一篇文档；topics 覆盖所有文档且 doc_count 总和等于文档总数。
+level 与 sentiment 的对应：非常正面/正面→positive，非常负面/负面→negative，中性→neutral。"""
 
-_SUMMARY_PROMPT = """你是一名资深舆情分析师。基于以下情感分布与话题聚类结果，
-写一段 200 字以内的中文舆情研判摘要：总体态势、主要风险点、应对建议。{context}
+_SUMMARY_PROMPT = """你是一名资深舆情分析师。请分两步完成研判摘要：
+
+第一步【批判】：先写一段不超过 80 字的初稿，然后自评这四点：
+① 是否过于官方化、套路化？② 是否缺乏真实的民众声音和情感表达？
+③ 是否遗漏了重要的公众观点和争议焦点？④ 是否缺少具体的数字和案例？
+
+第二步【重写】：根据自评结果重写，输出最终摘要。
+要求：200 字以内；至少包含 2 个具体数字（情感占比/文档数）；
+避免"舆情""传播""倾向""展望"等官方术语，改用网民真实表达；
+若文档间存在数据或说法冲突，明确指出。{context}
+
+基于以下情感分布与话题聚类结果：
 
 情感分布（JSON）：
 {sentiments}
@@ -78,7 +95,7 @@ _SUMMARY_PROMPT = """你是一名资深舆情分析师。基于以下情感分�
 话题聚类（JSON）：
 {topics}
 
-输出 JSON 对象：{{"summary": "摘要正文"}}"""
+输出 JSON 对象：{{"critique": "初稿及自评", "revised_summary": "重写后的最终摘要"}}"""
 
 
 @app.get("/health")
@@ -112,7 +129,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
             ],
             temperature=0,
         )
-        # ② 研判摘要（第二次调用，基于 ① 的结果）
+        # ② 研判摘要（第二次调用，批判—重写两段式）
         summary_resp = await llm.chat_json(
             DEEPSEEK_MODEL,
             [
@@ -136,7 +153,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     return {
         "sentiments": sent_topics.get("sentiments", []),
         "topics": sent_topics.get("topics", []),
-        "summary": summary_resp.get("summary", ""),
+        "summary": summary_resp.get("revised_summary", summary_resp.get("summary", "")),
     }
 
 

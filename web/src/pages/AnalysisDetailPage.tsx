@@ -479,11 +479,17 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
                     dataIndex: 'trend',
                     key: 'trend',
                     width: 100,
-                    render: (t: string) => (
-                      <Tag color="default" style={{ marginInlineEnd: 0 }}>
-                        {TREND_ICONS[trendArrow(t)]} {t === 'up' ? '上升' : t === 'down' ? '下降' : '平稳'}
-                      </Tag>
-                    ),
+                    render: (t: string) => {
+                      // 分析引擎返回 rising/stable/falling；必须经 trendArrow 归一化后
+                      // 再判定文案 —— 用原始值比较 up/down 会让箭头正确但文案永远是「平稳」。
+                      const arrow = trendArrow(t);
+                      const label = arrow === 'up' ? '上升' : arrow === 'down' ? '下降' : '平稳';
+                      return (
+                        <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                          {TREND_ICONS[arrow]} {label}
+                        </Tag>
+                      );
+                    },
                   },
                 ]}
               />

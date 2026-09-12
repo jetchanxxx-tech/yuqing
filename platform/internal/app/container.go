@@ -12,15 +12,14 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/yuging/platform/internal/api/v1"
-	"github.com/yuging/platform/internal/engine"
 	"github.com/yuging/platform/internal/business/alert"
 	"github.com/yuging/platform/internal/business/analysis"
 	"github.com/yuging/platform/internal/business/dashboard"
 	"github.com/yuging/platform/internal/business/report"
 	"github.com/yuging/platform/internal/config"
+	"github.com/yuging/platform/internal/engine"
 	"github.com/yuging/platform/internal/pkg/queue"
 	"github.com/yuging/platform/internal/platform/apikey"
 	"github.com/yuging/platform/internal/platform/auth"
@@ -119,11 +118,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
-		pipeTimeout := 3 * time.Minute
-		if d, err := time.ParseDuration(cfg.Engines.Query.Timeout); err == nil && d > 0 {
-			pipeTimeout = d
-		}
-		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report, pipeTimeout, logger)
+		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report, pipelineBudget(cfg), logger)
 	}
 
 	return &v1.Services{
