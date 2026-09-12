@@ -1,18 +1,24 @@
 """
 Scrapling-powered web scraper for 盘古舆情.
-Wraps Scrapling's adaptive fetching capabilities with dedup and error handling.
+Wraps Scrapling's adaptive fetching + Bocha AI search with dedup and error handling.
 
-Requirements: pip install scrapling[fetchers]
+Requirements: pip install scrapling[fetchers] httpx
 """
 import hashlib
 import logging
+import os
 from typing import Optional
 from dataclasses import dataclass, field
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
-# Lazy import — Scrapling may not be installed in dev (MVP uses Fake).
-# Real data collection requires: pip install scrapling[fetchers] && scrapling install
+# ── Bocha API config ───────────────────────────────────────
+BOCHA_API_URL = "https://api.bochaai.com/v1/ai/search"
+BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "")
+
+# Lazy import — Scrapling may not be installed in dev.
 _scrapling_available = False
 try:
     from scrapling.fetchers import Fetcher, DynamicFetcher  # type: ignore
@@ -77,17 +83,33 @@ class PageScraper:
             return ScrapedDocument(url=url, source_type=source_type, error=str(e))
 
     async def search_and_fetch(self, keyword: str, sources: list[str],
-                                max_per_source: int = 5) -> list[ScrapedDocument]:
-        """Search + fetch pipeline for a keyword across sources.
+                                max_per_source: int = 5, bocha_key: str = "") -> list[ScrapedDocument]:
+        """Search via Bocha API → fetch each URL via Scrapling → dedup.
 
-        Currently uses preset URLs per source (Bocha API integration pending API key).
-        When Bocha key is provided, replace preset_urls with real search results.
+        Falls back to preset test URLs if Bocha key is not available.
         """
         results: list[ScrapedDocument] = []
         seen_hashes: set[str] = set()
 
+        # 1. Search: use Bocha API if key available, else preset URLs
+        all_urls: dict[str, list[str]] = {}  # source → [urls]
+        key = bocha_key or BOCHA_API_KEY
+
+        if key:
+            urls = await self._bocha_search(keyword, key)
+            # Assign all Bocha results to first source (Bocha returns universal URLs)
+            if sources:
+                all_urls[sources[0]] = urls
+        else:
+            # Fallback: preset test URLs
+            for source in sources:
+                all_urls[source] = self._preset_search_urls(keyword, source)
+
+        # 2. Fetch + extract + dedup
         for source in sources:
-            urls = self._preset_search_urls(keyword, source)[:max_per_source]
+            urls = all_urls.get(source, [])[:max_per_source]
+            if not urls:
+                continue
             mode = self._source_mode(source)
             for url in urls:
                 doc = self.fetch(url, source_type=source, mode=mode)
@@ -102,6 +124,26 @@ class PageScraper:
                 results.append(doc)
 
         return results
+
+    async def _bocha_search(self, keyword: str, api_key: str) -> list[str]:
+        """Call Bocha AI search API, return URLs."""
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    BOCHA_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"query": keyword, "count": 20},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                webpages = data.get("webpages", []) or data.get("results", [])
+                return [r.get("url", "") for r in webpages if r.get("url")]
+        except Exception as e:
+            logger.warning(f"Bocha search failed for '{keyword}': {e}")
+            return []
 
     # ------------------------------------------------------------------
     # Internal helpers
