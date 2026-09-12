@@ -1,15 +1,110 @@
-"""Forum Engine — Multi-agent debate coordinator (BettaFish-inspired)."""
+"""Forum Engine — Multi-agent debate coordinator (盘古舆情核心差异化功能).
+
+Host LLM moderates N specialist agents over R rounds.
+Mock implementation returns a pre-built "雅阁后排" debate for MVP demo.
+When LLM API key is provided, replace mock with real multi-agent LLM calls.
+"""
 from fastapi import FastAPI
+from pydantic import BaseModel
 
-app = FastAPI(title="Forum Engine", version="0.1.0")
+app = FastAPI(title="Forum Engine", version="0.2.0")
 
+
+# ── Models ──────────────────────────────────────────────
+
+class ForumRequest(BaseModel):
+    topic: str = ""
+    documents: list[dict] = []
+    analysis_id: str = ""
+    max_rounds: int = 3
+
+
+class ForumRound(BaseModel):
+    round: int
+    agent: str
+    agent_role: str
+    statement: str
+    evidence: list[str] = []
+
+
+class ForumResponse(BaseModel):
+    rounds: list[ForumRound]
+    verdict: str
+    confidence: float
+
+
+# ── Mock Debate (MVP) ───────────────────────────────────
+
+MOCK_DEBATE: list[ForumRound] = [
+    # Round 1
+    ForumRound(round=1, agent="事实核查员", agent_role="证据与数据核验",
+        statement="核验核心事实：引发事件的视频发布于5月8日，车主实测展示后排腿部空间。通过对比多家汽车媒体的实测数据，雅阁后排腿部空间在同级车中确实处于中游偏下，但并非"无法坐人"。部分网络传播内容存在夸大。",
+        evidence=["太平洋汽车实测数据（2026年3月）", "视频原始链接及发布时间线", "车主后续澄清声明"]),
+    ForumRound(round=1, agent="情绪分析师", agent_role="公众情绪与心理分析",
+        statement="负面占比78%，但深入分析发现62%是戏谑调侃情绪，真实愤怒投诉仅16%。说明公众更多在"玩梗"而非"声讨"，舆情烈度高但破坏力中等。",
+        evidence=["情感分类模型输出（18,292条文档标签分布）", "戏谑/愤怒二分类交叉验证结果"]),
+    ForumRound(round=1, agent="传播路径专家", agent_role="渠道与扩散机制",
+        statement="传播路径清晰：抖音首发→24h内微博热搜第7→B站二创200+视频→知乎深度讨论1,800+回答。典型"短视频情绪引爆+社交平台放大+社区深度发酵"三段式。",
+        evidence=["时间线：5/8 09:12首发，5/9热搜，5/10-12二创高峰", "各平台互动量对比数据"]),
+    ForumRound(round=1, agent="处置建议官", agent_role="公关策略与行动方案",
+        statement="不建议严肃辟谣。玩梗情绪下，官方越严肃越容易被二次创作。建议24h内以"自黑式"回应承接情绪。",
+        evidence=["同类案例：3个汽车品牌自黑回应当日负面下降23%", "严肃回应对照组：负面反升11%"]),
+    # Round 2
+    ForumRound(round=2, agent="情绪分析师", agent_role="公众情绪与心理分析",
+        statement="我支持处置建议官。检索到3个汽车品牌类似案例，其中2个自黑回应后话题热度3天内下降70%以上，1个严肃回应反而引发第二轮负面。数据支持该策略。",
+        evidence=["3个可比案例的声量与情绪追踪数据"]),
+    ForumRound(round=2, agent="事实核查员", agent_role="证据与数据核验",
+        statement="补充：官方5月10日的首次回应措辞偏官方化，评论区出现了"避重就轻"的负面解读，印证了严肃回应的风险。",
+        evidence=["官方回应评论区前100条高赞评论分析"]),
+    ForumRound(round=2, agent="传播路径专家", agent_role="渠道与扩散机制",
+        statement="我提醒：竞品正在借势。监测到至少5个竞品官方号发布空间对比内容，抢占流量。时间窗口在收窄，建议48h内完成回应。",
+        evidence=["竞品官方号发帖时间线与互动数据"]),
+    ForumRound(round=2, agent="处置建议官", agent_role="公关策略与行动方案",
+        statement="综合修正建议：回应要快（48h内）+要软（自黑承接）+要实（附真实数据）。三要素缺一不可。",
+        evidence=[]),
+    # Round 3
+    ForumRound(round=3, agent="处置建议官", agent_role="公关策略与行动方案",
+        statement="形成最终方案：①24h内官方号发布自黑式图文，承认"后排确实可以更好"；②同步发布真实空间实测数据长图；③邀请3位KOL实车体验直播。",
+        evidence=[]),
+    ForumRound(round=3, agent="情绪分析师", agent_role="公众情绪与心理分析",
+        statement="同意。预测：方案执行后72h负面情绪占比可下降至45%以下，正面情绪（"敢自黑""诚意"）将上升至30%以上。",
+        evidence=["依据：可比案例情绪迁移曲线"]),
+    ForumRound(round=3, agent="传播路径专家", agent_role="渠道与扩散机制",
+        statement="传播预测：自黑式回应本身会成为新的传播点，预计带来第二轮正向流量，可将危机转化为品牌曝光机会。",
+        evidence=[]),
+    ForumRound(round=3, agent="事实核查员", agent_role="证据与数据核验",
+        statement="最终核验通过。所有结论均有数据支撑，可溯源。建议置信度评级：0.87。",
+        evidence=[]),
+]
+
+MOCK_VERDICT = (
+    "「雅阁后排」事件本质是"产品短板被情绪放大"的典型戏谑型舆情。"
+    "负面情绪中真实愤怒仅占16%，处置核心不是辟谣而是"借势"。"
+    "建议48小时内以自黑式回应承接玩梗情绪，同步发布真实数据，"
+    "将危机转化为品牌"听得进批评"的正面形象资产。"
+    "预期72h负面占比降至45%以下，并产生第二轮正向传播。"
+)
+
+
+# ── Routes ──────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "forum"}
+    return {"status": "ok", "engine": "forum", "version": "0.2.0"}
 
 
 @app.post("/run_forum")
-async def run_forum(req: dict):
-    # TODO: Host LLM moderates N specialist agents over R rounds.
-    return {"rounds": [], "verdict": "", "confidence": 0.0}
+async def run_forum(req: ForumRequest) -> ForumResponse:
+    """Run a multi-agent debate. Returns mock debate data (MVP).
+
+    When LLM API keys are available, replace with real multi-agent calls
+    using the host-moderator pattern (4 specialist agents × N rounds).
+    """
+    # Filter rounds based on request
+    rounds = [r for r in MOCK_DEBATE if r.round <= req.max_rounds]
+
+    return ForumResponse(
+        rounds=[r.model_dump() for r in rounds],
+        verdict=MOCK_VERDICT,
+        confidence=0.87,
+    )
