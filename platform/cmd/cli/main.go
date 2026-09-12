@@ -8,13 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	"github.com/yuging/platform/internal/config"
-	"github.com/yuging/platform/migrations"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/migrations"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: yuging-cli <command> [args...]")
+		fmt.Println("usage: yuqing-cli <command> [args...]")
 		fmt.Println()
 		fmt.Println("commands:")
 		fmt.Println("  migrate platform       Run platform database migrations")
@@ -39,7 +39,7 @@ func main() {
 
 func handleMigrate(args []string) {
 	if len(args) < 1 {
-		fmt.Println("usage: yuging-cli migrate <platform|--all-tenants>")
+		fmt.Println("usage: yuqing-cli migrate <platform|--all-tenants>")
 		os.Exit(1)
 	}
 
@@ -90,7 +90,7 @@ func handleMigrate(args []string) {
 
 func handleProvision(args []string) {
 	if len(args) < 1 {
-		fmt.Println("usage: yuging-cli provision-tenant <tenant-id>")
+		fmt.Println("usage: yuqing-cli provision-tenant <tenant-id>")
 		os.Exit(1)
 	}
 	tenantID := args[0]
@@ -101,7 +101,7 @@ func handleProvision(args []string) {
 
 func handleGenInvoice(args []string) {
 	if len(args) < 1 {
-		fmt.Println("usage: yuging-cli gen-invoice <tenant-id>")
+		fmt.Println("usage: yuqing-cli gen-invoice <tenant-id>")
 		os.Exit(1)
 	}
 	fmt.Printf("generating invoice for tenant: %s\n", args[0])

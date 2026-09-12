@@ -41,5 +41,5 @@ func CanTransition(from, to string) bool {
 
 // DBName returns the physical PostgreSQL database name for a tenant.
 func DBName(tenantID string) string {
-	return fmt.Sprintf("yuging_t_%s", tenantID)
+	return fmt.Sprintf("yuqing_t_%s", tenantID)
 }

@@ -1,15 +1,15 @@
 [Unit]
-Description=Pangu insight engine — 情感分析 + 话题聚类
+Description=Pangu query engine — Bocha 搜索 + Scrapling 抓取
 After=network.target
 
 [Service]
 Type=simple
-User=yuging
+User=yuqing
 WorkingDirectory=/opt/pangu-source
 Environment="PYTHONPATH=/opt/pangu-source"
 # Bocha API Key 等运行时变量（可选文件，缺失不报错）
-EnvironmentFile=-/opt/yuging/config/engines.env
-ExecStart=/opt/yuging/engines/venv/bin/uvicorn engines.insight_engine.main:app --host 127.0.0.1 --port 8002
+EnvironmentFile=-/opt/yuqing/config/engines.env
+ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.query_engine.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 

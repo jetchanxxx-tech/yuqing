@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // TestIntegration_tenantIsolation proves one analysis service instance keeps

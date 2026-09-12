@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // memoryStore keeps analyses in memory: map[tenantID]map[analysisID]*AnalysisResult.

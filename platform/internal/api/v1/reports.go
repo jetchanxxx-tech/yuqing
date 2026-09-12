@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api/middleware"
-	"github.com/yuging/platform/internal/business/report"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/api/middleware"
+	"github.com/yuqing/platform/internal/business/report"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // RegisterReportRoutes mounts the report endpoints on the live report store.

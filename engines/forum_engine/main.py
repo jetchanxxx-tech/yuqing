@@ -6,7 +6,7 @@ When LLM API key is provided, replace mock with real multi-agent LLM calls.
 
 注意：本文件内的中文文本一律使用全角引号「」与“”，绝不使用 ASCII 双引号 ——
 ASCII 引号会提前终止 Python 字符串字面量，导致 SyntaxError（曾因此导致
-yuging-forum 服务启动失败）。
+yuqing-forum 服务启动失败）。
 """
 from fastapi import FastAPI
 from pydantic import BaseModel

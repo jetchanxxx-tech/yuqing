@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/llm"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/llm"
 )
 
 // PlatformMeter 是平台侧计量视图（预算检查 + 全租户汇总）。

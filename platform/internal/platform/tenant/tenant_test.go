@@ -51,7 +51,7 @@ func TestTenantStatus_transitions(t *testing.T) {
 }
 
 func TestDBName(t *testing.T) {
-	if got := DBName("01HERE"); got != "yuging_t_01HERE" {
-		t.Errorf("DBName = %q, want yuging_t_01HERE", got)
+	if got := DBName("01HERE"); got != "yuqing_t_01HERE" {
+		t.Errorf("DBName = %q, want yuqing_t_01HERE", got)
 	}
 }

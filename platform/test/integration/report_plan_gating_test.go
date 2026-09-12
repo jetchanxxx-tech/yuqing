@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuging/platform/internal/business/report"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/business/report"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // planCodeFor returns a resolver used by the report service: free and pro

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // MemoryStore is the in-memory API key store for MVP (restart = reset).

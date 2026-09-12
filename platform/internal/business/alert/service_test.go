@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // mockEmailSender records sends for assertions.

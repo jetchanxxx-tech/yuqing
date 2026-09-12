@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/auth"
 )
 
 // Context keys for middleware-injected values.

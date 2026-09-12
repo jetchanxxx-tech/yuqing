@@ -85,7 +85,7 @@ export default function SettingsPage() {
           · Token 用量明细可在「用量」页查看，超额部分按套餐费率计费
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary">
-          · 如需更多帮助，可通过客服邮箱联系：support@yuging.example.com
+          · 如需更多帮助，可通过客服邮箱联系：support@yuqing.example.com
         </Typography.Paragraph>
       </Card>
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
 )
 
 // KeyPrefix identifies a platform API key inside an Authorization header.

@@ -75,12 +75,12 @@ details p,details pre{font-size:13.5px}
 
   <h2 id="arch">系统架构</h2>
   <div class="card">
-    <pre>浏览器 ──HTTPS(443)──▶ nginx ──┬── /            → /opt/yuging/web/dist   <span class="c">React 静态文件</span>
+    <pre>浏览器 ──HTTPS(443)──▶ nginx ──┬── /            → /opt/yuqing/web/dist   <span class="c">React 静态文件</span>
                                 └── /api/*       → 127.0.0.1:8080          <span class="c">Go API</span>
 
 Go 平台层（systemd）:
-  yuging-server   无状态 HTTP API
-  yuging-worker   队列消费 + 定时任务
+  yuqing-server   无状态 HTTP API
+  yuqing-worker   队列消费 + 定时任务
 
 Python 引擎层（systemd，仅内网监听）:
   8000 query     Bocha 搜索 + Scrapling 抓取
@@ -98,14 +98,14 @@ Python 引擎层（systemd，仅内网监听）:
   <div class="card">
     <table>
       <tr><th>服务名</th><th>端口</th><th>作用</th><th>依赖</th></tr>
-      <tr><td><code>yuging-server</code></td><td>8080</td><td>Go API</td><td>postgresql, redis</td></tr>
-      <tr><td><code>yuging-worker</code></td><td>—</td><td>后台任务</td><td>postgresql, redis</td></tr>
-      <tr><td><code>yuging-query</code></td><td>8000</td><td>搜索与抓取</td><td>engines.env</td></tr>
-      <tr><td><code>yuging-media</code></td><td>8001</td><td>多模态</td><td>—</td></tr>
-      <tr><td><code>yuging-insight</code></td><td>8002</td><td>情感/话题</td><td>—</td></tr>
-      <tr><td><code>yuging-report</code></td><td>8003</td><td>报告生成</td><td>—</td></tr>
-      <tr><td><code>yuging-forum</code></td><td>8004</td><td>多 Agent 辩论</td><td>—</td></tr>
-      <tr><td><code>nginx</code></td><td>80/443</td><td>反代 + SSL</td><td>yuging-server</td></tr>
+      <tr><td><code>yuqing-server</code></td><td>8080</td><td>Go API</td><td>postgresql, redis</td></tr>
+      <tr><td><code>yuqing-worker</code></td><td>—</td><td>后台任务</td><td>postgresql, redis</td></tr>
+      <tr><td><code>yuqing-query</code></td><td>8000</td><td>搜索与抓取</td><td>engines.env</td></tr>
+      <tr><td><code>yuqing-media</code></td><td>8001</td><td>多模态</td><td>—</td></tr>
+      <tr><td><code>yuqing-insight</code></td><td>8002</td><td>情感/话题</td><td>—</td></tr>
+      <tr><td><code>yuqing-report</code></td><td>8003</td><td>报告生成</td><td>—</td></tr>
+      <tr><td><code>yuqing-forum</code></td><td>8004</td><td>多 Agent 辩论</td><td>—</td></tr>
+      <tr><td><code>nginx</code></td><td>80/443</td><td>反代 + SSL</td><td>yuqing-server</td></tr>
     </table>
     <div class="note"><b>依赖关系</b>：Go 平台不依赖 Python 引擎（引擎不可用时 API 仍正常，仅数据采集功能受限）。引擎之间相互独立。</div>
   </div>
@@ -114,17 +114,17 @@ Python 引擎层（systemd，仅内网监听）:
   <div class="card">
     <table>
       <tr><th>用途</th><th>路径</th></tr>
-      <tr><td>应用根目录</td><td><code>/opt/yuging/</code></td></tr>
-      <tr><td>Go 二进制</td><td><code>/opt/yuging/bin/{yuging-server,yuging-worker,yuging-cli}</code></td></tr>
-      <tr><td>前端产物</td><td><code>/opt/yuging/web/dist/</code></td></tr>
-      <tr><td>Python venv</td><td><code>/opt/yuging/engines/venv/</code></td></tr>
-      <tr><td>主配置文件</td><td><code>/opt/yuging/config/config.yaml</code>（chmod 600）</td></tr>
-      <tr><td>引擎环境变量</td><td><code>/opt/yuging/config/engines.env</code>（chmod 600）</td></tr>
+      <tr><td>应用根目录</td><td><code>/opt/yuqing/</code></td></tr>
+      <tr><td>Go 二进制</td><td><code>/opt/yuqing/bin/{yuqing-server,yuqing-worker,yuqing-cli}</code></td></tr>
+      <tr><td>前端产物</td><td><code>/opt/yuqing/web/dist/</code></td></tr>
+      <tr><td>Python venv</td><td><code>/opt/yuqing/engines/venv/</code></td></tr>
+      <tr><td>主配置文件</td><td><code>/opt/yuqing/config/config.yaml</code>（chmod 600）</td></tr>
+      <tr><td>引擎环境变量</td><td><code>/opt/yuqing/config/engines.env</code>（chmod 600）</td></tr>
       <tr><td>源码仓库</td><td><code>/opt/pangu-source/</code></td></tr>
       <tr><td>证书</td><td><code>/etc/nginx/ssl/yuqing.pangu-cloud.com/</code></td></tr>
-      <tr><td>nginx 站点配置</td><td><code>/etc/nginx/conf.d/yuging.conf</code></td></tr>
-      <tr><td>systemd unit</td><td><code>/etc/systemd/system/yuging-*.service</code></td></tr>
-      <tr><td>引导管理员 drop-in</td><td><code>/etc/systemd/system/yuging-server.service.d/</code></td></tr>
+      <tr><td>nginx 站点配置</td><td><code>/etc/nginx/conf.d/yuqing.conf</code></td></tr>
+      <tr><td>systemd unit</td><td><code>/etc/systemd/system/yuqing-*.service</code></td></tr>
+      <tr><td>引导管理员 drop-in</td><td><code>/etc/systemd/system/yuqing-server.service.d/</code></td></tr>
       <tr><td>部署日志</td><td><code>/var/log/pangu-deploy*.log</code></td></tr>
     </table>
   </div>
@@ -133,27 +133,27 @@ Python 引擎层（systemd，仅内网监听）:
   <div class="card">
     <h3>查看状态</h3>
     <pre><span class="c"># 一次看全部</span>
-systemctl is-active yuging-server yuging-worker yuging-query yuging-media \
-  yuging-insight yuging-report yuging-forum nginx
+systemctl is-active yuqing-server yuqing-worker yuqing-query yuqing-media \
+  yuqing-insight yuqing-report yuqing-forum nginx
 
 <span class="c"># 详细状态</span>
-systemctl status yuging-server</pre>
+systemctl status yuqing-server</pre>
 
     <h3>重启</h3>
     <pre><span class="c"># 单个服务</span>
-systemctl restart yuging-server
+systemctl restart yuqing-server
 
 <span class="c"># 全部引擎</span>
-systemctl restart yuging-query yuging-media yuging-insight yuging-report yuging-forum
+systemctl restart yuqing-query yuqing-media yuqing-insight yuqing-report yuqing-forum
 
 <span class="c"># 全部服务</span>
-systemctl restart yuging-server yuging-worker yuging-query yuging-media \
-  yuging-insight yuging-report yuging-forum</pre>
+systemctl restart yuqing-server yuqing-worker yuqing-query yuqing-media \
+  yuqing-insight yuqing-report yuqing-forum</pre>
 
     <h3>启动 / 停止 / 开机自启</h3>
-    <pre>systemctl stop yuging-worker          <span class="c"># worker 无状态，可随时停</span>
-systemctl start yuging-worker
-systemctl enable yuging-server        <span class="c"># 开机自启（部署时已配置）</span></pre>
+    <pre>systemctl stop yuqing-worker          <span class="c"># worker 无状态，可随时停</span>
+systemctl start yuqing-worker
+systemctl enable yuqing-server        <span class="c"># 开机自启（部署时已配置）</span></pre>
 
     <div class="note"><b>重启影响</b>：Go 平台使用<b>内存存储</b>，重启会<b>清空所有数据</b>（账号、分析、报告）。引擎无状态，重启无影响。</div>
   </div>
@@ -161,8 +161,8 @@ systemctl enable yuging-server        <span class="c"># 开机自启（部署时
   <h2 id="logs">日志排查</h2>
   <div class="card">
     <h3>实时日志</h3>
-    <pre>journalctl -u yuging-server -f        <span class="c"># Go API</span>
-journalctl -u yuging-query -f         <span class="c"># 查询引擎</span>
+    <pre>journalctl -u yuqing-server -f        <span class="c"># Go API</span>
+journalctl -u yuqing-query -f         <span class="c"># 查询引擎</span>
 tail -f /var/log/nginx/access.log     <span class="c"># nginx 访问日志</span>
 tail -f /var/log/nginx/error.log      <span class="c"># nginx 错误日志</span></pre>
 
@@ -174,20 +174,20 @@ tail -f /var/log/nginx/error.log      <span class="c"># nginx 错误日志</span
 
     <h3>常用过滤</h3>
     <pre><span class="c"># 只看错误</span>
-journalctl -u yuging-server -p err --no-pager | tail -20
+journalctl -u yuqing-server -p err --no-pager | tail -20
 
 <span class="c"># 最近 100 行</span>
-journalctl -u yuging-server -n 100 --no-pager
+journalctl -u yuqing-server -n 100 --no-pager
 
 <span class="c"># 按时间范围</span>
-journalctl -u yuging-server --since "1 hour ago"</pre>
+journalctl -u yuqing-server --since "1 hour ago"</pre>
   </div>
 
   <h2 id="config">配置变更</h2>
   <div class="card">
     <h3>主配置</h3>
-    <pre>sudo nano /opt/yuging/config/config.yaml
-sudo systemctl restart yuging-server yuging-worker</pre>
+    <pre>sudo nano /opt/yuqing/config/config.yaml
+sudo systemctl restart yuqing-server yuqing-worker</pre>
     <table>
       <tr><th>配置项</th><th>说明</th></tr>
       <tr><td><code>auth.jwtSecret</code></td><td>JWT 密钥，改动会使所有已签发 token 失效</td></tr>
@@ -202,8 +202,8 @@ sudo systemctl restart yuging-server yuging-worker</pre>
   -H "Content-Type: application/json" \
   -d '{"bocha_api_key":"sk-新key"}'</pre>
     <p>或用环境变量文件（需重启引擎）：</p>
-    <pre>sudo nano /opt/yuging/config/engines.env
-sudo systemctl restart yuging-query</pre>
+    <pre>sudo nano /opt/yuqing/config/engines.env
+sudo systemctl restart yuqing-query</pre>
 
     <h3>环境变量覆盖</h3>
     <p>配置项可用 <code>APP_</code> 前缀的环境变量覆盖（优先级高于 yaml），如 <code>APP_AUTH_JWT_SECRET</code>。</p>
@@ -225,16 +225,16 @@ bash scripts/deploy.sh</pre>
     <pre>cd /opt/pangu-source/platform
 export PATH=/usr/local/go/bin:$PATH
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
-  -o /opt/yuging/bin/yuging-server ./cmd/server
-systemctl restart yuging-server</pre>
+  -o /opt/yuqing/bin/yuqing-server ./cmd/server
+systemctl restart yuqing-server</pre>
 
     <h3>只更新前端</h3>
-    <pre>cd /opt/pangu-source/web && npm run build && cp -r dist /opt/yuging/web/</pre>
+    <pre>cd /opt/pangu-source/web && npm run build && cp -r dist /opt/yuqing/web/</pre>
 
     <h3>只更新 Python 引擎</h3>
     <pre><span class="c"># 改完代码后语法自检</span>
-/opt/yuging/engines/venv/bin/python -m py_compile /opt/pangu-source/engines/*/main.py
-systemctl restart yuging-query    <span class="c"># 换对应引擎名</span></pre>
+/opt/yuqing/engines/venv/bin/python -m py_compile /opt/pangu-source/engines/*/main.py
+systemctl restart yuqing-query    <span class="c"># 换对应引擎名</span></pre>
     <div class="note warn"><b>引擎代码修改注意</b>：Python 代码中的中文文案<b>必须使用全角引号「」</b>。混入 ASCII 双引号会提前终止字符串字面量导致 <code>SyntaxError</code>，服务反复重启（曾因此故障）。</div>
   </div>
 
@@ -262,7 +262,7 @@ crontab -l | grep acme          <span class="c"># 确认 cron 存在</span></pre
 
     <h3>手工签发（首次或重建）</h3>
     <pre>~/.acme.sh/acme.sh --issue -d yuqing.pangu-cloud.com \
-  --webroot /opt/yuging/web/dist --server letsencrypt
+  --webroot /opt/yuqing/web/dist --server letsencrypt
 
 ~/.acme.sh/acme.sh --install-cert -d yuqing.pangu-cloud.com --ecc \
   --key-file       /etc/nginx/ssl/yuqing.pangu-cloud.com/key.pem \
@@ -276,27 +276,27 @@ crontab -l | grep acme          <span class="c"># 确认 cron 存在</span></pre
   <div class="card">
     <div class="note warn"><b>当前状态</b>：应用使用内存存储，重启即丢失数据。PostgreSQL 已安装但未接入应用。以下为数据库层面的备份命令，接入后即可生效。</div>
     <pre><span class="c"># 备份平台库</span>
-sudo -u postgres pg_dump yuging_platform > /root/backup_$(date +%F).sql
+sudo -u postgres pg_dump yuqing_platform > /root/backup_$(date +%F).sql
 
 <span class="c"># 备份配置与证书</span>
 tar czf /root/pangu-config_$(date +%F).tar.gz \
-  /opt/yuging/config /etc/nginx/ssl /etc/nginx/conf.d/yuging.conf
+  /opt/yuqing/config /etc/nginx/ssl /etc/nginx/conf.d/yuqing.conf
 
 <span class="c"># 恢复</span>
-sudo -u postgres psql yuging_platform < /root/backup_2026-09-13.sql</pre>
+sudo -u postgres psql yuqing_platform < /root/backup_2026-09-13.sql</pre>
 
     <h3>建议的定时备份</h3>
     <pre>sudo crontab -e
 <span class="c"># 每日 03:17 备份</span>
-17 3 * * * /usr/bin/pg_dump -U postgres yuging_platform > /root/backup_$(date +\%F).sql</pre>
+17 3 * * * /usr/bin/pg_dump -U postgres yuqing_platform > /root/backup_$(date +\%F).sql</pre>
   </div>
 
   <h2 id="monitor">监控巡检</h2>
   <div class="card">
     <h3>日常巡检脚本</h3>
     <pre>echo "=== 服务状态 ==="
-systemctl is-active yuging-server yuging-worker yuging-query yuging-media \
-  yuging-insight yuging-report yuging-forum nginx
+systemctl is-active yuqing-server yuqing-worker yuqing-query yuqing-media \
+  yuqing-insight yuqing-report yuqing-forum nginx
 
 echo "=== 健康检查 ==="
 curl -s https://yuqing.pangu-cloud.com/api/v1/health
@@ -324,10 +324,10 @@ ss -tlnp | grep -E ':(80|443|8080|800[0-4]) '</pre>
     <p>以下均为<b>实际发生过</b>的故障及定位方法。</p>
 
     <details><summary>服务起不来 / 健康检查失败</summary>
-      <pre>systemctl status yuging-server
-journalctl -u yuging-server -n 50 --no-pager
-ls -la /opt/yuging/bin/          <span class="c"># 确认二进制存在且命名正确</span></pre>
-      <p><b>历史原因</b>：二进制被构建成 <code>cli</code>/<code>server</code>/<code>worker</code>（Go 用包目录名），而 systemd 找的是 <code>yuging-server</code>。检查文件名是否带 <code>yuging-</code> 前缀。</p>
+      <pre>systemctl status yuqing-server
+journalctl -u yuqing-server -n 50 --no-pager
+ls -la /opt/yuqing/bin/          <span class="c"># 确认二进制存在且命名正确</span></pre>
+      <p><b>历史原因</b>：二进制被构建成 <code>cli</code>/<code>server</code>/<code>worker</code>（Go 用包目录名），而 systemd 找的是 <code>yuqing-server</code>。检查文件名是否带 <code>yuqing-</code> 前缀。</p>
     </details>
 
     <details><summary>外部访问返回 nginx 欢迎页</summary>
@@ -343,8 +343,8 @@ journalctl -u nginx -n 20 --no-pager</pre>
     </details>
 
     <details><summary>某个 Python 引擎反复重启</summary>
-      <pre>journalctl -u yuging-query -n 40 --no-pager | tail -20
-/opt/yuging/engines/venv/bin/python -m py_compile /opt/pangu-source/engines/query_engine/main.py</pre>
+      <pre>journalctl -u yuqing-query -n 40 --no-pager | tail -20
+/opt/yuqing/engines/venv/bin/python -m py_compile /opt/pangu-source/engines/query_engine/main.py</pre>
       <p><b>历史原因</b>：中文文案里混入 ASCII 双引号 → <code>SyntaxError</code>。堆栈较长时先看最后几行的错误类型。</p>
     </details>
 
@@ -361,7 +361,7 @@ npm config set registry https://registry.npmmirror.com</pre>
     </details>
 
     <details><summary>管理后台返回 403</summary>
-      <pre>systemctl cat yuging-server | grep BOOTSTRAP
+      <pre>systemctl cat yuqing-server | grep BOOTSTRAP
 curl -s https://yuqing.pangu-cloud.com/api/v1/auth/me -H "Authorization: Bearer $TOKEN"</pre>
       <p><b>原因</b>：当前账号缺少 <code>platform_admin</code> 角色。<code>/admin/*</code> 要求该角色。引导邮箱由 <code>YUGING_BOOTSTRAP_ADMIN_EMAIL</code> 配置，用该邮箱注册的账号即具备权限。</p>
     </details>
@@ -388,7 +388,7 @@ tar xzf /tmp/src.tar.gz -C /opt/pangu-source</pre>
     <table>
       <tr><th width="40">#</th><th>事项</th><th>原因</th></tr>
       <tr><td>1</td><td>轮换 Bocha API Key</td><td>该 key 曾出现在公开仓库的 git 历史中</td></tr>
-      <tr><td>2</td><td>修改数据库密码</td><td>当前为默认值 <code>yuging</code></td></tr>
+      <tr><td>2</td><td>修改数据库密码</td><td>当前为默认值 <code>yuqing</code></td></tr>
       <tr><td>3</td><td>修改管理员密码</td><td>当前为弱密码</td></tr>
       <tr><td>4</td><td>限制 SSH 访问</td><td>建议改为密钥登录、禁用密码认证</td></tr>
       <tr><td>5</td><td>接入 PostgreSQL 存储</td><td>内存存储重启丢数据，不满足生产要求</td></tr>
@@ -396,9 +396,9 @@ tar xzf /tmp/src.tar.gz -C /opt/pangu-source</pre>
 
     <h3>已实施</h3>
     <ul>
-      <li>配置文件权限 <code>600</code>，仅 root/yuging 可读</li>
+      <li>配置文件权限 <code>600</code>，仅 root/yuqing 可读</li>
       <li>引擎环境变量文件 <code>600</code></li>
-      <li>服务以 <code>yuging</code> 非特权用户运行（<code>nologin</code> shell）</li>
+      <li>服务以 <code>yuqing</code> 非特权用户运行（<code>nologin</code> shell）</li>
       <li>Python 引擎仅监听 <code>127.0.0.1</code>，不对外暴露</li>
       <li>PostgreSQL / Redis 仅监听 <code>127.0.0.1</code></li>
       <li>HTTPS 已启用（Let's Encrypt）+ 安全响应头（nosniff / SAMEORIGIN / Referrer-Policy）</li>

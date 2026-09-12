@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // PGStore 是 Store 的 PostgreSQL 实现（reports 表，见

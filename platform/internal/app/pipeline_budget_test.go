@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yuging/platform/internal/config"
+	"github.com/yuqing/platform/internal/config"
 )
 
 // 回归背景：管线总预算曾直接取 engines.query.timeout —— 那是「单个采集请求」

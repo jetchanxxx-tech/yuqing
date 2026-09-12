@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuging/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/business/analysis"
 )
 
 // TestContract_analyses_resultReturnsCollectedDocuments 覆盖 /result 端点。

@@ -5,9 +5,9 @@ import (
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api/middleware"
-	"github.com/yuging/platform/internal/api/v1"
-	"github.com/yuging/platform/internal/config"
+	"github.com/yuqing/platform/internal/api/middleware"
+	"github.com/yuqing/platform/internal/api/v1"
+	"github.com/yuqing/platform/internal/config"
 )
 
 // NewRouter builds the Gin engine with all middleware, route groups and the

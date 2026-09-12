@@ -22,13 +22,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api"
-	"github.com/yuging/platform/internal/api/v1"
-	"github.com/yuging/platform/internal/app"
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/config"
-	"github.com/yuging/platform/internal/pkg/llm"
-	"github.com/yuging/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/api"
+	"github.com/yuqing/platform/internal/api/v1"
+	"github.com/yuqing/platform/internal/app"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/platform/auth"
 )
 
 const testJWTSecret = "contract-test-secret-key-min-32-chars!!"

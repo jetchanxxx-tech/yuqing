@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=yuging
+User=yuqing
 WorkingDirectory=/opt/pangu-source
 Environment="PYTHONPATH=/opt/pangu-source"
 # Bocha API Key 等运行时变量（可选文件，缺失不报错）
-EnvironmentFile=-/opt/yuging/config/engines.env
-ExecStart=/opt/yuging/engines/venv/bin/uvicorn engines.report_engine.main:app --host 127.0.0.1 --port 8003
+EnvironmentFile=-/opt/yuqing/config/engines.env
+ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.report_engine.main:app --host 127.0.0.1 --port 8003
 Restart=always
 RestartSec=5
 

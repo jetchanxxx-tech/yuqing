@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/pkg/pgtest"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 const contractTenant = "tenant-1"

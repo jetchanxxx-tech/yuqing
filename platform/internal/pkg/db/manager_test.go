@@ -17,8 +17,8 @@ import (
 // integration tests with a real PG are in a separate file (manager_integration_test.go).
 
 func TestTenantDBName_mapsTenantToPhysicalDB(t *testing.T) {
-	if got := TenantDBName("abc123"); got != "yuging_t_abc123" {
-		t.Errorf("TenantDBName = %q, want yuging_t_abc123", got)
+	if got := TenantDBName("abc123"); got != "yuqing_t_abc123" {
+		t.Errorf("TenantDBName = %q, want yuqing_t_abc123", got)
 	}
 }
 
@@ -85,10 +85,10 @@ func TestManager_TenantIDIsolation(t *testing.T) {
 	if alice == bob {
 		t.Fatal("different tenant IDs must produce different DB names")
 	}
-	if alice != "yuging_t_alice" {
+	if alice != "yuqing_t_alice" {
 		t.Errorf("alice = %q", alice)
 	}
-	if bob != "yuging_t_bob" {
+	if bob != "yuqing_t_bob" {
 		t.Errorf("bob = %q", bob)
 	}
 }

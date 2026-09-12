@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/queue"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 func newTestAnalysisService(t *testing.T) (*Service, queue.Queue) {

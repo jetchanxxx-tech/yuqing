@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yuging/platform/internal/business/analysis"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/business/analysis"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 // TestIntegration_registerLoginTenantFlow covers the platform provisioning

@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api/middleware"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/apikey"
+	"github.com/yuqing/platform/internal/api/middleware"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/apikey"
 )
 
 // RegisterAPIKeyRoutes mounts the tenant API key lifecycle endpoints.

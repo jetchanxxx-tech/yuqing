@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api/middleware"
-	"github.com/yuging/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/api/middleware"
+	"github.com/yuqing/platform/internal/platform/auth"
 )
 
 // emailRe is a deliberately simple structural email check — mirrors the

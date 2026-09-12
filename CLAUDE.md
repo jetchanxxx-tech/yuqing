@@ -30,7 +30,7 @@ go test ./... -count=1               # 不带 -race 的快速跑
 go test -run TestRegister ./internal/platform/auth/   # 单个测试
 go test ./internal/api/v1/ -count=1  # 单个包（契约测试）
 make test-cover                      # 覆盖率
-make build                           # 交叉编译 linux/amd64 → bin/{yuging-server,yuging-worker,yuging-cli}
+make build                           # 交叉编译 linux/amd64 → bin/{yuqing-server,yuqing-worker,yuqing-cli}
 make lint                            # = go vet ./...
 go run ./cmd/server                  # 开发模式 (:8080) — 内存 store，无需 PG/Redis
 
@@ -55,7 +55,7 @@ scrapling install --chromium         # 首次 ~150MB
 python3 -m pytest tests/ -v          # 10 用例（Scrapling 封装）
 # 开发：在具体引擎目录下 `uvicorn main:app --port 8000`
 # 生产（systemd）：WorkingDirectory 与 PYTHONPATH 均为 /opt/pangu-source，
-#   ExecStart=/opt/yuging/engines/venv/bin/uvicorn engines.<name>_engine.main:app
+#   ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.<name>_engine.main:app
 # 端口：8000=query 8001=media 8002=insight 8003=report 8004=forum
 BOCHA_API_KEY=sk-xxx uvicorn main:app --port 8000
 
@@ -70,9 +70,9 @@ sudo YUGING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部�
 
 | Binary | Role |
 |--------|------|
-| `yuging-server` | HTTP API + **分析管线（同进程）** |
-| `yuging-worker` | Queue 消费者（当前无分析任务可消费，见「分析管线」） |
-| `yuging-cli` | 运维 CLI |
+| `yuqing-server` | HTTP API + **分析管线（同进程）** |
+| `yuqing-worker` | Queue 消费者（当前无分析任务可消费，见「分析管线」） |
+| `yuqing-cli` | 运维 CLI |
 
 ### 组合根（DI 唯一装配点）
 
@@ -222,11 +222,11 @@ any active state → failed | canceled
 sudo YUGING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [SKIP]，已有配置不覆盖
 ```
 
-- `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。检测并跳过已装的 nginx/postgresql/redis/go/node；显式 `-o bin/yuging-*` 生成二进制（`go build -o dir/ ./cmd/...` 会产出 `server`/`worker`/`cli`，与 unit 名不匹配导致服务静默启动失败）
+- `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。检测并跳过已装的 nginx/postgresql/redis/go/node；显式 `-o bin/yuqing-*` 生成二进制（`go build -o dir/ ./cmd/...` 会产出 `server`/`worker`/`cli`，与 unit 名不匹配导致服务静默启动失败）
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
-- `scripts/systemd/*.service` — 7 个 unit：`yuging-{server,worker,query,media,insight,report,forum}`
+- `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
-- 引导管理员经 `yuging-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
+- 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
 - 运维手册 `docs/OPS_MANUAL.html`（架构/服务清单、服务管理、日志排查、配置变更、证书管理、备份恢复、巡检、故障排查）；部署日志 `docs/DEPLOYMENT_LOG.html`（15 个问题 + 根因 + 4 条教训）
 
 ## 凭据与安全
@@ -245,6 +245,6 @@ sudo YUGING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - TDD: 先写失败测试 RED → 最小实现 GREEN → 重构。**禁止先写实现再补测试**
 - Code review: 5 角度审查，报告留 `platform/REVIEW_REPORT.md`（§5/§8 等章节记录已知遗留项）
 - 前端: 页面数据经 `web/src/api/*.ts` 统一 axios（401 自动 refresh），错误信封经 ApiErrorHandler；图表色 负面 `#FF2442` / 中性 `#9ca3af` / 正面 `#02b940`
-- 项目品牌：**盘古舆情**（README/前端/demo/docs 均用此名；Go module 名 `yuging` 保持内部标识不变）
+- 项目品牌：**盘古舆情**（README/前端/demo/docs 均用此名；Go module 名 `yuqing` 保持内部标识不变）
 - 面向人交付的文档用 **HTML**（`docs/*.html`），不用 Markdown —— 用户明确要求过
 - 提交前把关：`make test` 全绿 + `npm run build` 通过 + `go vet` 无警告

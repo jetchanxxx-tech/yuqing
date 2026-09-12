@@ -32,7 +32,7 @@ import (
 )
 
 // EnvURL 指向一个**已存在**的 PostgreSQL 数据库（测试自建 schema，不建库）。
-// 例：postgres://yuging:secret@127.0.0.1:5432/yuging_test?sslmode=disable
+// 例：postgres://yuqing:secret@127.0.0.1:5432/yuqing_test?sslmode=disable
 const EnvURL = "YUGING_TEST_PG_URL"
 
 // 迁移目录名（platform/migrations 下的子目录）。
@@ -55,7 +55,7 @@ func Pool(t testing.TB, name string, migrations ...string) *pgxpool.Pool {
 
 	url := strings.TrimSpace(os.Getenv(EnvURL))
 	if url == "" {
-		t.Skipf("跳过：需要真实 PostgreSQL（设置 %s 指向测试库，例如 postgres://user:pass@127.0.0.1:5432/yuging_test?sslmode=disable）", EnvURL)
+		t.Skipf("跳过：需要真实 PostgreSQL（设置 %s 指向测试库，例如 postgres://user:pass@127.0.0.1:5432/yuqing_test?sslmode=disable）", EnvURL)
 		// testing.T 的 Skipf 会终止本测试；替身实现不会，因此显式返回。
 		return nil
 	}

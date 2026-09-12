@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yuging/platform/internal/api"
-	"github.com/yuging/platform/internal/app"
-	"github.com/yuging/platform/internal/config"
-	"github.com/yuging/platform/internal/pkg/observ"
+	"github.com/yuqing/platform/internal/api"
+	"github.com/yuqing/platform/internal/app"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/pkg/observ"
 )
 
 func main() {

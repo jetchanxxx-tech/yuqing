@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/yuging/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/pkg/llm"
 )
 
 // TestIntegration_meteredProvider_hardCapChain exercises the API-resale budget

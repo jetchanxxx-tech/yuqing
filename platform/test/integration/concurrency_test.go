@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // TestIntegration_concurrentReadsSameTenant runs 50 goroutines × 25 iterations

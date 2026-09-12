@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/yuging/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/pkg/llm"
 )
 
 // Meter implements llm.Meter with in-memory counters (Redis-backed in production).

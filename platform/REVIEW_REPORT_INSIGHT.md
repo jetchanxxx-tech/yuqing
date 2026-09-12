@@ -120,7 +120,7 @@ Python 侧契约与 Go json tag 逐字段对齐（见 §5）、降级思路（�
 
 ```bash
 $ grep -rn "internal/platform" platform/internal/business/     # business → platform
-platform/internal/business/report/service.go:9:	"github.com/yuging/platform/internal/platform/billing"
+platform/internal/business/report/service.go:9:	"github.com/yuqing/platform/internal/platform/billing"
 platform/internal/business/report/service_test.go:9
 
 $ grep -rn "internal/engine" platform/internal/business/       # business → engine
@@ -303,9 +303,9 @@ $ grep -rn "internal/engine" platform/internal/api/            # api → engine
 ```bash
 # Go —— 受影响的重点包
 $ cd platform && go test ./internal/engine/ ./internal/business/analysis/ ./internal/api/v1/ -count=1
-ok  github.com/yuging/platform/internal/engine            2.117s
-ok  github.com/yuging/platform/internal/business/analysis 1.432s
-ok  github.com/yuging/platform/internal/api/v1            1.869s
+ok  github.com/yuqing/platform/internal/engine            2.117s
+ok  github.com/yuqing/platform/internal/business/analysis 1.432s
+ok  github.com/yuqing/platform/internal/api/v1            1.869s
 
 # Go —— 全量（未带 -race，按审核要求）
 $ go test ./... -count=1          # exit 0，无失败包

@@ -52,8 +52,8 @@ nginx → Go API(:8080) + Worker        ← 平台层（模块化单体）
 
 ```bash
 # 克隆
-git clone https://github.com/jetchanxxx-tech/yuging-platform.git
-cd yuging-platform
+git clone https://github.com/jetchanxxx-tech/yuqing-platform.git
+cd yuqing-platform
 
 # Go 平台
 cd platform
@@ -84,7 +84,7 @@ make build             # 交叉编译 linux/amd64
 ## 项目结构
 
 ```
-yuging-platform/
+yuqing-platform/
 ├── platform/               Go 平台
 │   ├── cmd/                server / worker / cli
 │   ├── internal/
@@ -158,10 +158,10 @@ cd web && npm install && npm run build # 前端 → web/dist/
 # Python engines
 cd engines && python -m venv venv && pip install -r requirements.txt
 # 配置
-cp platform/config.example.yaml /opt/yuging/config/config.yaml
+cp platform/config.example.yaml /opt/yuqing/config/config.yaml
 # 编辑 JWT secret、LLM API keys、DB 密码
 # 启动
-systemctl start yuging-server yuging-worker
+systemctl start yuqing-server yuqing-worker
 ```
 
 访问 `https://your-domain.com`
@@ -194,7 +194,7 @@ systemctl start yuging-server yuging-worker
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=jetchanxxx-tech/yuging-platform&type=Date)](https://star-history.com/#jetchanxxx-tech/yuging-platform&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=jetchanxxx-tech/yuqing-platform&type=Date)](https://star-history.com/#jetchanxxx-tech/yuqing-platform&Date)
 
 ---
 

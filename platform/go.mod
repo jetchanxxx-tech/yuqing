@@ -1,4 +1,4 @@
-module github.com/yuging/platform
+module github.com/yuqing/platform
 
 go 1.25.0
 

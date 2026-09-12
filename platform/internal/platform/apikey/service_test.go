@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 func newTestService() *Service { return NewService(NewMemoryStore()) }

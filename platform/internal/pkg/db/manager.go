@@ -149,7 +149,7 @@ func (m *manager) Tenant(ctx context.Context, tenantID string) (TenantDB, error)
 
 // TenantDBName returns the physical database name for a tenant ID.
 func TenantDBName(tenantID string) string {
-	return fmt.Sprintf("yuging_t_%s", tenantID)
+	return fmt.Sprintf("yuqing_t_%s", tenantID)
 }
 
 func (m *manager) pickReplica() *pgxpool.Pool {

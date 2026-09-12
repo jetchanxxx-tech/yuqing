@@ -1,5 +1,5 @@
 // Package migrations embeds the goose SQL migrations so binaries
-// (yuging-cli) can run them without a migrations directory on disk.
+// (yuqing-cli) can run them without a migrations directory on disk.
 package migrations
 
 import "embed"

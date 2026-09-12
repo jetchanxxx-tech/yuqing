@@ -148,8 +148,8 @@ tr:last-child td{border-bottom:none}
         <td>5</td>
         <td><span class="badge blk">阻塞</span> 二进制命名不匹配</td>
         <td>服务起不来，健康检查失败</td>
-        <td><code>go build -o dir/ ./cmd/...</code> 按<b>包目录名</b>产出 <code>cli</code>/<code>server</code>/<code>worker</code>，但 systemd unit 引用 <code>yuging-server</code> 等。日志显示"构建完成"极具误导性</td>
-        <td>逐个显式 <code>-o $APP_ROOT/bin/yuging-$pkg</code></td>
+        <td><code>go build -o dir/ ./cmd/...</code> 按<b>包目录名</b>产出 <code>cli</code>/<code>server</code>/<code>worker</code>，但 systemd unit 引用 <code>yuqing-server</code> 等。日志显示"构建完成"极具误导性</td>
+        <td>逐个显式 <code>-o $APP_ROOT/bin/yuqing-$pkg</code></td>
       </tr>
       <tr>
         <td>6</td>
@@ -168,7 +168,7 @@ tr:last-child td{border-bottom:none}
       <tr>
         <td>8</td>
         <td><span class="badge blk">阻塞</span> forum 引擎语法错误</td>
-        <td><code>yuging-forum</code> 反复重启，日志被堆栈淹没</td>
+        <td><code>yuqing-forum</code> 反复重启，日志被堆栈淹没</td>
         <td>中文文案内嵌 <b>ASCII 双引号</b>，提前终止 Python 字符串字面量 → <code>SyntaxError</code></td>
         <td>全量改写为全角引号「」，并把约束写入 docstring；deploy.sh 增加 <code>py_compile</code> 预检</td>
       </tr>
@@ -201,7 +201,7 @@ tr:last-child td{border-bottom:none}
         <td>12</td>
         <td><span class="badge fix">功能</span> Python 引擎未部署</td>
         <td>数据采集链路完全未激活</td>
-        <td>新增 5 个 systemd unit（<code>yuging-{query,media,insight,report,forum}</code>），deploy.sh 补齐部署流程</td>
+        <td>新增 5 个 systemd unit（<code>yuqing-{query,media,insight,report,forum}</code>），deploy.sh 补齐部署流程</td>
       </tr>
       <tr>
         <td>13</td>
@@ -233,13 +233,13 @@ tr:last-child td{border-bottom:none}
     <h3>运行服务（8 个，全部 active）</h3>
     <table>
       <tr><th>服务</th><th>端口</th><th>说明</th></tr>
-      <tr><td><code>yuging-server</code></td><td>0.0.0.0:8080</td><td>Go API</td></tr>
-      <tr><td><code>yuging-worker</code></td><td>—</td><td>队列消费</td></tr>
-      <tr><td><code>yuging-query</code></td><td>127.0.0.1:8000</td><td>Bocha 搜索 + Scrapling 抓取</td></tr>
-      <tr><td><code>yuging-media</code></td><td>127.0.0.1:8001</td><td>多模态理解</td></tr>
-      <tr><td><code>yuging-insight</code></td><td>127.0.0.1:8002</td><td>情感分析 + 话题聚类</td></tr>
-      <tr><td><code>yuging-report</code></td><td>127.0.0.1:8003</td><td>报告生成</td></tr>
-      <tr><td><code>yuging-forum</code></td><td>127.0.0.1:8004</td><td>多 Agent 辩论</td></tr>
+      <tr><td><code>yuqing-server</code></td><td>0.0.0.0:8080</td><td>Go API</td></tr>
+      <tr><td><code>yuqing-worker</code></td><td>—</td><td>队列消费</td></tr>
+      <tr><td><code>yuqing-query</code></td><td>127.0.0.1:8000</td><td>Bocha 搜索 + Scrapling 抓取</td></tr>
+      <tr><td><code>yuqing-media</code></td><td>127.0.0.1:8001</td><td>多模态理解</td></tr>
+      <tr><td><code>yuqing-insight</code></td><td>127.0.0.1:8002</td><td>情感分析 + 话题聚类</td></tr>
+      <tr><td><code>yuqing-report</code></td><td>127.0.0.1:8003</td><td>报告生成</td></tr>
+      <tr><td><code>yuqing-forum</code></td><td>127.0.0.1:8004</td><td>多 Agent 辩论</td></tr>
       <tr><td><code>nginx</code></td><td>80 / 443</td><td>反向代理 + SSL 终端</td></tr>
     </table>
     <h3>HTTPS 与证书</h3>

@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/api/middleware"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/billing"
-	"github.com/yuging/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/api/middleware"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
 // RegisterAdminRoutes mounts the platform-admin endpoints. Every route is

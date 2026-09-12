@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/billing"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 func newTestReportService(t *testing.T) (*Service, *MemoryStore, map[string]string) {

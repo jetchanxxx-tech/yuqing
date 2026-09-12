@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 func newTestDashboard(t *testing.T) (*Service, *analysis.Service) {

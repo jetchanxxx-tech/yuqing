@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yuging/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/id"
 )
 
 // pgDocumentStore 是 documentStore 的 PostgreSQL 实现，落在 raw_documents 表

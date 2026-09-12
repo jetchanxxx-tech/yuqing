@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yuging/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/pkg/llm"
 )
 
 func TestMeter_BudgetStatus_defaultsToOk(t *testing.T) {

@@ -1,7 +1,7 @@
 // Package billing defines subscription plans, pricing, and invoice generation.
 package billing
 
-import "github.com/yuging/platform/internal/pkg/llm"
+import "github.com/yuqing/platform/internal/pkg/llm"
 
 // Plan defines a subscription tier.
 type Plan struct {

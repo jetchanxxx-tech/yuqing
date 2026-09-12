@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yuging/platform/internal/pkg/llm"
-	"github.com/yuging/platform/internal/pkg/pgtest"
+	"github.com/yuqing/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // meterContract 是计量的行为契约，参数化到任意实现上执行。

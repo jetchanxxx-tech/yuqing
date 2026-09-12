@@ -1,4 +1,4 @@
-# yuging platform configuration
+# yuqing platform configuration
 # Copy to config.yaml and adjust for your environment.
 # APP_ env vars take precedence (e.g., APP_SERVER_ADDR=:9090).
 
@@ -7,7 +7,7 @@ server:
   env: production              # dev | production
 
 db:
-  primary: "postgres://yuging:secret@localhost:5432/yuging_platform?sslmode=disable"
+  primary: "postgres://yuqing:secret@localhost:5432/yuqing_platform?sslmode=disable"
   replicas: []                 # read replicas (optional)
   readWriteSplit: false        # true = route reads to replicas
   maxConns: 40
@@ -21,7 +21,7 @@ db:
 store:
   driver: memory               # memory | postgres
   # postgres = 账号/任务/文档/报告全部落平台库，重启不丢数据（生产用）。
-  # 切换前先跑：yuging-cli migrate platform
+  # 切换前先跑：yuqing-cli migrate platform
 
 cache:
   addr: "redis://localhost:6379/0"
@@ -55,10 +55,10 @@ llm:
 storage:
   driver: local                # local | s3
   # local:
-  #   dir: /opt/yuging/data/storage
+  #   dir: /opt/yuqing/data/storage
   # s3:
   #   endpoint: "https://minio.example.com"
-  #   bucket: yuging-reports
+  #   bucket: yuqing-reports
   #   accessKey: ""
   #   secretKey: ""
 

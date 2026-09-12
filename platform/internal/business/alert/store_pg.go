@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yuging/platform/internal/pkg/db"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/db"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // PGStore 是 alert.Store 的 PostgreSQL 实现。

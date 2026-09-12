@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/platform/apikey"
-	"github.com/yuging/platform/internal/platform/auth"
-	"github.com/yuging/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/platform/apikey"
+	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
 // stubTenants is a TenantLookup double.

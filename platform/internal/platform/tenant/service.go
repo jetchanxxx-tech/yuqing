@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // Tenant is a platform tenant row.

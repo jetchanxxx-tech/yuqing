@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // MemoryStore is an in-memory Store implementation: map[tenantID]map[id]Report.

@@ -5,8 +5,8 @@ import (
 	"context"
 	"sort"
 
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/business/report"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/business/report"
 )
 
 // fixedSources are the four source rows the MVP dashboard always shows.

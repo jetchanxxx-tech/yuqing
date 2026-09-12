@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/config"
-	"github.com/yuging/platform/internal/pkg/observ"
-	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/pkg/observ"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 func main() {

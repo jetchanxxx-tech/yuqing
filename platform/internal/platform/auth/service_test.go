@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/llm"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/llm"
 )
 
 const (
@@ -91,8 +91,8 @@ func TestServiceRegister_createsUserTenantMemberQuotaAndTokens(t *testing.T) {
 	if ten.Name != testTeamName {
 		t.Errorf("tenant name = %q, want %q", ten.Name, testTeamName)
 	}
-	if !strings.HasPrefix(ten.DBName, "yuging_t_") {
-		t.Errorf("tenant db_name = %q, want yuging_t_ prefix", ten.DBName)
+	if !strings.HasPrefix(ten.DBName, "yuqing_t_") {
+		t.Errorf("tenant db_name = %q, want yuqing_t_ prefix", ten.DBName)
 	}
 	if ten.PlanCode != "free" || ten.Status != "active" {
 		t.Errorf("tenant plan/status = %q/%q, want free/active", ten.PlanCode, ten.Status)

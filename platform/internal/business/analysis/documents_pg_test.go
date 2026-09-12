@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 // cleanupDocuments 删除某租户的采集文档（pg 用例收尾用）。

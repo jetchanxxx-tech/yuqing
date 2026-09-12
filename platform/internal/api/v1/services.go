@@ -6,18 +6,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/yuging/platform/internal/api/middleware"
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/apikey"
-	"github.com/yuging/platform/internal/platform/auth"
-	"github.com/yuging/platform/internal/platform/settings"
-	"github.com/yuging/platform/internal/platform/tenant"
-	"github.com/yuging/platform/internal/platform/usage"
+	"github.com/yuqing/platform/internal/api/middleware"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/apikey"
+	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/settings"
+	"github.com/yuqing/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/platform/usage"
 
-	"github.com/yuging/platform/internal/business/alert"
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/business/dashboard"
-	"github.com/yuging/platform/internal/business/report"
+	"github.com/yuqing/platform/internal/business/alert"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/business/dashboard"
+	"github.com/yuqing/platform/internal/business/report"
 )
 
 // Services bundles the service dependencies v1 handlers call. It is wired

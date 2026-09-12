@@ -3,8 +3,8 @@ package auth
 import (
 	"context"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/platform/tenant"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
 // SharedTenantStore implements auth.Store so that tenant rows created during

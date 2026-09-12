@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/pkg/pgtest"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // tenantStoreContract 是 tenant.Store 的行为契约，参数化到任意实现上执行。
@@ -184,7 +184,7 @@ func TestTenantStore_PG_survivesNewInstance(t *testing.T) {
 		ID:       id.New(),
 		Name:     "持久化租户",
 		Slug:     "t-persist",
-		DBName:   "yuging_t_persist",
+		DBName:   "yuqing_t_persist",
 		Status:   StatusActive,
 		PlanCode: "pro",
 	}

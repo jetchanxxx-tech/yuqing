@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yuging/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/auth"
 )
 
 func init() { gin.SetMode(gin.TestMode) }

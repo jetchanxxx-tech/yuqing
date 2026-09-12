@@ -11,14 +11,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
 )
 
 // pgTestEnv 指向已应用 0002 迁移的测试库。未设置时全部 pg 用例跳过 ——
 // 本地开发无 PG，真实 GREEN 在服务器上跑：
 //
-//	YUGING_TEST_PG_URL='postgres://<用户>:<口令>@localhost:5432/yuging_test?sslmode=disable' go test ./...
+//	YUGING_TEST_PG_URL='postgres://<用户>:<口令>@localhost:5432/yuqing_test?sslmode=disable' go test ./...
 //
 // 凭据只从环境变量读，勿写进代码或 CI 配置。
 const pgTestEnv = "YUGING_TEST_PG_URL"

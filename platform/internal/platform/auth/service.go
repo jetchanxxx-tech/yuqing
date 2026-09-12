@@ -6,11 +6,11 @@ import (
 	"regexp"
 	"strings"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/pkg/llm"
-	ptenant "github.com/yuging/platform/internal/platform/tenant"
-	"github.com/yuging/platform/internal/platform/usage"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/llm"
+	ptenant "github.com/yuqing/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/platform/usage"
 )
 
 // Fixed role granted to the self-registered tenant owner.

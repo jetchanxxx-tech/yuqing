@@ -12,12 +12,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/yuging/platform/internal/business/alert"
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/business/dashboard"
-	"github.com/yuging/platform/internal/pkg/queue"
-	"github.com/yuging/platform/internal/platform/auth"
-	"github.com/yuging/platform/internal/platform/usage"
+	"github.com/yuqing/platform/internal/business/alert"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/business/dashboard"
+	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/usage"
 )
 
 const integrationSecret = "integration-secret-min-32-chars!!!"

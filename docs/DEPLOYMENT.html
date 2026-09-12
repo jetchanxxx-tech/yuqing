@@ -70,11 +70,11 @@ tr:last-child td { border-bottom:none; }
 <span class="c"># 单台服务器，全部进程由 systemd 守护</span>
 浏览器 ──HTTPS──▶ nginx (80/443)        <span class="c">← 已存在，仅添加站点配置</span>
                    ├── /          → /opt/pangu/web/dist    <span class="c">前端 React 静态文件</span>
-                   └── /api/*     → 127.0.0.1:8080        <span class="c">Go API (yuging-server)</span>
+                   └── /api/*     → 127.0.0.1:8080        <span class="c">Go API (yuqing-server)</span>
 
 systemd 服务:
-  yuging-server    Go API 进程（无状态 HTTP + 内存 store）
-  yuging-worker    Go 后台进程（队列消费 + 定时任务）
+  yuqing-server    Go API 进程（无状态 HTTP + 内存 store）
+  yuqing-worker    Go 后台进程（队列消费 + 定时任务）
 
 数据采集链路:
   Go Worker → Python query_engine → <span class="c">Bocha API 搜索</span> → Scrapling 抓取正文
@@ -87,7 +87,7 @@ systemd 服务:
     <table>
       <tr><th>条件</th><th>状态</th><th>说明</th></tr>
       <tr><td>Ubuntu 24.04 LTS</td><td><span class="tag required">必需</span></td><td>deploy.sh 基于此版本，其他版本会告警但继续</td></tr>
-      <tr><td>Nginx</td><td>✅ 已具备</td><td>脚本检测跳过安装，只添加 yuging.conf</td></tr>
+      <tr><td>Nginx</td><td>✅ 已具备</td><td>脚本检测跳过安装，只添加 yuqing.conf</td></tr>
       <tr><td>域名 + DNS</td><td>HTTPS 必需</td><td>无域名可用 IP + HTTP</td></tr>
       <tr><td>root 权限</td><td><span class="tag required">必需</span></td><td>安装系统包 + 写 /opt + systemd</td></tr>
       <tr><td>外网访问</td><td>首次部署必需</td><td>apt 包、Go 工具链、npm 依赖、Bocha API</td></tr>
@@ -134,10 +134,10 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 sudo apt-get install -y nodejs</pre>
 
   <h3>2. 数据库</h3>
-  <pre>sudo -u postgres createdb yuging_platform
-sudo -u postgres psql -c "CREATE USER yuging WITH PASSWORD 'yuging' CREATEDB;"
-sudo -u postgres psql -c "GRANT ALL ON DATABASE yuging_platform TO yuging;"
-sudo -u postgres psql -d yuging_platform -f platform/migrations/platform/0001_init.sql</pre>
+  <pre>sudo -u postgres createdb yuqing_platform
+sudo -u postgres psql -c "CREATE USER yuqing WITH PASSWORD 'yuqing' CREATEDB;"
+sudo -u postgres psql -c "GRANT ALL ON DATABASE yuqing_platform TO yuqing;"
+sudo -u postgres psql -d yuqing_platform -f platform/migrations/platform/0001_init.sql</pre>
 
   <h3>3. 构建</h3>
   <pre>cd platform && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /opt/pangu/bin/ ./cmd/...
@@ -153,9 +153,9 @@ scrapling install --chromium   <span class="c"># 首次 ~150MB 下载</span></pr
   <pre>cp platform/config.example.yaml /opt/pangu/config/config.yaml
 sudo nano /opt/pangu/config/config.yaml       <span class="c"># 编辑 jwtSecret, db 密码</span>
 sudo cp scripts/systemd/*.service /etc/systemd/system/
-sudo useradd -r -m -d /opt/pangu -s /usr/sbin/nologin yuging
-sudo systemctl daemon-reload && sudo systemctl enable --now yuging-server yuging-worker
-sudo cp scripts/nginx.conf /etc/nginx/conf.d/yuging.conf
+sudo useradd -r -m -d /opt/pangu -s /usr/sbin/nologin yuqing
+sudo systemctl daemon-reload && sudo systemctl enable --now yuqing-server yuqing-worker
+sudo cp scripts/nginx.conf /etc/nginx/conf.d/yuqing.conf
 sudo nginx -t && sudo systemctl reload nginx</pre>
 
   <h2 id="config">配置说明</h2>
@@ -163,7 +163,7 @@ sudo nginx -t && sudo systemctl reload nginx</pre>
     <table>
       <tr><th>配置项</th><th>说明</th><th>必改</th></tr>
       <tr><td><code>auth.jwtSecret</code></td><td>JWT 签名密钥，至少 32 字符随机串</td><td>✅ 是</td></tr>
-      <tr><td><code>db.primary</code></td><td>平台库连接串（含 yuging 用户密码）</td><td>✅ 是</td></tr>
+      <tr><td><code>db.primary</code></td><td>平台库连接串（含 yuqing 用户密码）</td><td>✅ 是</td></tr>
       <tr><td><code>dataSources.bochaApiKey</code></td><td>Bocha AI 搜索 API key（环境变量 BOCHA_API_KEY 优先）</td><td>✅ 是（可后台配置）</td></tr>
       <tr><td><code>server.addr</code></td><td>API 监听地址（nginx 反代目标，保持 :8080）</td><td>否</td></tr>
       <tr><td><code>queue.driver</code></td><td>memory / redis / rabbitmq / nats</td><td>单机用 memory</td></tr>
@@ -202,21 +202,21 @@ print('✓ Scrapling OK')
   <h2 id="systemd">systemd 管理</h2>
   <div class="card">
     <pre><span class="c"># 状态与日志</span>
-systemctl status yuging-server
-journalctl -u yuging-server -f          <span class="c"># 实时日志（slog JSON）</span>
-journalctl -u yuging-worker -f
+systemctl status yuqing-server
+journalctl -u yuqing-server -f          <span class="c"># 实时日志（slog JSON）</span>
+journalctl -u yuqing-worker -f
 
 <span class="c"># 启停</span>
-systemctl restart yuging-server yuging-worker
+systemctl restart yuqing-server yuqing-worker
 
 <span class="c"># 配置变更后重启</span>
 sudo nano /opt/pangu/config/config.yaml
-systemctl restart yuging-server yuging-worker</pre>
+systemctl restart yuqing-server yuqing-worker</pre>
   </div>
 
   <h2 id="nginx">与已有 Nginx 共存</h2>
   <div class="card">
-    <p>脚本<b>不安装、不重装</b>已有 nginx，只新增 <code>/etc/nginx/conf.d/yuging.conf</code>。如果同域名已有其他站点，通过 server_name 区分虚拟主机，nginx 自动按 SNI 分流。</p>
+    <p>脚本<b>不安装、不重装</b>已有 nginx，只新增 <code>/etc/nginx/conf.d/yuqing.conf</code>。如果同域名已有其他站点，通过 server_name 区分虚拟主机，nginx 自动按 SNI 分流。</p>
   </div>
 
   <h2 id="verify">验证清单</h2>
@@ -225,7 +225,7 @@ systemctl restart yuging-server yuging-worker</pre>
 <span class="c">□ 注册</span>      curl -X POST .../auth/register -d '{"email":"t@t.com","password":"12345678","name":"测试"}'  → 201
 <span class="c">□ 前端</span>      浏览器打开 https://域名/ → 登录页
 <span class="c">□ RBAC</span>     无 token 访问 /api/v1/analyses → 401
-<span class="c">□ 进程</span>     systemctl is-active yuging-server yuging-worker → active active
+<span class="c">□ 进程</span>     systemctl is-active yuqing-server yuqing-worker → active active
 <span class="c">□ Scrapling</span> 见 Scrapling 验证步骤
 <span class="c">□ Bocha</span>    curl https://域名/api/v1/admin/settings → {"settings":{"bocha_api_key":"sk-..."}}</pre>
   </div>
@@ -234,9 +234,9 @@ systemctl restart yuging-server yuging-worker</pre>
   <div class="card">
     <table>
       <tr><th>任务</th><th>命令</th></tr>
-      <tr><td>查看日志</td><td><code>journalctl -u yuging-server -n 100</code></td></tr>
+      <tr><td>查看日志</td><td><code>journalctl -u yuqing-server -n 100</code></td></tr>
       <tr><td>更新 Bocha key</td><td><code>PUT /api/v1/admin/settings {"bocha_api_key":"sk-new"}</code>（零重启）</td></tr>
-      <tr><td>数据库备份</td><td><code>sudo -u postgres pg_dump yuging_platform &gt; backup_$(date +%F).sql</code></td></tr>
+      <tr><td>数据库备份</td><td><code>sudo -u postgres pg_dump yuqing_platform &gt; backup_$(date +%F).sql</code></td></tr>
       <tr><td>更新版本</td><td><code>git pull && 重新构建二进制 → systemctl restart</code></td></tr>
       <tr><td>Redis 检查</td><td><code>redis-cli ping</code> → PONG</td></tr>
     </table>
@@ -247,8 +247,8 @@ systemctl restart yuging-server yuging-worker</pre>
     <details><summary><b>Q: 部署后注册的用户重启就没了？</b></summary><p>MVP 用内存 store。生产数据持久化需接 PostgreSQL store（接口已预留，替换实现即可）。</p></details>
     <details><summary><b>Q: 为什么搜不到真实数据？</b></summary><p>检查 Bocha API key 是否配置（GET /admin/settings），Scrapling 是否安装（python -c "from scrapling.fetchers import Fetcher"）。</p></details>
     <details><summary><b>Q: 部署脚本重复运行安全吗？</b></summary><p>安全。所有组件安装前检测（[SKIP]），配置文件/数据库/nginx 站点已存在绝不覆盖。</p></details>
-    <details><summary><b>Q: nginx 已被其他项目占用？</b></summary><p>无冲突。脚本只新增 conf.d/yuging.conf，通过 server_name 区分虚拟主机。</p></details>
-    <details><summary><b>Q: 数据库迁移为什么报占位提示？</b></summary><p>yuging-cli migrate 当前为占位实现。手工执行 migrations/platform/0001_init.sql。goose 接线在遗留清单中。</p></details>
+    <details><summary><b>Q: nginx 已被其他项目占用？</b></summary><p>无冲突。脚本只新增 conf.d/yuqing.conf，通过 server_name 区分虚拟主机。</p></details>
+    <details><summary><b>Q: 数据库迁移为什么报占位提示？</b></summary><p>yuqing-cli migrate 当前为占位实现。手工执行 migrations/platform/0001_init.sql。goose 接线在遗留清单中。</p></details>
     <details><summary><b>Q: 怎么更新 Bocha API key？</b></summary><p>管理员通过 Admin 面板或 API 直接 PUT /api/v1/admin/settings，无需重启服务。</p></details>
   </div>
 </main>

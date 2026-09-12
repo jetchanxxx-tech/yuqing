@@ -7,7 +7,7 @@
 #
 # 环境变量:
 #   YUGING_DOMAIN   站点域名（用于 nginx server_name 与 SSL）
-#   YUGING_ROOT     安装根目录（默认 /opt/yuging）
+#   YUGING_ROOT     安装根目录（默认 /opt/yuqing）
 #   SKIP_SSL        任意值 = 跳过 certbot SSL 配置
 #
 # 幂等性承诺:
@@ -17,11 +17,11 @@
 # ============================================================
 set -euo pipefail
 
-APP_ROOT="${YUGING_ROOT:-/opt/yuging}"
+APP_ROOT="${YUGING_ROOT:-/opt/yuqing}"
 DOMAIN="${YUGING_DOMAIN:-}"
 LOG_FILE="$APP_ROOT/data/logs/deploy.log"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB_PASSWORD="${YUGING_DB_PASSWORD:-yuging}"
+DB_PASSWORD="${YUGING_DB_PASSWORD:-yuqing}"
 JWT_SECRET="${YUGING_JWT_SECRET:-}"
 
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; NC='\033[0m'
@@ -135,37 +135,37 @@ fi
 # ============================================================
 # 2. 系统用户 + 平台数据库（已存在则跳过，不覆盖）
 # ============================================================
-id -u yuging &>/dev/null || useradd -r -m -d "$APP_ROOT" -s /usr/sbin/nologin yuging
+id -u yuqing &>/dev/null || useradd -r -m -d "$APP_ROOT" -s /usr/sbin/nologin yuqing
 
-if sudo -u postgres psql -lqt | grep -q "yuging_platform"; then
-  log_skip "平台数据库 yuging_platform 已存在，跳过创建"
+if sudo -u postgres psql -lqt | grep -q "yuqing_platform"; then
+  log_skip "平台数据库 yuqing_platform 已存在，跳过创建"
 else
-  sudo -u postgres createdb yuging_platform
-  log_info "平台数据库 yuging_platform 已创建"
+  sudo -u postgres createdb yuqing_platform
+  log_info "平台数据库 yuqing_platform 已创建"
 fi
 
 # 用户已存在则不重置密码
-if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='yuging'" | grep -q 1; then
-  log_skip "数据库用户 yuging 已存在，密码保持不变"
+if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='yuqing'" | grep -q 1; then
+  log_skip "数据库用户 yuqing 已存在，密码保持不变"
 else
-  sudo -u postgres psql -c "CREATE USER yuging WITH PASSWORD '${DB_PASSWORD}' CREATEDB;"
-  log_info "数据库用户 yuging 已创建（CREATEDB：租户库自动创建需要）"
+  sudo -u postgres psql -c "CREATE USER yuqing WITH PASSWORD '${DB_PASSWORD}' CREATEDB;"
+  log_info "数据库用户 yuqing 已创建（CREATEDB：租户库自动创建需要）"
 fi
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE yuging_platform TO yuging;" >/dev/null 2>&1 || true
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE yuqing_platform TO yuqing;" >/dev/null 2>&1 || true
 
 # ============================================================
 # 3. Go 二进制构建
 # ============================================================
-if [ -x "$APP_ROOT/bin/yuging-server" ] && [ -x "$APP_ROOT/bin/yuging-worker" ] && [ -x "$APP_ROOT/bin/yuging-cli" ]; then
+if [ -x "$APP_ROOT/bin/yuqing-server" ] && [ -x "$APP_ROOT/bin/yuqing-worker" ] && [ -x "$APP_ROOT/bin/yuqing-cli" ]; then
   log_skip "Go 二进制已存在，跳过构建（重编译请删掉后重跑或手动 make build）"
 else
   log_info "交叉编译 Go 二进制（linux/amd64, CGO off）..."
   cd "$REPO_ROOT/platform"
   # 逐个显式命名：`-o dir/ ./cmd/...` 会按包目录名产出 cli/server/worker，
-  # 而 systemd unit 与下方检查都引用 yuging-* 前缀（实测因此启动失败）。
+  # 而 systemd unit 与下方检查都引用 yuqing-* 前缀（实测因此启动失败）。
   for pkg in server worker cli; do
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
-      -o "$APP_ROOT/bin/yuging-$pkg" "./cmd/$pkg"
+      -o "$APP_ROOT/bin/yuqing-$pkg" "./cmd/$pkg"
   done
   log_info "Go 二进制构建完成: $(ls "$APP_ROOT/bin")"
 fi
@@ -232,12 +232,12 @@ if [ -f "$APP_ROOT/config/config.yaml" ]; then
 else
   cp "$REPO_ROOT/platform/config.example.yaml" "$APP_ROOT/config/config.yaml"
   # 写入部署时已知的数据库连接
-  sed -i "s|postgres://yuging:secret@localhost:5432/yuging_platform?sslmode=disable|postgres://yuging:${DB_PASSWORD}@localhost:5432/yuging_platform?sslmode=disable|" \
+  sed -i "s|postgres://yuqing:secret@localhost:5432/yuqing_platform?sslmode=disable|postgres://yuqing:${DB_PASSWORD}@localhost:5432/yuqing_platform?sslmode=disable|" \
     "$APP_ROOT/config/config.yaml"
   if [ -n "$JWT_SECRET" ]; then
     sed -i "s|jwtSecret: \"\"|jwtSecret: \"${JWT_SECRET}\"|" "$APP_ROOT/config/config.yaml"
   fi
-  chown yuging:yuging "$APP_ROOT/config/config.yaml"
+  chown yuqing:yuqing "$APP_ROOT/config/config.yaml"
   chmod 600 "$APP_ROOT/config/config.yaml"
   log_info "config.yaml 已生成（数据库连接已写入）"
   [ -n "$JWT_SECRET" ] || log_warn "  ⚠ jwtSecret 为空！请手工编辑 $APP_ROOT/config/config.yaml 填入"
@@ -247,17 +247,17 @@ fi
 # 7. 数据库迁移
 # ============================================================
 log_info "运行平台迁移..."
-if "$APP_ROOT/bin/yuging-cli" migrate platform; then
+if "$APP_ROOT/bin/yuqing-cli" migrate platform; then
   log_info "迁移完成"
 else
   log_warn "迁移 CLI 当前为占位实现；请手工执行 SQL:"
-  log_warn "  sudo -u postgres psql -d yuging_platform -f $REPO_ROOT/platform/migrations/platform/0001_init.sql"
+  log_warn "  sudo -u postgres psql -d yuqing_platform -f $REPO_ROOT/platform/migrations/platform/0001_init.sql"
 fi
 
 # ============================================================
 # 8. systemd 服务（unit 已存在则刷新但不覆盖手工修改）
 # ============================================================
-# 引擎源码需对运行用户可读（unit 以 yuging 身份启动 uvicorn）
+# 引擎源码需对运行用户可读（unit 以 yuqing 身份启动 uvicorn）
 chmod -R a+rX "$REPO_ROOT/engines" 2>/dev/null || true
 
 # 启动前做 Python 语法检查：引擎里的中文文案若混入 ASCII 双引号，会提前终止
@@ -279,11 +279,11 @@ fi
 if [ -n "${BOCHA_API_KEY:-}" ]; then
   printf 'BOCHA_API_KEY=%s\n' "$BOCHA_API_KEY" > "$APP_ROOT/config/engines.env"
   chmod 600 "$APP_ROOT/config/engines.env"
-  chown yuging:yuging "$APP_ROOT/config/engines.env" 2>/dev/null || true
+  chown yuqing:yuqing "$APP_ROOT/config/engines.env" 2>/dev/null || true
   log_info "引擎环境变量已写入: $APP_ROOT/config/engines.env"
 fi
 
-if systemctl list-unit-files yuging-server.service 2>/dev/null | grep -q yuging-server; then
+if systemctl list-unit-files yuqing-server.service 2>/dev/null | grep -q yuqing-server; then
   log_skip "systemd units 已注册，仅 daemon-reload + 重启"
 else
   for unit in "$REPO_ROOT"/scripts/systemd/*.service; do
@@ -298,9 +298,9 @@ systemctl daemon-reload
 # 用 drop-in 而非改 unit 本体，避免后续 unit 更新覆盖。
 BOOTSTRAP_EMAIL="${YUGING_BOOTSTRAP_ADMIN_EMAIL:-}"
 if [ -n "$BOOTSTRAP_EMAIL" ]; then
-  mkdir -p /etc/systemd/system/yuging-server.service.d
+  mkdir -p /etc/systemd/system/yuqing-server.service.d
   printf '[Service]\nEnvironment="YUGING_BOOTSTRAP_ADMIN_EMAIL=%s"\n' "$BOOTSTRAP_EMAIL" \
-    > /etc/systemd/system/yuging-server.service.d/bootstrap-admin.conf
+    > /etc/systemd/system/yuqing-server.service.d/bootstrap-admin.conf
   log_info "引导管理员已配置: $BOOTSTRAP_EMAIL（用该邮箱注册即为平台管理员）"
   systemctl daemon-reload
 else
@@ -308,12 +308,12 @@ else
 fi
 
 # Go 平台进程
-systemctl enable --now yuging-server yuging-worker 2>/dev/null || log_warn "服务启动失败，请查看 journalctl -u yuging-server"
-systemctl restart yuging-server yuging-worker 2>/dev/null || true
+systemctl enable --now yuqing-server yuqing-worker 2>/dev/null || log_warn "服务启动失败，请查看 journalctl -u yuqing-server"
+systemctl restart yuqing-server yuqing-worker 2>/dev/null || true
 
 # Python 引擎（5 个）— 数据采集/分析/报告/辩论链路
-ENGINE_UNITS="yuging-query yuging-media yuging-insight yuging-report yuging-forum"
-systemctl enable --now $ENGINE_UNITS 2>/dev/null || log_warn "部分引擎启动失败，逐个排查: systemctl status yuging-query"
+ENGINE_UNITS="yuqing-query yuqing-media yuqing-insight yuqing-report yuqing-forum"
+systemctl enable --now $ENGINE_UNITS 2>/dev/null || log_warn "部分引擎启动失败，逐个排查: systemctl status yuqing-query"
 for u in $ENGINE_UNITS; do
   if systemctl is-active --quiet "$u"; then
     log_info "引擎已启动: $u"
@@ -341,7 +341,7 @@ if [ -d /etc/nginx/sites-enabled ]; then
   done
 fi
 
-NGINX_CONF=/etc/nginx/conf.d/yuging.conf
+NGINX_CONF=/etc/nginx/conf.d/yuqing.conf
 CERT_DIR="/etc/nginx/ssl/$DOMAIN"
 ACME="$HOME/.acme.sh/acme.sh"
 
@@ -430,14 +430,14 @@ sleep 2
 if curl -sf http://127.0.0.1:8080/api/v1/health >/dev/null; then
   log_info "健康检查通过: http://127.0.0.1:8080/api/v1/health → $(curl -s http://127.0.0.1:8080/api/v1/health)"
 else
-  log_error "健康检查失败！排查: journalctl -u yuging-server -n 50"
+  log_error "健康检查失败！排查: journalctl -u yuqing-server -n 50"
 fi
 
 echo ""
 echo "============================================================"
 echo " ✅ 部署完成"
-echo "   服务:  yuging-server / yuging-worker (systemd)"
+echo "   服务:  yuqing-server / yuqing-worker (systemd)"
 echo "   站点:  ${DOMAIN:-http://服务器IP}（前端静态 + /api 反代）"
 echo "   目录:  $APP_ROOT"
-echo "   日志:  journalctl -u yuging-server -f"
+echo "   日志:  journalctl -u yuqing-server -f"
 echo "============================================================"

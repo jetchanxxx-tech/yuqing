@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/pkg/pgtest"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // authStoreContract 是 auth.Store 的行为契约，参数化到任意实现上执行。
@@ -95,7 +95,7 @@ func authStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 			ID:       tenantID,
 			Name:     "Owner的团队",
 			Slug:     "t-" + tenantID,
-			DBName:   "yuging_t_" + tenantID,
+			DBName:   "yuqing_t_" + tenantID,
 			Status:   "active",
 			PlanCode: "free",
 		}
@@ -139,7 +139,7 @@ func authStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 
 	t.Run("CreateTenant 重复 ID → ErrConflict", func(t *testing.T) {
 		st := newStore(t)
-		tn := Tenant{ID: id.New(), Name: "n", Slug: "t-dup", DBName: "yuging_t_dup", Status: "active", PlanCode: "free"}
+		tn := Tenant{ID: id.New(), Name: "n", Slug: "t-dup", DBName: "yuqing_t_dup", Status: "active", PlanCode: "free"}
 		if err := st.CreateTenant(ctx, tn); err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func authStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err := st.CreateUser(ctx, User{ID: userID, Email: "m@example.com", PasswordHash: "h", Name: "M"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := st.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-m", DBName: "yuging_t_m", Status: "active", PlanCode: "free"}); err != nil {
+		if err := st.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-m", DBName: "yuqing_t_m", Status: "active", PlanCode: "free"}); err != nil {
 			t.Fatal(err)
 		}
 		m := Member{TenantID: tenantID, UserID: userID, Role: "tenant_admin"}
@@ -189,7 +189,7 @@ func TestAuthStore_PG_survivesNewInstance(t *testing.T) {
 	if err := first.CreateUser(ctx, User{ID: userID, Email: "persist@example.com", PasswordHash: "h", Name: "P"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-p", DBName: "yuging_t_p", Status: "active", PlanCode: "free"}); err != nil {
+	if err := first.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-p", DBName: "yuqing_t_p", Status: "active", PlanCode: "free"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.CreateMember(ctx, Member{TenantID: tenantID, UserID: userID, Role: "tenant_admin"}); err != nil {
@@ -252,7 +252,7 @@ func TestAuthStore_PG_memberWithUnknownRefsIsNotFound(t *testing.T) {
 		}
 	})
 	t.Run("未知用户", func(t *testing.T) {
-		if err := st.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-fk", DBName: "yuging_t_fk", Status: "active", PlanCode: "free"}); err != nil {
+		if err := st.CreateTenant(ctx, Tenant{ID: tenantID, Name: "n", Slug: "t-fk", DBName: "yuqing_t_fk", Status: "active", PlanCode: "free"}); err != nil {
 			t.Fatal(err)
 		}
 		err := st.CreateMember(ctx, Member{TenantID: tenantID, UserID: id.New(), Role: "analyst"})
@@ -268,7 +268,7 @@ func TestAuthStore_PG_duplicateSlugOrDBNameIsConflict(t *testing.T) {
 	ctx := context.Background()
 	st := NewPGStore(pool)
 
-	if err := st.CreateTenant(ctx, Tenant{ID: id.New(), Name: "a", Slug: "t-same", DBName: "yuging_t_one", Status: "active", PlanCode: "free"}); err != nil {
+	if err := st.CreateTenant(ctx, Tenant{ID: id.New(), Name: "a", Slug: "t-same", DBName: "yuqing_t_one", Status: "active", PlanCode: "free"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,8 +276,8 @@ func TestAuthStore_PG_duplicateSlugOrDBNameIsConflict(t *testing.T) {
 		name string
 		tn   Tenant
 	}{
-		{"重复 slug", Tenant{ID: id.New(), Name: "b", Slug: "t-same", DBName: "yuging_t_two", Status: "active", PlanCode: "free"}},
-		{"重复 db_name", Tenant{ID: id.New(), Name: "c", Slug: "t-other", DBName: "yuging_t_one", Status: "active", PlanCode: "free"}},
+		{"重复 slug", Tenant{ID: id.New(), Name: "b", Slug: "t-same", DBName: "yuqing_t_two", Status: "active", PlanCode: "free"}},
+		{"重复 db_name", Tenant{ID: id.New(), Name: "c", Slug: "t-other", DBName: "yuqing_t_one", Status: "active", PlanCode: "free"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

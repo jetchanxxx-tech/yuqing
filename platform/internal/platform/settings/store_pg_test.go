@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yuging/platform/internal/pkg/pgtest"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // seedValues 是环境变量种子的替身（生产里由 container.go 传入

@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/yuging/platform/internal/business/analysis"
-	"github.com/yuging/platform/internal/config"
-	"github.com/yuging/platform/internal/engine"
-	"github.com/yuging/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/engine"
+	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 // pipelineBudget 计算整条管线的总预算：采集 + 分析 + 报告各阶段的超时之和。

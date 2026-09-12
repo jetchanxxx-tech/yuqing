@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	pkgerrors "github.com/yuging/platform/internal/pkg/errors"
-	"github.com/yuging/platform/internal/pkg/id"
-	"github.com/yuging/platform/internal/platform/billing"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // statusCompleted is the status reports are born in: generation is treated
