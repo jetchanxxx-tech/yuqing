@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/yuging/platform/internal/config"
+	"github.com/yuging/platform/migrations"
 )
 
 func main() {
@@ -35,9 +42,50 @@ func handleMigrate(args []string) {
 		fmt.Println("usage: yuging-cli migrate <platform|--all-tenants>")
 		os.Exit(1)
 	}
-	fmt.Println("migrate: reading migrations from embedded filesystem...")
-	// TODO: Load config, connect to platform DB, run goose migrations.
-	fmt.Println("migrations applied successfully")
+
+	configPath := os.Getenv("YUGING_CONFIG")
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Printf("migrate: load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DB.Primary)
+	if err != nil {
+		fmt.Printf("migrate: connect platform DB: %v\n", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+
+	goose.SetBaseFS(migrations.FS)
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	if err != nil {
+		fmt.Printf("migrate: create provider: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "platform":
+		res, err := provider.Up(ctx)
+		if err != nil {
+			fmt.Printf("migrate: %v\n", err)
+			os.Exit(1)
+		}
+		for _, r := range res {
+			fmt.Printf("applied: %s\n", r.Source.Path)
+		}
+		fmt.Println("platform migrations applied successfully")
+	default:
+		fmt.Printf("migrate: unsupported target %q (tenant migrations 待 database-per-tenant 接线)\n", args[0])
+		os.Exit(1)
+	}
 }
 
 func handleProvision(args []string) {

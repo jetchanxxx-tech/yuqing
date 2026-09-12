@@ -18,6 +18,11 @@ db:
     maxPools: 50               # LRU-evicted
     idleTimeout: "30m"
 
+store:
+  driver: memory               # memory | postgres
+  # postgres = 账号/任务/文档/报告全部落平台库，重启不丢数据（生产用）。
+  # 切换前先跑：yuging-cli migrate platform
+
 cache:
   addr: "redis://localhost:6379/0"
   ttl: "60s"

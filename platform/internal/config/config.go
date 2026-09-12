@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	DB        DBConfig        `yaml:"db"`
+	Store     StoreConfig     `yaml:"store"`
 	Cache     CacheConfig     `yaml:"cache"`
 	Queue     QueueConfig     `yaml:"queue"`
 	LLM       LLMConfig       `yaml:"llm"`
@@ -22,6 +23,12 @@ type Config struct {
 	Billing   BillingConfig   `yaml:"billing"`
 	Engines   EnginesConfig   `yaml:"engines"`
 	RateLimit RateLimitConfig `yaml:"rateLimit"`
+}
+
+// StoreConfig selects the persistence backend for all services.
+// memory = MVP 内存 store（测试/开发）；postgres = 平台库持久化（生产）。
+type StoreConfig struct {
+	Driver string `yaml:"driver"` // memory | postgres
 }
 
 // RateLimitConfig holds rate limiting settings.
@@ -170,6 +177,7 @@ func (c *Config) Validate() error {
 func defaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{Addr: ":8080", Env: "production"},
+		Store:  StoreConfig{Driver: "memory"},
 		Queue:  QueueConfig{Driver: "memory"},
 		Cache:  CacheConfig{TTL: "60s"},
 		LLM:    LLMConfig{DefaultProvider: "deepseek"},
