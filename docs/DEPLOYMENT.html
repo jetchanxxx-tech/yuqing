@@ -107,7 +107,7 @@ cd /opt/pangu-source</pre>
       <h3 style="margin:0">执行部署（幂等，可重复运行）</h3>
       <pre>sudo YUGING_DOMAIN=your-domain.com \
      YUGING_JWT_SECRET=$(openssl rand -base64 32) \
-     BOCHA_API_KEY=sk-a13c5a6c1cb54869ba0b90ad36c37e1e \
+     BOCHA_API_KEY=sk-YOUR-BOCHA-KEY \
      bash scripts/deploy.sh</pre>
       <p>首次约 3-8 分钟。输出中 <code>[SKIP]</code> 表示已有组件自动跳过。</p>
     </div></div>
@@ -176,12 +176,12 @@ sudo nginx -t && sudo systemctl reload nginx</pre>
   <div class="card">
     <p>两种方式设置 Bocha API key（搜索+采集链路必需）：</p>
     <h3>方式一：部署时环境变量（推荐）</h3>
-    <pre>sudo BOCHA_API_KEY=sk-a13c5a6c1cb54869ba0b90ad36c37e1e bash scripts/deploy.sh</pre>
+    <pre>sudo BOCHA_API_KEY=sk-YOUR-BOCHA-KEY bash scripts/deploy.sh</pre>
     <h3>方式二：Admin 后台在线更新（零重启）</h3>
     <pre>curl -X PUT https://your-domain.com/api/v1/admin/settings \
   -H "Authorization: Bearer &lt;admin_token&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"bocha_api_key":"sk-a13c5a6c1cb54869ba0b90ad36c37e1e"}'</pre>
+  -d '{"bocha_api_key":"sk-YOUR-BOCHA-KEY"}'</pre>
     <p>更新后下一个分析任务立即使用新 key，无需重启任何服务。</p>
   </div>
 
