@@ -98,8 +98,8 @@ func (s *PGStore) Create(ctx context.Context, tenantID string, a Alert) error {
 	if tenantID != s.tenantID {
 		return errForeignTenant()
 	}
-	const q = `INSERT INTO alerts (id, name, rule_json, last_triggered_at, enabled)
-	           VALUES ($1, $2, $3::jsonb, $4, true)`
+	const q = `INSERT INTO alerts (id, tenant_id, name, rule_json, last_triggered_at, enabled, created_at)
+	           VALUES ($1, $2, $3, $4::jsonb, $5, true, now())`
 
 	rule := a.RuleJSON
 	if rule == "" {
@@ -110,7 +110,7 @@ func (s *PGStore) Create(ctx context.Context, tenantID string, a Alert) error {
 		triggered = a.LastTriggeredAt
 	}
 
-	_, err := s.pool.Exec(ctx, q, a.ID, a.Name, rule, triggered)
+	_, err := s.pool.Exec(ctx, q, a.ID, tenantID, a.Name, rule, triggered)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict, "alert already exists")
@@ -126,7 +126,7 @@ func (s *PGStore) Get(ctx context.Context, tenantID, alertID string) (*Alert, er
 		return nil, errForeignTenant()
 	}
 
-	a, err := scanAlert(s.pool.QueryRow(ctx, alertColumns+` WHERE id = $1`, alertID), s.tenantID)
+	a, err := scanAlert(s.pool.QueryRow(ctx, alertColumns+` WHERE id = $1 AND tenant_id = $2`, alertID, tenantID), tenantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "alert not found")
 	}
@@ -136,13 +136,13 @@ func (s *PGStore) Get(ctx context.Context, tenantID, alertID string) (*Alert, er
 	return a, nil
 }
 
-// List 返回本租户的全部告警（按创建顺序：表无 created_at，用 ULID 主键排序）。
+// List 返回本租户的全部告警（按创建顺序）。
 func (s *PGStore) List(ctx context.Context, tenantID string) ([]Alert, error) {
 	if tenantID != s.tenantID {
 		return nil, errForeignTenant()
 	}
 
-	rows, err := s.pool.Query(ctx, alertColumns+` ORDER BY id`)
+	rows, err := s.pool.Query(ctx, alertColumns+` WHERE tenant_id = $1 ORDER BY created_at, id`, tenantID)
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "alert: list: "+err.Error())
 	}
@@ -151,7 +151,7 @@ func (s *PGStore) List(ctx context.Context, tenantID string) ([]Alert, error) {
 	// 永远返回非 nil 切片：JSON 里是 [] 而不是 null。
 	out := make([]Alert, 0)
 	for rows.Next() {
-		a, err := scanAlert(rows, s.tenantID)
+		a, err := scanAlert(rows, tenantID)
 		if err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "alert: list scan: "+err.Error())
 		}
@@ -164,14 +164,14 @@ func (s *PGStore) List(ctx context.Context, tenantID string) ([]Alert, error) {
 }
 
 // UpdateTrigger 记录最近一次触发时间（RowsAffected == 0 即不存在，
-// 不需要先 SELECT：id 是主键，影响的只会是 0 或 1 行）。
+// 不需要先 SELECT：主键 + 租户过滤，影响的只会是 0 或 1 行）。
 func (s *PGStore) UpdateTrigger(ctx context.Context, tenantID, alertID string, at time.Time) error {
 	if tenantID != s.tenantID {
 		return errForeignTenant()
 	}
-	const q = `UPDATE alerts SET last_triggered_at = $2 WHERE id = $1`
+	const q = `UPDATE alerts SET last_triggered_at = $3 WHERE id = $1 AND tenant_id = $2`
 
-	tag, err := s.pool.Exec(ctx, q, alertID, at)
+	tag, err := s.pool.Exec(ctx, q, alertID, tenantID, at)
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.ErrInternal, "alert: update trigger: "+err.Error())
 	}
@@ -181,8 +181,7 @@ func (s *PGStore) UpdateTrigger(ctx context.Context, tenantID, alertID string, a
 	return nil
 }
 
-// alertColumns 是读取路径共用的列清单。tenant_id 不在表里（库即租户边界），
-// 由 PGStore 绑定值回填。
+// alertColumns 是读取路径共用的列清单。tenant_id 由 WHERE 条件过滤。
 const alertColumns = `SELECT id, name, rule_json, last_triggered_at FROM alerts`
 
 type rowScanner interface {

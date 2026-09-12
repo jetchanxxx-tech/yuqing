@@ -8,14 +8,7 @@
 --   2. api_keys 没有存显示前缀的列（APIKey.Prefix 只存在于内存里），
 --      读回来是空串，后台列表就显示不出密钥前缀。
 --
--- 若主线的 0002_tenant_data.sql 已经覆盖其中任一项，删掉本文件或删掉对应
--- 语句即可 —— 两处都是纯增量，不与既有结构冲突。
-
-CREATE TABLE IF NOT EXISTS platform_settings (
-    key        TEXT PRIMARY KEY,
-    value      TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+-- platform_settings 表已由 0002_tenant_data.sql 创建，本文件只补 api_keys.prefix。
 
 -- 显示前缀（pangu_ + 原始 key 的前 6 位），不是秘密，仅用于后台区分不同密钥。
 -- 默认空串：历史行读出来是空前缀而不是 NULL，前端不必处理 null。
@@ -23,4 +16,3 @@ ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS prefix TEXT NOT NULL DEFAULT '';
 
 -- +goose Down
 ALTER TABLE api_keys DROP COLUMN IF EXISTS prefix;
-DROP TABLE IF EXISTS platform_settings;

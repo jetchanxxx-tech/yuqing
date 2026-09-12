@@ -10,9 +10,11 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yuging/platform/internal/api/v1"
 	"github.com/yuging/platform/internal/business/alert"
 	"github.com/yuging/platform/internal/business/analysis"
@@ -20,6 +22,7 @@ import (
 	"github.com/yuging/platform/internal/business/report"
 	"github.com/yuging/platform/internal/config"
 	"github.com/yuging/platform/internal/engine"
+	"github.com/yuging/platform/internal/pkg/db"
 	"github.com/yuging/platform/internal/pkg/queue"
 	"github.com/yuging/platform/internal/platform/apikey"
 	"github.com/yuging/platform/internal/platform/auth"
@@ -29,24 +32,77 @@ import (
 	"github.com/yuging/platform/internal/platform/usage"
 )
 
-// Build wires the full MVP service graph over in-memory stores.
+// Build wires the full MVP service graph. Store 后端由 cfg.Store.Driver
+// 选择：memory（测试/开发）或 postgres（生产持久化，重启不丢数据）。
 // logger 用于管线与适配器的运行日志；nil 时退回 slog.Default。
 func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	q := queue.NewMemory()
 
-	// One shared tenant store: auth.Register provisions tenants into it and
-	// tenant.Service (admin list/suspend/resume) reads from it — mirroring
-	// the single platform tenants table in PostgreSQL mode.
-	tenants := tenant.NewMemoryStore()
-	authStore := auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
+	var (
+		tenantStore      tenant.Store
+		authStore        auth.Store
+		analysisSvc      *analysis.Service
+		reportStore      report.Store
+		alertStore       alert.Store
+		apiKeyStore      apikey.Store
+		platformSettings settings.Store
+		usageMeter       usage.PlatformMeter
+	)
+
+	if cfg.Store.Driver == "postgres" {
+		dbManager := db.MustNewManager(db.ManagerConfig{
+			PlatformDSN: cfg.DB.Primary,
+			MaxConns:    cfg.DB.MaxConns,
+		})
+		pool := dbManager.Platform(context.Background())
+
+		tenantStore = tenant.NewPGStore(pool)
+		authStore = auth.NewPGStore(pool)
+		analysisSvc = analysis.NewPGService(pool, q, 4)
+		reportStore = report.NewPGStore(pool)
+		// 单库模式：告警经 ResolverStore 每次按 tenant_id 绑定（库内过滤）
+		alertStore = alert.NewResolverStore(func(ctx context.Context, tenantID string) (*pgxpool.Pool, error) {
+			return pool, nil
+		})
+		apiKeyStore = apikey.NewPGStore(pool)
+		usageMeter = usage.NewPGMeter(pool)
+
+		var err error
+		platformSettings, err = settings.NewPGStore(pool, map[string]string{
+			"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
+			"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
+		})
+		if err != nil {
+			panic(fmt.Sprintf("app: seed settings: %v", err))
+		}
+	} else {
+		// One shared tenant store: auth.Register provisions tenants into it and
+		// tenant.Service (admin list/suspend/resume) reads from it — mirroring
+		// the single platform tenants table in PostgreSQL mode.
+		tenants := tenant.NewMemoryStore()
+		tenantStore = tenants
+		authStore = auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
+		analysisSvc = analysis.NewService(q, 4)
+		reportStore = report.NewMemoryStore()
+		alertStore = alert.NewMemoryStore()
+		apiKeyStore = apikey.NewMemoryStore()
+		usageMeter = usage.NewMeter()
+
+		// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
+		// Admins can override via PUT /api/v1/admin/settings.
+		platformSettings = settings.NewMemoryStore(map[string]string{
+			"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
+			"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
+		})
+	}
+
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 
 	// 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
 	// 用该邮箱注册的账号即获得平台管理权限（YUGING_BOOTSTRAP_ADMIN_EMAIL）。
 	authSvc.SetBootstrapAdminEmail(os.Getenv("YUGING_BOOTSTRAP_ADMIN_EMAIL"))
 
-	tenantSvc := tenant.NewService(tenants)
-	analysisSvc := analysis.NewService(q, 4)
+	tenantSvc := tenant.NewService(tenantStore)
 
 	// Report plan gating resolves the tenant's current plan from the shared
 	// tenant store; unknown tenants default to the most restrictive plan.
@@ -60,23 +116,15 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	planProvider := func(planCode string) *billing.Plan {
 		return billing.DefaultPlans()[planCode]
 	}
-	reportSvc := report.NewService(report.NewMemoryStore(), planCodeFor, planProvider)
+	reportSvc := report.NewService(reportStore, planCodeFor, planProvider)
 
 	dashboardSvc := dashboard.NewService(analysisSvc, reportSvc)
-	alertSvc := alert.NewService(alert.NewMemoryStore(), nil)
-
-	// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
-	// Admins can override via PUT /api/v1/admin/settings.
-	platformSettings := settings.NewMemoryStore(map[string]string{
-		"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
-		"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
-	})
+	alertSvc := alert.NewService(alertStore, nil)
 
 	// Tenant API keys (pangu_…) + the platform usage meter the admin
 	// rollup reads. The meter is shared with Auth's quota provisioning
 	// target; REVIEW_REPORT §5 tracks unifying auth's private meter.
-	apiKeySvc := apikey.NewService(apikey.NewMemoryStore())
-	usageMeter := usage.NewMeter()
+	apiKeySvc := apikey.NewService(apiKeyStore)
 
 	// ── 分析管线 ────────────────────────────────────────────
 	// 在同一进程内消费 analysis.tasks。内存 store/queue 都是进程私有的，

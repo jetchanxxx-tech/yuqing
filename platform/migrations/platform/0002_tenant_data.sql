@@ -57,12 +57,13 @@ CREATE INDEX idx_reports_analysis ON reports(tenant_id, analysis_id);
 
 -- 告警规则（对齐 alert 内存模型）
 CREATE TABLE alerts (
-    id          TEXT PRIMARY KEY,
-    tenant_id   TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    rule_json   JSONB NOT NULL DEFAULT '{}',
-    enabled     BOOLEAN NOT NULL DEFAULT true,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                TEXT PRIMARY KEY,
+    tenant_id         TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    rule_json         JSONB NOT NULL DEFAULT '{}',
+    last_triggered_at TIMESTAMPTZ,
+    enabled           BOOLEAN NOT NULL DEFAULT true,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 平台设置（admin 在线配置持久化：Bocha/DeepSeek key 重启不丢）

@@ -31,7 +31,7 @@ type Services struct {
 	Alert     *alert.Service
 	Settings  settings.Store
 	APIKey    *apikey.Service
-	Usage     *usage.Meter
+	Usage     usage.PlatformMeter
 
 	// SSEPollInterval is how often /analyses/:id/events re-reads the state
 	// machine while streaming. Zero selects the default (1s); tests shrink it.
