@@ -164,14 +164,28 @@ else
 fi
 
 # ============================================================
-# 5. Python 引擎 venv（可选，MVP 用 Fake 引擎可不部署）
+# 5. Python 引擎 venv + Scrapling（真实数据采集）
 # ============================================================
-if [ -f "$APP_ROOT/engines/venv/bin/python" ]; then
-  log_skip "Python 引擎 venv 已存在，跳过"
+PYTHON_VENV="$APP_ROOT/engines/venv"
+if [ -f "$PYTHON_VENV/bin/python" ]; then
+  log_skip "Python 引擎 venv 已存在"
 else
-  log_warn "Python 引擎当前为骨架（MVP 用 Fake 引擎），跳过 venv 创建"
-  log_warn "  待引擎实现后取消下方注释："
-  log_warn "  python3 -m venv $APP_ROOT/engines/venv && $APP_ROOT/engines/venv/bin/pip install -r $REPO_ROOT/engines/requirements.txt"
+  python3 -m venv "$PYTHON_VENV"
+  log_info "Python venv 已创建"
+fi
+"$PYTHON_VENV/bin/pip" install -q -r "$REPO_ROOT/engines/requirements.txt"
+log_info "Python 依赖已安装"
+
+# Scrapling 浏览器二进制（首次安装 ~150MB，后续跳过）
+if "$PYTHON_VENV/bin/python" -c "from scrapling.fetchers import Fetcher" 2>/dev/null; then
+  if [ -d "$APP_ROOT/engines/chromium" ] || "$PYTHON_VENV/bin/scrapling" check 2>/dev/null; then
+    log_skip "Scrapling 浏览器已安装"
+  else
+    log_info "安装 Scrapling Playwright Chromium（首次 ~150MB）..."
+    "$PYTHON_VENV/bin/scrapling" install --chromium 2>/dev/null || log_warn "Scrapling 浏览器安装失败（非阻塞，可后装）"
+  fi
+else
+  log_warn "Scrapling 未安装，数据采集不可用（检查 requirements.txt）"
 fi
 
 # ============================================================
