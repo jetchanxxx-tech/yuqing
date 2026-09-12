@@ -122,8 +122,11 @@ npm config set registry "${YUGING_NPM_REGISTRY:-https://registry.npmmirror.com}"
 log_info "npm 源已配置: $(npm config get registry 2>/dev/null || echo '(npm 未就绪)')"
 
 # --- Python 3 venv ---
-if python3 -c 'import venv' 2>/dev/null; then
-  log_skip "Python3 已就绪: $(python3 --version)"
+# 检测 ensurepip 而非 venv：基础 python3 自带 venv 模块，但 Ubuntu 把
+# ensurepip 拆到独立的 python3.x-venv 包。只测 `import venv` 会误判通过，
+# 直到真正创建 venv 时才以 "ensurepip is not available" 失败并中断部署。
+if python3 -c 'import ensurepip' 2>/dev/null; then
+  log_skip "Python3 venv 已就绪: $(python3 --version)"
 else
   apt-get install -y python3-venv python3-pip
   log_info "python3-venv 已安装"
