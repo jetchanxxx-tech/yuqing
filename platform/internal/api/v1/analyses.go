@@ -97,16 +97,17 @@ func (s *Services) handleGetAnalysis(c *gin.Context) {
 	c.JSON(http.StatusOK, a)
 }
 
-// handleGetAnalysisResult returns the analysis result envelope. Real
-// documents/sentiments/topics aggregation waits for the documents store
-// (engine pipeline); until then the arrays are empty and truthful.
+// handleGetAnalysisResult 返回分析结果。
+// 文档来自管线的采集结果（内存 store）；情感与话题尚未接入分析引擎，
+// 返回零值而非伪造数据。
 func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 	p := middleware.GetPrincipal(c)
 	if p == nil {
 		unauthorized(c)
 		return
 	}
-	a, err := s.Analysis.Get(c.Request.Context(), p.TenantID, c.Param("id"))
+	ctx := c.Request.Context()
+	a, err := s.Analysis.Get(ctx, p.TenantID, c.Param("id"))
 	if err != nil {
 		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 			notFound(c, "analysis not found")
@@ -115,10 +116,15 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
+
+	// 采集到的原始文档（无结果时为空切片，保证 JSON 是 [] 而非 null）
+	docs := s.Analysis.Documents(ctx, p.TenantID, a.ID)
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":         a.ID,
 		"state":      a.State,
-		"documents":  []gin.H{},
+		"doc_count":  len(docs),
+		"documents":  docs,
 		"sentiments": gin.H{"positive": 0, "negative": 0, "neutral": 0},
 		"topics":     []gin.H{},
 	})

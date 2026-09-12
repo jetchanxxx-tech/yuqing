@@ -1340,8 +1340,9 @@ type contractGap struct {
 var contractGapRegistry = []contractGap{
 	{
 		endpoint: "GET /api/v1/analyses/:id/result",
-		severity: "MAJOR", status: "PENDING",
-		detail: "documents/sentiments/topics return empty arrays — real aggregation waits for the documents store + engine pipeline",
+		severity: "MINOR", status: "PARTIAL",
+		detail: "documents 已接入真实采集结果（管线写入，见 result_test.go）；" +
+			"sentiments/topics 仍返回零值，待分析引擎接入",
 	},
 	{
 		endpoint: "POST /api/v1/admin/plans",
