@@ -293,6 +293,20 @@ else
 fi
 systemctl daemon-reload
 
+# 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
+# 用 YUGING_BOOTSTRAP_ADMIN_EMAIL 指定的邮箱注册即获得平台管理权限。
+# 用 drop-in 而非改 unit 本体，避免后续 unit 更新覆盖。
+BOOTSTRAP_EMAIL="${YUGING_BOOTSTRAP_ADMIN_EMAIL:-}"
+if [ -n "$BOOTSTRAP_EMAIL" ]; then
+  mkdir -p /etc/systemd/system/yuging-server.service.d
+  printf '[Service]\nEnvironment="YUGING_BOOTSTRAP_ADMIN_EMAIL=%s"\n' "$BOOTSTRAP_EMAIL" \
+    > /etc/systemd/system/yuging-server.service.d/bootstrap-admin.conf
+  log_info "引导管理员已配置: $BOOTSTRAP_EMAIL（用该邮箱注册即为平台管理员）"
+  systemctl daemon-reload
+else
+  log_warn "未设置 YUGING_BOOTSTRAP_ADMIN_EMAIL — 将无法获得 platform_admin，/admin/* 会返回 403"
+fi
+
 # Go 平台进程
 systemctl enable --now yuging-server yuging-worker 2>/dev/null || log_warn "服务启动失败，请查看 journalctl -u yuging-server"
 systemctl restart yuging-server yuging-worker 2>/dev/null || true
