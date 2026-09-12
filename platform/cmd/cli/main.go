@@ -43,7 +43,7 @@ func handleMigrate(args []string) {
 		os.Exit(1)
 	}
 
-	configPath := os.Getenv("YUGING_CONFIG")
+	configPath := os.Getenv("YUQING_CONFIG")
 	if configPath == "" {
 		configPath = "config.yaml"
 	}

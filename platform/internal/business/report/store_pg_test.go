@@ -12,7 +12,7 @@ import (
 )
 
 // pgTestEnv 指向已应用 0002 迁移的测试库；未设置时跳过全部 pg 用例。
-const pgTestEnv = "YUGING_TEST_PG_URL"
+const pgTestEnv = "YUQING_TEST_PG_URL"
 
 // pgTestPool 新建测试连接池并在用例结束时关闭；环境变量缺失即跳过当前用例。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
@@ -50,7 +50,7 @@ type reportStoreImpl struct {
 	build func(t *testing.T) (Store, func(tenantID string))
 }
 
-// reportStoreImpls 返回当前环境可测的实现：内存版恒可用，pg 版需 YUGING_TEST_PG_URL。
+// reportStoreImpls 返回当前环境可测的实现：内存版恒可用，pg 版需 YUQING_TEST_PG_URL。
 func reportStoreImpls(t *testing.T) []reportStoreImpl {
 	t.Helper()
 	impls := []reportStoreImpl{{

@@ -162,7 +162,7 @@ func tenantStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 	})
 }
 
-// 本地（无 YUGING_TEST_PG_URL）也有信号：契约本身必须被内存版满足。
+// 本地（无 YUQING_TEST_PG_URL）也有信号：契约本身必须被内存版满足。
 func TestTenantStore_Memory_satisfiesContract(t *testing.T) {
 	tenantStoreContract(t, func(t *testing.T) Store { return NewMemoryStore() })
 }

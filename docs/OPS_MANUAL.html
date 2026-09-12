@@ -216,9 +216,9 @@ sudo systemctl restart yuqing-query</pre>
 cd /opt/pangu-source && git fetch --depth 1 origin main && git reset --hard origin/main
 
 <span class="c"># 2. 重新部署（幂等，已完成的步骤自动跳过）</span>
-export YUGING_DOMAIN=yuqing.pangu-cloud.com
+export YUQING_DOMAIN=yuqing.pangu-cloud.com
 export BOCHA_API_KEY=&lt;key&gt;
-export YUGING_BOOTSTRAP_ADMIN_EMAIL=admin@pangu.com
+export YUQING_BOOTSTRAP_ADMIN_EMAIL=admin@pangu.com
 bash scripts/deploy.sh</pre>
 
     <h3>只更新 Go 二进制</h3>
@@ -363,7 +363,7 @@ npm config set registry https://registry.npmmirror.com</pre>
     <details><summary>管理后台返回 403</summary>
       <pre>systemctl cat yuqing-server | grep BOOTSTRAP
 curl -s https://yuqing.pangu-cloud.com/api/v1/auth/me -H "Authorization: Bearer $TOKEN"</pre>
-      <p><b>原因</b>：当前账号缺少 <code>platform_admin</code> 角色。<code>/admin/*</code> 要求该角色。引导邮箱由 <code>YUGING_BOOTSTRAP_ADMIN_EMAIL</code> 配置，用该邮箱注册的账号即具备权限。</p>
+      <p><b>原因</b>：当前账号缺少 <code>platform_admin</code> 角色。<code>/admin/*</code> 要求该角色。引导邮箱由 <code>YUQING_BOOTSTRAP_ADMIN_EMAIL</code> 配置，用该邮箱注册的账号即具备权限。</p>
     </details>
 
     <details><summary>Windows 客户端 HTTPS 报证书吊销错误</summary>

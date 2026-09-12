@@ -18,7 +18,7 @@ import (
 
 func main() {
 	// Load configuration.
-	configPath := os.Getenv("YUGING_CONFIG")
+	configPath := os.Getenv("YUQING_CONFIG")
 	if configPath == "" {
 		configPath = "config.yaml"
 	}

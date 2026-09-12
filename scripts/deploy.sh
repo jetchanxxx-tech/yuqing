@@ -3,11 +3,11 @@
 # 微舆舆情 — Ubuntu 24.04 幂等部署脚本（无 Docker，已有 Nginx）
 #
 # 用法:
-#   sudo YUGING_DOMAIN=yuqing.example.com bash scripts/deploy.sh
+#   sudo YUQING_DOMAIN=yuqing.example.com bash scripts/deploy.sh
 #
 # 环境变量:
-#   YUGING_DOMAIN   站点域名（用于 nginx server_name 与 SSL）
-#   YUGING_ROOT     安装根目录（默认 /opt/yuqing）
+#   YUQING_DOMAIN   站点域名（用于 nginx server_name 与 SSL）
+#   YUQING_ROOT     安装根目录（默认 /opt/yuqing）
 #   SKIP_SSL        任意值 = 跳过 certbot SSL 配置
 #
 # 幂等性承诺:
@@ -17,12 +17,12 @@
 # ============================================================
 set -euo pipefail
 
-APP_ROOT="${YUGING_ROOT:-/opt/yuqing}"
-DOMAIN="${YUGING_DOMAIN:-}"
+APP_ROOT="${YUQING_ROOT:-/opt/yuqing}"
+DOMAIN="${YUQING_DOMAIN:-}"
 LOG_FILE="$APP_ROOT/data/logs/deploy.log"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB_PASSWORD="${YUGING_DB_PASSWORD:-yuqing}"
-JWT_SECRET="${YUGING_JWT_SECRET:-}"
+DB_PASSWORD="${YUQING_DB_PASSWORD:-yuqing}"
+JWT_SECRET="${YUQING_JWT_SECRET:-}"
 
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; NC='\033[0m'
 
@@ -43,7 +43,7 @@ case "${VERSION_ID:-}" in
   24.04) log_info "Ubuntu ${VERSION_ID} 已确认" ;;
   *) log_warn "非 Ubuntu 24.04（检测到 ${VERSION_ID:-未知}），继续但组件版本可能不匹配" ;;
 esac
-[ -n "$DOMAIN" ] || log_warn "未设置 YUGING_DOMAIN，nginx 将使用默认 server_name _，SSL 将跳过"
+[ -n "$DOMAIN" ] || log_warn "未设置 YUQING_DOMAIN，nginx 将使用默认 server_name _，SSL 将跳过"
 
 # ============================================================
 # 1. 系统依赖（每个组件独立检测，已满足则跳过）
@@ -96,8 +96,8 @@ fi
 export PATH="/usr/local/go/bin:$PATH"
 
 # 国内网络加速：proxy.golang.org 在境内不可达（实测 dial tcp i/o timeout）。
-# 用 YUGING_GOPROXY 覆盖，设为 "direct" 即关闭镜像。
-go env -w GOPROXY="${YUGING_GOPROXY:-https://goproxy.cn,direct}" \
+# 用 YUQING_GOPROXY 覆盖，设为 "direct" 即关闭镜像。
+go env -w GOPROXY="${YUQING_GOPROXY:-https://goproxy.cn,direct}" \
           GOSUMDB=sum.golang.google.cn \
           GOTOOLCHAIN=local
 log_info "Go 代理已配置: $(go env GOPROXY)"
@@ -117,8 +117,8 @@ else
   log_skip "Node.js 已满足要求: $(node -v)（npm $(npm -v 2>/dev/null || echo ?)）"
 fi
 
-# 国内网络加速：registry.npmjs.org 在境内常超时。用 YUGING_NPM_REGISTRY 覆盖。
-npm config set registry "${YUGING_NPM_REGISTRY:-https://registry.npmmirror.com}" 2>/dev/null || true
+# 国内网络加速：registry.npmjs.org 在境内常超时。用 YUQING_NPM_REGISTRY 覆盖。
+npm config set registry "${YUQING_NPM_REGISTRY:-https://registry.npmmirror.com}" 2>/dev/null || true
 log_info "npm 源已配置: $(npm config get registry 2>/dev/null || echo '(npm 未就绪)')"
 
 # --- Python 3 venv ---
@@ -198,9 +198,9 @@ else
   python3 -m venv "$PYTHON_VENV"
   log_info "Python venv 已创建"
 fi
-# PyPI 官方源境内同样慢：默认走清华镜像，用 YUGING_PIP_INDEX 覆盖。
+# PyPI 官方源境内同样慢：默认走清华镜像，用 YUQING_PIP_INDEX 覆盖。
 "$PYTHON_VENV/bin/pip" install -q \
-  -i "${YUGING_PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" \
+  -i "${YUQING_PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" \
   -r "$REPO_ROOT/engines/requirements.txt"
 log_info "Python 依赖已安装"
 
@@ -308,17 +308,17 @@ fi
 systemctl daemon-reload
 
 # 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
-# 用 YUGING_BOOTSTRAP_ADMIN_EMAIL 指定的邮箱注册即获得平台管理权限。
+# 用 YUQING_BOOTSTRAP_ADMIN_EMAIL 指定的邮箱注册即获得平台管理权限。
 # 用 drop-in 而非改 unit 本体，避免后续 unit 更新覆盖。
-BOOTSTRAP_EMAIL="${YUGING_BOOTSTRAP_ADMIN_EMAIL:-}"
+BOOTSTRAP_EMAIL="${YUQING_BOOTSTRAP_ADMIN_EMAIL:-}"
 if [ -n "$BOOTSTRAP_EMAIL" ]; then
   mkdir -p /etc/systemd/system/yuqing-server.service.d
-  printf '[Service]\nEnvironment="YUGING_BOOTSTRAP_ADMIN_EMAIL=%s"\n' "$BOOTSTRAP_EMAIL" \
+  printf '[Service]\nEnvironment="YUQING_BOOTSTRAP_ADMIN_EMAIL=%s"\n' "$BOOTSTRAP_EMAIL" \
     > /etc/systemd/system/yuqing-server.service.d/bootstrap-admin.conf
   log_info "引导管理员已配置: $BOOTSTRAP_EMAIL（用该邮箱注册即为平台管理员）"
   systemctl daemon-reload
 else
-  log_warn "未设置 YUGING_BOOTSTRAP_ADMIN_EMAIL — 将无法获得 platform_admin，/admin/* 会返回 403"
+  log_warn "未设置 YUQING_BOOTSTRAP_ADMIN_EMAIL — 将无法获得 platform_admin，/admin/* 会返回 403"
 fi
 
 # Go 平台进程
@@ -365,9 +365,9 @@ ACMES=0
 if [ "${SKIP_SSL:-}" != "" ]; then
   log_skip "SSL 跳过（SKIP_SSL 已设置）"
 elif [ -z "$DOMAIN" ]; then
-  log_skip "SSL 跳过（未设置 YUGING_DOMAIN）"
+  log_skip "SSL 跳过（未设置 YUQING_DOMAIN）"
 elif ! echo "$DOMAIN" | grep -q '[a-zA-Z]'; then
-  log_warn "YUGING_DOMAIN=$DOMAIN 是 IP 地址，Let's Encrypt 不签发 IP 证书，使用 HTTP-only"
+  log_warn "YUQING_DOMAIN=$DOMAIN 是 IP 地址，Let's Encrypt 不签发 IP 证书，使用 HTTP-only"
 else
   # acme.sh 安装（get.acme.sh 走 GitHub，境内不通，改用 Gitee 镜像）
   if [ ! -f "$ACME" ]; then

@@ -18,10 +18,10 @@ import (
 // pgTestEnv 指向已应用 0002 迁移的测试库。未设置时全部 pg 用例跳过 ——
 // 本地开发无 PG，真实 GREEN 在服务器上跑：
 //
-//	YUGING_TEST_PG_URL='postgres://<用户>:<口令>@localhost:5432/yuqing_test?sslmode=disable' go test ./...
+//	YUQING_TEST_PG_URL='postgres://<用户>:<口令>@localhost:5432/yuqing_test?sslmode=disable' go test ./...
 //
 // 凭据只从环境变量读，勿写进代码或 CI 配置。
-const pgTestEnv = "YUGING_TEST_PG_URL"
+const pgTestEnv = "YUQING_TEST_PG_URL"
 
 // pgTestPool 新建测试连接池并在用例结束时关闭；环境变量缺失即跳过当前用例。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
@@ -62,7 +62,7 @@ type analysisStoreImpl struct {
 	build func(t *testing.T) (analysisStore, func(tenantID string))
 }
 
-// analysisStoreImpls 返回当前环境可测的实现：内存版恒可用，pg 版需 YUGING_TEST_PG_URL。
+// analysisStoreImpls 返回当前环境可测的实现：内存版恒可用，pg 版需 YUQING_TEST_PG_URL。
 func analysisStoreImpls(t *testing.T) []analysisStoreImpl {
 	t.Helper()
 	impls := []analysisStoreImpl{{

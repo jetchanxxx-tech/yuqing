@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 未设置 YUGING_TEST_PG_URL 时（本地开发机、CI 无 PG）Pool 必须 t.Skip，
+// 未设置 YUQING_TEST_PG_URL 时（本地开发机、CI 无 PG）Pool 必须 t.Skip，
 // 而不是连接失败 —— 默认 `go test ./...` 必须保持绿色。
 func TestPool_skipsWithoutEnvVar(t *testing.T) {
 	orig, had := os.LookupEnv(EnvURL)
@@ -22,7 +22,7 @@ func TestPool_skipsWithoutEnvVar(t *testing.T) {
 	rec := &recordingT{}
 	Pool(rec, "pgtest")
 	if !rec.skipped {
-		t.Error("Pool() without YUGING_TEST_PG_URL did not skip")
+		t.Error("Pool() without YUQING_TEST_PG_URL did not skip")
 	}
 }
 

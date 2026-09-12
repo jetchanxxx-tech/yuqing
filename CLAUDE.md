@@ -61,7 +61,7 @@ BOCHA_API_KEY=sk-xxx uvicorn main:app --port 8000
 
 # ── 演示与部署 ────────────────────────────────────────────
 双击 demo/index.html                  # "雅阁后排" 7 步产品演示（零依赖，离线可用）
-sudo YUGING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部署
+sudo YUQING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部署
 ```
 
 ## Architecture: Modular Monolith
@@ -82,7 +82,7 @@ sudo YUGING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部�
 - Report 套餐 gating 双闭包注入：`planCodeFor` + `planProvider`，未知租户 fail-closed
 - Alert EmailSender 为 nil → 静默丢弃（SMTP 未接）
 - Platform Settings：`settings.MemoryStore` 从环境变量种子（`BOCHA_API_KEY`），admin 可在线覆盖
-- 引导管理员：`YUGING_BOOTSTRAP_ADMIN_EMAIL` 指定的邮箱注册即得 `platform_admin`
+- 引导管理员：`YUQING_BOOTSTRAP_ADMIN_EMAIL` 指定的邮箱注册即得 `platform_admin`
 - **管线仅当 `cfg.Engines.Query.URL != ""` 时启动** —— 测试用的精简配置不含该地址，强行启动会让管线发真实 HTTP 并快速失败，破坏断言 `queued` 的用例
 
 ### 分析管线（关键）
@@ -219,7 +219,7 @@ any active state → failed | canceled
 ## 部署与运维
 
 ```bash
-sudo YUGING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [SKIP]，已有配置不覆盖
+sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [SKIP]，已有配置不覆盖
 ```
 
 - `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。检测并跳过已装的 nginx/postgresql/redis/go/node；显式 `-o bin/yuqing-*` 生成二进制（`go build -o dir/ ./cmd/...` 会产出 `server`/`worker`/`cli`，与 unit 名不匹配导致服务静默启动失败）

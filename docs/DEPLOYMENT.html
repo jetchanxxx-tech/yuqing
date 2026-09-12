@@ -105,8 +105,8 @@ cd /opt/pangu-source</pre>
     </div></div>
     <div style="display:flex;align-items:flex-start;margin-bottom:16px"><span class="step-num">2</span><div>
       <h3 style="margin:0">执行部署（幂等，可重复运行）</h3>
-      <pre>sudo YUGING_DOMAIN=your-domain.com \
-     YUGING_JWT_SECRET=$(openssl rand -base64 32) \
+      <pre>sudo YUQING_DOMAIN=your-domain.com \
+     YUQING_JWT_SECRET=$(openssl rand -base64 32) \
      BOCHA_API_KEY=sk-YOUR-BOCHA-KEY \
      bash scripts/deploy.sh</pre>
       <p>首次约 3-8 分钟。输出中 <code>[SKIP]</code> 表示已有组件自动跳过。</p>

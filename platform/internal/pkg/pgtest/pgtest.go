@@ -1,6 +1,6 @@
 // Package pgtest 是 pgx store 的 PostgreSQL 测试夹具。
 //
-// 全部 helper 以环境变量 YUGING_TEST_PG_URL 为闸门：未设置时 t.Skip，
+// 全部 helper 以环境变量 YUQING_TEST_PG_URL 为闸门：未设置时 t.Skip，
 // 因此本地开发机（无 PostgreSQL）与未配置数据库的 CI 上 `go test ./...`
 // 依然全绿，真实行为验证在装了 PG 的服务器上跑。
 //
@@ -33,7 +33,7 @@ import (
 
 // EnvURL 指向一个**已存在**的 PostgreSQL 数据库（测试自建 schema，不建库）。
 // 例：postgres://yuqing:secret@127.0.0.1:5432/yuqing_test?sslmode=disable
-const EnvURL = "YUGING_TEST_PG_URL"
+const EnvURL = "YUQING_TEST_PG_URL"
 
 // 迁移目录名（platform/migrations 下的子目录）。
 const (
@@ -44,12 +44,12 @@ const (
 // maxIdentifierLen 是 PostgreSQL 标识符上限（字节）。
 const maxIdentifierLen = 63
 
-// Pool 返回一个已连上 YUGING_TEST_PG_URL、且已跑完 migrations 的池。
+// Pool 返回一个已连上 YUQING_TEST_PG_URL、且已跑完 migrations 的池。
 //
 // migrations 省略时只跑平台库迁移（PlatformMigrations）；
 // 租户库表（alerts 等）传 TenantMigrations。
 //
-// 未设置 YUGING_TEST_PG_URL 时 t.Skip —— 调用方无需自己判断。
+// 未设置 YUQING_TEST_PG_URL 时 t.Skip —— 调用方无需自己判断。
 func Pool(t testing.TB, name string, migrations ...string) *pgxpool.Pool {
 	t.Helper()
 
