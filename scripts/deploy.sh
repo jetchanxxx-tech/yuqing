@@ -409,6 +409,13 @@ else
         --reloadcmd      "systemctl reload nginx" >/dev/null 2>&1 \
         && log_info "证书已安装 + 自动续期已配置（每 30 天，续期后自动 reload nginx）" \
         || log_warn "证书安装失败"
+    # 季度续期 cron（幂等）：acme.sh 内置每日 cron 之外的双保险
+    if ! crontab -l 2>/dev/null | grep -q 'acme.sh --cron'; then
+      ( crontab -l 2>/dev/null | grep -v 'acme.sh --cron' ;
+        echo '0 4 1 */3 * "$HOME/.acme.sh/acme.sh" --cron --home "$HOME/.acme.sh" > /dev/null 2>&1' ) | crontab -         && log_info "季度续期 cron 已配置（每季度首日 04:00）"         || log_warn "季度 cron 配置失败（acme.sh 内置每日 cron 仍在工作）"
+    else
+      log_skip "季度续期 cron 已存在"
+    fi
     fi
   fi
 fi
@@ -425,8 +432,16 @@ else
 fi
 
 if [ -f "$NGINX_CONF" ]; then
-  log_warn "nginx 站点配置已存在: $NGINX_CONF — 不覆盖"
-  log_warn "  变更请手工对比: diff $NGINX_TEMPLATE $NGINX_CONF"
+  # 已存在时只处理一种情况：证书已就绪但配置仍是 HTTP-only ——
+  # 「签发成功却没切 HTTPS」的已知坑（443 从未监听），自动切换。
+  if [ -f "$CERT_DIR/fullchain.pem" ] && ! grep -q 'ssl_certificate' "$NGINX_CONF"; then
+    log_warn "证书就绪但站点配置仍是 HTTP-only，自动切换 HTTPS 模板"
+    sed -e "s|__DOMAIN__|$DOMAIN|g" -e "s|__CERT_DIR__|$CERT_DIR|g"       "$NGINX_TEMPLATE" > "$NGINX_CONF"
+    systemctl reload nginx 2>/dev/null || log_warn "nginx reload 失败，请检查 nginx -t"
+  else
+    log_warn "nginx 站点配置已存在: $NGINX_CONF — 不覆盖"
+    log_warn "  变更请手工对比: diff $NGINX_TEMPLATE $NGINX_CONF"
+  fi
 else
   sed -e "s|__DOMAIN__|${DOMAIN:-_}|g" \
       -e "s|__CERT_DIR__|${CERT_DIR}|g" \

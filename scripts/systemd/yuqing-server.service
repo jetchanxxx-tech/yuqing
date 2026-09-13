@@ -11,6 +11,7 @@ ExecStart=/opt/yuqing/bin/yuqing-server
 Restart=always
 RestartSec=5
 Environment=YUQING_CONFIG=/opt/yuqing/config/config.yaml
+EnvironmentFile=-/opt/yuqing/config/engines.env
 
 [Install]
 WantedBy=multi-user.target
