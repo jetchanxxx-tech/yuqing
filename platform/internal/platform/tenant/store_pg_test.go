@@ -169,7 +169,13 @@ func TestTenantStore_Memory_satisfiesContract(t *testing.T) {
 
 func TestTenantStore_PG_satisfiesContract(t *testing.T) {
 	pool := pgtest.Pool(t, "tenant")
-	tenantStoreContract(t, func(t *testing.T) Store { return NewPGStore(pool) })
+	tenantStoreContract(t, func(t *testing.T) Store {
+		// 子测试共享同一 schema：构造前清掉上一子测试的残留（内存版天然隔离）
+		if _, err := pool.Exec(context.Background(), `DELETE FROM tenants`); err != nil {
+			t.Fatalf("pre-clean tenants: %v", err)
+		}
+		return NewPGStore(pool)
+	})
 }
 
 // ── PG 专有 ────────────────────────────────────────────────────
