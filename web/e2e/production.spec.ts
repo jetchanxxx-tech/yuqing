@@ -274,7 +274,7 @@ test.describe('五、管理后台', () => {
 
     // 应有 Key 输入框与保存按钮
     await expect(page.locator('input[type="password"]').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /保存配置/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /保存配置/ }).first()).toBeVisible();
 
     await page.screenshot({ path: 'e2e/shots/admin-datasource.png', fullPage: true });
   });
