@@ -167,7 +167,7 @@ func TestAlertStore_Memory_satisfiesContract(t *testing.T) {
 }
 
 func TestAlertStore_PG_satisfiesContract(t *testing.T) {
-	pool := pgtest.Pool(t, "alert", pgtest.TenantMigrations)
+	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
 	alertStoreContract(t, func(t *testing.T, tenantID string) Store { return NewPGStore(pool, tenantID) })
 }
 
@@ -176,7 +176,7 @@ func TestAlertStore_PG_satisfiesContract(t *testing.T) {
 // List 也受租户绑定约束：拿别家的 tenantID 列不出数据，
 // 而不是静默返回本库的行（否则一次租户 ID 传错就变成跨租户泄漏）。
 func TestAlertStore_PG_listRejectsForeignTenant(t *testing.T) {
-	pool := pgtest.Pool(t, "alert", pgtest.TenantMigrations)
+	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
 	ctx := context.Background()
 
 	st := NewPGStore(pool, "tenant-1")
@@ -193,7 +193,7 @@ func TestAlertStore_PG_listRejectsForeignTenant(t *testing.T) {
 // 因此 PG 版读回的 CreatedAt 是零值 —— 内存版保留 Service 传入的真实时间。
 // 显式固定这个降级行为，它需要一条 ALTER TABLE（见交付说明）才能消除。
 func TestAlertStore_PG_createdAtIsNotPersisted(t *testing.T) {
-	pool := pgtest.Pool(t, "alert", pgtest.TenantMigrations)
+	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
 	ctx := context.Background()
 	st := NewPGStore(pool, "tenant-1")
 
@@ -219,7 +219,7 @@ func TestAlertStore_PG_createdAtIsNotPersisted(t *testing.T) {
 
 // 持久化：换实例（模拟重启）后告警规则与触发时间仍在。
 func TestAlertStore_PG_survivesNewInstance(t *testing.T) {
-	pool := pgtest.Pool(t, "alert", pgtest.TenantMigrations)
+	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
 	ctx := context.Background()
 
 	a := Alert{
@@ -255,7 +255,7 @@ func TestAlertStore_PG_survivesNewInstance(t *testing.T) {
 // （超阈值触发 + 写回 last_triggered_at）。证明 store 满足 Service 的真实用法，
 // 而不只是满足契约测试里手写的调用序列。
 func TestServiceOverPGStore_checkFiresAndPersistsTrigger(t *testing.T) {
-	pool := pgtest.Pool(t, "alert", pgtest.TenantMigrations)
+	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
 	ctx := context.Background()
 
 	store := NewPGStore(pool, contractTenant)

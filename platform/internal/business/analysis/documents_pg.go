@@ -35,14 +35,13 @@ const (
 	// ON CONFLICT DO NOTHING 让重复投递幂等：管线重跑（Rerun）会重新写入
 	// 同一批采集结果，不该把文档数翻倍、也不该让整批写入失败。
 	//
-	// 注意：raw_documents.id 是**全局**主键（不含 tenant_id），因此两个租户
-	// 抓到同一篇内容（ID = content_hash）时，后写入的一行会被跳过。这是
-	// 0002 迁移的表结构约束，需改主键为 (tenant_id, analysis_id, id) 才能根治。
+	// 主键是 (tenant_id, analysis_id, id)（0004 迁移）：同租户同分析内去重
+	// 幂等，跨租户/跨分析互不冲突 —— 两个租户抓到同一篇内容都能入库。
 	insertDocumentSQL = `INSERT INTO raw_documents (
 	id, tenant_id, analysis_id, title, url, content, author,
 	source_type, source_name, published_at, content_hash
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (id) DO NOTHING`
+ON CONFLICT (tenant_id, analysis_id, id) DO NOTHING`
 
 	selectDocumentsSQL = `SELECT id, title, url, content, author, source_type, source_name,
 	published_at, content_hash
