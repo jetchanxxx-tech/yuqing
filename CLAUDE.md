@@ -81,7 +81,7 @@ sudo YUQING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部�
 - 共享 tenant store：`auth.NewSharedTenantStore` 让注册与 admin 读同一份数据
 - Report 套餐 gating 双闭包注入：`planCodeFor` + `planProvider`，未知租户 fail-closed
 - Alert EmailSender 为 nil → 静默丢弃（SMTP 未接）
-- Platform Settings：`settings.MemoryStore` 从环境变量种子（`BOCHA_API_KEY`），admin 可在线覆盖
+- Platform Settings：从环境变量种子（`BOCHA_API_KEY`/`DEEPSEEK_API_KEY`），admin 可在线覆盖（存 PG 的 `platform_settings` 表，重启不丢）。**server unit 必须带 `EnvironmentFile=engines.env`** —— 缺它时种子为空，后台「数据源配置」永远显示未配置（实测踩坑）
 - 引导管理员：`YUQING_BOOTSTRAP_ADMIN_EMAIL` 指定的邮箱注册即得 `platform_admin`
 - **管线仅当 `cfg.Engines.Query.URL != ""` 时启动** —— 测试用的精简配置不含该地址，强行启动会让管线发真实 HTTP 并快速失败，破坏断言 `queued` 的用例
 
