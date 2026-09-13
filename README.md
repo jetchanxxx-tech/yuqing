@@ -103,7 +103,7 @@ yuqing-platform/
 │   └── forum_engine/       多 Agent 辩论协调
 ├── design/                 UI 设计稿 (12 HTML pages)
 ├── scripts/                deploy.sh + nginx + systemd
-└── docs/                   architecture-plan, PRD
+└── docs/                   按用途归档：planning/（规划）user/（用户）ops/（运维）dev/（开发）
 ```
 
 ## 订阅套餐

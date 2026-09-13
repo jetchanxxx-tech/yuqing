@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>盘古舆情 · CI/CD 体系规划</title>
+<style>
+  :root { --fg: #1f2937; --fg-2: #4b5563; --accent: #1677ff; --bg: #f5f6fa; --card: #fff; }
+  * { box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: var(--fg); background: var(--bg); line-height: 1.8; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 20px; margin-top: 40px; color: var(--accent); border-left: 4px solid var(--accent); padding-left: 10px; }
+  h3 { font-size: 16px; margin-top: 24px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 14px 0; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  code { background: #eef2ff; color: #3730a3; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0; background: var(--card); }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; }
+  .note { border-left: 4px solid var(--accent); background: #eff6ff; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin: 12px 0; }
+  .note.warn { border-color: #f59e0b; background: #fffbeb; }
+  .note.danger { border-color: #ef4444; background: #fef2f2; }
+  .phase { display: inline-block; border-radius: 999px; padding: 3px 12px; font-size: 12px; margin-right: 8px; }
+  .p1 { background: #e8f9ee; color: #02b940; }
+  .p2 { background: #fff7e6; color: #ad6800; }
+  .p3 { background: #ffe9ec; color: #FF2442; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>盘古舆情 · CI/CD 体系规划</h1>
+<p style="color:var(--fg-2)">状态：<b>规划文档</b>（尚未实施）· 2026-09-13 · 本文档只做体系设计，不包含任何已执行的自动化</p>
+
+<h2>一、现状与约束（规划依据）</h2>
+<div class="card">
+<table>
+  <tr><th>约束</th><th>对 CI/CD 的影响</th></tr>
+  <tr><td>仓库公开（github.com/jetchanxxx-tech/yuqing）</td><td>CI 配置中禁止任何明文密钥；历史上发生过 Bocha key 泄露，密钥扫描必须是硬门禁</td></tr>
+  <tr><td>生产在国内（阿里云 47.120.20.10）</td><td>GitHub 托管 runner 到国内服务器连通性不稳定 —— CD 不能依赖外网直达部署</td></tr>
+  <tr><td>生产服务器低配</td><td><b>禁止在服务器上编译</b>；测试二进制本地/CI 交叉编译后上传执行（已实测教训）</td></tr>
+  <tr><td>无 Docker（用户明确要求）</td><td>CI 用 GitHub 托管 runner（runner 内部用 Docker 镜像做 PG 服务不违反部署约束）</td></tr>
+  <tr><td>部署脚本已幂等</td><td>deploy.sh 可安全重跑 —— CD 可直接复用它，无需重写部署逻辑</td></tr>
+  <tr><td>测试体系已完备</td><td>Go 单测/契约（内存版）+ PG 契约（YUQING_TEST_PG_URL gate）+ Python pytest + 生产 E2E 26 用例</td></tr>
+</table>
+</div>
+
+<h2>二、总体流水线设计</h2>
+<div class="card">
+<p>一条主干流水线（push/PR 触发），分四个门禁 + 一条发布线：</p>
+<pre>代码提交（push / PR）
+  │
+  ├─ 门禁 1【CI 基础】Go test(内存版) + vet + 前端 build + oxlint + pytest + 密钥扫描
+  ├─ 门禁 2【PG 集成】PostgreSQL service 容器 + YUQING_TEST_PG_URL → 全量契约测试
+  ├─ 门禁 3【生产 E2E】secrets 凭据 → 打生产站点 26 用例（PR 不跑，仅 main/nightly）
+  │
+  └─ 发布线【CD】tag 触发 → 交叉编译产物 → 经跳板/自托管 runner → deploy.sh 幂等部署
+        （含迁移 yuqing-cli migrate platform + healthcheck 自检回滚门禁）</pre>
+<div class="note">门禁 3 与发布线不阻塞开发：门禁 1/2 是 PR 合并条件；3 与 CD 只在 main 分支或 tag 上执行。</div>
+</div>
+
+<h2>三、分阶段实施计划</h2>
+<div class="card">
+
+<h3><span class="phase p1">阶段 1</span>CI 基础门禁（预计 0.5 天，风险低）</h3>
+<p>文件：<code>.github/workflows/ci.yml</code>，触发：push + PR。</p>
+<table>
+  <tr><th>Job</th><th>步骤</th><th>说明</th></tr>
+  <tr><td>go-test</td><td>checkout → setup-go 1.25 → <code>go test ./... -count=1</code> → <code>go vet ./...</code></td><td>内存版测试本地等价（无需 PG）</td></tr>
+  <tr><td>frontend</td><td>setup-node 22 → <code>npm ci</code> → <code>npm run build</code> → <code>npm run lint</code></td><td>tsc + vite + oxlint</td></tr>
+  <tr><td>python</td><td>setup-python 3.11 → pip install -r engines/requirements.txt → <code>python -m pytest engines/tests/</code></td><td>34 用例（无需 scrapling 二进制）</td></tr>
+  <tr><td>secret-scan</td><td>gitleaks/github-action（或 secretlint）</td><td><b>公开仓库硬门禁</b>：任何 <code>sk-</code>/密码命中即红</td></tr>
+</table>
+
+<h3><span class="phase p2">阶段 2</span>PG 集成测试（预计 0.5 天）</h3>
+<p>在 <code>ci.yml</code> 增加 job，用 GitHub 的 <code>services: postgres:15</code> 起库：</p>
+<pre>pg-contract:
+  services:
+    postgres:
+      image: postgres:15
+      env: { POSTGRES_USER: yuqing, POSTGRES_PASSWORD: test, POSTGRES_DB: yuqing_test }
+  env:
+    YUQING_TEST_PG_URL: postgres://yuqing:test@localhost:5432/yuqing_test?sslmode=disable
+  steps:
+    - run: |
+        sudo apt-get install -y postgresql-contrib   # 提供 citext 扩展
+        psql ... -c 'CREATE EXTENSION IF NOT EXISTS citext'
+    - run: go test ./... -count=1</pre>
+<div class="note">这正是服务器上人工跑过的同一套真实 PG 契约测试（8 包 PASS），搬进 CI 即可让「真实数据库回归」每次 PR 自动执行。</div>
+
+<h3><span class="phase p3">阶段 3</span>生产 E2E 门禁（预计 0.5 天）</h3>
+<ul>
+  <li>文件 <code>.github/workflows/e2e.yml</code>，触发：push 到 main + 每日 cron（建议 02:17 避开整点）+ 手动 workflow_dispatch。</li>
+  <li>Secrets：<code>E2E_EMAIL</code> / <code>E2E_PASSWORD</code>（生产测试账号）→ 以环境变量注入，沿用现有 spec 的「无凭据即抛错」设计。</li>
+  <li>步骤：checkout → setup-node → <code>npx playwright install --with-deps chromium</code> → <code>E2E_EMAIL=... E2E_PASSWORD=... npx playwright test --config e2e/production.config.ts</code>。</li>
+  <li>失败策略：邮件/issue 告警；不自动回滚（E2E 失败先人工判断是功能回归还是数据/凭据问题）。</li>
+</ul>
+
+<h3><span class="phase p3">阶段 4</span>CD 发布线（预计 1 天，需一次协作配置）</h3>
+<p><b>核心决策：不在 GitHub 托管 runner 上做部署</b>（到阿里云连通性差）。两条备选路径，推荐 A：</p>
+<table>
+  <tr><th>方案</th><th>机制</th><th>优劣</th></tr>
+  <tr><td><b>A（推荐）</b><br>自托管 runner</td><td>在阿里云同机房一台 2C2G 小机上装 actions-runner（或直接在生产机的低峰期跑），注册到仓库；tag <code>v*</code> 触发</td><td>内网直连生产，deploy.sh 直接可用；需要一台跳板资源 + runner 维护</td></tr>
+  <tr><td>B<br>Webhook 触发</td><td>tag 事件 → GitHub 调服务器上一个小服务（如 <code>yuqing-deployd</code>：校验签名 → git pull → deploy.sh）</td><td>无 runner 维护；但要在服务器上写并暴露一个带验签的触发端点（攻击面 +1）</td></tr>
+</table>
+<pre># 方案 A 的 CD 流程（release.yml，self-hosted runner）
+push tag v1.2.3
+  → 门禁 1+2 全绿（release 前强制重跑）
+  → self-hosted runner：
+       git pull origin main
+       YUQING_DOMAIN=... bash scripts/deploy.sh          # 幂等
+       YUQING_CONFIG=... bin/yuqing-cli migrate platform # 迁移
+       bash scripts/healthcheck.sh --json                # 自检门禁：非 ok 则标记失败
+  → 部署成功 → 创建 GitHub Release（changelog 自动生成）
+  → 部署失败 → 保留旧二进制自动回滚：cp bin/yuqing-server bin/yuqing-server.bak 后部署，
+     失败时 systemctl 指回 .bak（deploy.sh 增加 --backup 段，列入阶段 4 实施项）</pre>
+<div class="note">生产服务器的「禁止编译」约束同时写入 runner 配置：CD 里的交叉编译在 GitHub 托管 runner 上产出 tar 包，self-hosted runner 只做「解包 + deploy.sh」，全程不在生产机器上执行任何编译器。</div>
+</div>
+
+<h2>四、密钥与安全管理</h2>
+<div class="card">
+<table>
+  <tr><th>Secret 名</th><th>用途</th><th>位置</th></tr>
+  <tr><td>E2E_EMAIL / E2E_PASSWORD</td><td>阶段 3 生产 E2E</td><td>GitHub repo secrets</td></tr>
+  <tr><td>E2E_BOCHA_KEY</td><td>E2E 5.3 数据源写入验证（可选）</td><td>GitHub repo secrets</td></tr>
+  <tr><td>DEPLOY_SSH_KEY</td><td>阶段 4 自托管 runner 登录生产机（密钥登录，禁密码）</td><td>runner 本地 / repo secrets</td></tr>
+  <tr><td>BOCHA/DEEPSEEK key</td><td>仅存在于生产 engines.env，<b>不进任何 CI</b></td><td>服务器（chmod 600）</td></tr>
+</table>
+<div class="note danger">仓库公开：CI 配置文件本身也要过密钥扫描门禁；secrets 只能以 <code>${{ secrets.X }}</code> 引用，禁止 echo/printenv 输出。</div>
+</div>
+
+<h2>五、回滚与可观测</h2>
+<div class="card">
+<ul>
+  <li><b>回滚</b>：deploy.sh 增加备份段（旧二进制 .bak + 旧 dist 快照），CD 失败自动回退；手工回滚：<code>git checkout &lt;last-good-tag&gt; &amp;&amp; bash deploy.sh</code>。</li>
+  <li><b>部署痕迹</b>：deploy.sh 已写 /opt/yuqing/data/logs/deploy.log；CD 将该日志尾 200 行回传 GitHub Actions 输出。</li>
+  <li><b>自检闭环</b>：healthcheck.sh --json 作为部署最后门禁；阶段 4 顺手部署 8.3 节的 systemd timer 定时自检。</li>
+  <li><b>告警</b>：E2E nightly 失败 → GitHub issue（actions/github-script 自动创建，防重复去重）。</li>
+</ul>
+</div>
+
+<h2>六、实施排期建议</h2>
+<div class="card">
+<table>
+  <tr><th>顺序</th><th>内容</th><th>依赖</th><th>验收标准</th></tr>
+  <tr><td>1</td><td>阶段 1 门禁 + 密钥扫描</td><td>无</td><td>PR 全绿；故意提交假 key 的测试 PR 被拦截</td></tr>
+  <tr><td>2</td><td>阶段 2 PG 集成</td><td>阶段 1</td><td>PG job 与服务器手工结果一致（8 包 PASS）</td></tr>
+  <tr><td>3</td><td>阶段 3 生产 E2E</td><td>secrets 配置</td><td>nightly 首跑 26 过（或与手工一致）</td></tr>
+  <tr><td>4</td><td>阶段 4 CD（方案 A）</td><td>1-3 + 跳板机资源</td><td>tag 发布 → 生产更新 → healthcheck ok 全自动</td></tr>
+</table>
+<p style="color:var(--fg-2)">本规划由运维经理制定，实施前需产品负责人确认阶段 4 的跳板资源与发布节奏（建议每周一次 tag 发布，避免生产变更过频）。</p>
+</div>
+
+<p style="color:var(--fg-2);margin-top:40px">盘古舆情 · CI/CD 规划 v1.0（2026-09-13）· 配套文档：<a href="OPS_MANUAL.html">运维手册</a>、<a href="DEPLOYMENT_LOG.html">部署日志</a></p>
+</div>
+</body>
+</html>

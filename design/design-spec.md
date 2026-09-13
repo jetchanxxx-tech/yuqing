@@ -268,7 +268,7 @@
 ## 9. 数据与文案约定
 
 - 所有示例业务文案使用简体中文；数字用 `tabular-nums`。
-- 分析状态机文案（用于时间线/徽标）：`草稿 → 已排队 → 预算校验 → 数据抓取 → 智能分析 → 生成报告 → 已完成`（英文 DTO 映射见 `docs/architecture-plan.md` §7）。
+- 分析状态机文案（用于时间线/徽标）：`草稿 → 已排队 → 预算校验 → 数据抓取 → 智能分析 → 生成报告 → 已完成`（英文 DTO 映射见 `docs/planning/architecture-plan.md` §7）。
 - 预算语义文案：Free/Pro = "硬上限，超限拒绝新任务"；Business = "超额按单价计费"；Enterprise = "公平使用，无硬限制"。
 - 情感：正面/中性/负面；数据源：微博 / 新闻 / 微信 / 抖音 / 小红书 / 知乎 / 论坛。
 - 模型示例：`deepseek-chat` / `kimi-moondream-v2` / `moonshot-v1-32k`（均为占位）。
