@@ -8,29 +8,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/id"
 )
 
 // pgTestEnv 指向已应用 0002 迁移的测试库；未设置时跳过全部 pg 用例。
 const pgTestEnv = "YUQING_TEST_PG_URL"
 
-// pgTestPool 新建测试连接池并在用例结束时关闭；环境变量缺失即跳过当前用例。
+// pgTestPool 用 pgtest.Pool 提供 schema 隔离 + 迁移执行（platform 全量迁移）。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv(pgTestEnv)
-	if dsn == "" {
-		t.Skipf("%s 未设置，跳过 PostgreSQL 用例", pgTestEnv)
-	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	if err := pool.Ping(context.Background()); err != nil {
-		pool.Close()
-		t.Fatalf("连接测试库失败（%s）: %v", pgTestEnv, err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pgtest.Pool(t, "report", pgtest.PlatformMigrations)
 }
 
 // newTestTenant 返回本次用例独占的租户 ID，隔离库中历史数据。

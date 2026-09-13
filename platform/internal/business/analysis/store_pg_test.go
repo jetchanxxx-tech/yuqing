@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/id"
 )
 
@@ -23,24 +24,11 @@ import (
 // 凭据只从环境变量读，勿写进代码或 CI 配置。
 const pgTestEnv = "YUQING_TEST_PG_URL"
 
-// pgTestPool 新建测试连接池并在用例结束时关闭；环境变量缺失即跳过当前用例。
+// pgTestPool 用 pgtest.Pool 提供 schema 隔离 + 迁移执行（platform 全量迁移），
+// 与 platform 侧 store 测试共用同一套夹具；环境变量缺失即跳过当前用例。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv(pgTestEnv)
-	if dsn == "" {
-		t.Skipf("%s 未设置，跳过 PostgreSQL 用例", pgTestEnv)
-	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	// 先 Ping：DSN 写错时立刻报错，而不是让断言以空结果/超时的形式失败
-	if err := pool.Ping(context.Background()); err != nil {
-		pool.Close()
-		t.Fatalf("连接测试库失败（%s）: %v", pgTestEnv, err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pgtest.Pool(t, "analysis", pgtest.PlatformMigrations)
 }
 
 // newTestTenant 返回本次用例独占的租户 ID（ULID 前缀），
