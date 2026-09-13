@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>套餐选择 · 微舆舆情监测</title>
+<style>
+:root{
+--bg:#f5f5f5;--surface:#fff;--surface-warm:#fafafa;
+--fg:rgba(0,0,0,.8);--fg-2:rgba(0,0,0,.62);--muted:rgba(0,0,0,.45);--meta:rgba(0,0,0,.27);
+--border:rgba(0,0,0,.08);--border-soft:rgba(0,0,0,.05);
+--accent:#ff2442;--accent-on:#fff;--accent-hover:#ff2e4d;--accent-active:#e6203a;
+--success:#02b940;--warn:#ff7d03;--danger:#ff2442;
+--font-display:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+--font-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+--font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Monaco,Consolas,monospace;
+--text-xs:12px;--text-sm:14px;--text-base:16px;--text-lg:18px;--text-xl:20px;--text-2xl:24px;--text-3xl:28px;--text-4xl:32px;
+--leading-body:1.5;--leading-tight:1.25;--tracking-display:0;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;
+--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-pill:9999px;
+--elev-flat:none;--elev-ring:0 0 0 1px var(--border);--elev-raised:0 4px 12px rgba(0,0,0,.08);
+--focus-ring:0 0 0 3px color-mix(in oklab,var(--accent),transparent 70%);
+--motion-fast:150ms;--motion-base:200ms;--ease-standard:cubic-bezier(.2,0,0,1);
+--container-max:1200px;--container-gutter-desktop:24px;--container-gutter-tablet:16px;--container-gutter-phone:12px;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font-family:var(--font-body);background:var(--bg);color:var(--fg);font-size:var(--text-sm);line-height:var(--leading-body);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:var(--focus-ring);outline-offset:2px;border-radius:var(--radius-sm)}
+.num{font-variant-numeric:tabular-nums}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:224px;flex:none;position:fixed;top:0;bottom:0;left:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;font-size:17px;font-weight:600}
+.brand .mark{width:30px;height:30px;border-radius:9px;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.sidebar .create{margin:0 4px 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 20px;border-radius:var(--radius-pill);border:none;font-size:14px;font-weight:500;transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard);text-decoration:none}
+.btn-primary{background:var(--accent);color:var(--accent-on)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-secondary{background:rgba(48,48,52,.10);color:var(--fg)}
+.btn-secondary:hover{background:rgba(48,48,52,.16)}
+.btn-ghost{background:transparent;color:var(--fg-2)}
+.btn-ghost:hover{background:rgba(48,48,52,.05);color:var(--fg)}
+.btn-outline{background:var(--surface);border:1px solid var(--accent);color:var(--accent)}
+.btn-outline:hover{background:rgba(255,36,66,.06)}
+.btn-lg{height:42px;width:100%}
+.btn:disabled{opacity:.5;cursor:default;background:rgba(48,48,52,.10);color:var(--meta)}
+.nav{display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--fg-2);font-size:14px;transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard)}
+.nav-item:hover{background:rgba(48,48,52,.05);color:var(--fg)}
+.nav-item.active{background:rgba(255,36,66,.08);color:var(--accent);font-weight:600}
+.nav-item svg{flex:none}
+.user-card{display:flex;align-items:center;gap:10px;padding:12px 10px 2px;border-top:1px solid var(--border);margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;flex:none;background:var(--accent);color:#fff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;justify-content:center}
+.user-card .who{min-width:0;flex:1}
+.user-card b{display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-card span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main{flex:1;margin-left:224px;padding:24px 32px 56px;min-width:0}
+.container{max-width:1200px;margin:0 auto}
+.page-head{margin-bottom:20px}
+.page-head h1{font-size:24px;font-weight:600;line-height:1.3;letter-spacing:0}
+.page-head .sub{font-size:14px;color:var(--muted);margin-top:4px}
+.bill-toggle{display:flex;align-items:center;gap:12px;margin-bottom:20px;font-size:13px;color:var(--fg-2)}
+.seg{display:inline-flex;background:rgba(48,48,52,.06);border-radius:9999px;padding:3px}
+.seg button{border:none;background:transparent;color:var(--fg-2);height:30px;padding:0 14px;border-radius:9999px;font-size:13px;transition:all var(--motion-fast) var(--ease-standard)}
+.seg button:hover{color:var(--fg)}
+.seg button.active{background:var(--surface);color:var(--fg);font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.save-tag{font-size:12px;color:var(--success);font-weight:500}
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:stretch}
+.plan{background:var(--surface);border-radius:var(--radius-lg);padding:22px 20px;display:flex;flex-direction:column;border:1.5px solid transparent;position:relative}
+.plan.current{border-color:var(--accent)}
+.plan .cur-tag{position:absolute;top:-1px;right:14px;transform:translateY(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:500;padding:3px 10px;border-radius:9999px}
+.plan .p-name{font-size:16px;font-weight:600}
+.plan .p-desc{font-size:12px;color:var(--muted);margin-top:2px;min-height:34px}
+.plan .price{display:flex;align-items:baseline;gap:4px;margin:16px 0 4px}
+.plan .price .v{font-size:28px;font-weight:600;letter-spacing:0;line-height:1.2}
+.plan .price .v small{font-size:13px;font-weight:500;color:var(--muted)}
+.plan .price .u{font-size:13px;color:var(--muted)}
+.plan .p-list{margin:14px 0 20px;flex:1;display:grid;gap:9px}
+.plan .p-list li{list-style:none;display:flex;gap:8px;font-size:12.5px;color:var(--fg-2);line-height:1.45}
+.plan .p-list li svg{flex:none;margin-top:2px}
+.plan .p-list li .mut{color:var(--meta)}
+.plan .p-list li .hi{color:var(--fg);font-weight:500}
+.plan .foot{margin-top:auto}
+.foot-note{margin-top:20px;display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--radius-md);background:var(--surface);font-size:13px;color:var(--fg-2)}
+.foot-note svg{flex:none;margin-top:1px}
+.foot-note a{color:var(--accent)}
+.foot-note a:hover{text-decoration:underline}
+.faq{margin-top:24px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.faq-item{background:var(--surface);border-radius:var(--radius-md);padding:16px 18px}
+.faq-item b{display:block;font-size:14px;font-weight:500;margin-bottom:4px}
+.faq-item p{font-size:13px;color:var(--muted);line-height:1.6}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal.open{display:flex}
+.modal-card{background:var(--surface);border-radius:var(--radius-md);box-shadow:0 8px 32px rgba(0,0,0,.12);width:100%;max-width:420px;padding:24px}
+.modal-card h3{font-size:18px;font-weight:600;line-height:1.4;margin-bottom:8px}
+.modal-card .m-sub{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6}
+.sum-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-soft);font-size:13px}
+.sum-row:last-of-type{border-bottom:none}
+.sum-row .k{color:var(--muted)}
+.sum-row .v{color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums}
+.sum-row .v.acc{color:var(--accent);font-size:16px;font-weight:600}
+.modal-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+@media(max-width:1120px){.plans{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.sidebar{display:none}.main{margin-left:0;padding:16px 12px 40px}.plans{grid-template-columns:1fr}.faq{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+<div class="brand"><span class="mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V12M9 17V7M14 17V9M19 17V5"/></svg></span>微舆</div>
+<a class="btn btn-primary create" href="analysis-new.html" data-od-id="btn-create-analysis"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>新建分析</a>
+<nav class="nav">
+<a class="nav-item" href="dashboard.html" data-od-id="nav-dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>数据面板</a>
+<a class="nav-item" href="analysis-list.html" data-od-id="nav-list"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>分析任务</a>
+<a class="nav-item" href="reports.html" data-od-id="nav-reports"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>报告中心</a>
+<a class="nav-item" href="usage.html" data-od-id="nav-usage"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>用量中心</a>
+<a class="nav-item active" href="invoices.html" data-od-id="nav-invoices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-3.5-2-3.5 2-3.5-2L5 21V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg>套餐与账单</a>
+<a class="nav-item" href="settings.html" data-od-id="nav-settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>团队设置</a>
+<a class="nav-item" href="admin.html" data-od-id="nav-admin"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9.5 12l2 2 3.5-4"/></svg>管理后台</a>
+</nav>
+<div class="user-card"><span class="avatar">林</span><div class="who"><b>林晓</b><span>ops@example.com · Pro</span></div></div>
+</aside>
+
+<main class="main">
+<div class="container">
+<header class="page-head" data-od-id="page-head">
+  <h1>套餐选择</h1>
+  <p class="sub">为团队选择合适的能力边界，随时可升级或降级<span style="color:var(--meta);font-size:12px;margin-left:4px">示例数据</span></p>
+</header>
+
+<div class="bill-toggle">
+  <span>计费周期</span>
+  <div class="seg" role="group">
+    <button class="active">按月</button>
+    <button>按年</button>
+  </div>
+  <span class="save-tag">按年付立省 2 个月</span>
+</div>
+
+<section class="plans" data-od-id="plans">
+  <div class="plan" data-od-id="plan-free">
+    <div class="p-name">Free 体验版</div>
+    <p class="p-desc">先体验一次完整分析流程</p>
+    <div class="price"><span class="v">¥0</span><span class="u">/ 月</span></div>
+    <ul class="p-list">
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>月度分析 <b class="hi">5</b> 次</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>LLM Token <b class="hi">1M</b> / 月</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>预算模式：<b class="hi">硬上限</b></li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>1 个席位 · <span class="mut">5 个数据源</span></li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>数据保留 <b class="hi">30 天</b> · HTML</li>
+    </ul>
+    <div class="foot"><button class="btn btn-ghost btn-lg">免费使用</button></div>
+  </div>
+
+  <div class="plan current" data-od-id="plan-pro">
+    <span class="cur-tag">当前套餐</span>
+    <div class="p-name">Pro 专业版</div>
+    <p class="p-desc">个人品牌与团队的日常标配</p>
+    <div class="price"><span class="v num">¥99</span><span class="u">/ 月</span></div>
+    <ul class="p-list">
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>月度分析 <b class="hi">50</b> 次</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>LLM Token <b class="hi">10M</b> / 月</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>2 并发 · 3 个席位</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>全部公开数据源</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>数据保留 <b class="hi">90 天</b> · HTML + MD</li>
+    </ul>
+    <div class="foot"><button class="btn btn-secondary btn-lg" disabled>已订阅</button></div>
+  </div>
+
+  <div class="plan" data-od-id="plan-business">
+    <div class="p-name">Business 企业版</div>
+    <p class="p-desc">需要跨部门协作的中型团队</p>
+    <div class="price"><span class="v num">¥499</span><span class="u">/ 月</span></div>
+    <ul class="p-list">
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>月度分析 <b class="hi">500</b> 次</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>LLM Token <b class="hi">100M</b> · <span class="hi">超额计费</span></li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>5 并发 · 20 个席位 · 优先抓取</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>报告 <b class="hi">+ PDF / DOCX</b> · 只读 API</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>数据保留 <b class="hi">1 年</b></li>
+    </ul>
+    <div class="foot"><button class="btn btn-primary btn-lg" onclick="openUpgrade()" data-od-id="btn-upgrade-business">升级到 Business</button></div>
+  </div>
+
+  <div class="plan" data-od-id="plan-enterprise">
+    <div class="p-name">Enterprise 旗舰版</div>
+    <p class="p-desc">品牌总部与大客户</p>
+    <div class="price"><span class="v">定制</span><span class="u">/ 年</span></div>
+    <ul class="p-list">
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>分析次数 <b class="hi">无限制</b> · 公平使用</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>20+ 并发 · 无限制席位</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>自定义数据源 · 永久保留</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>报告 <b class="hi">+ PPTX / 定时推送</b> · Webhooks</li>
+      <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#02b940" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>BYOK 自定义模型（vLLM / Ollama）</li>
+    </ul>
+    <div class="foot"><button class="btn btn-outline btn-lg">联系销售</button></div>
+  </div>
+</section>
+
+<div class="foot-note">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 12v4"/></svg>
+  <span><b>计费规则：</b>升级按剩余天数比例计费，立即生效；降级在下一周期生效；取消订阅可继续使用至当前周期结束。企业采购与发票问题见 <a href="invoices.html">账单中心</a>。</span>
+</div>
+
+<section class="faq" data-od-id="faq">
+  <div class="faq-item"><b>什么是 Token 硬上限？</b><p>Free / Pro 套餐为硬上限预算：用量达到上限后，新的分析任务将被拒绝，直到下一周期重置，不会产生意外账单。</p></div>
+  <div class="faq-item"><b>超额计费怎么算？</b><p>Business 套餐超出 100M Token 后，按模型售价（转售加价）继续计费，账单在周期末统一结算。</p></div>
+  <div class="faq-item"><b>升级后何时生效？</b><p>升级立即生效，费用按剩余天数按比例计算；并发与格式限制马上解锁。</p></div>
+  <div class="faq-item"><b>可以自定义模型吗？</b><p>Enterprise 支持 BYOK，可将你自己的 vLLM / Ollama 接入平台，数据不出企业。</p></div>
+</section>
+</div>
+</main>
+</div>
+
+<div class="modal" id="upgradeModal" data-od-id="upgrade-modal">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="um-title">
+    <h3 id="um-title">升级到 Business 企业版</h3>
+    <p class="m-sub">从 Pro 升级，剩余周期费用按比例抵扣，立即解锁 5 并发、PDF / DOCX 报告与超额计费。</p>
+    <div class="sum-row"><span class="k">本月剩余天数</span><span class="v num">18 天</span></div>
+    <div class="sum-row"><span class="k">本次需支付（按比例）</span><span class="v num">¥290</span></div>
+    <div class="sum-row"><span class="k">新套餐生效</span><span class="v">立即生效</span></div>
+    <div class="sum-row"><span class="k">本期合计</span><span class="v acc num">¥ 290.00</span></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeUpgrade()">暂不升级</button>
+      <button class="btn btn-primary" onclick="closeUpgrade();location.href='invoices.html'">确认升级并支付</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openUpgrade(){document.getElementById('upgradeModal').classList.add('open');}
+function closeUpgrade(){document.getElementById('upgradeModal').classList.remove('open');}
+document.getElementById('upgradeModal').addEventListener('click',e=>{if(e.target.id==='upgradeModal')closeUpgrade();});
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');}));
+</script>
+</body>
+</html>

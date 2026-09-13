@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部署指南 · 盘古舆情</title>
+<style>
+:root {
+  --bg: #f5f5f5; --surface: #ffffff; --surface-warm: #fafafa;
+  --fg: rgba(0,0,0,0.8); --fg-2: rgba(0,0,0,0.62); --muted: rgba(0,0,0,0.45);
+  --meta: rgba(0,0,0,0.27); --border: rgba(0,0,0,0.08); --border-soft: rgba(0,0,0,0.05);
+  --accent: #ff2442; --accent-hover: #ff2e4d; --success: #02b940; --warn: #ff7d03;
+  --font: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--fg); line-height:1.6; font-size:15px; }
+.layout { display:flex; min-height:100vh; }
+.sidebar { width:240px; background:var(--surface); border-right:1px solid var(--border); position:fixed; top:0; bottom:0; overflow-y:auto; padding:24px 0; }
+.sidebar .brand { font-weight:700; font-size:17px; color:var(--accent); padding:0 24px 16px; border-bottom:1px solid var(--border-soft); }
+.sidebar nav a { display:block; padding:9px 24px; color:var(--fg-2); text-decoration:none; font-size:13.5px; border-left:2px solid transparent; }
+.sidebar nav a:hover { color:var(--accent); background:rgba(255,36,66,0.03); }
+.content { margin-left:240px; flex:1; max-width:880px; padding:40px 48px 80px; }
+h1 { font-size:28px; margin-bottom:6px; }
+h2 { font-size:21px; margin:40px 0 14px; padding-left:10px; border-left:3px solid var(--accent); }
+h3 { font-size:16px; margin:22px 0 10px; }
+p { margin-bottom:10px; color:var(--fg-2); }
+.subtitle { color:var(--muted); font-size:13.5px; margin-bottom:32px; }
+.card { background:var(--surface); border:1px solid var(--border-soft); border-radius:16px; padding:20px 24px; margin-bottom:16px; }
+pre { background:#1a1a1e; color:#e4e4e7; border-radius:12px; padding:16px 20px; font-size:13px; overflow-x:auto; margin:10px 0 16px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; line-height:1.55; }
+pre .c { color:#6b7280; }
+code { background:var(--surface-warm); border:1px solid var(--border-soft); border-radius:6px; padding:1px 6px; font-size:13px; }
+table { width:100%; border-collapse:collapse; margin:12px 0 18px; background:var(--surface); border-radius:12px; overflow:hidden; }
+th { background:var(--surface-warm); text-align:left; font-size:13px; color:var(--fg-2); padding:10px 14px; border-bottom:1px solid var(--border); }
+td { padding:10px 14px; font-size:13.5px; border-bottom:1px solid var(--border-soft); color:var(--fg-2); }
+tr:last-child td { border-bottom:none; }
+.note { border-left:3px solid var(--accent); background:rgba(255,36,66,0.04); padding:12px 16px; border-radius:0 12px 12px 0; margin:14px 0; font-size:14px; color:var(--fg-2); }
+.warn-box { border-left:3px solid var(--warn); background:rgba(255,125,3,0.05); padding:12px 16px; border-radius:0 12px 12px 0; margin:14px 0; font-size:14px; color:var(--fg-2); }
+.tag { display:inline-block; font-size:11px; padding:2px 10px; border-radius:999px; margin-right:6px; }
+.tag.required { background:rgba(255,36,66,0.1); color:var(--accent); }
+@media print { .sidebar { display:none; } .content { margin-left:0; } }
+.step-num { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:14px; margin-right:12px; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div class="brand">盘古舆情 · 部署指南</div>
+  <nav>
+    <a href="#topo">部署拓扑</a>
+    <a href="#prereq">前置条件</a>
+    <a href="#quick">一键部署</a>
+    <a href="#manual">手动分步部署</a>
+    <a href="#config">配置说明</a>
+    <a href="#bocha">Bocha API Key 配置</a>
+    <a href="#scrapling">Scrapling 安装验证</a>
+    <a href="#systemd">systemd 管理</a>
+    <a href="#nginx">与已有 Nginx 共存</a>
+    <a href="#verify">验证清单</a>
+    <a href="#ops">日常运维</a>
+    <a href="#faq">常见问题</a>
+  </nav>
+</aside>
+<main class="content">
+  <h1>部署指南</h1>
+  <p class="subtitle">Ubuntu 24.04 · 无 Docker · 已装 Nginx · 单机部署 · 盘古舆情 v2.0</p>
+
+  <h2 id="topo">部署拓扑</h2>
+  <div class="card">
+    <pre>
+<span class="c"># 单台服务器，全部进程由 systemd 守护</span>
+浏览器 ──HTTPS──▶ nginx (80/443)        <span class="c">← 已存在，仅添加站点配置</span>
+                   ├── /          → /opt/pangu/web/dist    <span class="c">前端 React 静态文件</span>
+                   └── /api/*     → 127.0.0.1:8080        <span class="c">Go API (yuqing-server)</span>
+
+systemd 服务:
+  yuqing-server    Go API 进程（无状态 HTTP + 内存 store）
+  yuqing-worker    Go 后台进程（队列消费 + 定时任务）
+
+数据采集链路:
+  Go Worker → Python query_engine → <span class="c">Bocha API 搜索</span> → Scrapling 抓取正文
+                                       ↑
+                              PUT /admin/settings 更新 key（无需重启）</pre>
+  </div>
+
+  <h2 id="prereq">前置条件</h2>
+  <div class="card">
+    <table>
+      <tr><th>条件</th><th>状态</th><th>说明</th></tr>
+      <tr><td>Ubuntu 24.04 LTS</td><td><span class="tag required">必需</span></td><td>deploy.sh 基于此版本，其他版本会告警但继续</td></tr>
+      <tr><td>Nginx</td><td>✅ 已具备</td><td>脚本检测跳过安装，只添加 yuqing.conf</td></tr>
+      <tr><td>域名 + DNS</td><td>HTTPS 必需</td><td>无域名可用 IP + HTTP</td></tr>
+      <tr><td>root 权限</td><td><span class="tag required">必需</span></td><td>安装系统包 + 写 /opt + systemd</td></tr>
+      <tr><td>外网访问</td><td>首次部署必需</td><td>apt 包、Go 工具链、npm 依赖、Bocha API</td></tr>
+      <tr><td>Bocha API Key</td><td>数据采集必需</td><td>注册 <code>open.bochaai.com</code> 免费获取</td></tr>
+    </table>
+    <div class="note"><b>硬件最低要求</b>：2 核 CPU / 4 GB 内存 / 20 GB 磁盘（含 Scrapling Chromium ~500MB）</div>
+  </div>
+
+  <h2 id="quick">一键部署</h2>
+  <div class="card">
+    <div style="display:flex;align-items:flex-start;margin-bottom:16px"><span class="step-num">1</span><div>
+      <h3 style="margin:0">获取代码</h3>
+      <pre>git clone https://github.com/jetchanxxx-tech/yuqing.git /opt/pangu-source
+cd /opt/pangu-source</pre>
+    </div></div>
+    <div style="display:flex;align-items:flex-start;margin-bottom:16px"><span class="step-num">2</span><div>
+      <h3 style="margin:0">执行部署（幂等，可重复运行）</h3>
+      <pre>sudo YUQING_DOMAIN=your-domain.com \
+     YUQING_JWT_SECRET=$(openssl rand -base64 32) \
+     BOCHA_API_KEY=sk-YOUR-BOCHA-KEY \
+     bash scripts/deploy.sh</pre>
+      <p>首次约 3-8 分钟。输出中 <code>[SKIP]</code> 表示已有组件自动跳过。</p>
+    </div></div>
+    <div style="display:flex;align-items:flex-start;margin-bottom:16px"><span class="step-num">3</span><div>
+      <h3 style="margin:0">访问验证</h3>
+      <pre>curl https://your-domain.com/api/v1/health
+<span class="c">→ {"status":"ok"}</span></pre>
+    </div></div>
+  </div>
+
+  <div class="warn-box"><b>⚠ 首次部署后必须做</b>：1) 部署脚本会自动配置 JWT secret 和 Bocha API key；2) 数据库迁移 CLI 占位期间需手工执行 <code>migrations/platform/0001_init.sql</code>。</div>
+
+  <h2 id="manual">手动分步部署</h2>
+  <h3>1. 系统依赖</h3>
+  <pre><span class="c"># nginx 已存在 → 跳过</span>
+sudo apt-get install -y postgresql postgresql-contrib redis-server python3-venv python3-pip certbot python3-certbot-nginx
+
+<span class="c"># Go ≥1.25</span>
+curl -fsSL https://go.dev/dl/go1.25.5.linux-amd64.tar.gz -o /tmp/go.tgz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf /tmp/go.tgz
+
+<span class="c"># Node ≥20.19 LTS</span>
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt-get install -y nodejs</pre>
+
+  <h3>2. 数据库</h3>
+  <pre>sudo -u postgres createdb yuqing_platform
+sudo -u postgres psql -c "CREATE USER yuqing WITH PASSWORD 'yuqing' CREATEDB;"
+sudo -u postgres psql -c "GRANT ALL ON DATABASE yuqing_platform TO yuqing;"
+sudo -u postgres psql -d yuqing_platform -f platform/migrations/platform/0001_init.sql</pre>
+
+  <h3>3. 构建</h3>
+  <pre>cd platform && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /opt/pangu/bin/ ./cmd/...
+cd ../web && npm ci && npm run build && cp -r dist /opt/pangu/web/</pre>
+
+  <h3>4. Python 引擎 + Scrapling</h3>
+  <pre>python3 -m venv /opt/pangu/engines/venv
+source /opt/pangu/engines/venv/bin/activate
+pip install -r engines/requirements.txt
+scrapling install --chromium   <span class="c"># 首次 ~150MB 下载</span></pre>
+
+  <h3>5. 配置 + systemd + nginx（同 deploy.sh 处理）</h3>
+  <pre>cp platform/config.example.yaml /opt/pangu/config/config.yaml
+sudo nano /opt/pangu/config/config.yaml       <span class="c"># 编辑 jwtSecret, db 密码</span>
+sudo cp scripts/systemd/*.service /etc/systemd/system/
+sudo useradd -r -m -d /opt/pangu -s /usr/sbin/nologin yuqing
+sudo systemctl daemon-reload && sudo systemctl enable --now yuqing-server yuqing-worker
+sudo cp scripts/nginx.conf /etc/nginx/conf.d/yuqing.conf
+sudo nginx -t && sudo systemctl reload nginx</pre>
+
+  <h2 id="config">配置说明</h2>
+  <div class="card">
+    <table>
+      <tr><th>配置项</th><th>说明</th><th>必改</th></tr>
+      <tr><td><code>auth.jwtSecret</code></td><td>JWT 签名密钥，至少 32 字符随机串</td><td>✅ 是</td></tr>
+      <tr><td><code>db.primary</code></td><td>平台库连接串（含 yuqing 用户密码）</td><td>✅ 是</td></tr>
+      <tr><td><code>dataSources.bochaApiKey</code></td><td>Bocha AI 搜索 API key（环境变量 BOCHA_API_KEY 优先）</td><td>✅ 是（可后台配置）</td></tr>
+      <tr><td><code>server.addr</code></td><td>API 监听地址（nginx 反代目标，保持 :8080）</td><td>否</td></tr>
+      <tr><td><code>queue.driver</code></td><td>memory / redis / rabbitmq / nats</td><td>单机用 memory</td></tr>
+      <tr><td><code>llm.models[].apiKey</code></td><td>大模型 API key（联调阶段填）</td><td>暂不需要</td></tr>
+      <tr><td><code>storage.driver</code></td><td>local / s3</td><td>单机用 local</td></tr>
+    </table>
+  </div>
+
+  <h2 id="bocha">Bocha API Key 配置</h2>
+  <div class="card">
+    <p>两种方式设置 Bocha API key（搜索+采集链路必需）：</p>
+    <h3>方式一：部署时环境变量（推荐）</h3>
+    <pre>sudo BOCHA_API_KEY=sk-YOUR-BOCHA-KEY bash scripts/deploy.sh</pre>
+    <h3>方式二：Admin 后台在线更新（零重启）</h3>
+    <pre>curl -X PUT https://your-domain.com/api/v1/admin/settings \
+  -H "Authorization: Bearer &lt;admin_token&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"bocha_api_key":"sk-YOUR-BOCHA-KEY"}'</pre>
+    <p>更新后下一个分析任务立即使用新 key，无需重启任何服务。</p>
+  </div>
+
+  <h2 id="scrapling">Scrapling 安装验证</h2>
+  <div class="card">
+    <pre><span class="c"># 验证 Scrapling 可正常抓取</span>
+cd /opt/pangu
+source engines/venv/bin/activate
+python3 -c "
+from scrapling.fetchers import Fetcher
+page = Fetcher.get('https://httpbin.org/html', timeout=10)
+print('Title:', page.css('title::text').get())
+print('✓ Scrapling OK')
+"</pre>
+    <div class="note">如果输出 <code>✓ Scrapling OK</code>，说明数据采集链路就绪。如果报错，检查：<code>scrapling install --chromium</code> 是否执行，<code>BOCHA_API_KEY</code> 是否设置。</div>
+  </div>
+
+  <h2 id="systemd">systemd 管理</h2>
+  <div class="card">
+    <pre><span class="c"># 状态与日志</span>
+systemctl status yuqing-server
+journalctl -u yuqing-server -f          <span class="c"># 实时日志（slog JSON）</span>
+journalctl -u yuqing-worker -f
+
+<span class="c"># 启停</span>
+systemctl restart yuqing-server yuqing-worker
+
+<span class="c"># 配置变更后重启</span>
+sudo nano /opt/pangu/config/config.yaml
+systemctl restart yuqing-server yuqing-worker</pre>
+  </div>
+
+  <h2 id="nginx">与已有 Nginx 共存</h2>
+  <div class="card">
+    <p>脚本<b>不安装、不重装</b>已有 nginx，只新增 <code>/etc/nginx/conf.d/yuqing.conf</code>。如果同域名已有其他站点，通过 server_name 区分虚拟主机，nginx 自动按 SNI 分流。</p>
+  </div>
+
+  <h2 id="verify">验证清单</h2>
+  <div class="card">
+    <pre><span class="c">□ 健康检查</span>  curl https://域名/api/v1/health                → {"status":"ok"}
+<span class="c">□ 注册</span>      curl -X POST .../auth/register -d '{"email":"t@t.com","password":"12345678","name":"测试"}'  → 201
+<span class="c">□ 前端</span>      浏览器打开 https://域名/ → 登录页
+<span class="c">□ RBAC</span>     无 token 访问 /api/v1/analyses → 401
+<span class="c">□ 进程</span>     systemctl is-active yuqing-server yuqing-worker → active active
+<span class="c">□ Scrapling</span> 见 Scrapling 验证步骤
+<span class="c">□ Bocha</span>    curl https://域名/api/v1/admin/settings → {"settings":{"bocha_api_key":"sk-..."}}</pre>
+  </div>
+
+  <h2 id="ops">日常运维</h2>
+  <div class="card">
+    <table>
+      <tr><th>任务</th><th>命令</th></tr>
+      <tr><td>查看日志</td><td><code>journalctl -u yuqing-server -n 100</code></td></tr>
+      <tr><td>更新 Bocha key</td><td><code>PUT /api/v1/admin/settings {"bocha_api_key":"sk-new"}</code>（零重启）</td></tr>
+      <tr><td>数据库备份</td><td><code>sudo -u postgres pg_dump yuqing_platform &gt; backup_$(date +%F).sql</code></td></tr>
+      <tr><td>更新版本</td><td><code>git pull && 重新构建二进制 → systemctl restart</code></td></tr>
+      <tr><td>Redis 检查</td><td><code>redis-cli ping</code> → PONG</td></tr>
+    </table>
+  </div>
+
+  <h2 id="faq">常见问题</h2>
+  <div class="card">
+    <details><summary><b>Q: 部署后注册的用户重启就没了？</b></summary><p>MVP 用内存 store。生产数据持久化需接 PostgreSQL store（接口已预留，替换实现即可）。</p></details>
+    <details><summary><b>Q: 为什么搜不到真实数据？</b></summary><p>检查 Bocha API key 是否配置（GET /admin/settings），Scrapling 是否安装（python -c "from scrapling.fetchers import Fetcher"）。</p></details>
+    <details><summary><b>Q: 部署脚本重复运行安全吗？</b></summary><p>安全。所有组件安装前检测（[SKIP]），配置文件/数据库/nginx 站点已存在绝不覆盖。</p></details>
+    <details><summary><b>Q: nginx 已被其他项目占用？</b></summary><p>无冲突。脚本只新增 conf.d/yuqing.conf，通过 server_name 区分虚拟主机。</p></details>
+    <details><summary><b>Q: 数据库迁移为什么报占位提示？</b></summary><p>yuqing-cli migrate 当前为占位实现。手工执行 migrations/platform/0001_init.sql。goose 接线在遗留清单中。</p></details>
+    <details><summary><b>Q: 怎么更新 Bocha API key？</b></summary><p>管理员通过 Admin 面板或 API 直接 PUT /api/v1/admin/settings，无需重启服务。</p></details>
+  </div>
+</main>
+</div>
+</body>
+</html>

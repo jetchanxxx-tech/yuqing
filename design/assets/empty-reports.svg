@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" fill="none">
+  <!-- Empty state: no reports yet -->
+  <rect width="240" height="160" rx="12" fill="#fafafa"/>
+  <!-- Folder outline -->
+  <g transform="translate(88, 40)">
+    <path d="M0 12 L0 72 Q0 76 4 76 L60 76 Q64 76 64 72 L64 16 Q64 12 60 12 L32 12 L28 4 Q26 0 22 0 L4 0 Q0 0 0 4Z" fill="none" stroke="rgba(48,48,52,0.12)" stroke-width="1.5"/>
+    <!-- Accent tab -->
+    <rect x="20" y="8" width="14" height="0" rx="0" fill="rgba(255,36,66,0.15)"/>
+  </g>
+  <!-- Empty hint: small clock -->
+  <g transform="translate(120, 100)" opacity="0.4">
+    <circle cx="0" cy="0" r="10" fill="none" stroke="rgba(48,48,52,0.15)" stroke-width="1.2"/>
+    <line x1="0" y1="0" x2="0" y2="-5" stroke="rgba(48,48,52,0.20)" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="0" y1="0" x2="4" y2="0" stroke="rgba(48,48,52,0.20)" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+</svg>

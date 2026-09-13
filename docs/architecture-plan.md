@@ -303,11 +303,11 @@ Worker 管道（consumer on `analysis.tasks`）：
 
 ### 整体结构
 ```
-/opt/yuging/                     # 安装根目录
+/opt/yuqing/                     # 安装根目录
 ├── bin/
-│   ├── yuging-server            # Go api 二进制
-│   ├── yuging-worker            # Go worker 二进制
-│   └── yuging-cli               # 运维 CLI
+│   ├── yuqing-server            # Go api 二进制
+│   ├── yuqing-worker            # Go worker 二进制
+│   └── yuqing-cli               # 运维 CLI
 ├── engines/                     # Python 引擎 (venv + systemd)
 │   ├── query_engine/
 │   ├── media_engine/
@@ -347,13 +347,13 @@ Worker 管道（consumer on `analysis.tasks`）：
 
 ```
 /etc/systemd/system/
-├── yuging-server.service    # Go api 进程
-├── yuging-worker.service    # Go worker 进程
-├── yuging-query.service     # Python query_engine
-├── yuging-media.service     # Python media_engine
-├── yuging-insight.service   # Python insight_engine
-├── yuging-report.service    # Python report_engine
-└── yuging-forum.service     # Python forum_engine
+├── yuqing-server.service    # Go api 进程
+├── yuqing-worker.service    # Go worker 进程
+├── yuqing-query.service     # Python query_engine
+├── yuqing-media.service     # Python media_engine
+├── yuqing-insight.service   # Python insight_engine
+├── yuqing-report.service    # Python report_engine
+└── yuqing-forum.service     # Python forum_engine
 ```
 
 ### 部署脚本设计原则
@@ -373,7 +373,7 @@ Worker 管道（consumer on `analysis.tasks`）：
 #!/bin/bash
 set -euo pipefail
 
-APP_ROOT="/opt/yuging"
+APP_ROOT="/opt/yuqing"
 CONFIG_SRC="./config.example.yaml"
 CONFIG_DST="$APP_ROOT/config/config.yaml"
 LOG_FILE="$APP_ROOT/data/logs/deploy.log"
@@ -416,8 +416,8 @@ check_redis() {
 
 # 4. 平台数据库检测创建（不覆盖已有库）
 check_platform_db() {
-    if sudo -u postgres psql -lqt 2>/dev/null | grep -q "yuging_platform"; then
-        log_skip "Platform DB 'yuging_platform' already exists, skip creation"
+    if sudo -u postgres psql -lqt 2>/dev/null | grep -q "yuqing_platform"; then
+        log_skip "Platform DB 'yuqing_platform' already exists, skip creation"
         return 0
     fi
     return 1
@@ -425,7 +425,7 @@ check_platform_db() {
 
 # 5. Go 二进制编译（仅文件不存在时重新编译）
 check_go_binaries() {
-    if [ -x "$APP_ROOT/bin/yuging-server" ] && [ -x "$APP_ROOT/bin/yuging-worker" ]; then
+    if [ -x "$APP_ROOT/bin/yuqing-server" ] && [ -x "$APP_ROOT/bin/yuqing-worker" ]; then
         log_skip "Go binaries already compiled, skip build"
         log_info "  (run 'make build' manually to recompile)"
         return 0
@@ -458,9 +458,9 @@ check_frontend() {
 
 # 8. nginx 配置检测（已存在则不覆盖）
 check_nginx_config() {
-    if [ -f /etc/nginx/sites-enabled/yuging.conf ] || [ -f /etc/nginx/conf.d/yuging.conf ]; then
-        log_warn "nginx config for yuging already exists, skip overwrite"
-        log_info "  (manual merge needed if config changed: diff scripts/nginx.conf /etc/nginx/conf.d/yuging.conf)"
+    if [ -f /etc/nginx/sites-enabled/yuqing.conf ] || [ -f /etc/nginx/conf.d/yuqing.conf ]; then
+        log_warn "nginx config for yuqing already exists, skip overwrite"
+        log_info "  (manual merge needed if config changed: diff scripts/nginx.conf /etc/nginx/conf.d/yuqing.conf)"
         return 0
     fi
     return 1
@@ -468,7 +468,7 @@ check_nginx_config() {
 
 # 9. systemd 服务注册检测
 check_systemd_services() {
-    if systemctl list-unit-files yuging-server.service 2>/dev/null | grep -q "yuging-server"; then
+    if systemctl list-unit-files yuqing-server.service 2>/dev/null | grep -q "yuqing-server"; then
         log_skip "systemd services already registered, skip"
         return 0
     fi
@@ -491,16 +491,16 @@ main() {
     check_nginx        || { apt-get install -y nginx; log_info "nginx installed"; }
     check_postgres     || { apt-get install -y postgresql-15; systemctl enable --now postgresql; }
     check_redis        || { apt-get install -y redis-server; systemctl enable --now redis-server; }
-    check_platform_db  || { sudo -u postgres createdb yuging_platform; sudo -u postgres createuser yuging; }
+    check_platform_db  || { sudo -u postgres createdb yuqing_platform; sudo -u postgres createuser yuqing; }
     check_go_binaries  || { cd platform && CGO_ENABLED=0 go build -o "$APP_ROOT/bin/" ./cmd/...; }
     check_python_engines || { init_all_python_venvs; }
     check_frontend     || { cd web && npm ci && npm run build && cp -r dist "$APP_ROOT/web/"; }
-    check_nginx_config || { cp scripts/nginx.conf /etc/nginx/conf.d/yuging.conf; nginx -t && systemctl reload nginx; }
+    check_nginx_config || { cp scripts/nginx.conf /etc/nginx/conf.d/yuqing.conf; nginx -t && systemctl reload nginx; }
     check_ssl          || { certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos; }
     check_systemd_services || { register_and_start_services; }
 
     # 数据库迁移 (幂等: goose 只执行未运行的迁移)
-    "$APP_ROOT/bin/yuging-cli" migrate platform
+    "$APP_ROOT/bin/yuqing-cli" migrate platform
 
     # 配置处理 (已存在则不覆盖, 仅提示)
     if [ -f "$CONFIG_DST" ]; then
@@ -513,7 +513,7 @@ main() {
 
     # 健康检查
     sleep 2
-    for svc in yuging-server yuging-worker; do
+    for svc in yuqing-server yuqing-worker; do
         systemctl is-active --quiet "$svc" && log_info "$svc: OK" || log_error "$svc: FAILED"
     done
     curl -sf http://localhost:8080/api/v1/health && log_info "Health check: PASS" || log_error "Health check: FAIL"
@@ -527,7 +527,7 @@ main "$@"
 server {
     listen 443 ssl http2;
     server_name your-domain.com;
-    root /opt/yuging/web/dist;       # 前端静态文件
+    root /opt/yuqing/web/dist;       # 前端静态文件
     location / {
         try_files $uri /index.html;   # SPA fallback
     }

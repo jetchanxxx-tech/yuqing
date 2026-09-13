@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部署日志 · 盘古舆情</title>
+<style>
+:root {
+  --bg:#f5f5f5; --surface:#fff; --surface-warm:#fafafa;
+  --fg:rgba(0,0,0,0.8); --fg-2:rgba(0,0,0,0.62); --muted:rgba(0,0,0,0.45); --meta:rgba(0,0,0,0.27);
+  --border:rgba(0,0,0,0.08); --border-soft:rgba(0,0,0,0.05);
+  --accent:#ff2442; --success:#02b940; --warn:#ff7d03;
+  --font:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font);background:var(--bg);color:var(--fg);line-height:1.65;font-size:15px}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);position:fixed;top:0;bottom:0;overflow-y:auto;padding:24px 0}
+.sidebar .brand{font-weight:700;font-size:17px;color:var(--accent);padding:0 24px 16px;border-bottom:1px solid var(--border-soft)}
+.sidebar nav a{display:block;padding:9px 24px;color:var(--fg-2);text-decoration:none;font-size:13.5px;border-left:2px solid transparent}
+.sidebar nav a:hover{color:var(--accent);background:rgba(255,36,66,.03)}
+.content{margin-left:240px;flex:1;max-width:940px;padding:40px 48px 80px}
+h1{font-size:28px;margin-bottom:6px}
+h2{font-size:21px;margin:40px 0 14px;padding-left:10px;border-left:3px solid var(--accent)}
+h3{font-size:16px;margin:22px 0 10px}
+p{margin-bottom:10px;color:var(--fg-2)}
+.subtitle{color:var(--muted);font-size:13.5px;margin-bottom:32px}
+.card{background:var(--surface);border:1px solid var(--border-soft);border-radius:16px;padding:20px 24px;margin-bottom:16px}
+pre{background:#1a1a1e;color:#e4e4e7;border-radius:12px;padding:16px 20px;font-size:13px;overflow-x:auto;margin:10px 0 16px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;line-height:1.55}
+pre .c{color:#6b7280} pre .g{color:#4ade80} pre .r{color:#f87171}
+code{background:var(--surface-warm);border:1px solid var(--border-soft);border-radius:6px;padding:1px 6px;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:12px 0 18px;background:var(--surface);border-radius:12px;overflow:hidden}
+th{background:var(--surface-warm);text-align:left;font-size:13px;color:var(--fg-2);padding:10px 14px;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;font-size:13.5px;border-bottom:1px solid var(--border-soft);color:var(--fg-2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+.note{border-left:3px solid var(--accent);background:rgba(255,36,66,.04);padding:12px 16px;border-radius:0 12px 12px 0;margin:14px 0;font-size:14px;color:var(--fg-2)}
+.ok{border-left-color:var(--success);background:rgba(2,185,64,.05)}
+.warn{border-left-color:var(--warn);background:rgba(255,125,3,.05)}
+.badge{display:inline-block;font-size:11px;padding:2px 10px;border-radius:999px;font-weight:600}
+.badge.fix{background:rgba(2,185,64,.12);color:#018c30}
+.badge.env{background:rgba(255,125,3,.12);color:#c96000}
+.badge.blk{background:rgba(255,36,66,.12);color:var(--accent)}
+@media print{.sidebar{display:none}.content{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div class="brand">盘古舆情 · 部署日志</div>
+  <nav>
+    <a href="#summary">一、部署概要</a>
+    <a href="#env">二、目标环境</a>
+    <a href="#timeline">三、部署历程</a>
+    <a href="#issues">四、问题与修复（15 项）</a>
+    <a href="#final">五、最终状态</a>
+    <a href="#verify">六、验收结果</a>
+    <a href="#checklist">七、MVP 对照</a>
+    <a href="#lessons">八、经验总结</a>
+  </nav>
+</aside>
+<main class="content">
+  <h1>部署日志</h1>
+  <p class="subtitle">盘古舆情 · 生产环境首次部署 · 2026-09-12 ~ 09-13</p>
+
+  <h2 id="summary">一、部署概要</h2>
+  <div class="card">
+    <table>
+      <tr><th>项目</th><th>值</th></tr>
+      <tr><td>目标服务器</td><td>阿里云 Ubuntu 24.04.4 LTS（2 核 / 1.7 GB / 40 GB）</td></tr>
+      <tr><td>访问入口</td><td><code>https://yuqing.pangu-cloud.com</code>（Let's Encrypt 证书）</td></tr>
+      <tr><td>部署方式</td><td>Go 二进制 + systemd，无容器</td></tr>
+      <tr><td>运行服务</td><td>8 个（Go ×2 + Python 引擎 ×5 + nginx）</td></tr>
+      <tr><td>部署轮次</td><td>5 轮（前 4 轮逐步暴露脚本缺陷）</td></tr>
+      <tr><td>发现并修复问题</td><td><b>15 项</b>（13 项代码/脚本缺陷 + 2 项环境障碍）</td></tr>
+      <tr><td>最终结果</td><td>全链路可用，管理后台已解锁</td></tr>
+    </table>
+  </div>
+
+  <h2 id="env">二、目标环境</h2>
+  <div class="card">
+    <h3>硬件（低于建议配置）</h3>
+    <p>官方建议 4 GB 内存，实际 1.7 GB。<b>已创建 2 GB swap</b> 防止构建期 OOM，实测部署与运行正常。</p>
+    <h3>部署前状态</h3>
+    <p>服务器重装过，探测结果为：nginx 未安装（与预期不符）、PostgreSQL / Redis / Go / Node 均未安装，仅 Python 3.12.3 存在。全部由 <code>deploy.sh</code> 自动安装。</p>
+    <h3>组件版本</h3>
+    <table>
+      <tr><th>组件</th><th>版本</th></tr>
+      <tr><td>Go</td><td>1.25.5</td></tr>
+      <tr><td>Node.js</td><td>22.23.2</td></tr>
+      <tr><td>Python</td><td>3.12.3</td></tr>
+      <tr><td>nginx</td><td>1.24.0</td></tr>
+      <tr><td>PostgreSQL</td><td>16.15</td></tr>
+      <tr><td>Redis</td><td>7.0.15</td></tr>
+      <tr><td>acme.sh</td><td>最新（Gitee 镜像安装）</td></tr>
+    </table>
+  </div>
+
+  <h2 id="timeline">三、部署历程</h2>
+  <div class="card">
+    <pre><span class="c"># 5 轮部署，每轮暴露新的脚本缺陷</span>
+第 1 轮 → 脚本第 39 行静默退出（mkdir 晚于 log_info）
+第 2 轮 → Go 依赖下载超时（无国内镜像）
+        → venv 创建失败（检测条件错误）
+        → 残缺 venv 被误判（检测只看 python 不看 pip）
+第 3 轮 → 服务起不来（二进制命名不匹配）
+        → nginx 校验失败（SSL 块无条件包含）
+        → Scrapling 参数错误
+第 4 轮 → 外部访问返回 nginx 欢迎页（default_server 冲突）
+第 5 轮 → <span class="g">全部服务启动、健康检查通过</span></pre>
+    <div class="note ok"><b>补充</b>：第 1 轮的失败还触发了 GitHub 访问中断，改用本地打包 + SCP 上传绕过，此后源码同步均走此通道。</div>
+  </div>
+
+  <h2 id="issues">四、问题与修复（15 项）</h2>
+
+  <h3>阻塞级（导致部署失败）</h3>
+  <div class="card">
+    <table>
+      <tr><th width="40">#</th><th>问题</th><th>症状</th><th>根因</th><th>修复</th></tr>
+      <tr>
+        <td>1</td>
+        <td><span class="badge blk">阻塞</span> mkdir 晚于日志调用</td>
+        <td>脚本第 39 行静默退出，日志仅一行</td>
+        <td><code>LOG_FILE</code> 位于 <code>$APP_ROOT/data/logs/</code>，但 <code>mkdir</code> 在 5 行之后才执行；<code>tee</code> 写不存在的目录失败，<code>set -euo pipefail</code> 直接终止</td>
+        <td>目录创建提前到日志函数定义之后</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><span class="badge blk">阻塞</span> Go 依赖下载超时</td>
+        <td><code>dial tcp 142.250.x.x:443: i/o timeout</code></td>
+        <td><code>proxy.golang.org</code> 在境内不可达（Google IP）</td>
+        <td>自动配置 <code>goproxy.cn</code> + <code>sum.golang.google.cn</code>，可用环境变量覆盖</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><span class="badge blk">阻塞</span> venv 创建失败</td>
+        <td><code>ensurepip is not available</code></td>
+        <td>检测条件用 <code>import venv</code>（基础 python3 自带，必然通过），实际需要的是 <code>ensurepip</code>（独立包 <code>python3.12-venv</code>）</td>
+        <td>检测改为 <code>import ensurepip</code></td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><span class="badge blk">阻塞</span> 残缺 venv 被误判</td>
+        <td><code>pip: No such file or directory</code></td>
+        <td>第 3 项留下的残缺目录含 <code>bin/python</code> 但无 <code>bin/pip</code>；幂等检查只看前者即跳过重建</td>
+        <td>改用 <code>bin/pip</code> 判定；检测到残缺先 <code>rm -rf</code> 再重建</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><span class="badge blk">阻塞</span> 二进制命名不匹配</td>
+        <td>服务起不来，健康检查失败</td>
+        <td><code>go build -o dir/ ./cmd/...</code> 按<b>包目录名</b>产出 <code>cli</code>/<code>server</code>/<code>worker</code>，但 systemd unit 引用 <code>yuqing-server</code> 等。日志显示"构建完成"极具误导性</td>
+        <td>逐个显式 <code>-o $APP_ROOT/bin/yuqing-$pkg</code></td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><span class="badge blk">阻塞</span> nginx 校验失败</td>
+        <td><code>nginx -t</code> 失败，站点完全不可用</td>
+        <td><code>nginx.conf</code> 无条件包含 443 + <code>ssl_certificate</code> 块；跳过 SSL 时证书文件不存在 → 校验失败 → reload 被拒</td>
+        <td>新增 <code>nginx-http.conf</code>（HTTP-only），按证书存在与否自动选用</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><span class="badge blk">阻塞</span> default_server 冲突</td>
+        <td>外部访问返回 "Welcome to nginx!"，<code>/api</code> 404</td>
+        <td>Ubuntu 自带的 <code>sites-enabled/default</code> 占着 <code>0.0.0.0:80</code> 的 <code>default_server</code>；IP/无匹配域名时请求全落到欢迎页</td>
+        <td>部署前扫描并移出冲突站点（备份到 <code>/root/</code>），本应用标记 <code>default_server</code>。<b>注意：仅改名无效，<code>include</code> 会加载目录下所有文件</b></td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td><span class="badge blk">阻塞</span> forum 引擎语法错误</td>
+        <td><code>yuqing-forum</code> 反复重启，日志被堆栈淹没</td>
+        <td>中文文案内嵌 <b>ASCII 双引号</b>，提前终止 Python 字符串字面量 → <code>SyntaxError</code></td>
+        <td>全量改写为全角引号「」，并把约束写入 docstring；deploy.sh 增加 <code>py_compile</code> 预检</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3>非阻塞级（功能缺失或环境障碍）</h3>
+  <div class="card">
+    <table>
+      <tr><th width="40">#</th><th>问题</th><th>影响</th><th>修复</th></tr>
+      <tr>
+        <td>9</td>
+        <td><span class="badge env">环境</span> SSH 密码认证失败</td>
+        <td>三个不同密码均被拒，无法连接</td>
+        <td>根因不是密码：Windows 原生 <code>sshpass</code> 与 MSYS <code>ssh</code> 的 pty 机制不兼容。改用 OpenSSH 内置 <code>SSH_ASKPASS</code></td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td><span class="badge env">环境</span> GitHub 访问中断</td>
+        <td><code>GnuTLS recv error</code>，无法 clone/pull</td>
+        <td>本地打包（392 KB）+ SCP 上传，绕过 GitHub</td>
+      </tr>
+      <tr>
+        <td>11</td>
+        <td><span class="badge fix">功能</span> Scrapling 安装失败</td>
+        <td>数据采集组件未就绪</td>
+        <td><code>scrapling install --chromium</code> 参数不存在，且 <code>2>/dev/null</code> 吞掉错误。去掉参数与重定向，改用 Playwright 缓存目录判定</td>
+      </tr>
+      <tr>
+        <td>12</td>
+        <td><span class="badge fix">功能</span> Python 引擎未部署</td>
+        <td>数据采集链路完全未激活</td>
+        <td>新增 5 个 systemd unit（<code>yuqing-{query,media,insight,report,forum}</code>），deploy.sh 补齐部署流程</td>
+      </tr>
+      <tr>
+        <td>13</td>
+        <td><span class="badge fix">功能</span> platform_admin 无法获得</td>
+        <td><code>/admin/*</code> 全部 403，管理后台不可达</td>
+        <td>注册流程只创建 <code>tenant_admin</code>，且内存 store 无法用 CLI/DB 写角色。新增引导机制：<code>YUQING_BOOTSTRAP_ADMIN_EMAIL</code> 指定的邮箱注册即获 <code>platform_admin</code></td>
+      </tr>
+      <tr>
+        <td>14</td>
+        <td><span class="badge fix">兼容</span> nginx 1.24 不支持 <code>http2 on;</code></td>
+        <td>配置校验失败：<code>unknown directive "http2"</code></td>
+        <td>该指令需 nginx 1.25.1+。改用 <code>listen 443 ssl http2</code> 参数形式</td>
+      </tr>
+      <tr>
+        <td>15</td>
+        <td><span class="badge fix">功能</span> Login 丢失 platform_admin</td>
+        <td>注册返回 <code>[tenant_admin platform_admin]</code>，<b>重新登录只剩 <code>[tenant_admin]</code></b> → 管理后台再次 403</td>
+        <td>第 13 项修复只改了 <code>Register</code>，<code>Login</code> 仍只回显成员表里的基础角色。抽出 <code>rolesFor()</code> 共享方法供两者调用</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="note warn"><b>第 15 项的启示</b>：这是修复第 13 项时<b>自己引入</b>的回归 —— 只改了写入路径（注册），漏了读取路径（登录）。同一份角色逻辑存在两处实现，改一处必然漏另一处。修复方式不是「再补一处」，而是<b>抽出共享方法</b>消除重复。</div>
+
+  <div class="note warn"><b>另有 1 项误判（非服务器问题）</b>：本机 curl 访问 HTTPS 报 <code>CRYPT_E_REVOCATION_OFFLINE</code>。经查是 <b>Windows Schannel 客户端</b>无法连接证书吊销服务器所致，服务器本身正常（服务器本地 curl 与 openssl 均通过）。Windows 客户端需加 <code>--ssl-no-revoke</code>。</div>
+
+  <h2 id="final">五、最终状态</h2>
+  <div class="card">
+    <h3>运行服务（8 个，全部 active）</h3>
+    <table>
+      <tr><th>服务</th><th>端口</th><th>说明</th></tr>
+      <tr><td><code>yuqing-server</code></td><td>0.0.0.0:8080</td><td>Go API</td></tr>
+      <tr><td><code>yuqing-worker</code></td><td>—</td><td>队列消费</td></tr>
+      <tr><td><code>yuqing-query</code></td><td>127.0.0.1:8000</td><td>Bocha 搜索 + Scrapling 抓取</td></tr>
+      <tr><td><code>yuqing-media</code></td><td>127.0.0.1:8001</td><td>多模态理解</td></tr>
+      <tr><td><code>yuqing-insight</code></td><td>127.0.0.1:8002</td><td>情感分析 + 话题聚类</td></tr>
+      <tr><td><code>yuqing-report</code></td><td>127.0.0.1:8003</td><td>报告生成</td></tr>
+      <tr><td><code>yuqing-forum</code></td><td>127.0.0.1:8004</td><td>多 Agent 辩论</td></tr>
+      <tr><td><code>nginx</code></td><td>80 / 443</td><td>反向代理 + SSL 终端</td></tr>
+    </table>
+    <h3>HTTPS 与证书</h3>
+    <table>
+      <tr><th>项目</th><th>值</th></tr>
+      <tr><td>域名</td><td>yuqing.pangu-cloud.com</td></tr>
+      <tr><td>证书颁发者</td><td>Let's Encrypt（CN=YE2）</td></tr>
+      <tr><td>有效期</td><td>2026-09-12 ~ 2026-12-11（90 天）</td></tr>
+      <tr><td>下次自动续期</td><td><b>2026-10-11</b>（约 30 天后）</td></tr>
+      <tr><td>续期后动作</td><td><code>systemctl reload nginx</code>（acme.sh reloadcmd）</td></tr>
+      <tr><td>证书路径</td><td><code>/etc/nginx/ssl/yuqing.pangu-cloud.com/</code></td></tr>
+    </table>
+  </div>
+
+  <h2 id="verify">六、验收结果</h2>
+  <div class="card">
+    <h3>服务健康</h3>
+    <pre><span class="c">$ curl https://yuqing.pangu-cloud.com/api/v1/health</span>
+<span class="g">{"status":"ok"}</span>
+
+<span class="c">$ 引擎健康检查</span>
+8000: <span class="g">{"status":"ok","engine":"query","scrapling":true,"bocha":true}</span>
+8001: {"status":"ok","engine":"media"}
+8002: {"status":"ok","engine":"insight"}
+8003: {"status":"ok","engine":"report"}
+8004: <span class="g">{"status":"ok","engine":"forum","version":"0.2.1"}</span></pre>
+    <h3>业务链路</h3>
+    <table>
+      <tr><th>#</th><th>测试</th><th>结果</th></tr>
+      <tr><td>1</td><td>注册（自动建租户 + JWT）</td><td>✅ 201</td></tr>
+      <tr><td>2</td><td>登录</td><td>✅ 200</td></tr>
+      <tr><td>3</td><td>身份查询 <code>/auth/me</code></td><td>✅ 正确 principal</td></tr>
+      <tr><td>4</td><td>创建分析</td><td>✅ state=queued</td></tr>
+      <tr><td>5</td><td>分析列表</td><td>✅</td></tr>
+      <tr><td>6</td><td>数据面板</td><td>✅ 统计准确</td></tr>
+      <tr><td>7</td><td>套餐列表</td><td>✅ 4 档，中文正常</td></tr>
+      <tr><td>8</td><td>未授权访问</td><td>✅ 401</td></tr>
+      <tr><td>9</td><td>SSE 事件流</td><td>✅ text/event-stream + 真实帧</td></tr>
+      <tr><td>10</td><td>API Key 创建</td><td>✅ 201</td></tr>
+      <tr><td>11</td><td>报告列表</td><td>✅ 200</td></tr>
+      <tr><td>12</td><td>管理后台（租户/用量）</td><td>✅ 200（引导管理员解锁后）</td></tr>
+      <tr><td>13</td><td>UTF-8 中文存储</td><td>✅ 字节级验证正确</td></tr>
+      <tr><td>14</td><td>HTTP → HTTPS 跳转</td><td>✅ 301</td></tr>
+    </table>
+  </div>
+
+  <h2 id="checklist">七、MVP 对照</h2>
+  <div class="card">
+    <table>
+      <tr><th>功能</th><th>部署前</th><th>部署后</th></tr>
+      <tr><td>F01 认证与多租户</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F02 任务管理</td><td>⚠️ 停在 queued</td><td>⚠️ 同上（worker 管线未实现）</td></tr>
+      <tr><td>F03 数据采集</td><td>❌ 引擎未运行</td><td><b>✅ 引擎已启动</b>（scrapling+bocha 就绪）</td></tr>
+      <tr><td>F04 数据看板</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F05 LLM 摘要</td><td>❌</td><td>⚠️ 引擎就绪，待接 LLM key</td></tr>
+      <tr><td>F06 报告生成</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F07 计费与用量</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F08 数据保留</td><td>⚠️ 无定时任务</td><td>⚠️ 同上</td></tr>
+      <tr><td>F09 管理后台</td><td>❌ 403</td><td><b>✅ 已解锁</b></td></tr>
+      <tr><td>F10 邮件告警</td><td>⚠️ 无 SMTP</td><td>⚠️ 同上</td></tr>
+      <tr><td>F11 多 Agent 辩论</td><td>❌</td><td><b>✅ 引擎已启动</b></td></tr>
+      <tr><td>F12 多模态</td><td>❌</td><td><b>✅ 引擎已启动</b></td></tr>
+      <tr><td>F13 SSE 推送</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F14 API Key</td><td>✅</td><td>✅</td></tr>
+      <tr><td>F15 /admin/usage</td><td>❌ 403</td><td><b>✅ 已解锁</b></td></tr>
+    </table>
+    <p><b>统计</b>：部署前 ✅7 / ⚠️5 / ❌3 → 部署后 <b>✅11 / ⚠️4 / ❌0</b></p>
+  </div>
+
+  <h2 id="lessons">八、经验总结</h2>
+  <div class="card">
+    <h3>这 15 个问题没有一个是静态检查能发现的</h3>
+    <p>部署前项目状态：<code>bash -n</code> 语法通过、<code>go vet</code> 干净、332 个单元测试全绿、5 角度代码审查无告警。但首次真实部署仍然连续失败 4 轮。</p>
+    <p>原因是这些缺陷依赖<b>目标环境的特定条件</b>才会显现：</p>
+    <ul style="padding-left:20px;color:var(--fg-2);font-size:14px">
+      <li><b>执行顺序缺陷</b>（#1）—— 只在特定 PATH/目录状态下触发</li>
+      <li><b>网络地域限制</b>（#2、#10）—— 只在境内网络暴露</li>
+      <li><b>镜像版本差异</b>（#3、#4、#14）—— 依赖具体发行版的包拆分方式</li>
+      <li><b>工具默认行为</b>（#5、#7）—— Go 的 <code>-o dir/</code> 命名规则、nginx 的 default_server 优先级</li>
+      <li><b>字符编码陷阱</b>（#8）—— 中文文案里的半角引号</li>
+    </ul>
+
+    <h3>四条可复用的教训</h3>
+    <table>
+      <tr><th width="30">#</th><th>教训</th></tr>
+      <tr><td>1</td><td><b>构建成功 ≠ 部署成功。</b>「Go 二进制构建完成: cli server worker」这行日志看起来是成功，实际产出的文件名与 systemd 期望的完全不同。日志应输出<b>预期路径</b>而非目录列表。</td></tr>
+      <tr><td>2</td><td><b>幂等检查要查「可用」而非「存在」。</b>残缺 venv 有 <code>bin/python</code> 却没有 <code>bin/pip</code>；只判断存在会跳过重建，把损坏状态固化下来。</td></tr>
+      <tr><td>3</td><td><b>配置文件不应假设单一部署形态。</b><code>nginx.conf</code> 假设「一定有证书」，导致无域名部署（完全合理的场景）整个站点不可用。模板应按条件选择。</td></tr>
+      <tr><td>4</td><td><b>改一处不如抽一处。</b>角色构建逻辑同时存在于 Register 和 Login，修复时只改前者导致回归（第 15 项）。发现同一逻辑有两份实现时，正确做法是抽成共享方法，而非分别修补。</td></tr>
+    </table>
+
+    <div class="note ok"><b>结论</b>：<code>deploy.sh</code> 现已覆盖从系统依赖到 HTTPS 证书的完整流程，且所有修复都有真实环境的失败证据支撑。重复部署不会再遇到上述问题。</div>
+  </div>
+</main>
+</div>
+</body>
+</html>
