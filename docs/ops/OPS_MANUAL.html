@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>盘古舆情 · 运维手册</title>
+<style>
+  :root { --fg: #1f2937; --fg-2: #4b5563; --accent: #1677ff; --bg: #f5f6fa; --card: #fff; --ok: #02b940; --warn: #ad6800; }
+  * { box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: var(--fg); background: var(--bg); line-height: 1.8; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 20px; margin-top: 40px; color: var(--accent); border-left: 4px solid var(--accent); padding-left: 10px; }
+  h3 { font-size: 16px; margin-top: 24px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 14px 0; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  code { background: #eef2ff; color: #3730a3; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0; background: var(--card); }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  nav { background: var(--card); border-radius: 12px; padding: 16px 24px; margin-bottom: 8px; }
+  nav a { color: var(--accent); text-decoration: none; margin-right: 14px; font-size: 14px; white-space: nowrap; }
+  .note { border-left: 4px solid var(--accent); background: #eff6ff; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin: 12px 0; }
+  .note.warn { border-color: #f59e0b; background: #fffbeb; }
+  .note.danger { border-color: #ef4444; background: #fef2f2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>盘古舆情 · 运维手册</h1>
+<p style="color:var(--fg-2)">适用版本：yuqing 命名主线（2026-09-13）· 生产环境 https://yuqing.pangu-cloud.com · 服务器 47.120.20.10（Ubuntu 24.04）</p>
+
+<nav>
+  <a href="#repo">① 代码与部署</a>
+  <a href="#dirs">② 目录架构</a>
+  <a href="#ports">③ 程序与端口</a>
+  <a href="#components">④ 组件服务</a>
+  <a href="#config">⑤ 配置文件与参数</a>
+  <a href="#restart">⑥ 服务重启</a>
+  <a href="#logs">⑦ 日志路径</a>
+  <a href="#health">⑧ 自检与自启</a>
+  <a href="#cert">⑨ 证书/备份/排障</a>
+</nav>
+
+<!-- ═══════════════════ ① 代码与部署 ═══════════════════ -->
+<h2 id="repo">一、项目代码与部署过程</h2>
+<div class="card">
+<h3>代码仓库</h3>
+<table>
+  <tr><th>项目</th><td>盘古舆情（yuqing）</td></tr>
+  <tr><th>URL</th><td><a href="https://github.com/jetchanxxx-tech/yuqing" target="_blank">https://github.com/jetchanxxx-tech/yuqing</a>（公开仓库，<b>绝不提交凭据</b>）</td></tr>
+  <tr><th>默认分支</th><td><code>main</code></td></tr>
+  <tr><th>服务器源码目录</th><td><code>/opt/pangu-source/</code>（引擎的 WorkingDirectory 与 PYTHONPATH）</td></tr>
+</table>
+<div class="note danger">仓库公开：Bocha/DeepSeek key 只允许存在于服务器 <code>engines.env</code>（chmod 600）与本地 <code>credentials.local.md</code>（已 gitignore）。任何提交前自查 <code>git diff --cached | grep 'sk-'</code>。</div>
+
+<h3>部署过程（幂等，可反复执行）</h3>
+<pre># ① 服务器取源码（GitHub 从境内服务器不可达时，用本地打包 + SCP：
+#    git archive --prefix=pangu-src/ HEAD | gzip &gt; pangu-src.tar.gz，上传解压到 /opt/pangu-source）
+# ② 执行部署（已装组件自动 [SKIP]，已有配置绝不覆盖）：
+sudo YUQING_DOMAIN=yuqing.pangu-cloud.com bash /opt/pangu-source/scripts/deploy.sh
+
+# ③ 首次部署后（或 config 变更后）跑数据库迁移：
+cd /opt/yuqing
+YUQING_CONFIG=/opt/yuqing/config/config.yaml bin/yuqing-cli migrate platform
+
+# ④ 自检：
+sudo bash /opt/pangu-source/scripts/healthcheck.sh</pre>
+<p>deploy.sh 内部流程：系统依赖检测（nginx/postgresql/redis/go/node/python3-venv）→ 系统用户 yuqing + 数据库 yuqing_platform → 交叉编译 Go 三二进制 → 前端 npm build → Python 引擎 venv + Scrapling → 生成 config.yaml（已存在则跳过）→ 注册 systemd units → 引擎环境变量 → nginx 站点（有域名走 HTTPS + acme.sh）→ 健康检查。旧命名（yuging-*）遗留服务会被自动清理。</p>
+<p>环境变量：<code>YUQING_DOMAIN</code>（站点域名）、<code>YUQING_ROOT</code>（安装根目录，默认 /opt/yuqing）、<code>YUQING_DB_PASSWORD</code>、<code>YUQING_BOOTSTRAP_ADMIN_EMAIL</code>（引导管理员，已写入 drop-in）。</p>
+</div>
+
+<!-- ═══════════════════ ② 目录架构 ═══════════════════ -->
+<h2 id="dirs">二、服务器目录架构</h2>
+<div class="card">
+<pre>/opt/yuqing/                          ← 安装根（APP_ROOT）
+├── bin/
+│   ├── yuqing-server                  ← Go API + 分析管线（同进程）
+│   ├── yuqing-worker                  ← 队列消费者（远程队列接入后启用）
+│   └── yuqing-cli                     ← 运维 CLI（migrate platform 等）
+├── config/
+│   ├── config.yaml                    ← 主配置（见「五」）
+│   └── engines.env                    ← 引擎密钥（BOCHA/DEEPSEEK，chmod 600）
+├── web/dist/                          ← 前端静态产物（nginx 直接服务）
+├── engines/venv/                      ← Python 引擎虚拟环境（uvicorn 所在）
+└── data/
+    ├── logs/deploy.log                ← 部署脚本日志
+    └── storage/                       ← 对象存储（报告文件等，本地 driver）
+
+/opt/pangu-source/                     ← 源码目录（git 工作副本）
+├── platform/                          ← Go 源码（编译输入）
+├── engines/                           ← Python 引擎源码（uvicorn 的 PYTHONPATH）
+├── web/                               ← 前端源码（npm build 输入）
+├── scripts/                           ← deploy.sh / healthcheck.sh / nginx / systemd
+└── docs/                              ← 文档
+
+/etc/nginx/conf.d/yuqing.conf          ← nginx 站点（反代 8080 + 静态 + SSL）
+/etc/systemd/system/yuqing-*.service   ← 7 个 systemd unit
+/etc/systemd/system/yuqing-server.service.d/bootstrap-admin.conf  ← 引导管理员 drop-in</pre>
+</div>
+
+<!-- ═══════════════════ ③ 程序与端口 ═══════════════════ -->
+<h2 id="ports">三、程序与端口</h2>
+<div class="card">
+<table>
+  <tr><th>程序</th><th>端口</th><th>监听</th><th>作用</th></tr>
+  <tr><td>nginx</td><td>80 / 443</td><td>0.0.0.0</td><td>HTTPS 入口；/api → 8080；其余 → 前端静态 dist</td></tr>
+  <tr><td>yuqing-server</td><td>8080</td><td>0.0.0.0</td><td>Go HTTP API（/api/v1/*）+ 分析管线（同进程消费队列）</td></tr>
+  <tr><td>yuqing-worker</td><td>—</td><td>—</td><td>队列消费者（当前无远程队列，管线在 server 内）</td></tr>
+  <tr><td>yuqing-query</td><td>8000</td><td>127.0.0.1</td><td>数据采集：Bocha 搜索 + Scrapling 抓取</td></tr>
+  <tr><td>yuqing-media</td><td>8001</td><td>127.0.0.1</td><td>多模态（当前 Mock）</td></tr>
+  <tr><td>yuqing-insight</td><td>8002</td><td>127.0.0.1</td><td>情感分析 + 话题聚类 + 研判摘要（DeepSeek）</td></tr>
+  <tr><td>yuqing-report</td><td>8003</td><td>127.0.0.1</td><td>AI 报告生成（DeepSeek + HTML 渲染）</td></tr>
+  <tr><td>yuqing-forum</td><td>8004</td><td>127.0.0.1</td><td>多 Agent 辩论（当前 Mock）</td></tr>
+  <tr><td>PostgreSQL</td><td>5432</td><td>127.0.0.1</td><td>平台库 yuqing_platform（账号/任务/文档/报告/配置）</td></tr>
+  <tr><td>Redis</td><td>6379</td><td>127.0.0.1</td><td>缓存（当前未重度使用）</td></tr>
+</table>
+<div class="note">引擎端口只监听 127.0.0.1（内网），外部只能经 nginx → yuqing-server 访问。引擎相互调用与 Go→引擎调用全部走 localhost。</div>
+</div>
+
+<!-- ═══════════════════ ④ 组件服务 ═══════════════════ -->
+<h2 id="components">四、前后台组件 / 服务</h2>
+<div class="card">
+<table>
+  <tr><th>层</th><th>组件</th><th>技术</th><th>说明</th></tr>
+  <tr><td rowspan="2">前台</td><td>前端 SPA</td><td>React 19 + Vite 8 + AntD 5 + ECharts 5</td><td>构建产物 /opt/yuqing/web/dist，nginx 静态服务</td></tr>
+  <tr><td>nginx</td><td>1.24（系统自带）</td><td>HTTPS 终止 + 反代 /api → :8080 + 静态</td></tr>
+  <tr><td rowspan="3">中台</td><td>yuqing-server</td><td>Go 1.25 + Gin</td><td>API + 认证 + RBAC + 分析管线 + SSE</td></tr>
+  <tr><td>yuqing-worker</td><td>Go 1.25</td><td>队列消费者（预留）</td></tr>
+  <tr><td>yuqing-cli</td><td>Go 1.25</td><td>迁移/运维命令行</td></tr>
+  <tr><td>引擎</td><td>query / media / insight / report / forum</td><td>Python 3.11 + FastAPI</td><td>端口 8000-8004，Scrapling 爬虫，DeepSeek 驱动分析</td></tr>
+  <tr><td rowspan="3">数据</td><td>PostgreSQL</td><td>16（Ubuntu 24.04 默认）</td><td>平台库 yuqing_platform；用户 yuqing；store.driver=postgres 持久化</td></tr>
+  <tr><td>Redis</td><td>7</td><td>缓存/后续队列</td></tr>
+  <tr><td>证书</td><td>acme.sh（Gitee 镜像安装）</td><td>cron 每日检查，到期前 30 天自动续期并 reload nginx</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════ ⑤ 配置文件 ═══════════════════ -->
+<h2 id="config">五、配置文件路径与参数说明</h2>
+<div class="card">
+<h3>5.1 主配置 /opt/yuqing/config/config.yaml</h3>
+<table>
+  <tr><th>键</th><th>默认</th><th>说明</th></tr>
+  <tr><td>server.addr</td><td>:8080</td><td>API 监听地址</td></tr>
+  <tr><td>db.primary</td><td>postgres://yuqing:***@localhost:5432/yuqing_platform?sslmode=disable</td><td>平台库 DSN（含读写分离 replica 配置位）</td></tr>
+  <tr><td><b>store.driver</b></td><td>memory</td><td><b>memory | postgres</b>。生产必须 postgres（重启不丢数据）；切 postgres 前先 <code>yuqing-cli migrate platform</code></td></tr>
+  <tr><td>queue.driver</td><td>memory</td><td>memory | redis | rabbitmq | nats（远程队列接入后管线可搬回 worker）</td></tr>
+  <tr><td>engines.query.url</td><td>http://localhost:8000</td><td>采集引擎地址；<b>为空时管线不启动，任务停在 queued</b></td></tr>
+  <tr><td>engines.insight.url</td><td>http://localhost:8002</td><td>分析引擎；为空时分析步骤降级（任务仍完成 + warning）</td></tr>
+  <tr><td>engines.report.url</td><td>http://localhost:8003</td><td>报告引擎；为空时报告降级</td></tr>
+  <tr><td>engines.*.timeout</td><td>60s-300s</td><td>各阶段超时；<b>管线总预算 = 已接线引擎超时之和</b></td></tr>
+  <tr><td>auth.jwtSecret</td><td>—</td><td>JWT 密钥（部署时生成，勿改 —— 改后全部 token 失效）</td></tr>
+  <tr><td>llm.models[]</td><td>deepseek-chat 等</td><td>LLM 定价目录（平台成本/用户售价 per 1M tokens）</td></tr>
+</table>
+<div class="note">config.yaml 由 deploy.sh 首次生成后<b>绝不覆盖</b>；升级新参数请手工 diff <code>/opt/pangu-source/platform/config.example.yaml</code>。</div>
+
+<h3>5.2 引擎密钥 /opt/yuqing/config/engines.env（chmod 600）</h3>
+<pre>BOCHA_API_KEY=sk-...          ← 数据采集（搜索发现）
+DEEPSEEK_API_KEY=sk-...       ← 情感/话题/报告（LLM）</pre>
+<p>三级来源：环境变量 → 平台 settings（管理后台「数据源配置」在线改，存 PG，<b>重启不丢</b>）→ 请求参数。改 engines.env 后 <code>systemctl restart yuqing-{query,insight,report} yuqing-server</code>。</p>
+
+<h3>5.3 systemd 与 nginx</h3>
+<table>
+  <tr><th>路径</th><th>说明</th></tr>
+  <tr><td>/etc/systemd/system/yuqing-*.service</td><td>7 个 unit：server 的 <code>Environment=YUQING_CONFIG=/opt/yuqing/config/config.yaml</code>；引擎的 <code>WorkingDirectory=/opt/pangu-source</code>、<code>PYTHONPATH=/opt/pangu-source</code>、<code>EnvironmentFile=-/opt/yuqing/config/engines.env</code></td></tr>
+  <tr><td>/etc/systemd/system/yuqing-server.service.d/bootstrap-admin.conf</td><td>引导管理员：<code>YUQING_BOOTSTRAP_ADMIN_EMAIL=admin@pangu.com</code>（该邮箱注册即 platform_admin）</td></tr>
+  <tr><td>/etc/nginx/conf.d/yuqing.conf</td><td>站点：443 ssl（acme.sh 证书）+ /.well-known/acme-challenge/ 直通 + /api 反代 8080（SSE 已关 buffering）+ 静态 dist</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════ ⑥ 服务重启 ═══════════════════ -->
+<h2 id="restart">六、服务重启</h2>
+<div class="card">
+<pre># 全部重启（顺序：引擎 → server；或一次性 restart）
+systemctl restart yuqing-query yuqing-media yuqing-insight yuqing-report yuqing-forum
+systemctl restart yuqing-server yuqing-worker
+
+# 单个
+systemctl restart yuqing-insight
+
+# 查看状态
+systemctl status yuqing-server
+systemctl is-active yuqing-query yuqing-media yuqing-insight yuqing-report yuqing-forum
+
+# 开机自启（已 enable）
+systemctl is-enabled yuqing-server</pre>
+<div class="note">unit 已配 <code>Restart=always</code> + <code>RestartSec=5</code>：进程崩溃自动拉起。更新代码后必须 restart（uvicorn 无热重载，Go 二进制同理）。</div>
+<div class="note warn">重启 yuqing-server 会丢失 PGMeter 进程内配额（需注册/登录触发 SetQuota 重新下发）；账号/任务/文档数据在 PG，不受影响。</div>
+</div>
+
+<!-- ═══════════════════ ⑦ 日志 ═══════════════════ -->
+<h2 id="logs">七、日志路径</h2>
+<div class="card">
+<table>
+  <tr><th>组件</th><th>位置</th><th>常用命令</th></tr>
+  <tr><td>Go server / worker</td><td>systemd journal（/var/log/journal/）</td><td><code>journalctl -u yuqing-server -f</code><br><code>journalctl -u yuqing-server -n 100 --no-pager</code></td></tr>
+  <tr><td>5 个 Python 引擎</td><td>systemd journal</td><td><code>journalctl -u yuqing-insight -f</code>（管线日志关键字：<code>pipeline:</code>、<code>insight analysis failed</code>）</td></tr>
+  <tr><td>部署脚本</td><td>/opt/yuqing/data/logs/deploy.log</td><td><code>tail -f /opt/yuqing/data/logs/deploy.log</code></td></tr>
+  <tr><td>nginx access</td><td>/var/log/nginx/access.log</td><td rowspan="2"><code>tail -f /var/log/nginx/{access,error}.log</code></td></tr>
+  <tr><td>nginx error</td><td>/var/log/nginx/error.log</td></tr>
+  <tr><td>PostgreSQL</td><td>/var/log/postgresql/</td><td>或 <code>journalctl -u postgresql</code></td></tr>
+  <tr><td>acme.sh</td><td>~/.acme.sh/acme.sh.log</td><td>证书续期日志</td></tr>
+</table>
+<pre># 高频过滤
+journalctl -u yuqing-server | grep -E 'pipeline|error'          # 管线与错误
+journalctl -u yuqing-query | grep -iE 'bocha|scrapling'          # 采集链路
+journalctl -u yuqing-insight | grep -iE 'llm|deepseek'           # 分析链路
+tail -f /var/log/nginx/error.log                                  # 反代错误</pre>
+</div>
+
+<!-- ═══════════════════ ⑧ 自检与自启 ═══════════════════ -->
+<h2 id="health">八、自检与自启</h2>
+<div class="card">
+<h3>8.1 自检脚本 scripts/healthcheck.sh（已入库）</h3>
+<pre>sudo bash /opt/pangu-source/scripts/healthcheck.sh            # 交互输出全部检查项
+sudo bash /opt/pangu-source/scripts/healthcheck.sh --json     # JSON（监控采集）</pre>
+<p>检查项：7 个 systemd 服务 active、Go API /health、5 个引擎 /health、PostgreSQL、Redis、nginx 配置、HTTPS 站点、磁盘空间（&lt;1GB 告警）。退出码 0=正常 1=异常。</p>
+
+<h3>8.2 自启（已内置）</h3>
+<ul>
+  <li>全部 unit <code>Restart=always</code>：进程崩溃 5 秒自动拉起；<code>enable</code> 后开机自启。</li>
+  <li>acme.sh cron：每日检查证书，到期前 30 天自动续期 + reload nginx。</li>
+</ul>
+
+<h3>8.3 推荐：systemd timer 定时自检（5 分钟一次，异常记录日志）</h3>
+<pre># /etc/systemd/system/yuqing-healthcheck.service
+[Unit]
+Description=yuqing healthcheck
+[Service]
+Type=oneshot
+ExecStart=/opt/pangu-source/scripts/healthcheck.sh --json
+
+# /etc/systemd/system/yuqing-healthcheck.timer
+[Unit]
+Description=Run yuqing healthcheck every 5 min
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+
+systemctl enable --now yuqing-healthcheck.timer
+# 查看结果: journalctl -u yuqing-healthcheck.service | tail</pre>
+
+<h3>8.4 手工健康快查</h3>
+<pre>curl -s http://127.0.0.1:8080/api/v1/health
+curl -s http://127.0.0.1:8002/health    # llm:true 表示 DeepSeek key 已注入
+curl -s https://yuqing.pangu-cloud.com/ -o /dev/null -w '%{http_code}\n'
+sudo -u postgres psql -d yuqing_platform -c 'SELECT count(*) FROM users'</pre>
+</div>
+
+<!-- ═══════════════════ ⑨ 证书/备份/排障 ═══════════════════ -->
+<h2 id="cert">九、证书、备份与故障排查</h2>
+<div class="card">
+<h3>9.1 证书（acme.sh）</h3>
+<pre>~/.acme.sh/acme.sh --list                                  # 当前证书
+~/.acme.sh/acme.sh --renew -d yuqing.pangu-cloud.com --force   # 手动续期
+crontab -l | grep acme                                     # 每日检查 cron（内置 30 天提前续期 + reload nginx）</pre>
+
+<h3>9.2 备份</h3>
+<pre># 数据库（每日建议）
+sudo -u postgres pg_dump yuqing_platform | gzip &gt; /opt/backups/yuqing_platform-$(date +%F).sql.gz
+# 配置（一次性）
+tar czf /opt/backups/config-$(date +%F).tgz /opt/yuqing/config/
+# 恢复
+gunzip -c yuqing_platform-XXXX.sql.gz | sudo -u postgres psql -d yuqing_platform</pre>
+
+<h3>9.3 常见故障速查</h3>
+<table>
+  <tr><th>症状</th><th>排查</th></tr>
+  <tr><td>任务永久 queued</td><td>config.yaml 的 <code>engines.query.url</code> 是否为空 / query 引擎是否 active</td></tr>
+  <tr><td>任务完成但无文档</td><td>引擎 BOCHA_API_KEY 是否有效；<code>journalctl -u yuqing-query | grep -i bocha</code></td></tr>
+  <tr><td>任务完成但无摘要/报告</td><td><code>curl :8002/health</code> 的 llm 字段（false = DeepSeek key 缺失）；<code>journalctl -u yuqing-insight</code></td></tr>
+  <tr><td>登录后 roles 缺 platform_admin</td><td>bootstrap drop-in 的 YUQING_BOOTSTRAP_ADMIN_EMAIL 与注册邮箱是否一致</td></tr>
+  <tr><td>站点 502/504</td><td>yuqing-server 是否 active；nginx error.log；API 健康检查</td></tr>
+  <tr><td>重启后账号丢失</td><td>检查 config.yaml <code>store.driver: postgres</code> 是否被改回 memory</td></tr>
+  <tr><td>数据库报 permission denied for schema public</td><td><code>GRANT ALL ON SCHEMA public TO yuqing; ALTER DATABASE yuqing_platform OWNER TO yuqing</code></td></tr>
+  <tr><td>服务器高负载/失联（历史教训）</td><td><b>禁止在生产服务器跑 go test 编译</b>；测试用本地交叉编译二进制上传执行（go test -c）</td></tr>
+</table>
+</div>
+
+<p style="color:var(--fg-2);margin-top:40px">盘古舆情 · 运维手册 v2.0（2026-09-13）· 配套文档：<a href="DEPLOYMENT_LOG.html">部署日志</a>、<a href="CICD_PLAN.html">CI/CD 规划</a></p>
+</div>
+</body>
+</html>

@@ -119,7 +119,7 @@ internal/
 └── pkg/         ← db, queue, llm, storage, search, cache, id, errors, observ
 ```
 
-**Platform vs Business 双向禁止跨层 import**。已知例外仅 1 处：`business/report → platform/billing`（定价目录下沉 `pkg/` 是长期方案，当前用函数注入缓解，见 `platform/REVIEW_REPORT.md` §8.4）。
+**Platform vs Business 双向禁止跨层 import**。已知例外仅 1 处：`business/report → platform/billing`（定价目录下沉 `pkg/` 是长期方案，当前用函数注入缓解，见 `docs/dev/reviews/REVIEW_REPORT.md` §8.4）。
 
 ## Engine 实现状态（勿假设"引擎可用"）
 
@@ -232,7 +232,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
-- 运维手册 `docs/OPS_MANUAL.html`（架构/服务清单、服务管理、日志排查、配置变更、证书管理、备份恢复、巡检、故障排查）；部署日志 `docs/DEPLOYMENT_LOG.html`（15 个问题 + 根因 + 4 条教训）
+- 运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
 ## 凭据与安全
 
@@ -248,7 +248,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - HTTP handlers: thin — DTO 校验 → service → `respondError`。v1 路由全部经 `v1.Services` 注入
 - 套餐特性：`billing.DefaultPlans()[code]` + feature key，不硬编码
 - TDD: 先写失败测试 RED → 最小实现 GREEN → 重构。**禁止先写实现再补测试**
-- Code review: 5 角度审查，报告留 `platform/REVIEW_REPORT.md`（§5/§8 等章节记录已知遗留项）
+- Code review: 5 角度审查，报告留 `docs/dev/reviews/REVIEW_REPORT.md`（§5/§8 等章节记录已知遗留项）
 - 前端: 页面数据经 `web/src/api/*.ts` 统一 axios（401 自动 refresh），错误信封经 ApiErrorHandler；图表色 负面 `#FF2442` / 中性 `#9ca3af` / 正面 `#02b940`
 - 项目品牌：**盘古舆情**（README/前端/demo/docs 均用此名；Go module 名 `yuqing` 保持内部标识不变）
 - 面向人交付的文档用 **HTML**（`docs/*.html`），不用 Markdown —— 用户明确要求过
