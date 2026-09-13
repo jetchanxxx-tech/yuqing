@@ -2,6 +2,7 @@ package alert
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -49,8 +50,10 @@ func alertStoreContract(t *testing.T, newStore func(t *testing.T, tenantID strin
 			t.Fatalf("Get failed: %v", err)
 		}
 		// CreatedAt 逐字段比（PG 版见 TestAlertStore_PG_createdAtIsNotPersisted）。
+		// RuleJSON 单独比语义：JSONB 落库会重排键序，字符串比较会误报。
 		gotCopy, wantCopy := *got, want
 		gotCopy.CreatedAt, wantCopy.CreatedAt = time.Time{}, time.Time{}
+		gotCopy.RuleJSON, wantCopy.RuleJSON = canonicalJSON(got.RuleJSON), canonicalJSON(want.RuleJSON)
 		if gotCopy != wantCopy {
 			t.Errorf("alert = %+v, want %+v", gotCopy, wantCopy)
 		}
@@ -168,7 +171,14 @@ func TestAlertStore_Memory_satisfiesContract(t *testing.T) {
 
 func TestAlertStore_PG_satisfiesContract(t *testing.T) {
 	pool := pgtest.Pool(t, "alert", pgtest.PlatformMigrations)
-	alertStoreContract(t, func(t *testing.T, tenantID string) Store { return NewPGStore(pool, tenantID) })
+	alertStoreContract(t, func(t *testing.T, tenantID string) Store {
+		// 子测试共享同一 schema：构造前清掉上一子测试的残留（内存版天然隔离）
+		if _, err := pool.Exec(context.Background(),
+			`DELETE FROM alerts WHERE tenant_id IN ('tenant-1', 'tenant-2')`); err != nil {
+			t.Fatalf("pre-clean alerts: %v", err)
+		}
+		return NewPGStore(pool, tenantID)
+	})
 }
 
 // ── PG 专有 ────────────────────────────────────────────────────
@@ -243,7 +253,7 @@ func TestAlertStore_PG_survivesNewInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重启后读告警失败: %v", err)
 	}
-	if got.Name != a.Name || got.RuleJSON != a.RuleJSON || got.Threshold != 0.4 {
+	if got.Name != a.Name || !jsonEqual(got.RuleJSON, a.RuleJSON) || got.Threshold != 0.4 {
 		t.Errorf("alert = %+v, want 与写入一致", got)
 	}
 	if !got.LastTriggeredAt.Equal(at) {
@@ -289,4 +299,23 @@ func TestServiceOverPGStore_checkFiresAndPersistsTrigger(t *testing.T) {
 	if got.LastTriggeredAt.IsZero() {
 		t.Error("last_triggered_at 未持久化")
 	}
+}
+
+
+// canonicalJSON 把 JSON 串规范化（解析后重序列化），消除 JSONB 落库的键序差异。
+func canonicalJSON(s string) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return s
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return s
+	}
+	return string(b)
+}
+
+// jsonEqual 比较两个 JSON 串的语义是否相等。
+func jsonEqual(a, b string) bool {
+	return canonicalJSON(a) == canonicalJSON(b)
 }

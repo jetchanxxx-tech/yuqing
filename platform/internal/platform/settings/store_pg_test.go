@@ -145,6 +145,10 @@ func TestSettingsStore_Memory_satisfiesContract(t *testing.T) {
 func TestSettingsStore_PG_satisfiesContract(t *testing.T) {
 	pool := pgtest.Pool(t, "settings")
 	settingsStoreContract(t, func(t *testing.T, seed map[string]string) Store {
+		// 子测试共享同一 schema：构造前清掉上一子测试的残留（内存版天然隔离）
+		if _, err := pool.Exec(context.Background(), `DELETE FROM platform_settings`); err != nil {
+			t.Fatalf("pre-clean platform_settings: %v", err)
+		}
 		st, err := NewPGStore(pool, seed)
 		if err != nil {
 			t.Fatalf("NewPGStore failed: %v", err)

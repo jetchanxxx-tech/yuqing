@@ -244,7 +244,14 @@ func TestAPIKeyStore_Memory_satisfiesContract(t *testing.T) {
 
 func TestAPIKeyStore_PG_satisfiesContract(t *testing.T) {
 	pool := pgtest.Pool(t, "apikey")
-	apiKeyStoreContract(t, func(t *testing.T) Store { return NewPGStore(pool) })
+	apiKeyStoreContract(t, func(t *testing.T) Store {
+		// 子测试共享同一 schema：构造前清掉上一子测试的残留（内存版天然隔离）
+		if _, err := pool.Exec(context.Background(),
+			`DELETE FROM api_keys WHERE tenant_id IN ('t1', 't2', 't3')`); err != nil {
+			t.Fatalf("pre-clean api_keys: %v", err)
+		}
+		return NewPGStore(pool)
+	})
 }
 
 // ── PG 专有 ────────────────────────────────────────────────────
