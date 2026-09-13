@@ -96,10 +96,17 @@ func TestDocumentStore_addListCount(t *testing.T) {
 				t.Fatalf("list len = %d, want %d", len(got), len(want))
 			}
 			// 存储顺序不保证，按 ID 归一后逐字段比对。
+			// PublishedAt 单独比：TIMESTAMPTZ 读回统一为 UTC 表示
+			// （+08:00 与 Z 是同一时刻，字符串形式不同）。
 			sort.Slice(got, func(i, j int) bool { return got[i].ID < got[j].ID })
 			for i := range want {
-				if !reflect.DeepEqual(got[i], want[i]) {
-					t.Errorf("doc[%d] = %+v, want %+v", i, got[i], want[i])
+				g, w := got[i], want[i]
+				if !samePublishedAt(g.PublishedAt, w.PublishedAt) {
+					t.Errorf("doc[%d] PublishedAt = %q, want %q", i, g.PublishedAt, w.PublishedAt)
+				}
+				g.PublishedAt, w.PublishedAt = "", ""
+				if !reflect.DeepEqual(g, w) {
+					t.Errorf("doc[%d] = %+v, want %+v", i, g, w)
 				}
 			}
 
@@ -438,4 +445,17 @@ func TestServiceWithStore_memoryStores(t *testing.T) {
 	if time.Since(got.FinishedAt) > time.Minute {
 		t.Errorf("FinishedAt = %v, want 刚刚", got.FinishedAt)
 	}
+}
+
+// samePublishedAt 比较两个 RFC3339 时间串是否代表同一时刻（容忍时区表示差异）。
+func samePublishedAt(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ta, errA := time.Parse(time.RFC3339, a)
+	tb, errB := time.Parse(time.RFC3339, b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return ta.Equal(tb)
 }
