@@ -270,6 +270,7 @@ export default function AnalysisNewPage() {
               message="成本预估"
               description={
                 <>
+                  预计耗时 <b>5-10 分钟</b>（采集 → 五维智能分析 → 报告生成）；
                   预计消耗约 <b>{formatTokens(estTokens)}</b> tokens
                   （关键词 {keywords.length} × 数据源 {sources.length} × {formatNum(TOKEN_PER_KEYWORD_SOURCE)}，另含报告生成{' '}
                   {formatNum(BASE_TOKENS)}）

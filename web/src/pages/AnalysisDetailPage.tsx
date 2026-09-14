@@ -62,11 +62,11 @@ import {
 import { formatDateTime, formatNum } from '../lib/format';
 
 const RUNNING_HINTS: Partial<Record<AnalysisState, string>> = {
-  queued: '任务已进入队列，等待调度执行',
-  acquiring_budget: '正在校验预算额度',
-  fetching: '正在从各平台采集公开数据',
-  analyzing: '多 Agent 正在协同研判内容',
-  generating_report: '正在生成洞察报告',
+  queued: '任务已进入队列，等待调度执行（全流程预计 5-10 分钟）',
+  acquiring_budget: '正在校验预算额度（全流程预计 5-10 分钟）',
+  fetching: '正在从各平台采集公开数据（约 1-2 分钟）',
+  analyzing: '多 Agent 正在协同研判内容（五维分析约 3-5 分钟，为最耗时阶段）',
+  generating_report: '正在生成洞察报告（约 1 分钟），即将完成',
 };
 
 const TREND_ICONS: Record<string, React.ReactNode> = {
