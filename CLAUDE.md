@@ -42,7 +42,7 @@ npm run lint                         # oxlint
 
 # ── E2E (web/e2e/) ────────────────────────────────────────
 npx playwright test --config e2e/playwright.config.ts     # 本地 dev server 冒烟
-npx playwright test --config e2e/production.config.ts     # 打生产站点（23 用例）
+npx playwright test --config e2e/production.config.ts     # 打生产站点（27 用例）
 # 生产套件凭据**只能**来自环境变量，缺失时 spec 直接抛错：
 #   E2E_EMAIL / E2E_PASSWORD / E2E_BASE_URL（默认 https://yuqing.pangu-cloud.com）
 #   E2E_BOCHA_KEY 可选，用于 5.3 数据源写入验证
@@ -52,7 +52,7 @@ cd engines
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt      # 含 scrapling[fetchers]
 scrapling install --chromium         # 首次 ~150MB
-python3 -m pytest tests/ -v          # 50 用例（scraper/llm_client/insight 含五维/报告）
+python3 -m pytest tests/ -v          # 54 用例（scraper/llm_client/insight 含五维/报告）
 # 开发：在具体引擎目录下 `uvicorn main:app --port 8000`
 # 生产（systemd）：WorkingDirectory 与 PYTHONPATH 均为 /opt/pangu-source，
 #   ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.<name>_engine.main:app
@@ -106,7 +106,10 @@ POST /analyses → store 写入(state=queued) → queue 发布 TaskMessage{analy
 - 洞察/报告经 `app/pipeline.go` 的 adapter 适配（engine → analysis 接口），business 层不 import engine 包
 - **warning 语义**：warn 只描述降级程度，不决定「是否保存」—— 洞察结果非空（哪怕部分维度失败）即 SetInsight；`InsightAvailable` = 有产出而非零告警
 - **引用保真**：维度「逐字原声」必须是源文档正文的归一化子串（去空白比较），编造引语丢弃并记 warning（`insight_engine._verify_quotes`）
-- 维度材料包总预算 16k 字符（发布时间最新优先截断，显式标记）；维度调用 `max_tokens=4096`、并发闸门 3 + 瞬时错误重试一次
+- 维度材料包总预算 16k 字符（发布时间最新优先截断，显式标记）；维度调用 `max_tokens=8192`、并发闸门 3 + 瞬时错误重试一次
+- **LLM 供应商可配置**（默认智谱 GLM `glm-5.3-flash`，DeepSeek 兼容回退）：三级来源 = 请求参数（后台三字段零重启透传）→ 环境变量 `LLM_API_KEY/LLM_BASE_URL/LLM_MODEL` → 代码默认。Admin UI「数据源配置」有 Key/端点/模型三字段
+- ⚠️ GLM 思考型坑：`glm-5.3-flash` 先产 reasoning 再输出 content，max_tokens 是两者之和 —— 4096 在真实语料下被 reasoning 吃光致 content 空（4/5 维度失败，生产实测）；已配 8192 且 `finish_reason=length` 显式报「输出被截断」
+- ⚠️ 传输超时坑：Go→insight/report 的 http.Client 超时 **420s**（GLM 思考型五维实测 266s，180s 会截断；改引擎侧配置时要同步核对）
 
 ## Layer Boundaries (critical)
 
@@ -131,8 +134,8 @@ Python 引擎**不是**同等完成度。改动前先确认：
 | 引擎 | 端口 | 状态 |
 |------|------|------|
 | `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
-| `insight_engine` | 8002 | ✅ **真实实现** — DeepSeek 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
-| `report_engine` | 8003 | ✅ **真实实现** — DeepSeek 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告 |
+| `insight_engine` | 8002 | ✅ **真实实现** — LLM 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
+| `report_engine` | 8003 | ✅ **真实实现** — LLM 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告 |
 | `forum_engine` | 8004 | ⚠️ Mock — 预置"雅阁后排"4 Agent × 3 轮辩论 |
 | `media_engine` | 8001 | ⚠️ Mock — 5 条预置多模态结果 |
 
@@ -206,8 +209,8 @@ any active state → failed | canceled
 | 单元 | 各包 `*_test.go` | TDD，表驱动 |
 | 契约 | `api/v1/contract_test.go`、`result_test.go` | 锁 endpoint 响应结构 + RBAC 403 + gap registry |
 | 集成 | `test/integration/` | 全链路/计费/隔离/并发 |
-| Python | `engines/tests/`（4 个文件） | 50 用例：Scrapling + LLM 客户端 + 五维分析/引用保真/报告（FakeLLM 离线） |
-| E2E | `web/e2e/production.spec.ts` | 23 用例，打生产站点 |
+| Python | `engines/tests/`（4 个文件） | 54 用例：Scrapling + LLM 客户端 + 五维分析/引用保真/报告（FakeLLM 离线） |
+| E2E | `web/e2e/production.spec.ts` | 27 用例，打生产站点 |
 
 ## MVP Scope
 
@@ -219,10 +222,10 @@ any active state → failed | canceled
 | F13 | SSE 实时推送 | ✅ 轮询实现 |
 | F14 | API Key 管理 | ✅ pangu_ 格式 |
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
-| F16 | 数据源在线配置（Admin UI） | ✅ Bocha + DeepSeek |
-| F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ DeepSeek 真实调用，管线全链路已接入 |
+| F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段） |
+| F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ LLM 真实调用 + 五维研判，管线全链路已接入（生产实测 357s） |
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
-| — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 DeepSeek，Go 侧计量未接线 |
+| — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线 |
 
 ## 部署与运维
 
@@ -236,7 +239,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
 - 迁移 0005：analyses.dimensions JSONB 列 —— **部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server**
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
-- 运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
+- **规范化部署手册 `docs/ops/DEPLOYMENT_RUNBOOK.md`**（新服务器/其他智能体照此执行，含全部踩坑）；运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
 ## 凭据与安全
 
