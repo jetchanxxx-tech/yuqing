@@ -24,11 +24,13 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+import httpx
+
 from engines.common.llm_client import LLM_MODEL, build_client
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
-app = FastAPI(title="Insight Engine", version="0.3.0")
+app = FastAPI(title="Insight Engine", version="0.4.0")
 
 # 每篇文档正文截断长度 —— 维度分析要读到细节，放宽到 3000 字
 MAX_CONTENT_CHARS = 3000
@@ -48,6 +50,9 @@ class AnalyzeRequest(BaseModel):
     # LLM 供应商可配置（后台「数据源配置」在线修改，经 Go 管线透传）：
     llm_base_url: str = ""  # 空 = 环境变量/默认（智谱）
     llm_model: str = ""  # 空 = 环境变量/默认
+    # 套餐裁剪模式："" / "full" = 5 维完整研判；"quick" = 3 维速览
+    # （Lite/体验档，尝试关闭思考以压成本）。其他值按 full 处理。
+    mode: str = ""
 
 
 class SentimentRequest(BaseModel):
@@ -120,6 +125,37 @@ DIMENSIONS: tuple[DimensionSpec, ...] = (
 
 # 维度输出的骨架（BettaFish 手法：把"写法"也约束住，避免自由发挥成散文）
 _SKELETON = "核心发现 → 数据 → 代表性声音 → 深入解读 → 趋势"
+
+# ── 套餐裁剪（方案 B）────────────────────────────────────────────
+# quick = 3 维速览（Lite 99 / 体验档）：热度怎么样 → 公众什么情绪 → 为什么。
+# full = 全部 5 维（Pro 999 及以上）。成本差 ≈ 2/5，加上思考开关是 Lite 档
+# 「30 元成本压到 3 元」定价模型的关键。
+QUICK_DIMENSION_IDS = ("heat", "sentiment", "deep_cause")
+
+
+def _quick_thinking_kwargs(mode: str) -> dict:
+    """quick 模式尝试关闭思考（Flash 思考型 reasoning 消耗是成本的 10 倍级）。
+
+    该字段是智谱 GLM-4.5+ 系列的思考开关；供应商不认识时会在请求阶段报
+    400 —— 调用方（_chat_json_smart）去掉该参数重试一次，功能优先于成本优化。
+    """
+    if mode == "quick":
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
+
+async def _chat_json_smart(llm, model: str, messages: list[dict], mode: str = "", **kwargs) -> dict:
+    """带思考开关的 JSON 调用：quick 模式先带 thinking=disabled 尝试，
+    供应商 400（不认识该字段）则去掉重试一次。"""
+    extra = _quick_thinking_kwargs(mode)
+    try:
+        return await llm.chat_json(model, messages, **kwargs, **extra)
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 0
+        if extra and status == 400:
+            logger.warning("thinking 参数被供应商拒绝(400)，去掉后重试")
+            return await llm.chat_json(model, messages, **kwargs)
+        raise
 
 _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 
@@ -389,7 +425,7 @@ def _verify_quotes(
 
 async def _analyze_one_dimension(
     llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str,
-    llm_model: str = "",
+    llm_model: str = "", mode: str = "",
 ) -> dict:
     """单个维度的独立分析调用。异常由调用方捕获（单维度失败不致命）。"""
     prompt = _DIMENSION_PROMPT.format(
@@ -402,12 +438,14 @@ async def _analyze_one_dimension(
         materials=_materials_text(documents),
         skeleton=_SKELETON,
     )
-    data = await llm.chat_json(
+    data = await _chat_json_smart(
+        llm,
         llm_model,
         [
             {"role": "system", "content": spec.persona + " 输出必须是 JSON 对象。"},
             {"role": "user", "content": prompt},
         ],
+        mode=mode,
         temperature=0.6,
         max_tokens=8192,
     )
@@ -437,15 +475,17 @@ logger = logging.getLogger(__name__)
 
 async def _run_dimensions(
     llm, documents: list[dict], analysis_type: str, title: str,
-    llm_model: str = "",
+    llm_model: str = "", mode: str = "",
 ) -> tuple[list[dict], list[str]]:
-    """并发跑五个维度（闸门限 3）。返回 (成功的维度, 失败原因列表)。"""
+    """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
+    返回 (成功的维度, 失败原因列表)。"""
+    specs = [d for d in DIMENSIONS if d.id in QUICK_DIMENSION_IDS] if mode == "quick" else list(DIMENSIONS)
     sem = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
 
     async def guarded(spec: DimensionSpec) -> dict:
         async with sem:
             try:
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode)
             except Exception as exc:
                 # 429/超时类瞬时错误重试一次。首次失败必须留痕（排障依赖它）；
                 # 重试仍失败则异常向上抛，由 gather(return_exceptions=True)
@@ -453,15 +493,15 @@ async def _run_dimensions(
                 # 换取瞬时错误的恢复，值得。
                 logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, exc)
                 await asyncio.sleep(_RETRY_DELAY_SECONDS)
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode)
 
     results = await asyncio.gather(
-        *(guarded(spec) for spec in DIMENSIONS), return_exceptions=True
+        *(guarded(spec) for spec in specs), return_exceptions=True
     )
 
     dims: list[dict] = []
     failed: list[str] = []
-    for spec, res in zip(DIMENSIONS, results):
+    for spec, res in zip(specs, results):
         if isinstance(res, Exception):
             failed.append(f"{spec.name}（{res}）")
         else:
@@ -477,8 +517,9 @@ async def health():
     return {
         "status": "ok",
         "engine": "insight",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "dimensions": len(DIMENSIONS),
+        "quick_dimensions": len(QUICK_DIMENSION_IDS),
         "llm": bool(LLM_API_KEY),
     }
 
@@ -496,8 +537,9 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
     try:
-        # ① 情感 + 话题（分类任务，temperature=0 求稳定）
-        sent_topics = await llm.chat_json(
+        # ① 情感 + 话题（分类任务，temperature=0 求稳定；quick 模式同关思考）
+        sent_topics = await _chat_json_smart(
+            llm,
             model,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
@@ -508,6 +550,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     ),
                 },
             ],
+            mode=req.mode,
             temperature=0,
         )
     except HTTPException:
@@ -526,9 +569,9 @@ async def analyze(req: AnalyzeRequest) -> dict:
         if isinstance(t, dict):
             t["trend"] = trends.get(t.get("id", ""), "stable")
 
-    # ③ 五维度并发分析（单维度失败降级，不拖垮整次分析）
+    # ③ 维度并发分析（quick=3 维速览 / full=5 维；单维度失败降级，不拖垮整次分析）
     dimensions, failed = await _run_dimensions(
-        llm, req.documents, req.analysis_type, req.title, model
+        llm, req.documents, req.analysis_type, req.title, model, req.mode
     )
     warnings = [f"部分维度分析失败：{'；'.join(failed)}"] if failed else []
     # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
@@ -539,7 +582,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     try:
-        summary_resp = await llm.chat_json(
+        summary_resp = await _chat_json_smart(
+            llm,
             model,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
@@ -559,6 +603,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     ),
                 },
             ],
+            mode=req.mode,
             temperature=0.4,
         )
         summary = (
