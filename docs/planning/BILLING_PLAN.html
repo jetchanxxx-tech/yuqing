@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>盘古舆情 · 收费体系规划（方案 B）</title>
+<style>
+  :root { --fg: #1f2937; --fg-2: #4b5563; --accent: #1677ff; --bg: #f5f6fa; --card: #fff; --danger: #dc2626; --warn: #b45309; --ok: #02b940; }
+  * { box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: var(--fg); background: var(--bg); line-height: 1.8; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 27px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 20px; margin-top: 40px; color: var(--accent); border-left: 4px solid var(--accent); padding-left: 10px; }
+  h3 { font-size: 16px; margin-top: 22px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 14px 0; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  code { background: #eef2ff; color: #3730a3; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; background: var(--card); }
+  th, td { border: 1px solid #e5e7eb; padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; }
+  .note { border-left: 4px solid var(--accent); background: #eff6ff; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin: 12px 0; }
+  .note.ok { border-color: var(--ok); background: #f0fdf4; }
+  .rec { border: 2px solid var(--ok); border-radius: 12px; background: #f0fdf4; }
+  .audit { border: 2px dashed var(--accent); border-radius: 12px; padding: 16px 20px; margin: 18px 0; background: #f8faff; }
+  .tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; margin-right: 6px; }
+  .p0 { background: #ffe9ec; color: var(--danger); } .p1 { background: #fff7e6; color: var(--warn); } .p2 { background: #e8f9ee; color: var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>收费体系规划（v1.0 供集体讨论）</h1>
+<p style="color:var(--fg-2)">运营（套餐设计）+ 产品（功能规划）+ 开发（技术实现）三方联合产出 · 2026-09-15 · 全部定价数据来自 2026-09 实爬，无猜想</p>
+
+<h2>一、定价地基（实爬数据）</h2>
+<div class="card">
+<table>
+  <tr><th>数据源</th><th>实爬结论</th></tr>
+  <tr><td>智谱 GLM</td><td>GLM-5.3：输入 8 / 输出 28 元每百万 tokens；GLM-5.3-Flash ≈ 1/10（约 0.8/2.8）；GLM-4-Flash 免费</td></tr>
+  <tr><td>DeepSeek</td><td>flash：输入 1-2 / 输出 4-8；v4-pro：输入 4.5-9 / 输出 13.5-27（高峰/空闲差一倍）</td></tr>
+  <tr><td>国际分层比率</td><td>Claude Pro $20 → Max 5x $100 → Max 20x $200（1:5:10）；年付约 83 折；Enterprise 议价量大单价更低</td></tr>
+  <tr><td>舆情竞品</td><td>清博/识微/蚁坊：全部商务报价不公开，年费 3 万-20 万，年费制，按关键词数/数据源/席位分级；<b>无一家透明自助定价 —— 我们的差异化机会</b></td></tr>
+</table>
+<div class="note">硬约束：单报告 LLM 成本 30 元（思考型）；45% 毛利 = 成本占比 ≤55% → 思考型单次收入 ≥54.5 元（年付 83 折后等效 65.7 元）；GLM-5.3-Flash 成本 ≈ 3 元/次。</div>
+</div>
+
+<h2>二、三套定价方案对比</h2>
+<div class="card">
+<table>
+  <tr><th>方案</th><th>三级月价</th><th>报告/月</th><th>单次成本占比（年付后）</th><th>评价</th></tr>
+  <tr><td>A 全球对标型<br>（全线思考型，严格 1:5:10）</td><td>249 / 1,249 / 2,499</td><td>3 / 15 / 30</td><td>36%-43.5%</td><td>年付贴线零缓冲；Ent 2.49 万"便宜得可疑"压制定位</td></tr>
+  <tr class="rec"><td><b>B 渗透型（推荐）</b><br>双模型分档：Lite=Flash 3 维速览</td><td><b>99 / 999 / 4,999</b></td><td><b>4 / 10 / 50</b></td><td><b>14.6%-36.2%（全线毛利 70-88%）</b></td><td>入门价 88% 毛利渗透；Ent 年框 4.98 万落竞品区间；升级动机内生</td></tr>
+  <tr><td>C 年框企业型<br>（全线思考型，1:4.5:20）</td><td>199 / 899 / 3,999</td><td>2 / 10 / 45</td><td>36.3%-40.5%</td><td>199 Lite 拦住 SMB/个人品牌主力客群</td></tr>
+</table>
+<div class="note ok"><b>推荐方案 B</b>：Lite 用 Flash（3 元/次）不是亏本补贴而是模型分档 —— 99 元入门价以 88% 毛利实现渗透；速览版看得见的深度局限就是 Pro 最好的广告；Pro 年化 9,950 ≈ 竞品入门档 1/3，Ent 4.98 万落竞品区间下沿。</div>
+
+<h3>方案 B 定稿价格表</h3>
+<table>
+  <tr><th>套餐</th><th>月/年价</th><th>报告/月</th><th>规格</th><th>超量</th></tr>
+  <tr><td><b>速览 Lite</b></td><td>99 / 988</td><td>4 次</td><td>Flash 模型、3 维速览（情感/热度/要点）、3 关键词、2 数据源、1 席</td><td>停服；速览加购 9.9 元/次</td></tr>
+  <tr><td><b>研判 Pro</b></td><td>999 / 9,950</td><td>10 次</td><td>思考型、5 维研判、15 关键词、8 数据源、3 席、PDF 导出、历史回溯、API</td><td>研判加购 69 元/次（10 次包 690）</td></tr>
+  <tr><td><b>旗舰 Enterprise</b></td><td>4,999 / 49,790</td><td>50 次</td><td>思考型、5 维、60 关键词、全部数据源、15 席、优先队列</td><td>同 Pro；可签年框弹性池</td></tr>
+</table>
+<p>试用：注册赠 1 次思考型全量 + 3 次速览（注册成本 39 元，转化 10% 时 CAC 390 元 &lt; Lite 年付毛利 844 元，首年回正）。升级触发：配额用尽弹升级卡 / 连续 2 月用量 ≥80% 触达 / 负面预警命中送季度 1 次五维体验 / 试用到期 48h 升年付赠 10 次加购包（送量不砍价）。</p>
+</div>
+
+<h2>三、产品功能规划（P0/P1/P2）</h2>
+<div class="card">
+<table>
+  <tr><th>级</th><th>功能</th><th>验收要点</th></tr>
+  <tr><td rowspan="4"><span class="tag p0">P0</span> 不依赖支付通道</td><td>套餐页重构 4→3 档</td><td>三档月/年价 + 加购价 + 试用权益；Pro 卡「最受欢迎」高亮；Ent「联系顾问」锚点</td></tr>
+  <tr><td>配额拦截 + 升级卡</td><td>创建前校验（套餐+试用+加购三层余量）；不足拦截弹升级卡，注明次月重置时间</td></tr>
+  <tr><td>Lite 3 维速览降级</td><td>3 维为 5 维子集（数据结构不变）；报告页固定「升级解锁 5 维研判」入口</td></tr>
+  <tr><td>试用包 + 消费面板 + 站内通知 + 人工开通流 + Pro 能力门槛</td><td>注册即发放试用；面板与拦截同源；80% 预警/用尽/到期三类站内通知必达；支付宝等按钮位预留置灰「即将支持」；PDF/回溯/API fail-closed 且 Lite 触达返回升级引导</td></tr>
+  <tr><td><span class="tag p1">P1</span> 依赖支付通道</td><td>支付自动开通 / 加购在线购 / 邮件通知 / 转化自动化 / 预警送五维体验 / 席位硬校验</td><td>支付到开通 ≤1 分钟；转化触达「符合条件 100% 收到且仅一次」；超席即拦减员释放</td></tr>
+  <tr><td><span class="tag p2">P2</span> 远期</td><td>Enterprise 优先队列 / 合同年框</td><td>优先队列等待时间可量化低于普通队列</td></tr>
+</table>
+</div>
+
+<h2>四、技术实现（开发方案）</h2>
+<div class="card">
+<h3>4.1 数据库（goose 0006/0007，复用 0001 已有 subscriptions 表 ALTER 扩列）</h3>
+<pre>-- 0006_billing_core.sql（核心段）
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+  ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+CREATE TABLE report_credits (            -- 报告配额池：每次发放一行，先到期先扣
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+  credit_type TEXT NOT NULL CHECK (credit_type IN ('quick','deep')),
+  total INTEGER NOT NULL CHECK (total > 0),
+  remaining INTEGER NOT NULL CHECK (remaining >= 0 AND remaining <= total),
+  source TEXT NOT NULL CHECK (source IN ('subscription','addon','trial','manual')),
+  ref_id TEXT NOT NULL DEFAULT '', expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX idx_report_credits_consume
+  ON report_credits(tenant_id, credit_type, expires_at) WHERE remaining > 0;
+
+CREATE TABLE credit_transactions (       -- append-only 流水，幂等键防重复
+  id BIGSERIAL PRIMARY KEY, tenant_id TEXT NOT NULL, credit_id TEXT NOT NULL,
+  analysis_id TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK (kind IN ('consume','grant','refund','expire','adjust')),
+  amount INTEGER NOT NULL, balance_after INTEGER NOT NULL,
+  operator TEXT NOT NULL DEFAULT 'system', idempotency_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE (idempotency_key));
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS credit_type TEXT NOT NULL DEFAULT '';
+
+-- 0007_orders_payments.sql：orders（订单状态机 pending→paid→failed→canceled→refunded，
+--   amount_cny 以分计价、服务端计价不信任前端）+ payments（provider IN manual/alipay/wechat/unionpay，
+--   (provider, channel_txn_id) UNIQUE 回调幂等，callback_raw JSONB 存证）</pre>
+
+<h3>4.2 计费引擎（internal/business/credit/）</h3>
+<pre>TryConsume(ctx, tenantID, typ, n, analysisID) error      // 幂等键 = analysisID+":consume"
+Grant(ctx, tenantID, typ, n, source, refID, expiresAt) error
+RefundByAnalysis(ctx, tenantID, analysisID) error        // 任务失败/取消回补，幂等
+Balance(ctx, tenantID) (Balance, error)
+Entitlement(ctx, tenantID) (PlanEntitlement, error)      // 深度研判/PDF/API 可用性
+ExpireDue(ctx, now) (int64, error)                       // 定时过期</pre>
+<p><b>原子性与防超卖</b>：Create 生成 ID 后、落库+发布前 TryConsume；发布失败立即 RefundByAnalysis 回补；管线 markFailed/Cancel 挂回补。单事务 SELECT FOR UPDATE（expires_at ASC 分摊多行）+ 条件 UPDATE 双保险；行锁粒度 = 租户×类型。<b>超量语义</b>：Lite 余额 0 → QUOTA_EXCEEDED（停服）；Pro/Ent 余额 0 → QUOTA_EXCEEDED_ADDON（引导加购）。</p>
+
+<h3>4.3 维度降级（请求参数裁剪，否决独立 prompt 集）</h3>
+<p>Python /analyze 加 <code>mode: "flash"|"deep"</code>（flash → DIMENSIONS[:3] 且跳过批判重写摘要；缺省 deep 向后兼容）；Go contract 加 Mode 字段；管线读 analyses.credit_type 映射。前端零改动（dimensions 数组长度自然为 3）。</p>
+
+<h3>4.4 接口与支付预留</h3>
+<pre>GET  /billing/plan | /billing/credits | /billing/credits/transactions | /billing/usage
+POST /billing/orders → 201 {order, pay_url}；GET /billing/orders/:id
+POST /billing/subscription/change；POST /admin/billing/orders/:id/fulfill（人工开通 RBAC）
+POST /payment/callback/:provider（匿名路由，provider 内验签）
+
+type PaymentProvider interface {   // 本期 ManualProvider（对公转账 + admin fulfill）
+    Name() string
+    CreatePayment(ctx, CreatePaymentRequest) (*PaymentHandle, error)
+    QueryStatus(ctx, paymentID) (PaymentStatus, error)
+    VerifyCallback(ctx, *http.Request) (*CallbackResult, error)
+}  // 未来 Alipay/Wechat/UnionPay 仅新增实现插拔；MarkPaid 单事务幂等，金额不符落 failed 并告警</pre>
+
+<h3>4.5 通知与实施顺序</h3>
+<p><b>通知挂钩</b>：TryConsume 扣后 ≤20% → quota.warning、=0 → quota.exhausted；ExpireDue 扫描订阅到期前 7/3 天；MarkPaid → order.paid。通道抽象 Notifier（站内落库先行，邮件 nil 降级先例）。<b>实施顺序</b>：P0（0006 + credit.Service TDD + 方案 B 套餐目录 + Create 扣减 + 维度裁剪 + 试用 Grant）→ P1（0007 + ManualProvider + orders + 到期定时 + 通知）→ P2（Alipay/Wechat provider、优先队列、PDF、SMTP）。</p>
+
+<h3>4.6 风险对策</h3>
+<p>并发超卖（条件 UPDATE + FOR UPDATE + 幂等键三重，集成测试并发 50 断言不为负）｜到期宽限 3 天 past_due 只读｜试用滥用（trial 租户级幂等一次，P2 手机风控）｜退款反向流水、已消耗不自动回收｜Lite 停服只拦创建/下载，GET 永不拦。</p>
+</div>
+
+<div class="audit">
+<h3>待集体讨论确认的 5 个决策点</h3>
+<ol>
+  <li><b>采纳方案 B？</b>（运营推荐；Lite=Flash 3 维速览的模型分档逻辑是核心取舍）</li>
+  <li><b>Pro/Ent 套餐内单次约 100 元 &gt; 加购 69 元</b> —— 产品提示这是渗透策略（低门槛+超量变现），请书面确认；否则加购价应 ≥ 套餐内单次</li>
+  <li><b>存量免费用户迁移</b>：到期后赠 1 次试用、心智归入 Lite，不强制付费 —— 确认？</li>
+  <li><b>支付过渡</b>：P0 上线用「人工开通」（对公转账 + admin 确认），支付宝/微信 P1 —— 接受？</li>
+  <li><b>实施节奏</b>：P0 服务端闭环（约 3-4 天）→ P1 收款闭环（约 3 天）→ P2 渠道 —— 按此推进？</li>
+</ol>
+</div>
+
+<p style="color:var(--fg-2);margin-top:40px">三方联合产出 · 归档 docs/planning/BILLING_PLAN.html · 决策确认前不实施</p>
+</div>
+</body>
+</html>
