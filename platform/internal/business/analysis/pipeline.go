@@ -160,19 +160,26 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return p.fail(msg, "pipeline_error", err)
 	}
 	insight, warn := p.runInsight(ctx, msg, docs)
-	if warn != "" {
-		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
-	} else {
+	// 结果非空（哪怕只是部分维度成功）就要落库 —— warn 只描述降级程度，
+	// 不决定「要不要保存」。此前 warn 非空即跳过 SetInsight 的写法会让
+	// 单维度失败丢弃整份洞察，报告随后全量降级（P0 修复）。
+	if insight.Summary != "" || len(insight.Sentiments) > 0 || len(insight.Dimensions) > 0 {
 		if err := p.svc.SetInsight(ctx, msg.TenantID, msg.AnalysisID, insight); err != nil {
 			p.log.Warn("pipeline: store insight failed", slog.String("err", err.Error()))
 		}
+	}
+	if warn != "" {
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
 	// ④ 报告生成（同样非致命降级）
 	if err := p.step(ctx, msg, StateGeneratingReport, progressReport); err != nil {
 		return p.fail(msg, "pipeline_error", err)
 	}
-	if warn := p.runReport(ctx, msg, docs, insight, warn == ""); warn != "" {
+	// insightAvailable = 洞察「有产出」而非「零告警」：部分维度失败时
+	// 报告仍应基于已有结论撰写（并在报告内说明缺失），而不是整体降级。
+	insightAvailable := insight.Summary != "" || len(insight.Sentiments) > 0 || len(insight.Dimensions) > 0
+	if warn := p.runReport(ctx, msg, docs, insight, insightAvailable); warn != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 

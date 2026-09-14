@@ -263,3 +263,34 @@ def test_all_dimensions_succeed_leaves_no_warning(dim_llm):
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
 
     assert resp.json()["warning"] == ""
+
+# ── P0：材料 token 预算 ───────────────────────────────────────
+#
+# 五个维度各自注入全量素材包 → 输入 token ×5。预算按字符上限截断：
+# 优先保留发布时间最新的文档（舆情分析里最新证据最相关），
+# 截断必须在 prompt 中显式标记，而不是静默丢数据。
+
+def _bulk_docs(n: int) -> list[dict]:
+    return [
+        {
+            "id": f"d{i}", "title": f"文档{i}",
+            "content": "内容" * 600,
+            "source_type": "news", "source_name": "测试源",
+            "published_at": f"2026-09-{i % 28 + 1:02d}T10:00:00Z",
+        }
+        for i in range(1, n + 1)
+    ]
+
+
+def test_materials_respect_token_budget(dim_llm):
+    bulk = _bulk_docs(60)
+    client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
+    prompt = dimension_calls(dim_llm)[0]
+    assert "材料截断" in prompt, "截断必须显式标记，不得静默丢数据"
+
+
+def test_materials_keep_most_recent_when_truncated(dim_llm):
+    bulk = _bulk_docs(60)
+    client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
+    prompt = dimension_calls(dim_llm)[0]
+    assert "文档27" in prompt or "文档55" in prompt, "最新文档被误截断"

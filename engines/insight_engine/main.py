@@ -32,6 +32,11 @@ app = FastAPI(title="Insight Engine", version="0.3.0")
 # 每篇文档正文截断长度 —— 维度分析要读到细节，放宽到 3000 字
 MAX_CONTENT_CHARS = 3000
 
+# 每维度素材包的总字符预算（≈8k token）。五个维度各自注入全量素材会 ×5，
+# 预算内按发布时间最新优先保留 —— 舆情分析里最新证据最相关。
+# P2 的证据底稿（EvidenceSheet 共享）是根本解，本预算是过渡防线。
+MAX_MATERIAL_CHARS = 16000
+
 
 class AnalyzeRequest(BaseModel):
     documents: list[dict] = []
@@ -213,21 +218,43 @@ def _materials_text(documents: list[dict], max_docs: int = 40) -> str:
     """文档素材包 —— 维度分析必须看到原文、来源平台与发布时间。
 
     缺来源则无法做平台差异分析；缺时间则趋势只能靠猜。
+    总字符超过 MAX_MATERIAL_CHARS 时按发布时间最新优先截断，
+    并在末尾显式标记 —— 截断必须可见，不得静默丢数据。
     """
+    docs = [x for x in documents if isinstance(x, dict)]
+    if not docs:
+        return "（无文档素材）"
+
+    def _date_key(d: dict) -> str:
+        return (d.get("published_at") or "")[:19]
+
+    # 有时间的按时间倒序（最新在前），无时间的排最后；总量不超 max_docs
+    ordered = sorted(docs, key=_date_key, reverse=True)[:max_docs]
+
     parts = []
-    for i, d in enumerate([x for x in documents if isinstance(x, dict)][:max_docs], 1):
+    kept = 0
+    total_chars = 0
+    for i, d in enumerate(ordered, 1):
         meta = " | ".join(
             v for v in [
                 d.get("source_name") or d.get("source_type", ""),
                 (d.get("published_at") or "")[:10],
             ] if v
         )
-        parts.append(
+        entry = (
             f"[{i}] id={d.get('id', '')} 标题：{d.get('title', '')}\n"
             f"来源：{meta}\n"
             f"正文：{(d.get('content') or '')[:MAX_CONTENT_CHARS]}"
         )
-    return "\n\n".join(parts) if parts else "（无文档素材）"
+        total_chars += len(entry)
+        if kept > 0 and total_chars > MAX_MATERIAL_CHARS:
+            break
+        parts.append(entry)
+        kept += 1
+
+    if kept < len(ordered):
+        parts.append(f"\n[材料截断：预算 {MAX_MATERIAL_CHARS} 字符，共 {len(ordered)} 篇仅保留最新 {kept} 篇]")
+    return "\n\n".join(parts)
 
 
 # ── 确定性趋势计算 ──────────────────────────────────────────────
