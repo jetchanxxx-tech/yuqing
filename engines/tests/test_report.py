@@ -72,7 +72,7 @@ class FakeLLM:
 @pytest.fixture
 def fake_llm(monkeypatch):
     fake = FakeLLM()
-    monkeypatch.setattr(report_engine, "build_client", lambda api_key="": fake)
+    monkeypatch.setattr(report_engine, "build_client", lambda api_key="", base_url="": fake)
     return fake
 
 
@@ -285,6 +285,34 @@ def test_generate_insight_unavailable_shows_notice_not_zero_stats(fake_llm):
     assert "情感分析不可用" in content
     # 概览卡不得出现误导性的 0 统计
     assert '<div class="num">0</div>' not in content
+
+
+def test_generate_insight_available_but_empty_sentiments_still_no_zero_stats(fake_llm):
+    """情感数据缺失但 insight_available=True（如五维结论在、情感分类缺失）：
+    同样不得渲染 0/0/0 —— 与「全部中性」无法区分，属误导。
+
+    回归背景：管线 P0 修复后 insightAvailable 按「有产出」判定，
+    维度非空即 true，此时情感可能为空 —— 旧条件放行了 0/0/0。
+    """
+    resp = client.post(
+        "/generate",
+        json={
+            **REQ,
+            "sentiments": [],
+            "insight_available": True,
+            "dimensions": [
+                {"id": "background", "name": "背景与事件概述", "findings": "核心发现：测试。"},
+            ],
+            "api_key": "sk-x",
+        },
+    )
+
+    assert resp.status_code == 200
+    content = resp.json()["content"]
+    assert "情感分析不可用" in content
+    assert '<div class="num">0</div>' not in content
+    # 维度结论独立于情感数据，照常渲染
+    assert "背景与事件概述" in content
 
 
 # ── P1：报告消费五维度结论 ─────────────────────────────────────

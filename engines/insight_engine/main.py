@@ -16,6 +16,7 @@
 """
 import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,9 +24,9 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from engines.common.llm_client import DEEPSEEK_MODEL, build_client
+from engines.common.llm_client import LLM_MODEL, build_client
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Insight Engine", version="0.3.0")
 
@@ -44,6 +45,9 @@ class AnalyzeRequest(BaseModel):
     analysis_type: str = ""
     title: str = ""  # 分析任务名（可选，让 prompt 知道分析对象）
     api_key: str = ""
+    # LLM 供应商可配置（后台「数据源配置」在线修改，经 Go 管线透传）：
+    llm_base_url: str = ""  # 空 = 环境变量/默认（智谱）
+    llm_model: str = ""  # 空 = 环境变量/默认
 
 
 class SentimentRequest(BaseModel):
@@ -51,12 +55,13 @@ class SentimentRequest(BaseModel):
     model: str = ""
     analysis_id: str = ""
     api_key: str = ""
+    llm_base_url: str = ""
 
 
 def _require_key(api_key: str) -> str:
-    key = api_key or DEEPSEEK_API_KEY
+    key = api_key or LLM_API_KEY
     if not key:
-        raise HTTPException(status_code=503, detail="DEEPSEEK_API_KEY 未配置")
+        raise HTTPException(status_code=503, detail="LLM API Key 未配置")
     return key
 
 
@@ -337,9 +342,22 @@ def _quote_list(value) -> list[dict]:
     return out
 
 
+# 引语两侧可能的包裹符。LLM 爱给「代表性声音」套引号（「」/“”/'…），
+# 包裹符不属于原文 —— 比对前剥掉（只影响匹配，不改写引语本身），
+# 否则真引语会被成批误杀，反幻觉机制反而摧毁维度的代表性声音。
+_MATCH_WRAPPERS = "\"'“”‘’「」『』«»"
+
+
 def _normalize_for_match(s: str) -> str:
-    """归一化用于子串匹配：去全部空白（网页正文常有换行/空格差异）。"""
-    return "".join(str(s).split())
+    """归一化用于子串匹配：去全部空白 + 剥两侧成对包裹引号。
+
+    只去空白与包裹符，不动正文标点 —— 引语跨句拼接、改写标点仍算编造，
+    必须丢弃（宁可误杀可疑引语，不放过看似引用的编造）。
+    """
+    t = "".join(str(s).split())
+    while len(t) >= 2 and t[0] in _MATCH_WRAPPERS and t[-1] in _MATCH_WRAPPERS:
+        t = t[1:-1]
+    return t
 
 
 def _verify_quotes(
@@ -370,7 +388,8 @@ def _verify_quotes(
 
 
 async def _analyze_one_dimension(
-    llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str
+    llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str,
+    llm_model: str = "",
 ) -> dict:
     """单个维度的独立分析调用。异常由调用方捕获（单维度失败不致命）。"""
     prompt = _DIMENSION_PROMPT.format(
@@ -384,7 +403,7 @@ async def _analyze_one_dimension(
         skeleton=_SKELETON,
     )
     data = await llm.chat_json(
-        DEEPSEEK_MODEL,
+        llm_model,
         [
             {"role": "system", "content": spec.persona + " 输出必须是 JSON 对象。"},
             {"role": "user", "content": prompt},
@@ -409,9 +428,16 @@ async def _analyze_one_dimension(
 # 单次重试。串行则多花 1-2 分钟 —— 3 是延迟与稳定性的折中。
 _DIMENSION_CONCURRENCY = 3
 
+# 重试前的恒定退避秒数（测试 monkeypatch 为 0 加速）。闸门已把并发压到 3，
+# 重试风暴风险有限；持锁退避避免绕过并发闸门。
+_RETRY_DELAY_SECONDS = 2
+
+logger = logging.getLogger(__name__)
+
 
 async def _run_dimensions(
-    llm, documents: list[dict], analysis_type: str, title: str
+    llm, documents: list[dict], analysis_type: str, title: str,
+    llm_model: str = "",
 ) -> tuple[list[dict], list[str]]:
     """并发跑五个维度（闸门限 3）。返回 (成功的维度, 失败原因列表)。"""
     sem = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
@@ -419,10 +445,15 @@ async def _run_dimensions(
     async def guarded(spec: DimensionSpec) -> dict:
         async with sem:
             try:
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title)
-            except Exception as exc:  # 429/超时类瞬时错误重试一次
-                await asyncio.sleep(2)
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model)
+            except Exception as exc:
+                # 429/超时类瞬时错误重试一次。首次失败必须留痕（排障依赖它）；
+                # 重试仍失败则异常向上抛，由 gather(return_exceptions=True)
+                # 收进 failed 列表。永久性错误（如 key 无效）会白付一次重试，
+                # 换取瞬时错误的恢复，值得。
+                logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, exc)
+                await asyncio.sleep(_RETRY_DELAY_SECONDS)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model)
 
     results = await asyncio.gather(
         *(guarded(spec) for spec in DIMENSIONS), return_exceptions=True
@@ -448,7 +479,7 @@ async def health():
         "engine": "insight",
         "version": "0.3.0",
         "dimensions": len(DIMENSIONS),
-        "llm": bool(DEEPSEEK_API_KEY),
+        "llm": bool(LLM_API_KEY),
     }
 
 
@@ -459,14 +490,15 @@ async def analyze(req: AnalyzeRequest) -> dict:
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": ""}
 
     key = _require_key(req.api_key)
-    llm = build_client(key)
+    llm = build_client(key, req.llm_base_url)
+    model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
     try:
         # ① 情感 + 话题（分类任务，temperature=0 求稳定）
         sent_topics = await llm.chat_json(
-            DEEPSEEK_MODEL,
+            model,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {
@@ -496,7 +528,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     # ③ 五维度并发分析（单维度失败降级，不拖垮整次分析）
     dimensions, failed = await _run_dimensions(
-        llm, req.documents, req.analysis_type, req.title
+        llm, req.documents, req.analysis_type, req.title, model
     )
     warnings = [f"部分维度分析失败：{'；'.join(failed)}"] if failed else []
     # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
@@ -508,7 +540,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     try:
         summary_resp = await llm.chat_json(
-            DEEPSEEK_MODEL,
+            model,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {
@@ -555,11 +587,11 @@ async def sentiment(req: SentimentRequest) -> dict:
         return {"results": []}
 
     key = _require_key(req.api_key)
-    llm = build_client(key)
+    llm = build_client(key, req.llm_base_url)
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(
-            req.model or DEEPSEEK_MODEL,
+            req.model or LLM_MODEL,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {

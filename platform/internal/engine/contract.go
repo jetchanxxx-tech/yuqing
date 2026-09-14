@@ -40,6 +40,9 @@ type InsightAnalyzeReq struct {
 	AnalysisType string     `json:"analysis_type"`
 	Title        string     `json:"title,omitempty"` // 分析任务名（供维度分析 prompt 用）
 	APIKey       string     `json:"api_key,omitempty"`
+	// LLM 供应商可配置（后台「数据源配置」在线修改，零重启透传引擎）：
+	LLMBaseURL string `json:"llm_base_url,omitempty"`
+	LLMModel   string `json:"llm_model,omitempty"`
 }
 
 // InsightAnalyzeResp is the deep analysis response.
@@ -96,6 +99,8 @@ type ReportGenerateReq struct {
 	Dimensions []DimensionResult `json:"dimensions,omitempty"`
 	AnalysisID string            `json:"analysis_id"`
 	APIKey     string            `json:"api_key,omitempty"`
+	LLMBaseURL string            `json:"llm_base_url,omitempty"`
+	LLMModel   string            `json:"llm_model,omitempty"`
 	// InsightAvailable = 洞察引擎是否成功产出（false 时报告引擎不得
 	// 把空情感数据渲染成 0/0/0）。
 	InsightAvailable bool `json:"insight_available"`

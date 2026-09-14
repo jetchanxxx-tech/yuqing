@@ -12,9 +12,9 @@ from string import Template
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from engines.common.llm_client import DEEPSEEK_MODEL, build_client
+from engines.common.llm_client import LLM_MODEL, build_client
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Report Engine", version="0.2.0")
 
@@ -32,6 +32,8 @@ class GenerateRequest(BaseModel):
     dimensions: list[dict] = []
     analysis_id: str = ""
     api_key: str = ""
+    llm_base_url: str = ""  # LLM 供应商可配置（后台在线修改，经管线透传）
+    llm_model: str = ""
     # False = 洞察引擎未产出（未配置/调用失败）。渲染时不得把空情感
     # 数据画成 0/0/0 —— 那与「全部中性」无法区分，属误导（审核 D1）。
     insight_available: bool = True
@@ -235,13 +237,13 @@ def _topic_analyses(value) -> list[tuple[str, str]]:
 
 async def _llm_insight(req: GenerateRequest) -> dict | None:
     """LLM 研判。Key 缺失、调用失败或返回非对象时返回 None（降级渲染）。"""
-    key = req.api_key or DEEPSEEK_API_KEY
+    key = req.api_key or LLM_API_KEY
     if not key:
         return None
-    llm = build_client(key)
+    llm = build_client(key, req.llm_base_url)
     try:
         data = await llm.chat_json(
-            DEEPSEEK_MODEL,
+            req.llm_model or LLM_MODEL,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {
@@ -335,13 +337,18 @@ def _document_rows(documents: list[dict]) -> list[str]:
 
 
 def _overview_cards(req: GenerateRequest, stats: dict) -> str:
-    """概览卡片。洞察不可用时不得画成误导性的 0/0/0。"""
-    if not req.sentiments and not req.insight_available:
+    """概览卡片。情感数据缺失时不得画成误导性的 0/0/0。
+
+    判据是「有没有情感数据」而非 insight_available：管线按「有产出」
+    判定可用性（部分维度成功即 true），此时情感仍可能为空 —— 空数据
+    画成 0/0/0 与「全部中性」无法区分，属误导（审核 D1 及其回归）。
+    """
+    if not req.sentiments:
         return (
             f'<div class="cards">'
             f'<div class="card doc"><div class="num">{len(req.documents)}</div><div class="lbl">采集文档</div></div>'
             f'</div>'
-            f'<div class="notice">情感分析不可用（分析引擎未产出），以下为数据汇总。</div>'
+            f'<div class="notice">情感分析不可用（未产出或调用失败），以下为数据汇总。</div>'
         )
     return (
         f'<div class="cards">'
@@ -443,7 +450,7 @@ def _dimensions_section(dimensions: list[dict]) -> str:
     parts = ["<h2>五维研判</h2>"]
     for d in dims:
         name = _esc(d.get("name", "未命名维度"))
-        body = [f'<div class="dimension">', f"<h3>{name}</h3>"]
+        body = ['<div class="dimension">', f"<h3>{name}</h3>"]
         if d.get("findings"):
             body.append(f"<p><b>核心发现</b>：{_esc(d.get('findings', ''))}</p>")
         dps = _str_list(d.get("data_points"))
@@ -544,7 +551,7 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "report", "llm": bool(DEEPSEEK_API_KEY)}
+    return {"status": "ok", "engine": "report", "llm": bool(LLM_API_KEY)}
 
 
 @app.post("/generate")

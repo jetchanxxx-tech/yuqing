@@ -194,6 +194,11 @@ func (s *Service) transition(ctx context.Context, tenantID, analysisID string, t
 
 // Rerun requeues a terminal analysis (completed/failed/canceled) as a fresh
 // queued run and republishes its task.
+//
+// 上一轮的产物一并清空：warning 是追加语义（SetWarning 只增不删），
+// 残留的旧降级原因会让重跑成功的任务仍显示「部分维度分析失败」；
+// 旧洞察/报告挂在 queued 任务上也与状态自相矛盾。旧报告记录仍在
+// reports 列表（report.Service 独立存储），此处只解除 analyses 行上的关联。
 func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error {
 	err := s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
 		if !IsTerminal(string(a.State)) {
@@ -205,6 +210,13 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error 
 		a.ErrorCode = ""
 		a.StartedAt = time.Time{}
 		a.FinishedAt = time.Time{}
+		a.Summary = ""
+		a.Warning = ""
+		a.Sentiments = nil
+		a.Topics = nil
+		a.Dimensions = nil
+		a.ReportID = ""
+		a.ReportContent = ""
 		return nil
 	})
 	if err != nil {

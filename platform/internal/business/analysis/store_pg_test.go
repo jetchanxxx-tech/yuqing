@@ -96,6 +96,17 @@ func sampleAnalysis() *AnalysisResult {
 			ID: "topic-1", Name: "后排空间", Keywords: []string{"空间", "后备箱"},
 			DocCount: 12, Trend: "rising",
 		}},
+		// dimensions 列由迁移 0005 引入（INSERT/UPDATE 的 $18 位）：
+		// 列位对齐一旦漂移，这里的 JSONB 往返就会错列报错 —— pg 实现上
+		// 是唯一能抓住它的用例（本地无 PG 时 skip，服务器全量跑）。
+		Dimensions: []Dimension{{
+			ID: "background", Name: "背景与事件概述",
+			Findings:   "核心发现：争议由一条实测视频引爆。",
+			DataPoints: []string{"19 篇文档中 9 篇来自微博"},
+			Quotes:     []Quote{{Text: "腿都伸不直", Source: "微博"}},
+			DeepRead:   "深入解读：产品定位与用户预期错位。",
+			Trend:      "趋势：官方回应后回落。",
+		}},
 		ReportID:      "report-1",
 		ReportContent: "<html><body>" + strings.Repeat("x", 4096) + "</body></html>",
 	}
@@ -150,6 +161,9 @@ func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 	if !reflect.DeepEqual(got.Topics, want.Topics) {
 		t.Errorf("Topics = %+v, want %+v", got.Topics, want.Topics)
 	}
+	if !reflect.DeepEqual(got.Dimensions, want.Dimensions) {
+		t.Errorf("Dimensions = %+v, want %+v", got.Dimensions, want.Dimensions)
+	}
 	if got.ReportContent != want.ReportContent {
 		t.Errorf("ReportContent = %d 字节, want %d 字节", len(got.ReportContent), len(want.ReportContent))
 	}
@@ -198,9 +212,10 @@ func TestAnalysisStore_putPreservesNilAndEmptySlices(t *testing.T) {
 
 			// nil 与原样空切片都要能往返：JSONB 存 "null" 与 "[]" 互不混淆。
 			nilSlices := sampleAnalysis()
-			nilSlices.Keywords, nilSlices.Sentiments = nil, nil
+			nilSlices.Keywords, nilSlices.Sentiments, nilSlices.Dimensions = nil, nil, nil
 			emptySlices := sampleAnalysis()
 			emptySlices.Keywords, emptySlices.Sentiments = []string{}, []Sentiment{}
+			emptySlices.Dimensions = []Dimension{}
 
 			for _, want := range []*AnalysisResult{nilSlices, emptySlices} {
 				if err := st.put(ctx, tenant, want); err != nil {
@@ -215,6 +230,9 @@ func TestAnalysisStore_putPreservesNilAndEmptySlices(t *testing.T) {
 				}
 				if !reflect.DeepEqual(got.Sentiments, want.Sentiments) {
 					t.Errorf("Sentiments = %#v, want %#v", got.Sentiments, want.Sentiments)
+				}
+				if !reflect.DeepEqual(got.Dimensions, want.Dimensions) {
+					t.Errorf("Dimensions = %#v, want %#v", got.Dimensions, want.Dimensions)
 				}
 			}
 		})

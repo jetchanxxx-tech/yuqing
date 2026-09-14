@@ -17,6 +17,8 @@ type RealInsightEngine struct {
 	authToken  string
 	httpClient *http.Client
 	apiKeyFunc func() string // nil = engine 从其环境变量读取
+	// llmOptsFunc 返回 (base_url, model)，后台可配置经此零重启透传；nil = 引擎用自身默认
+	llmOptsFunc func() (string, string)
 }
 
 // NewRealInsightEngine creates a transport backed by the Python
@@ -31,10 +33,21 @@ func NewRealInsightEngine(baseURL, authToken string, apiKeyFunc func() string) *
 	}
 }
 
+// WithLLMOpts 注入 LLM 供应商配置读取器（后台「数据源配置」在线修改，
+// 每次请求实时读取 —— 换供应商/key 零重启生效）。nil = 引擎用自身默认。
+func (e *RealInsightEngine) WithLLMOpts(f func() (string, string)) *RealInsightEngine {
+	e.llmOptsFunc = f
+	return e
+}
+
+
 // Analyze requests sentiment + topics + summary for the given documents.
 func (e *RealInsightEngine) Analyze(ctx context.Context, req *InsightAnalyzeReq) (*InsightAnalyzeResp, error) {
 	if e.apiKeyFunc != nil {
 		req.APIKey = e.apiKeyFunc()
+	}
+	if e.llmOptsFunc != nil {
+		req.LLMBaseURL, req.LLMModel = e.llmOptsFunc()
 	}
 	b, err := json.Marshal(req)
 	if err != nil {
