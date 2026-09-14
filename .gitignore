@@ -33,3 +33,6 @@ __pycache__/
 
 # 本地验证用配置（真实配置在服务器 /opt/yuqing/config/ 生成）
 platform/config.yaml
+
+# Claude 会话工作区（嵌入 git 仓库，绝不入库）
+.claude/worktrees/
