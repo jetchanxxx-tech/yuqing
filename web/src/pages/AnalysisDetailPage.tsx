@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
   Descriptions,
   Empty,
   List,
@@ -40,6 +41,7 @@ import {
   getAnalysisResult,
   rerunAnalysis,
   type AnalysisResult,
+  type DimensionResult,
   type SentimentItem,
 } from '../api/analyses';
 import { listReports, openReportDownload, type Report } from '../api/reports';
@@ -353,6 +355,7 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
   const docs = result.documents ?? [];
   const sentiments = result.sentiments;
   const topics = result.topics ?? [];
+  const dimensions = result.dimensions ?? [];
 
   return (
     <Tabs
@@ -433,6 +436,16 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
           children: (
             <SentimentView sentiments={sentiments} />
           ),
+        },
+        {
+          key: 'dimensions',
+          label: `五维研判（${dimensions.length}）`,
+          children:
+            dimensions.length === 0 ? (
+              <EmptyBlock description="暂无五维研判结论（分析引擎未产出或任务较早）" />
+            ) : (
+              <DimensionsView dimensions={dimensions} />
+            ),
         },
         {
           key: 'topics',
@@ -535,6 +548,64 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
           ),
         },
       ]}
+    />
+  );
+}
+
+/* ================== 五维研判视图 ================== */
+function DimensionsView({ dimensions }: { dimensions: DimensionResult[] }) {
+  const items = dimensions.map((d) => ({
+    key: d.id,
+    label: (
+      <Space wrap size={8}>
+        <Typography.Text strong>{d.name}</Typography.Text>
+        {d.trend ? (
+          <Tag style={{ marginInlineEnd: 0 }} color="default">{d.trend}</Tag>
+        ) : null}
+      </Space>
+    ),
+    children: (
+      <div>
+        {d.findings ? (
+          <Typography.Paragraph style={{ marginBottom: 8 }}>
+            <Typography.Text strong>核心发现：</Typography.Text>
+            {d.findings}
+          </Typography.Paragraph>
+        ) : null}
+        {(d.data_points ?? []).length > 0 ? (
+          <ul style={{ margin: '0 0 8px', paddingLeft: 20, color: 'rgba(0,0,0,0.72)', fontSize: 13 }}>
+            {(d.data_points ?? []).map((dp, j) => <li key={j}>{dp}</li>)}
+          </ul>
+        ) : null}
+        {(d.quotes ?? []).map((q, j) => (
+          <blockquote
+            key={j}
+            style={{
+              margin: '8px 0', padding: '8px 14px', background: '#f9fafb',
+              borderLeft: '3px solid #d1d5db', color: '#374151', fontSize: 13,
+            }}
+          >
+            {q.text}
+            {q.source ? (
+              <footer style={{ color: '#9ca3af', fontSize: 12, marginTop: 4 }}>—— {q.source}</footer>
+            ) : null}
+          </blockquote>
+        ))}
+        {d.deep_read ? (
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
+            <Typography.Text strong style={{ color: 'rgba(0,0,0,0.72)' }}>深入解读：</Typography.Text>
+            {d.deep_read}
+          </Typography.Paragraph>
+        ) : null}
+      </div>
+    ),
+  }));
+
+  return (
+    <Collapse
+      items={items}
+      defaultActiveKey={dimensions.slice(0, 1).map((d) => d.id)}
+      expandIconPosition="end"
     />
   );
 }

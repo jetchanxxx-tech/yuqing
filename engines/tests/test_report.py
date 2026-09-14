@@ -285,3 +285,60 @@ def test_generate_insight_unavailable_shows_notice_not_zero_stats(fake_llm):
     assert "情感分析不可用" in content
     # 概览卡不得出现误导性的 0 统计
     assert '<div class="num">0</div>' not in content
+
+
+# ── P1：报告消费五维度结论 ─────────────────────────────────────
+#
+# 报告必须基于维度研判撰写（编排+润色），而不是从聚合 JSON 重新概括。
+# 维度结论是组件：渲染层直接呈现，LLM 只写连接性叙述。
+
+DIMENSIONS_REQ = {
+    'dimensions': [
+        {
+            'id': 'background', 'name': '背景与事件概述',
+            'findings': '核心发现：一条实测视频引爆争议。',
+            'data_points': ['4 篇文档中 2 篇发布于 9 月上旬'],
+            'quotes': [{'text': '腿都伸不直', 'source': '微博'}],
+            'deep_read': '深入解读：产品定位与用户预期错位。',
+            'trend': '趋势：官方回应后回落。',
+        },
+        {
+            'id': 'deep_cause', 'name': '深层原因与社会影响',
+            'findings': '核心发现：空间争议折射家用定位错位。',
+            'data_points': ['负面占比 50%'],
+            'quotes': [{'text': '建议到店体验', 'source': '新浪汽车'}],
+            'deep_read': '深入解读：紧凑级轿车市场的空间军备竞赛。',
+            'trend': '趋势：随官方回应进入沉淀期。',
+        },
+    ],
+}
+
+
+def test_generate_renders_dimension_sections(fake_llm):
+    resp = client.post('/generate', json={**REQ, **DIMENSIONS_REQ, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    content = resp.json()['content']
+    assert '五维研判' in content
+    assert '背景与事件概述' in content
+    assert '核心发现：一条实测视频引爆争议。' in content
+    assert '腿都伸不直' in content
+    assert '深层原因与社会影响' in content
+
+
+def test_generate_prompt_receives_dimensions(fake_llm):
+    client.post('/generate', json={**REQ, **DIMENSIONS_REQ, 'api_key': 'sk-x'})
+
+    assert len(fake_llm.calls) == 1
+    prompt = fake_llm.calls[0]
+    assert '背景与事件概述' in prompt
+    assert '核心发现：一条实测视频引爆争议。' in prompt
+
+
+def test_generate_without_dimensions_still_renders(fake_llm):
+    resp = client.post('/generate', json={**REQ, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    content = resp.json()['content']
+    assert '舆情整体可控' in content
+    assert '五维研判' not in content
