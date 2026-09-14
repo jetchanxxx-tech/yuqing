@@ -202,6 +202,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		TenantID:     msg.TenantID,
 		AnalysisID:   msg.AnalysisID,
 		AnalysisType: p.analysisType(ctx, msg),
+		Title:        p.analysisName(ctx, msg),
 		Documents:    docs,
 	})
 	if err != nil {
@@ -209,7 +210,9 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 			slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
 		return InsightResult{}, "insight analysis failed: " + err.Error()
 	}
-	return res, ""
+	// 引擎侧的部分降级（如某个维度调用失败）也要记为 warning ——
+	// 分析成功但结论不全时，用户必须能看到原因。
+	return res, res.Warning
 }
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
@@ -225,6 +228,7 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Docume
 		Documents:        docs,
 		Sentiments:       insight.Sentiments,
 		Topics:           insight.Topics,
+		Dimensions:       insight.Dimensions,
 		InsightAvailable: insightAvailable,
 	})
 	if err != nil {

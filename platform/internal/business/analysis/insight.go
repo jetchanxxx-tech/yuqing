@@ -23,11 +23,37 @@ type Topic struct {
 	Trend    string   `json:"trend,omitempty"` // rising, stable, falling
 }
 
-// InsightResult is the analysis engine output: summary + sentiments + topics.
+// Quote is a verbatim quote from the source material with its platform.
+type Quote struct {
+	Text   string `json:"text"`
+	Source string `json:"source,omitempty"`
+}
+
+// Dimension is one analytical dimension's verdict. Each dimension is produced
+// by its own LLM call with a dedicated persona, organized on the fixed
+// skeleton: findings → data_points → quotes → deep_read → trend.
+//
+// 为什么分维度：单轮单视角的「一次调用出全部」只能产出各方面都平庸的概括，
+// 且跨分析高度趋同。分维度独立深挖再汇总，结论才有层次。
+type Dimension struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Findings   string   `json:"findings"`
+	DataPoints []string `json:"data_points,omitempty"`
+	Quotes     []Quote  `json:"quotes,omitempty"`
+	DeepRead   string   `json:"deep_read"`
+	Trend      string   `json:"trend"`
+}
+
+// InsightResult is the analysis engine output: summary + sentiments + topics + dimensions.
 type InsightResult struct {
 	Summary    string
 	Sentiments []Sentiment
 	Topics     []Topic
+	Dimensions []Dimension
+	// Warning 是引擎侧的部分降级说明（如某个维度调用失败但其余成功）。
+	// 管线将其合并进任务的 warning 字段。
+	Warning string
 }
 
 // InsightRequest carries the documents to analyze.
@@ -35,6 +61,7 @@ type InsightRequest struct {
 	TenantID     string
 	AnalysisID   string
 	AnalysisType string
+	Title        string // 分析任务名，供维度分析 prompt 定位分析对象
 	Documents    []Document
 }
 
@@ -52,6 +79,9 @@ type ReportRequest struct {
 	Documents  []Document
 	Sentiments []Sentiment
 	Topics     []Topic
+	// Dimensions 是分析引擎的五维度研判结论。报告要基于这些结论撰写，
+	// 而不是从聚合 JSON 重新概括（否则报告与摘要一样干瘪）。
+	Dimensions []Dimension
 	// InsightAvailable = 洞察引擎是否成功产出。false 时报告引擎不得把
 	// 空情感数据渲染成 0/0/0（与「全部中性」无法区分，属误导）。
 	InsightAvailable bool
@@ -69,12 +99,13 @@ type ReportGenerator interface {
 	Generate(ctx context.Context, req ReportRequest) (ReportResult, error)
 }
 
-// SetInsight 写入洞察结果（摘要/情感/话题），管线 analyzing 步骤调用。
+// SetInsight 写入洞察结果（摘要/情感/话题/五维度），管线 analyzing 步骤调用。
 func (s *Service) SetInsight(ctx context.Context, tenantID, analysisID string, r InsightResult) error {
 	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
 		a.Summary = r.Summary
 		a.Sentiments = r.Sentiments
 		a.Topics = r.Topics
+		a.Dimensions = r.Dimensions
 		return nil
 	})
 }

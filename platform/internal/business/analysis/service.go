@@ -102,6 +102,7 @@ type AnalysisResult struct {
 	Warning    string      `json:"warning,omitempty"`
 	Sentiments []Sentiment `json:"sentiments,omitempty"`
 	Topics     []Topic     `json:"topics,omitempty"`
+	Dimensions []Dimension `json:"dimensions,omitempty"`
 	ReportID   string      `json:"report_id,omitempty"`
 
 	// ReportContent 是 KB 级 HTML 正文，不随分析对象序列化：

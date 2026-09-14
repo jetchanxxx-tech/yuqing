@@ -81,14 +81,17 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 		Documents:    docs,
 		AnalysisID:   req.AnalysisID,
 		AnalysisType: req.AnalysisType,
+		Title:        req.Title,
 	})
 	if err != nil {
 		return analysis.InsightResult{}, err
 	}
 	out := analysis.InsightResult{
 		Summary:    resp.Summary,
+		Warning:    resp.Warning,
 		Sentiments: make([]analysis.Sentiment, 0, len(resp.Sentiments)),
 		Topics:     make([]analysis.Topic, 0, len(resp.Topics)),
+		Dimensions: make([]analysis.Dimension, 0, len(resp.Dimensions)),
 	}
 	for _, s := range resp.Sentiments {
 		out.Sentiments = append(out.Sentiments, analysis.Sentiment{
@@ -101,7 +104,44 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 			ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, Trend: t.Trend,
 		})
 	}
+	for _, d := range resp.Dimensions {
+		out.Dimensions = append(out.Dimensions, toAnalysisDimension(d))
+	}
 	return out, nil
+}
+
+// toAnalysisDimension 转换维度结果；原声切片始终非 nil（前端 .map() 遇 null 会崩）。
+func toAnalysisDimension(d engine.DimensionResult) analysis.Dimension {
+	quotes := make([]analysis.Quote, 0, len(d.Quotes))
+	for _, q := range d.Quotes {
+		quotes = append(quotes, analysis.Quote{Text: q.Text, Source: q.Source})
+	}
+	return analysis.Dimension{
+		ID:         d.ID,
+		Name:       d.Name,
+		Findings:   d.Findings,
+		DataPoints: d.DataPoints,
+		Quotes:     quotes,
+		DeepRead:   d.DeepRead,
+		Trend:      d.Trend,
+	}
+}
+
+// toEngineDimensions 把维度结论回传给报告引擎。
+func toEngineDimensions(dims []analysis.Dimension) []engine.DimensionResult {
+	out := make([]engine.DimensionResult, 0, len(dims))
+	for _, d := range dims {
+		quotes := make([]engine.QuoteResult, 0, len(d.Quotes))
+		for _, q := range d.Quotes {
+			quotes = append(quotes, engine.QuoteResult{Text: q.Text, Source: q.Source})
+		}
+		out = append(out, engine.DimensionResult{
+			ID: d.ID, Name: d.Name, Findings: d.Findings,
+			DataPoints: d.DataPoints, Quotes: quotes,
+			DeepRead: d.DeepRead, Trend: d.Trend,
+		})
+	}
+	return out
 }
 
 // engineReportAdapter 把引擎客户端适配为 analysis.ReportGenerator。
@@ -116,6 +156,7 @@ func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportR
 		Documents:        toEngineDocuments(req.Documents),
 		Sentiments:       toEngineSentiments(req.Sentiments),
 		Topics:           toEngineTopics(req.Topics),
+		Dimensions:       toEngineDimensions(req.Dimensions),
 		AnalysisID:       req.AnalysisID,
 		InsightAvailable: req.InsightAvailable,
 	})

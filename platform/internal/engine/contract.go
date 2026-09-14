@@ -38,6 +38,7 @@ type InsightAnalyzeReq struct {
 	Documents    []Document `json:"documents,omitempty"`
 	AnalysisID   string     `json:"analysis_id"`
 	AnalysisType string     `json:"analysis_type"`
+	Title        string     `json:"title,omitempty"` // 分析任务名（供维度分析 prompt 用）
 	APIKey       string     `json:"api_key,omitempty"`
 }
 
@@ -46,6 +47,28 @@ type InsightAnalyzeResp struct {
 	Sentiments []SentimentResult `json:"sentiments"`
 	Topics     []TopicResult     `json:"topics"`
 	Summary    string            `json:"summary"`
+	// Dimensions 是五个维度的独立研判（背景/热度/情感观点/群体差异/深层原因）。
+	Dimensions []DimensionResult `json:"dimensions"`
+	// Warning 是引擎侧的降级原因（如某个维度调用失败），与平台侧 warning 合并展示。
+	Warning string `json:"warning"`
+}
+
+// DimensionResult is one analytical dimension's verdict, organized on the
+// fixed skeleton: findings → data → quotes → deep_read → trend.
+type DimensionResult struct {
+	ID         string        `json:"id"`
+	Name       string        `json:"name"`
+	Findings   string        `json:"findings"`
+	DataPoints []string      `json:"data_points,omitempty"`
+	Quotes     []QuoteResult `json:"quotes,omitempty"`
+	DeepRead   string        `json:"deep_read"`
+	Trend      string        `json:"trend"`
+}
+
+// QuoteResult is a verbatim quote from the source material with its platform.
+type QuoteResult struct {
+	Text   string `json:"text"`
+	Source string `json:"source"`
 }
 
 // SentimentReq requests batched sentiment classification.
@@ -69,6 +92,8 @@ type ReportGenerateReq struct {
 	Documents  []Document        `json:"documents"`
 	Sentiments []SentimentResult `json:"sentiments"`
 	Topics     []TopicResult     `json:"topics"`
+	// Dimensions 是分析引擎产出的五维度研判，报告基于它撰写。
+	Dimensions []DimensionResult `json:"dimensions,omitempty"`
 	AnalysisID string            `json:"analysis_id"`
 	APIKey     string            `json:"api_key,omitempty"`
 	// InsightAvailable = 洞察引擎是否成功产出（false 时报告引擎不得

@@ -104,3 +104,52 @@ func TestRealInsightEngineSentiment(t *testing.T) {
 		t.Errorf("results = %+v", resp.Results)
 	}
 }
+
+// 五维度结论必须能被解析并透传（含骨架字段与原声引用）。
+func TestRealInsightEngineAnalyzeParsesDimensions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"sentiments": [],
+			"topics": [],
+			"summary": "总体可控",
+			"warning": "部分维度分析失败：热度与传播路径（超时）",
+			"dimensions": [
+				{"id": "background", "name": "背景与事件概述",
+				 "findings": "核心发现：实测视频引爆争议",
+				 "data_points": ["4 篇文档", "3 篇来自新闻"],
+				 "quotes": [{"text": "腿都伸不直", "source": "微博"}],
+				 "deep_read": "深入解读：定位与预期错位",
+				 "trend": "趋势：官方回应后回落"}
+			]
+		}`))
+	}))
+	defer srv.Close()
+
+	e := NewRealInsightEngine(srv.URL, "", nil)
+	resp, err := e.Analyze(context.Background(), &InsightAnalyzeReq{
+		Documents: []Document{{ID: "d1"}},
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+	if len(resp.Dimensions) != 1 {
+		t.Fatalf("dimensions = %d, want 1", len(resp.Dimensions))
+	}
+	d := resp.Dimensions[0]
+	if d.ID != "background" || d.Name != "背景与事件概述" {
+		t.Errorf("dim identity = %q/%q", d.ID, d.Name)
+	}
+	if d.Findings == "" || d.DeepRead == "" || d.Trend == "" {
+		t.Errorf("dim 骨架字段缺失: %+v", d)
+	}
+	if len(d.DataPoints) != 2 {
+		t.Errorf("data_points = %v, want 2", d.DataPoints)
+	}
+	if len(d.Quotes) != 1 || d.Quotes[0].Text != "腿都伸不直" || d.Quotes[0].Source != "微博" {
+		t.Errorf("quotes 未保真: %+v", d.Quotes)
+	}
+	// 引擎侧的部分降级原因要通过 warning 透传（前端据此提示）
+	if resp.Warning == "" {
+		t.Error("warning 应透传引擎侧降级原因")
+	}
+}

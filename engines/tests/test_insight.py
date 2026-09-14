@@ -40,6 +40,14 @@ class FakeLLM:
         self.calls.append(json.dumps(messages, ensure_ascii=False))
         if self.fail:
             raise RuntimeError("deepseek unavailable")
+        if "【分析维度】" in self.calls[-1]:
+            return {
+                "findings": "核心发现：后排空间争议集中在实测数据。",
+                "data_points": ["2 篇文档中 1 篇负面"],
+                "quotes": [{"text": "腿都伸不直", "source": "微博"}],
+                "deep_read": "深入解读：产品定位与用户预期错位。",
+                "trend": "趋势：争议仍在扩散。",
+            }
         if "批判" in self.calls[-1] and "重写" in self.calls[-1]:
             return {
                 "critique": "初稿过于官方化，缺少具体数字。",
@@ -101,8 +109,8 @@ def test_analyze_with_documents_returns_sentiments_topics_summary(fake_llm):
     assert body["topics"][0]["name"] == "后排空间"
     # 摘要来自批判—重写后的 revised_summary
     assert body["summary"] == "舆情总体偏中性：后排空间负面占比高（2篇中1篇负面），需持续关注。"
-    # 情感+话题一次调用，批判—重写摘要一次调用
-    assert len(fake_llm.calls) == 2
+    # 1 次情感+话题 + 5 个维度 + 1 次批判—重写摘要 = 7 次调用
+    assert len(fake_llm.calls) == 7, f"调用次数 = {len(fake_llm.calls)}，期望 7"
 
 
 def test_analyze_without_api_key_returns_503(fake_llm, monkeypatch):

@@ -108,6 +108,16 @@ func TestContract_analyses_resultReturnsInsightData(t *testing.T) {
 		Topics: []analysis.Topic{
 			{ID: "t1", Name: "后排空间", Keywords: []string{"后排"}, DocCount: 2, Trend: "rising"},
 		},
+		Dimensions: []analysis.Dimension{
+			{
+				ID: "background", Name: "背景与事件概述",
+				Findings:   "核心发现：实测视频引爆争议",
+				DataPoints: []string{"4 篇文档", "3 篇来自新闻"},
+				Quotes:     []analysis.Quote{{Text: "腿都伸不直", Source: "微博"}},
+				DeepRead:   "深入解读：定位与预期错位",
+				Trend:      "趋势：官方回应后回落",
+			},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +158,44 @@ func TestContract_analyses_resultReturnsInsightData(t *testing.T) {
 	}
 	if report["id"] != "rep-1" || report["content"] != "<html>报告</html>" {
 		t.Errorf("report = %+v", report)
+	}
+
+	// 五维度研判必须返回 —— 研判摘要 Tab 靠它渲染层次化结论
+	dims, ok := body["dimensions"].([]any)
+	if !ok {
+		t.Fatalf("dimensions is %T, want array", body["dimensions"])
+	}
+	if len(dims) != 1 {
+		t.Fatalf("dimensions = %d, want 1", len(dims))
+	}
+	d := dims[0].(map[string]any)
+	if d["id"] != "background" || d["name"] != "背景与事件概述" {
+		t.Errorf("dim identity = %v/%v", d["id"], d["name"])
+	}
+	if d["findings"] == "" || d["deep_read"] == "" || d["trend"] == "" {
+		t.Errorf("dim 骨架字段缺失: %+v", d)
+	}
+	quotes, ok := d["quotes"].([]any)
+	if !ok || len(quotes) != 1 {
+		t.Fatalf("dim quotes = %v, want 1", d["quotes"])
+	}
+	q := quotes[0].(map[string]any)
+	if q["text"] != "腿都伸不直" || q["source"] != "微博" {
+		t.Errorf("quote 未保真: %+v", q)
+	}
+}
+
+// 无维度结论时必须序列化为 [] 而非 null —— 前端 .map() 遇 null 会崩。
+func TestContract_analyses_resultDimensionsEmptyIsArray(t *testing.T) {
+	r, _ := newContractEnv(t)
+	access, _, _ := mustRegister(t, r, "dims-empty@example.com", "Dims")
+
+	w := doReq(t, r, "POST", "/api/v1/analyses", access, map[string]any{"name": "空维度"})
+	id, _ := decodeBody(t, w)["id"].(string)
+
+	w2 := doReq(t, r, "GET", "/api/v1/analyses/"+id+"/result", access, nil)
+	if !strings.Contains(w2.Body.String(), `"dimensions":[]`) {
+		t.Errorf("empty dimensions should serialize as [], got: %s", w2.Body.String())
 	}
 }
 

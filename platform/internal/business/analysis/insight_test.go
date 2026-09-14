@@ -145,7 +145,8 @@ func TestPipeline_analyzeAndReportPopulateResults(t *testing.T) {
 			{DocumentID: "doc-a", Sentiment: "negative", Score: 0.7},
 			{DocumentID: "doc-b", Sentiment: "positive", Score: 0.8},
 		},
-		Topics: []Topic{{ID: "t1", Name: "后排空间", DocCount: 2}},
+		Topics:     []Topic{{ID: "t1", Name: "后排空间", DocCount: 2}},
+		Dimensions: sampleDimensions(),
 	}}
 	generator := &fakeGenerator{res: ReportResult{ReportID: "rep-1", Content: "<html>x</html>"}}
 
@@ -191,6 +192,18 @@ func TestPipeline_analyzeAndReportPopulateResults(t *testing.T) {
 	// 洞察成功 → 报告引擎被告知洞察可用（审核 D1：防止渲染 0/0/0 误导）
 	if !generator.gotReq.InsightAvailable {
 		t.Error("InsightAvailable should be true when insight succeeded")
+	}
+	// 五维度结论必须随请求透传给报告引擎 —— 报告要基于维度研判撰写，
+	// 而不是从聚合 JSON 重新概括（这正是此前结论干瘪的根因）。
+	if len(generator.gotReq.Dimensions) != 2 {
+		t.Fatalf("generator dimensions = %d, want 2", len(generator.gotReq.Dimensions))
+	}
+	if generator.gotReq.Dimensions[0].ID != "background" {
+		t.Errorf("generator dim[0] = %q", generator.gotReq.Dimensions[0].ID)
+	}
+	// 维度结论也要落库供 /result 展示
+	if len(got.Dimensions) != 2 || got.Dimensions[0].Name != "背景与事件概述" {
+		t.Errorf("stored dimensions = %+v", got.Dimensions)
 	}
 }
 
@@ -243,5 +256,70 @@ func TestPipeline_nilAnalyzerRecordsConfigureWarning(t *testing.T) {
 	}
 	if got.Warning == "" {
 		t.Error("warning should mention engine not configured")
+	}
+}
+
+// ── 五维度分析（BettaFish 内核移植）──────────────────────────
+//
+// 现状：分析只有「情感+话题+摘要」三个聚合字段，单轮单视角 → 结论干瘪。
+// 目标：分析引擎产出五个维度的独立研判（背景/热度/情感观点/群体差异/深层原因），
+// 每维度带骨架字段，并由管线透传到报告引擎与 /result。
+
+func sampleDimensions() []Dimension {
+	return []Dimension{
+		{
+			ID: "background", Name: "背景与事件概述",
+			Findings:   "核心发现：争议由一条实测视频引爆。",
+			DataPoints: []string{"4 篇文档中 3 篇发布于 9 月上旬"},
+			Quotes:     []Quote{{Text: "腿都伸不直", Source: "微博"}},
+			DeepRead:   "深入解读：产品定位与用户预期错位。",
+			Trend:      "趋势：官方回应后热度回落。",
+		},
+		{
+			ID: "heat", Name: "热度与传播路径",
+			Findings:   "核心发现：微博是主扩散场。",
+			DataPoints: []string{"微博来源占 25%"},
+			Quotes:     []Quote{{Text: "转发了", Source: "微博"}},
+			DeepRead:   "深入解读：二次转载放大了争议。",
+			Trend:      "趋势：仍在扩散。",
+		},
+	}
+}
+
+func TestService_setInsightStoresDimensions(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	ctx := context.Background()
+
+	created, err := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dims := sampleDimensions()
+	if err := svc.SetInsight(ctx, "t1", created.ID, InsightResult{
+		Summary: "总体可控", Dimensions: dims,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Get(ctx, "t1", created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Dimensions) != len(dims) {
+		t.Fatalf("dimensions = %d, want %d", len(got.Dimensions), len(dims))
+	}
+	first := got.Dimensions[0]
+	if first.ID != "background" || first.Name != "背景与事件概述" {
+		t.Errorf("dim[0] identity = %q/%q", first.ID, first.Name)
+	}
+	if first.Findings == "" || first.DeepRead == "" || first.Trend == "" {
+		t.Errorf("dim[0] 骨架字段缺失: %+v", first)
+	}
+	if len(first.DataPoints) != 1 || len(first.Quotes) != 1 {
+		t.Errorf("dim[0] 数据点/原声缺失: %+v", first)
+	}
+	if first.Quotes[0].Text != "腿都伸不直" || first.Quotes[0].Source != "微博" {
+		t.Errorf("dim[0] 原声未保真: %+v", first.Quotes[0])
 	}
 }

@@ -140,6 +140,11 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 	if topics == nil {
 		topics = []analysis.Topic{}
 	}
+	// 五维度研判（背景/热度/情感观点/群体差异/深层原因），前端研判 Tab 靠它渲染层次
+	dimensions := a.Dimensions
+	if dimensions == nil {
+		dimensions = []analysis.Dimension{}
+	}
 	var report any
 	if a.ReportID != "" {
 		report = gin.H{"id": a.ReportID, "format": "html", "content": a.ReportContent}
@@ -156,8 +161,9 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 			"positive": pos, "negative": neg, "neutral": neu,
 			"items": items,
 		},
-		"topics": topics,
-		"report": report,
+		"topics":     topics,
+		"dimensions": dimensions,
+		"report":     report,
 	})
 }
 
