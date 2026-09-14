@@ -224,6 +224,7 @@ any active state → failed | canceled
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
 | F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段） |
 | F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ LLM 真实调用 + 五维研判，管线全链路已接入（生产实测 357s） |
+| F18 | 收费体系（方案 B 渗透型） | 📋 已规划待确认 —— `docs/planning/BILLING_PLAN.html`（Lite 99/Pro 999/Ent 4999，毛利 70-88%），**5 个决策点用户确认前不实施** |
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
 | — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线 |
 
@@ -257,6 +258,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - TDD: 先写失败测试 RED → 最小实现 GREEN → 重构。**禁止先写实现再补测试**
 - Code review: 5 角度审查，报告留 `docs/dev/reviews/REVIEW_REPORT.md`（§5/§8 等章节记录已知遗留项）
 - 前端: 页面数据经 `web/src/api/*.ts` 统一 axios（401 自动 refresh），错误信封经 ApiErrorHandler；图表色 负面 `#FF2442` / 中性 `#9ca3af` / 正面 `#02b940`
+- 前端任务页带分阶段预估时长提示（实测 357s 校准：采集 1-2 分/五维分析 3-5 分/报告 1 分），RUNNING_HINTS 在 AnalysisDetailPage.tsx
 - 项目品牌：**盘古舆情**（README/前端/demo/docs 均用此名；Go module 名 `yuqing` 保持内部标识不变）
 - 面向人交付的文档用 **HTML**（`docs/*.html`），不用 Markdown —— 用户明确要求过
 - 提交前把关：`make test` 全绿 + `npm run build` 通过 + `go vet` 无警告
