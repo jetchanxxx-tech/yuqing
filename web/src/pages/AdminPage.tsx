@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, App, Button, Card, Descriptions, Input, Popconfirm,
-  Result, Space, Table, Tabs, Tag, Typography,
+  Result, Space, Switch, Table, Tabs, Tag, Typography,
 } from 'antd';
-import { ReloadOutlined, StopOutlined, SaveOutlined, ApiOutlined } from '@ant-design/icons';
+import {
+  ReloadOutlined, StopOutlined, SaveOutlined, ApiOutlined,
+  AlipayCircleFilled, WechatFilled, PayCircleOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   listTenants, suspendTenant,
@@ -42,6 +45,7 @@ export default function AdminPage() {
         items={[
           { key: 'tenants', label: '租户管理', children: <TenantsTab /> },
           { key: 'datasource', label: '数据源配置', children: <DataSourceTab /> },
+          { key: 'payment', label: '支付渠道', children: <PaymentTab /> },
         ]}
       />
     </div>
@@ -367,4 +371,147 @@ function DataSourceTab() {
       </Card>
     </div>
   );
+}
+
+// ════════════════════════════════════════════════════════════
+// 支付渠道配置（方案 B：商户参数由管理员在界面填写，零重启生效）
+// ════════════════════════════════════════════════════════════
+
+type ChannelConfig = Record<string, unknown> & { enabled?: boolean };
+
+const PAYMENT_CHANNELS: Array<{
+  key: string; settingsKey: string; title: string; icon: React.ReactNode;
+  hint: string; fields: Array<{ key: string; label: string; secret?: boolean; placeholder?: string }>;
+}> = [
+  {
+    key: 'alipay', settingsKey: 'payment_alipay',
+    title: '支付宝（当面付扫码）', icon: <AlipayCircleFilled style={{ color: '#1677ff' }} />,
+    hint: '参数来自支付宝开放平台（open.alipay.com）：应用 AppID、应用私钥、支付宝公钥。需签约「当面付」产品。',
+    fields: [
+      { key: 'app_id', label: 'AppID', placeholder: '2021xxxxxxxxxxxx' },
+      { key: 'private_key', label: '应用私钥', secret: true, placeholder: 'PKCS8 格式私钥文本' },
+      { key: 'alipay_public_key', label: '支付宝公钥', secret: true, placeholder: '用于回调验签' },
+      { key: 'notify_url', label: '回调地址', placeholder: 'https://yuqing.pangu-cloud.com/api/v1/callbacks/payment/alipay' },
+    ],
+  },
+  {
+    key: 'wechat', settingsKey: 'payment_wechat',
+    title: '微信支付（Native 扫码）', icon: <WechatFilled style={{ color: '#02b940' }} />,
+    hint: '参数来自微信支付商户平台（pay.weixin.qq.com）：APIv3 密钥、商户 API 证书序列号与私钥。需开通 Native 支付。',
+    fields: [
+      { key: 'appid', label: 'AppID（公众号/开放平台）', placeholder: 'wxXXXXXXXX' },
+      { key: 'mch_id', label: '商户号', placeholder: '16xxxxxxxx' },
+      { key: 'mch_serial_no', label: '商户 API 证书序列号', placeholder: '证书管理页可查' },
+      { key: 'private_key', label: '商户 API 私钥', secret: true, placeholder: 'apiclient_key.pem 的文本内容' },
+      { key: 'api_v3_key', label: 'APIv3 密钥', secret: true, placeholder: '32 位密钥' },
+      { key: 'notify_url', label: '回调地址', placeholder: 'https://yuqing.pangu-cloud.com/api/v1/callbacks/payment/wechat' },
+    ],
+  },
+  {
+    key: 'unionpay', settingsKey: 'payment_unionpay',
+    title: '银联（全渠道网关）', icon: <PayCircleOutlined style={{ color: '#e60012' }} />,
+    hint: '参数来自银联开放平台（open.unionpay.com）：商户号与签名证书 .pfx（base64 编码后粘贴）。测试环境可先开沙箱。',
+    fields: [
+      { key: 'mer_id', label: '商户号', placeholder: '77xxxxxxxxxxxx' },
+      { key: 'sign_cert_pfx', label: '签名证书 .pfx（base64）', secret: true, placeholder: 'base64(acp_sdk.pfx)' },
+      { key: 'sign_cert_password', label: '证书密码', secret: true },
+      { key: 'notify_url', label: '后台通知地址', placeholder: 'https://yuqing.pangu-cloud.com/api/v1/callbacks/payment/unionpay' },
+      { key: 'front_url', label: '前台回跳地址', placeholder: 'https://yuqing.pangu-cloud.com/plans' },
+    ],
+  },
+];
+
+function PaymentTab() {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const settingsQ = useQuery({ queryKey: ['admin', 'settings'], queryFn: getAdminSettings });
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+
+  const saveQ = useMutation({
+    mutationFn: (patch: Record<string, string>) => updateAdminSettings(patch),
+    onSuccess: () => {
+      message.success('支付渠道配置已保存，购买页即时生效');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
+    },
+    onError: () => message.error('保存失败，请检查权限或稍后重试'),
+  });
+
+  function parseChannel(settingsKey: string): ChannelConfig {
+    const raw = settingsQ.data?.[settingsKey];
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as ChannelConfig;
+    } catch {
+      return {};
+    }
+  }
+
+  const renderChannel = (ch: (typeof PAYMENT_CHANNELS)[number]) => {
+    const saved = parseChannel(ch.settingsKey);
+    const draft = drafts[ch.key] ?? {};
+    const value = (k: string) => draft[k] ?? (typeof saved[k] === 'string' ? (saved[k] as string) : '');
+
+    const patch = (fields: Record<string, unknown>, enabled?: boolean) => {
+      const merged: Record<string, unknown> = { ...saved, ...draft, ...fields };
+      if (enabled !== undefined) merged.enabled = enabled;
+      saveQ.mutate({ [ch.settingsKey]: JSON.stringify(merged) });
+      setDrafts((d) => ({ ...d, [ch.key]: {} }));
+    };
+
+    return (
+      <Card
+        key={ch.key}
+        style={{ borderRadius: 16, marginBottom: 16 }}
+        title={<Space>{ch.icon}{ch.title}</Space>}
+        extra={(
+          <Space>
+            <Typography.Text type={saved.enabled ? 'success' : 'secondary'} style={{ fontSize: 13 }}>
+              {saved.enabled ? '已启用' : '未启用'}
+            </Typography.Text>
+            <Switch
+              checked={!!saved.enabled}
+              onChange={(on) => patch({}, on)}
+              loading={saveQ.isPending}
+            />
+          </Space>
+        )}
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} message={ch.hint} />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {ch.fields.map((f) => (
+            <div key={f.key}>
+              <Typography.Text style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                {f.label}{f.secret ? '（留空保持已保存值）' : ''}
+              </Typography.Text>
+              <Input
+                value={value(f.key)}
+                type={f.secret ? 'password' : undefined}
+                placeholder={f.placeholder}
+                onChange={(e) =>
+                  setDrafts((d) => ({ ...d, [ch.key]: { ...d[ch.key], [f.key]: e.target.value } }))}
+              />
+            </div>
+          ))}
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={saveQ.isPending}
+            onClick={() => patch({})}
+          >
+            保存该渠道配置
+          </Button>
+        </Space>
+      </Card>
+    );
+  };
+
+  if (settingsQ.isLoading) return <Card style={{ borderRadius: 16 }}><LoadingBlock rows={8} /></Card>;
+  if (settingsQ.isError) {
+    return (
+      <Card style={{ borderRadius: 16 }}>
+        <ErrorBlock description="支付配置加载失败" onRetry={() => void settingsQ.refetch()} />
+      </Card>
+    );
+  }
+  return <div style={{ maxWidth: 760 }}>{PAYMENT_CHANNELS.map(renderChannel)}</div>;
 }

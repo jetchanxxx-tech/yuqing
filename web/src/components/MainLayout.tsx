@@ -10,7 +10,7 @@ const menuItems = [
   { key: '/analyses/new', icon: <PlusOutlined />, label: '新建分析' },
   { key: '/analyses', icon: <BarChartOutlined />, label: '分析任务' },
   { key: '/reports', icon: <FileTextOutlined />, label: '报告中心' },
-  { key: '/plans', icon: <CreditCardOutlined />, label: '套餐升级' },
+  { key: '/plans', icon: <CreditCardOutlined />, label: '套餐与额度' },
   { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
   { key: '/invoices', icon: <FileTextOutlined />, label: '账单' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
@@ -24,8 +24,14 @@ export function MainLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider width={200} style={{ background: '#fff', borderRight: '1px solid rgba(0,0,0,0.08)' }}>
-        <div style={{ padding: '20px 16px', fontWeight: 700, fontSize: 18, color: '#FF2442' }}>
+        <div style={{ padding: '20px 16px', fontWeight: 700, fontSize: 18, color: '#FF2442', display: 'flex', alignItems: 'center', gap: 8 }}>
           盘古舆情
+          <span style={{
+            fontSize: 11, fontWeight: 500, color: '#fff', background: 'rgba(255,36,66,0.85)',
+            borderRadius: 4, padding: '1px 6px', letterSpacing: 1,
+          }}>
+            BETA
+          </span>
         </div>
         <Menu
           mode="inline"

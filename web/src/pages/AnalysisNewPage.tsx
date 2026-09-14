@@ -24,7 +24,7 @@ import {
 } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { createAnalysis } from '../api/analyses';
-import { getUsage } from '../api/billing';
+import { getCredits, getUsage } from '../api/billing';
 import {
   ANALYSIS_TYPES,
   SOURCES,
@@ -32,7 +32,6 @@ import {
   type AnalysisType,
   type SourceKey,
 } from '../lib/constants';
-import { formatNum, formatTokens } from '../lib/format';
 
 /** 成本估算：每个「关键词 × 数据源」约消耗 1,200 token（采集摘要+研判），另加固定报告 token */
 const TOKEN_PER_KEYWORD_SOURCE = 1200;
@@ -53,10 +52,13 @@ export default function AnalysisNewPage() {
   const [sources, setSources] = useState<SourceKey[]>([]);
 
   const usageQ = useQuery({ queryKey: ['billing', 'usage'], queryFn: getUsage, staleTime: 30_000 });
+  const creditsQ = useQuery({ queryKey: ['billing', 'credits'], queryFn: getCredits, staleTime: 30_000 });
 
   const estTokens = BASE_TOKENS + Math.max(keywords.length, 0) * Math.max(sources.length, 0) * TOKEN_PER_KEYWORD_SOURCE;
   const remainingTokens = usageQ.data ? usageQ.data.tokens_quota - usageQ.data.tokens_used : null;
   const overBudget = remainingTokens !== null && estTokens > remainingTokens;
+  /** 报告额度（方案 B：每次分析 = 1 次） */
+  const noCredits = (creditsQ.data?.balance ?? 1) <= 0;
 
   const canNext =
     current === 0
@@ -77,10 +79,17 @@ export default function AnalysisNewPage() {
       }),
     onSuccess: (res) => {
       message.success('分析任务已创建，正在排队执行');
+      void creditsQ.refetch();
       navigate(`/analyses/${res.id}`);
     },
-    onError: () => {
-      // 错误信封已由全局处理（额度/限流等）；这里不再重复提示
+    onError: (error) => {
+      // 额度不足（402 NO_CREDITS）：明确引导购买，其余错误信封已由全局处理
+      const code = (error as { response?: { data?: { code?: string } } })
+        ?.response?.data?.code;
+      if (code === 'NO_CREDITS') {
+        message.warning('报告额度不足，请先购买套餐');
+        navigate('/plans');
+      }
     },
   });
 
@@ -264,29 +273,20 @@ export default function AnalysisNewPage() {
               ]}
             />
             <Alert
-              type={overBudget ? 'warning' : 'info'}
+              type={overBudget || noCredits ? 'warning' : 'info'}
               showIcon
               style={{ marginTop: 16 }}
               message="成本预估"
               description={
                 <>
                   预计耗时 <b>5-10 分钟</b>（采集 → 五维智能分析 → 报告生成）；
-                  预计消耗约 <b>{formatTokens(estTokens)}</b> tokens
-                  （关键词 {keywords.length} × 数据源 {sources.length} × {formatNum(TOKEN_PER_KEYWORD_SOURCE)}，另含报告生成{' '}
-                  {formatNum(BASE_TOKENS)}）
-                  {remainingTokens !== null && (
-                    <>
-                      ；当前剩余额度{' '}
-                      <span style={{ color: overBudget ? '#ff7d03' : undefined }}>
-                        {formatTokens(Math.max(remainingTokens, 0))}
-                      </span>
-                      tokens
-                    </>
+                  本次分析消耗 <b>1 次报告额度</b>
+                  {creditsQ.data && (
+                    <>，当前剩余 <b style={{ color: noCredits ? '#FF2442' : undefined }}>{creditsQ.data.balance}</b> 次</>
                   )}
-                  {overBudget && (
+                  {noCredits && (
                     <div style={{ marginTop: 8 }}>
-                      预估用量可能超过剩余额度，建议减少关键词/数据源或{' '}
-                      <Link to="/plans">升级套餐</Link>。
+                      额度不足，<Link to="/plans">去购买套餐 →</Link>
                     </div>
                   )}
                 </>

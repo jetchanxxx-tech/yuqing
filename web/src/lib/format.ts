@@ -15,6 +15,12 @@ export function formatCny(yuan?: number | null, digits = 2): string {
   return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
+/** 金额（分）→ ¥xx.xx（后端价格字段统一为分） */
+export function formatCents(cents?: number | null, digits = 2): string {
+  if (cents === undefined || cents === null || Number.isNaN(cents)) return '-';
+  return formatCny(cents / 100, digits);
+}
+
 /** token 配额（单位：百万）→ 展示文案，如 1 → 100万 / 月 */
 export function formatTokenQuota(million?: number | null): string {
   if (million === undefined || million === null) return '-';
