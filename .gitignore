@@ -30,3 +30,6 @@ Thumbs.db
 __pycache__/
 *.pyc
 *.pyo
+
+# 本地验证用配置（真实配置在服务器 /opt/yuqing/config/ 生成）
+platform/config.yaml
