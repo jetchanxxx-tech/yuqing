@@ -294,3 +294,71 @@ def test_materials_keep_most_recent_when_truncated(dim_llm):
     client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
     prompt = dimension_calls(dim_llm)[0]
     assert "文档27" in prompt or "文档55" in prompt, "最新文档被误截断"
+
+
+# ── P2：引用保真校验（反幻觉）─────────────────────────────────
+#
+# 维度结论里的「逐字原声」必须真实存在于源文档正文（归一化后子串）。
+# LLM 编造或改写的引语一律丢弃，并在 warning 里记录 —— 分析可以降级，
+# 但不允许出现「看起来像引用的编造」。
+# 归一化：去除全部空白后比较（网页正文常有换行/空格差异）。
+
+FABRICATED_DIMS = [
+    {
+        'id': 'background', 'name': '背景与事件概述',
+        'findings': '核心发现：测试。',
+        'quotes': [
+            {'text': '腿都伸不直', 'source': '微博'},       # 真实存在于 doc2
+            {'text': '这车彻底不行千万别买', 'source': '微博'},  # 编造 —— 必须被丢弃
+        ],
+    },
+]
+
+
+def test_fabricated_quotes_dropped_with_warning(monkeypatch):
+    class QuoteLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            self.calls.append(prompt)
+            if '【分析维度】' in prompt:
+                return json.loads(json.dumps(FABRICATED_DIMS[0])) | {'id': 'background'}
+            if '批判' in prompt:
+                return {'critique': 'x', 'revised_summary': 'y'}
+            return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+    fake = QuoteLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    dims = {d['id']: d for d in body['dimensions']}
+    quotes = dims['background']['quotes']
+    texts = [q['text'] for q in quotes]
+    assert '腿都伸不直' in texts, '真实引语不得误杀'
+    assert '这车彻底不行千万别买' not in texts, '编造引语必须被丢弃'
+    assert body['warning'], '丢弃编造引语必须留 warning'
+
+
+def test_quotes_normalized_against_whitespace(monkeypatch):
+    class WhitespaceLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            self.calls.append(prompt)
+            if '【分析维度】' in prompt:
+                # 原文是「后排腿部空间局促，身高178cm顶膝」，引语加了多余空白
+                return {'findings': 'f', 'quotes': [{'text': '后排腿部空间局促', 'source': '新闻'}], 'deep_read': 'd', 'trend': 't'}
+            if '批判' in prompt:
+                return {'critique': 'x', 'revised_summary': 'y'}
+            return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+    fake = WhitespaceLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    body = resp.json()
+    dims = {d['id']: d for d in body['dimensions']}
+    assert len(dims['background']['quotes']) == 1, '真实内容的引语（空白差异）不得误杀'
+    assert body['warning'] == ''

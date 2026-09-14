@@ -337,6 +337,38 @@ def _quote_list(value) -> list[dict]:
     return out
 
 
+def _normalize_for_match(s: str) -> str:
+    """归一化用于子串匹配：去全部空白（网页正文常有换行/空格差异）。"""
+    return "".join(str(s).split())
+
+
+def _verify_quotes(
+    dimensions: list[dict], documents: list[dict]
+) -> list[str]:
+    """引用保真校验：维度里的每条原声必须是某篇源文档的归一化子串。
+
+    LLM 编造或改写的引语一律丢弃，返回丢弃原因列表（并入 warning）。
+    分析可以降级，但不允许出现「看起来像引用的编造」—— 引语是用户
+    最容易轻信的内容，也是反幻觉的最高杠杆点。
+    """
+    corpus = [
+        _normalize_for_match((d.get("content") or "") + (d.get("title") or ""))
+        for d in documents
+        if isinstance(d, dict)
+    ]
+    dropped: list[str] = []
+    for dim in dimensions:
+        kept: list[dict] = []
+        for q in dim.get("quotes") or []:
+            text = _normalize_for_match(q.get("text", ""))
+            if text and any(text in doc for doc in corpus if doc):
+                kept.append(q)
+            else:
+                dropped.append(f"{dim.get('name', dim.get('id', ''))} 的引语「{q.get('text', '')[:30]}」未命中原文")
+        dim["quotes"] = kept
+    return dropped
+
+
 async def _analyze_one_dimension(
     llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str
 ) -> dict:
@@ -358,6 +390,7 @@ async def _analyze_one_dimension(
             {"role": "user", "content": prompt},
         ],
         temperature=0.6,
+        max_tokens=4096,
     )
     if not isinstance(data, dict):
         raise ValueError(f"dimension {spec.id} returned non-object")
@@ -372,18 +405,28 @@ async def _analyze_one_dimension(
     }
 
 
+# 维度并发闸门：5 路同时打满会触发供应商限流（429），闸到 3 并发 +
+# 单次重试。串行则多花 1-2 分钟 —— 3 是延迟与稳定性的折中。
+_DIMENSION_CONCURRENCY = 3
+
+
 async def _run_dimensions(
     llm, documents: list[dict], analysis_type: str, title: str
 ) -> tuple[list[dict], list[str]]:
-    """并发跑五个维度。返回 (成功的维度, 失败原因列表)。
+    """并发跑五个维度（闸门限 3）。返回 (成功的维度, 失败原因列表)。"""
+    sem = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
 
-    并发而非串行：5 次 LLM 往返串行会让单次分析多花 1-2 分钟。
-    """
-    tasks = [
-        _analyze_one_dimension(llm, spec, documents, analysis_type, title)
-        for spec in DIMENSIONS
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    async def guarded(spec: DimensionSpec) -> dict:
+        async with sem:
+            try:
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title)
+            except Exception as exc:  # 429/超时类瞬时错误重试一次
+                await asyncio.sleep(2)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title)
+
+    results = await asyncio.gather(
+        *(guarded(spec) for spec in DIMENSIONS), return_exceptions=True
+    )
 
     dims: list[dict] = []
     failed: list[str] = []
@@ -455,7 +498,12 @@ async def analyze(req: AnalyzeRequest) -> dict:
     dimensions, failed = await _run_dimensions(
         llm, req.documents, req.analysis_type, req.title
     )
-    warning = f"部分维度分析失败：{'；'.join(failed)}" if failed else ""
+    warnings = [f"部分维度分析失败：{'；'.join(failed)}"] if failed else []
+    # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
+    dropped = _verify_quotes(dimensions, req.documents)
+    if dropped:
+        warnings.append(f"丢弃 {len(dropped)} 条未命中原文的引语（防编造）：{'；'.join(dropped)}")
+    warning = "；".join(warnings)
 
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     try:
