@@ -1,4 +1,10 @@
-"""Shared LLM client (OpenAI-compatible API, DeepSeek)."""
+"""Shared LLM client (OpenAI-compatible API; provider 可配置：智谱 GLM / DeepSeek / …)。
+
+三级配置来源（高→低）：
+  ① 请求参数（平台后台「数据源配置」在线修改，经 Go 管线透传 —— 零重启生效）
+  ② 环境变量 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL（engines.env）
+  ③ 代码默认值（智谱 GLM）
+"""
 import json
 import os
 import re
@@ -30,7 +36,11 @@ class LLMClient:
             return resp.json()
 
     async def chat_json(self, model: str, messages: list[dict], **kwargs) -> dict:
-        """Chat with JSON output mode; returns the parsed content as a dict."""
+        """Chat with JSON output mode; returns the parsed content as a dict.
+
+        思考型模型（如 glm-5.3-flash）的 content 之外的 reasoning 不参与解析；
+        response_format=json_object 若被供应商拒绝，由调用方按 4xx 走降级。
+        """
         kwargs.setdefault("response_format", {"type": "json_object"})
         resp = await self.chat(model, messages, **kwargs)
         content = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
@@ -49,13 +59,18 @@ def _parse_json_content(content: str) -> dict:
         raise ValueError(f"LLM returned invalid JSON: {text[:120]}") from exc
 
 
-# ── DeepSeek 工厂（insight/report 引擎共用）─────────────────
+# ── 通用 LLM 工厂（insight/report 引擎共用）──────────────────
+# 2026-09 起默认智谱 GLM（DeepSeek 余额弃用）；换供应商只需改环境变量
+# 或后台配置，业务代码零改动 —— 这正是接口先行的验收。
 
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+LLM_MODEL = os.environ.get("LLM_MODEL", "glm-5.3-flash")
 
 
 def build_client(api_key: str = "", base_url: str = "") -> LLMClient:
-    """Build an LLMClient for DeepSeek. api_key 为空时回退环境变量。"""
-    key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
-    return LLMClient(base_url=base_url or DEEPSEEK_BASE_URL, api_key=key)
+    """Build an LLMClient. api_key 为空时回退环境变量 LLM_API_KEY。
+
+    兼容旧名：DEEPSEEK_API_KEY 仍被读取（迁移期），LLM_API_KEY 优先。
+    """
+    key = api_key or os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
+    return LLMClient(base_url=base_url or LLM_BASE_URL, api_key=key)

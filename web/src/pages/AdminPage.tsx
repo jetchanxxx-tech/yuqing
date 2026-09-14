@@ -167,7 +167,9 @@ function DataSourceTab() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [bochaInput, setBochaInput] = useState('');
-  const [deepseekInput, setDeepseekInput] = useState('');
+  const [llmKeyInput, setLlmKeyInput] = useState('');
+  const [llmUrlInput, setLlmUrlInput] = useState('');
+  const [llmModelInput, setLlmModelInput] = useState('');
 
   const settingsQ = useQuery({ queryKey: ['admin', 'settings'], queryFn: getAdminSettings });
 
@@ -176,7 +178,9 @@ function DataSourceTab() {
     onSuccess: () => {
       message.success('配置已保存，下一个分析任务即刻生效（无需重启）');
       setBochaInput('');
-      setDeepseekInput('');
+      setLlmKeyInput('');
+      setLlmUrlInput('');
+      setLlmModelInput('');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
     },
     onError: () => message.error('保存失败，请检查权限或稍后重试'),
@@ -184,8 +188,10 @@ function DataSourceTab() {
 
   const currentKey = settingsQ.data?.bocha_api_key;
   const configured = !!currentKey;
-  const currentDeepseekKey = settingsQ.data?.deepseek_api_key;
-  const deepseekConfigured = !!currentDeepseekKey;
+  const currentLlmKey = settingsQ.data?.llm_api_key;
+  const llmConfigured = !!currentLlmKey;
+  const llmBaseUrl = settingsQ.data?.llm_base_url ?? '';
+  const llmModel = settingsQ.data?.llm_model ?? '';
 
   const onSave = () => {
     const value = bochaInput.trim();
@@ -196,13 +202,16 @@ function DataSourceTab() {
     saveQ.mutate({ bocha_api_key: value });
   };
 
-  const onSaveDeepseek = () => {
-    const value = deepseekInput.trim();
+  const onSaveLlm = () => {
+    const value = llmKeyInput.trim();
     if (!value) {
-      message.warning('请填写 DeepSeek API Key');
+      message.warning('请填写 LLM API Key');
       return;
     }
-    saveQ.mutate({ deepseek_api_key: value });
+    const patch: Record<string, string> = { llm_api_key: value };
+    if (llmUrlInput.trim()) patch.llm_base_url = llmUrlInput.trim();
+    if (llmModelInput.trim()) patch.llm_model = llmModelInput.trim();
+    saveQ.mutate(patch);
   };
 
   return (
@@ -277,7 +286,7 @@ function DataSourceTab() {
 
       <Card
         style={{ borderRadius: 16, marginTop: 16 }}
-        title={<Space><ApiOutlined />DeepSeek AI 分析</Space>}
+        title={<Space><ApiOutlined />LLM 分析（可配置供应商）</Space>}
       >
         {settingsQ.isLoading ? (
           <LoadingBlock rows={3} />
@@ -285,12 +294,17 @@ function DataSourceTab() {
           <>
             <Descriptions column={1} size="small" style={{ marginBottom: 20 }}>
               <Descriptions.Item label="当前状态">
-                <Tag color={deepseekConfigured ? 'success' : 'warning'}>
-                  {deepseekConfigured ? '已配置' : '未配置'}
+                <Tag color={llmConfigured ? 'success' : 'warning'}>
+                  {llmConfigured ? '已配置' : '未配置'}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="API Key">
-                <Typography.Text code>{maskKey(currentDeepseekKey)}</Typography.Text>
+                <Typography.Text code>{maskKey(currentLlmKey)}</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="端点 / 模型">
+                <Typography.Text code>
+                  {llmBaseUrl || '（平台默认：智谱 GLM）'} · {llmModel || '（平台默认模型）'}
+                </Typography.Text>
               </Descriptions.Item>
             </Descriptions>
 
@@ -298,23 +312,40 @@ function DataSourceTab() {
               <div>
                 <Typography.Text strong>更新 API Key</Typography.Text>
                 <Typography.Paragraph type="secondary" style={{ fontSize: 13, margin: '4px 0 8px' }}>
-                  DeepSeek 驱动情感分析、话题聚类与 AI 研判报告。未配置时任务仍完成采集，
-                  但分析与报告将降级并标注原因。
+                  LLM 驱动情感分析、话题聚类与 AI 研判报告。支持任意 OpenAI 兼容供应商
+                  （智谱 / DeepSeek / Kimi 等）。未配置时任务仍完成采集，但分析与报告将降级并标注原因。
                 </Typography.Paragraph>
                 <Input.Password
                   size="large"
-                  placeholder="sk-..."
-                  value={deepseekInput}
-                  onChange={(e) => setDeepseekInput(e.target.value)}
-                  onPressEnter={onSaveDeepseek}
+                  placeholder="API Key（如 sk-... 或智谱 key 格式）"
+                  value={llmKeyInput}
+                  onChange={(e) => setLlmKeyInput(e.target.value)}
+                  onPressEnter={onSaveLlm}
                   style={{ maxWidth: 520 }}
                 />
+              </div>
+              <div>
+                <Typography.Text strong>端点与模型（可选，留空用平台默认）</Typography.Text>
+                <Space direction="vertical" style={{ width: '100%', marginTop: 8 }} size={8}>
+                  <Input
+                    placeholder="Base URL，如 https://open.bigmodel.cn/api/paas/v4"
+                    value={llmUrlInput}
+                    onChange={(e) => setLlmUrlInput(e.target.value)}
+                    style={{ maxWidth: 520 }}
+                  />
+                  <Input
+                    placeholder="模型名，如 glm-5.3-flash / deepseek-chat"
+                    value={llmModelInput}
+                    onChange={(e) => setLlmModelInput(e.target.value)}
+                    style={{ maxWidth: 520 }}
+                  />
+                </Space>
               </div>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
                 loading={saveQ.isPending}
-                onClick={onSaveDeepseek}
+                onClick={onSaveLlm}
               >
                 保存配置
               </Button>

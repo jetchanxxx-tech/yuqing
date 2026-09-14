@@ -26,6 +26,10 @@ export async function suspendTenant(id: string): Promise<void> {
 
 export interface AdminSettings {
   bocha_api_key?: string;
+  /** LLM 供应商可配置（智谱/DeepSeek/任意 OpenAI 兼容端点） */
+  llm_api_key?: string;
+  llm_base_url?: string;
+  llm_model?: string;
   [key: string]: string | undefined;
 }
 

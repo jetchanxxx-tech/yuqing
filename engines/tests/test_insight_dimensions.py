@@ -123,10 +123,16 @@ class DimensionFakeLLM:
         }
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_backoff(monkeypatch):
+    """重试退避清零：并发闸门的单次重试语义由调用次数断言，不靠真实等待。"""
+    monkeypatch.setattr(insight_engine, "_RETRY_DELAY_SECONDS", 0)
+
+
 @pytest.fixture
 def dim_llm(monkeypatch):
     fake = DimensionFakeLLM()
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
     return fake
 
 
@@ -233,7 +239,7 @@ def test_topic_without_dates_falls_back_to_stable(monkeypatch):
     LLM 此处谎报 rising；只有代码侧的「无日期→stable」才能产生 stable。
     """
     fake = DimensionFakeLLM(topic_trend="rising")
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
 
     no_dates = [{k: v for k, v in d.items() if k != "published_at"} for d in DOCS]
     resp = client.post("/analyze", json={"documents": no_dates, "api_key": "sk-x"})
@@ -246,7 +252,7 @@ def test_topic_without_dates_falls_back_to_stable(monkeypatch):
 def test_single_dimension_failure_degrades_not_fatal(monkeypatch):
     """单个维度调用失败：其余维度照常返回 + warning，不整单 502。"""
     fake = DimensionFakeLLM(fail_dims={"heat"})
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
 
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
 
@@ -263,3 +269,197 @@ def test_all_dimensions_succeed_leaves_no_warning(dim_llm):
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
 
     assert resp.json()["warning"] == ""
+
+# ── P0：材料 token 预算 ───────────────────────────────────────
+#
+# 五个维度各自注入全量素材包 → 输入 token ×5。预算按字符上限截断：
+# 优先保留发布时间最新的文档（舆情分析里最新证据最相关），
+# 截断必须在 prompt 中显式标记，而不是静默丢数据。
+
+def _bulk_docs(n: int) -> list[dict]:
+    return [
+        {
+            "id": f"d{i}", "title": f"文档{i}",
+            "content": "内容" * 600,
+            "source_type": "news", "source_name": "测试源",
+            "published_at": f"2026-09-{i % 28 + 1:02d}T10:00:00Z",
+        }
+        for i in range(1, n + 1)
+    ]
+
+
+def test_materials_respect_token_budget(dim_llm):
+    bulk = _bulk_docs(60)
+    client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
+    prompt = dimension_calls(dim_llm)[0]
+    assert "材料截断" in prompt, "截断必须显式标记，不得静默丢数据"
+
+
+def test_materials_keep_most_recent_when_truncated(dim_llm):
+    bulk = _bulk_docs(60)
+    client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
+    prompt = dimension_calls(dim_llm)[0]
+    assert "文档27" in prompt or "文档55" in prompt, "最新文档被误截断"
+
+
+# ── P2：引用保真校验（反幻觉）─────────────────────────────────
+#
+# 维度结论里的「逐字原声」必须真实存在于源文档正文（归一化后子串）。
+# LLM 编造或改写的引语一律丢弃，并在 warning 里记录 —— 分析可以降级，
+# 但不允许出现「看起来像引用的编造」。
+# 归一化：去除全部空白后比较（网页正文常有换行/空格差异）。
+
+FABRICATED_DIMS = [
+    {
+        'id': 'background', 'name': '背景与事件概述',
+        'findings': '核心发现：测试。',
+        'quotes': [
+            {'text': '腿都伸不直', 'source': '微博'},       # 真实存在于 doc2
+            {'text': '这车彻底不行千万别买', 'source': '微博'},  # 编造 —— 必须被丢弃
+        ],
+    },
+]
+
+
+def test_fabricated_quotes_dropped_with_warning(monkeypatch):
+    class QuoteLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            self.calls.append(prompt)
+            if '【分析维度】' in prompt:
+                return json.loads(json.dumps(FABRICATED_DIMS[0])) | {'id': 'background'}
+            if '批判' in prompt:
+                return {'critique': 'x', 'revised_summary': 'y'}
+            return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+    fake = QuoteLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    dims = {d['id']: d for d in body['dimensions']}
+    quotes = dims['background']['quotes']
+    texts = [q['text'] for q in quotes]
+    assert '腿都伸不直' in texts, '真实引语不得误杀'
+    assert '这车彻底不行千万别买' not in texts, '编造引语必须被丢弃'
+    assert body['warning'], '丢弃编造引语必须留 warning'
+
+
+def test_quotes_normalized_against_whitespace(monkeypatch):
+    class WhitespaceLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            self.calls.append(prompt)
+            if '【分析维度】' in prompt:
+                # 原文是「后排腿部空间局促，身高178cm顶膝」，引语被插入了
+                # 多余空白（网页转贴常见）—— 归一化去空白后必须命中原文
+                return {'findings': 'f', 'quotes': [{'text': '后排腿部空间局促，身高 178cm\n顶膝', 'source': '新闻'}], 'deep_read': 'd', 'trend': 't'}
+            if '批判' in prompt:
+                return {'critique': 'x', 'revised_summary': 'y'}
+            return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+    fake = WhitespaceLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    body = resp.json()
+    dims = {d['id']: d for d in body['dimensions']}
+    assert len(dims['background']['quotes']) == 1, '真实内容的引语（空白差异）不得误杀'
+    assert body['warning'] == ''
+
+
+def test_wrapped_quotes_not_mass_dropped(monkeypatch):
+    """LLM 给引语套上引号（「」/“”）：包裹符不属于原文，剥掉后再比对。
+
+    不剥的话，LLM 一旦习惯性加引号，全部真引语都会被误杀 —— 维度失去
+    「代表性声音」，warning 刷屏，反幻觉机制反而伤害产出。
+    """
+    class WrappedLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            self.calls.append(prompt)
+            if '【分析维度】' in prompt:
+                return {
+                    'findings': 'f',
+                    'quotes': [
+                        {'text': '「腿都伸不直」', 'source': '微博'},       # 包引号但内容真实
+                        {'text': '“建议到店体验”', 'source': '新浪汽车'},   # 包引号但内容真实
+                    ],
+                    'deep_read': 'd', 'trend': 't',
+                }
+            if '批判' in prompt:
+                return {'critique': 'x', 'revised_summary': 'y'}
+            return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+    fake = WrappedLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    body = resp.json()
+    dims = {d['id']: d for d in body['dimensions']}
+    texts = [q['text'] for q in dims['background']['quotes']]
+    assert len(texts) == 2, f'包引号的真引语不得误杀，实际保留 {texts}'
+    assert body['warning'] == ''
+
+
+# ── 并发闸门的单次重试 ─────────────────────────────────────────
+#
+# 闸门限 3 并发；瞬时失败（429/超时）重试一次：
+#   · 重试成功 → 维度照常产出，不留失败记录
+#   · 重试仍失败 → 异常进 failed 列表（warning 说明原因），维度缺席
+
+
+class FlakyDimLLM(DimensionFakeLLM):
+    """对指定维度前 N 次调用抛错，之后放行；记录每个维度的调用次数。"""
+
+    def __init__(self, fail_dim: str, fail_times: int):
+        super().__init__()
+        self.fail_dim = fail_dim
+        self.fail_times = fail_times
+        self.dim_calls: dict[str, int] = {}
+
+    async def chat_json(self, model, messages, **kwargs):
+        prompt = json.dumps(messages, ensure_ascii=False)
+        self.calls.append(prompt)
+        if '【分析维度】' in prompt:
+            for dim in DIMENSION_IDS:
+                if f'id={dim}' in prompt:
+                    self.dim_calls[dim] = self.dim_calls.get(dim, 0) + 1
+                    if dim == self.fail_dim and self.dim_calls[dim] <= self.fail_times:
+                        raise RuntimeError(f'dimension {dim} transient 429')
+                    return dict(DIMENSION_PAYLOAD)
+        if '批判' in prompt:
+            return {'critique': 'x', 'revised_summary': 'y'}
+        return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
+
+
+def test_retry_recovers_transient_dimension_failure(monkeypatch):
+    fake = FlakyDimLLM(fail_dim='heat', fail_times=1)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    body = resp.json()
+    ids = [d['id'] for d in body['dimensions']]
+    assert 'heat' in ids, '瞬时失败重试成功后维度必须保留'
+    assert len(ids) == 5, f'五个维度应齐备，实际 {ids}'
+    assert fake.dim_calls.get('heat') == 2, f'heat 应恰好调用 2 次（首次+重试），实际 {fake.dim_calls}'
+    assert body['warning'] == '', '重试成功不应留下降级 warning'
+
+
+def test_persistent_dimension_failure_after_retry_lands_in_failed(monkeypatch):
+    fake = FlakyDimLLM(fail_dim='heat', fail_times=99)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    body = resp.json()
+    ids = [d['id'] for d in body['dimensions']]
+    assert 'heat' not in ids, '重试仍失败的维度不得出现在结果里'
+    assert len(ids) == 4
+    assert fake.dim_calls.get('heat') == 2, f'heat 应重试过一次（共 2 次调用），实际 {fake.dim_calls}'
+    assert '热度与传播路径' in body['warning'], '重试失败原因必须进入 warning'

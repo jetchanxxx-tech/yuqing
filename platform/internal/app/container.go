@@ -69,8 +69,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 		var err error
 		platformSettings, err = settings.NewPGStore(pool, map[string]string{
-			"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
-			"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
+			"bocha_api_key":  os.Getenv("BOCHA_API_KEY"),
+			"llm_api_key":    os.Getenv("LLM_API_KEY"),
+			"llm_base_url":   os.Getenv("LLM_BASE_URL"),
+			"llm_model":      os.Getenv("LLM_MODEL"),
 		})
 		if err != nil {
 			panic(fmt.Sprintf("app: seed settings: %v", err))
@@ -91,8 +93,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
 		// Admins can override via PUT /api/v1/admin/settings.
 		platformSettings = settings.NewMemoryStore(map[string]string{
-			"bocha_api_key":    os.Getenv("BOCHA_API_KEY"),
-			"deepseek_api_key": os.Getenv("DEEPSEEK_API_KEY"),
+			"bocha_api_key":  os.Getenv("BOCHA_API_KEY"),
+			"llm_api_key":    os.Getenv("LLM_API_KEY"),
+			"llm_base_url":   os.Getenv("LLM_BASE_URL"),
+			"llm_model":      os.Getenv("LLM_MODEL"),
 		})
 	}
 
@@ -151,18 +155,25 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			"", // 引擎内网认证：MVP 未启用
 			keyFor("bocha_api_key"),
 		)
+		// LLM 供应商可配置（后台「数据源配置」）：每次请求实时读 settings，
+		// 换供应商/key/model 零重启生效。空值返回空串 —— 引擎侧空串回退自身默认。
+		llmOpts := func() (string, string) {
+			baseURL, _ := platformSettings.Get(context.Background(), "llm_base_url")
+			model, _ := platformSettings.Get(context.Background(), "llm_model")
+			return baseURL, model
+		}
 		// insight/report 引擎未配置时传 nil —— 管线跳过对应步骤并记录 warning
 		var insight *engine.RealInsightEngine
 		var report *engine.RealReportEngine
 		if cfg.Engines.Insight.URL != "" {
 			insight = engine.NewRealInsightEngine(
-				cfg.Engines.Insight.URL, "", keyFor("deepseek_api_key"))
+				cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.insight.url，情感/话题分析将降级")
 		}
 		if cfg.Engines.Report.URL != "" {
 			report = engine.NewRealReportEngine(
-				cfg.Engines.Report.URL, "", keyFor("deepseek_api_key"))
+				cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}

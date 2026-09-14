@@ -58,6 +58,23 @@ export interface AnalysisReport {
   content: string;
 }
 
+/** 逐字原声引用（来自源文档，附来源平台） */
+export interface QuoteItem {
+  text: string;
+  source?: string;
+}
+
+/** 五维度研判结论（背景/热度/情感观点/群体差异/深层原因） */
+export interface DimensionResult {
+  id: string;
+  name: string;
+  findings: string;
+  data_points?: string[];
+  quotes?: QuoteItem[];
+  deep_read: string;
+  trend?: string;
+}
+
 export interface AnalysisResult {
   id: string;
   state: string;
@@ -67,6 +84,7 @@ export interface AnalysisResult {
   warning?: string;
   sentiments: { positive: number; negative: number; neutral: number; items?: SentimentItem[] };
   topics: Topic[];
+  dimensions?: DimensionResult[];
   report?: AnalysisReport | null;
 }
 

@@ -12,9 +12,9 @@ from string import Template
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from engines.common.llm_client import DEEPSEEK_MODEL, build_client
+from engines.common.llm_client import LLM_MODEL, build_client
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Report Engine", version="0.2.0")
 
@@ -26,8 +26,14 @@ class GenerateRequest(BaseModel):
     documents: list[dict] = []
     sentiments: list[dict] = []
     topics: list[dict] = []
+    # 五维度研判结论（背景/热度/情感观点/群体差异/深层原因）。
+    # 报告基于它们撰写：渲染层直接呈现结论，LLM 只写连接性叙述 ——
+    # 不再从聚合 JSON 二次概括（这是此前结论干瘪趋同的根因）。
+    dimensions: list[dict] = []
     analysis_id: str = ""
     api_key: str = ""
+    llm_base_url: str = ""  # LLM 供应商可配置（后台在线修改，经管线透传）
+    llm_model: str = ""
     # False = 洞察引擎未产出（未配置/调用失败）。渲染时不得把空情感
     # 数据画成 0/0/0 —— 那与「全部中性」无法区分，属误导（审核 D1）。
     insight_available: bool = True
@@ -49,6 +55,11 @@ _LLM_PROMPT = """你是资深舆情分析师和报告撰写专家。你的使命
 
 【文档素材包】引用原文时必须逐字摘自以下内容，并注明来源平台：
 {materials}
+
+【五维度研判结论】以下是由五个独立分析员（溯源专家/传播学者/民意研究员/
+社会分层学者/社会观察家）产出的结论。你的任务是**编排**而非重写：
+执行摘要与话题研判必须引用它们的核心发现，不得二次概括成空话：
+{dimensions}
 
 输出 JSON 对象：
 {{
@@ -72,6 +83,26 @@ _LLM_PROMPT = """你是资深舆情分析师和报告撰写专家。你的使命
 [ ] 是否避免了"舆情""传播""倾向""展望"等官方术语？
 [ ] 风险是否分了短期/长期/次生且给出了证据？
 [ ] 建议是否落到具体行动而非泛泛而谈？"""
+
+
+def _dimensions_text(dimensions: list[dict]) -> str:
+    """五维度结论的 prompt 摘要 —— 各维度的核心发现/数据点/趋势。
+
+    完整结论由渲染层直接呈现；这里只给写作 LLM 编排所需的要点。
+    """
+    parts = []
+    for d in dimensions if isinstance(dimensions, list) else []:
+        if not isinstance(d, dict):
+            continue
+        lines = [f"【{d.get('name', '')}】"]
+        if d.get("findings"):
+            lines.append(f"核心发现：{d.get('findings')}")
+        for dp in _str_list(d.get("data_points"))[:3]:
+            lines.append(f"数据：{dp}")
+        if d.get("trend"):
+            lines.append(f"趋势：{d.get('trend')}")
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts) if parts else "（无维度结论）"
 
 
 def _sentiment_stats(sentiments: list[dict]) -> dict:
@@ -206,13 +237,13 @@ def _topic_analyses(value) -> list[tuple[str, str]]:
 
 async def _llm_insight(req: GenerateRequest) -> dict | None:
     """LLM 研判。Key 缺失、调用失败或返回非对象时返回 None（降级渲染）。"""
-    key = req.api_key or DEEPSEEK_API_KEY
+    key = req.api_key or LLM_API_KEY
     if not key:
         return None
-    llm = build_client(key)
+    llm = build_client(key, req.llm_base_url)
     try:
         data = await llm.chat_json(
-            DEEPSEEK_MODEL,
+            req.llm_model or LLM_MODEL,
             [
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {
@@ -222,6 +253,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                         stats_text=_stats_text(_sentiment_stats(req.sentiments)),
                         topics=req.topics,
                         materials=_materials_text(req.documents),
+                        dimensions=_dimensions_text(req.dimensions),
                     ),
                 },
             ],
@@ -264,6 +296,11 @@ _TEMPLATE = Template("""<!DOCTYPE html>
   .badge.nature { background: #f0f5ff; color: #1677ff; border: 1px solid #adc6ff; }
   .badge.action { background: #fff7e6; color: #ad6800; border: 1px solid #ffd591; }
   .stage { font-size: 14px; margin: 10px 0 2px; color: #374151; }
+  .dimension { border-left: 3px solid #e5e7eb; padding-left: 14px; margin: 18px 0; }
+  .dimension h3 { font-size: 15px; color: #1677ff; margin: 0 0 6px; }
+  blockquote { margin: 8px 0; padding: 8px 14px; background: #f9fafb; border-left: 3px solid #d1d5db; color: #374151; font-size: 13px; }
+  blockquote footer { color: #9ca3af; font-size: 12px; margin-top: 4px; }
+  .tag { font-size: 13px; color: #6b7280; }
 </style>
 </head>
 <body>
@@ -300,13 +337,18 @@ def _document_rows(documents: list[dict]) -> list[str]:
 
 
 def _overview_cards(req: GenerateRequest, stats: dict) -> str:
-    """概览卡片。洞察不可用时不得画成误导性的 0/0/0。"""
-    if not req.sentiments and not req.insight_available:
+    """概览卡片。情感数据缺失时不得画成误导性的 0/0/0。
+
+    判据是「有没有情感数据」而非 insight_available：管线按「有产出」
+    判定可用性（部分维度成功即 true），此时情感仍可能为空 —— 空数据
+    画成 0/0/0 与「全部中性」无法区分，属误导（审核 D1 及其回归）。
+    """
+    if not req.sentiments:
         return (
             f'<div class="cards">'
             f'<div class="card doc"><div class="num">{len(req.documents)}</div><div class="lbl">采集文档</div></div>'
             f'</div>'
-            f'<div class="notice">情感分析不可用（分析引擎未产出），以下为数据汇总。</div>'
+            f'<div class="notice">情感分析不可用（未产出或调用失败），以下为数据汇总。</div>'
         )
     return (
         f'<div class="cards">'
@@ -395,6 +437,44 @@ def _timeline_section(documents: list[dict], sentiments: list[dict]) -> str:
     )
 
 
+def _dimensions_section(dimensions: list[dict]) -> str:
+    """渲染五维研判章节。结论是组件：直接呈现，转义沿用统一防御。
+
+    即使写作 LLM 失败（insight=None），维度结论也要渲染 —— 它们
+    由分析引擎产出，与报告引擎的写作无关。
+    """
+    dims = [d for d in dimensions if isinstance(d, dict)] if isinstance(dimensions, list) else []
+    if not dims:
+        return ""
+
+    parts = ["<h2>五维研判</h2>"]
+    for d in dims:
+        name = _esc(d.get("name", "未命名维度"))
+        body = ['<div class="dimension">', f"<h3>{name}</h3>"]
+        if d.get("findings"):
+            body.append(f"<p><b>核心发现</b>：{_esc(d.get('findings', ''))}</p>")
+        dps = _str_list(d.get("data_points"))
+        if dps:
+            body.append("<ul>" + "".join(f"<li>{_esc(dp)}</li>" for dp in dps) + "</ul>")
+        quotes = d.get("quotes")
+        if isinstance(quotes, list):
+            for q in quotes:
+                if isinstance(q, dict) and str(q.get("text", "")).strip():
+                    src = _esc(q.get("source", ""))
+                    body.append(
+                        f'<blockquote>{_esc(q.get("text", ""))}'
+                        + (f"<footer>—— {src}</footer>" if src else "")
+                        + "</blockquote>"
+                    )
+        if d.get("deep_read"):
+            body.append(f"<p><b>深入解读</b>：{_esc(d.get('deep_read', ''))}</p>")
+        if d.get("trend"):
+            body.append(f'<p class="tag"><b>趋势</b>：{_esc(d.get("trend", ""))}</p>')
+        body.append("</div>")
+        parts.append("\n".join(body))
+    return "\n".join(parts)
+
+
 def _render(req: GenerateRequest, insight: dict | None) -> str:
     """渲染完整 HTML 报告。insight 为 None 时降级为纯数据报告。"""
     stats = _sentiment_stats(req.sentiments)
@@ -436,6 +516,11 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     else:
         parts.append('<div class="notice">AI 研判不可用（未配置或调用失败），以下为数据汇总。</div>')
 
+    # 五维研判（分析引擎结论，独立于写作 LLM 直接呈现）
+    dims_sec = _dimensions_section(req.dimensions)
+    if dims_sec:
+        parts.append(dims_sec)
+
     # 话题表（确定性数据）
     topic_rows = _topic_rows(req.topics)
     if topic_rows:
@@ -466,7 +551,7 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "report", "llm": bool(DEEPSEEK_API_KEY)}
+    return {"status": "ok", "engine": "report", "llm": bool(LLM_API_KEY)}
 
 
 @app.post("/generate")

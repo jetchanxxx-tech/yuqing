@@ -52,7 +52,7 @@ cd engines
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt      # 含 scrapling[fetchers]
 scrapling install --chromium         # 首次 ~150MB
-python3 -m pytest tests/ -v          # 10 用例（Scrapling 封装）
+python3 -m pytest tests/ -v          # 50 用例（scraper/llm_client/insight 含五维/报告）
 # 开发：在具体引擎目录下 `uvicorn main:app --port 8000`
 # 生产（systemd）：WorkingDirectory 与 PYTHONPATH 均为 /opt/pangu-source，
 #   ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.<name>_engine.main:app
@@ -104,6 +104,9 @@ POST /analyses → store 写入(state=queued) → queue 发布 TaskMessage{analy
 - 进度百分比常量定义在 `pipeline.go`，前端据此渲染进度条
 - `analyzing` 调 `InsightAnalyzer`（情感/话题/摘要），`generating_report` 调 `ReportGenerator`（HTML 报告）。两者**失败不致命**：任务仍 completed，warning 记录降级原因（采集结果不能因分析失败丢弃）。引擎未配置（URL 为空）时对应步骤跳过并记 warning
 - 洞察/报告经 `app/pipeline.go` 的 adapter 适配（engine → analysis 接口），business 层不 import engine 包
+- **warning 语义**：warn 只描述降级程度，不决定「是否保存」—— 洞察结果非空（哪怕部分维度失败）即 SetInsight；`InsightAvailable` = 有产出而非零告警
+- **引用保真**：维度「逐字原声」必须是源文档正文的归一化子串（去空白比较），编造引语丢弃并记 warning（`insight_engine._verify_quotes`）
+- 维度材料包总预算 16k 字符（发布时间最新优先截断，显式标记）；维度调用 `max_tokens=4096`、并发闸门 3 + 瞬时错误重试一次
 
 ## Layer Boundaries (critical)
 
@@ -128,12 +131,12 @@ Python 引擎**不是**同等完成度。改动前先确认：
 | 引擎 | 端口 | 状态 |
 |------|------|------|
 | `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
-| `insight_engine` | 8002 | ✅ **真实实现** — DeepSeek 情感分析 + 话题聚类 + 研判摘要（2 次 LLM 调用：情感+话题、摘要） |
+| `insight_engine` | 8002 | ✅ **真实实现** — DeepSeek 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
 | `report_engine` | 8003 | ✅ **真实实现** — DeepSeek 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告 |
 | `forum_engine` | 8004 | ⚠️ Mock — 预置"雅阁后排"4 Agent × 3 轮辩论 |
 | `media_engine` | 8001 | ⚠️ Mock — 5 条预置多模态结果 |
 
-`/analyses/:id/result` 返回真实 `summary`/`sentiments`(计数+明细)/`topics`/`report`(HTML)/`warning`（降级原因）。
+`/analyses/:id/result` 返回 `summary`/`sentiments`(计数+明细)/`topics`/`dimensions`(五维研判)/`report`(HTML)/`warning`。前端详情页「五维研判」Tab 渲染维度结论（Collapse 折叠面板）。
 
 ## Key Design Patterns
 
@@ -203,7 +206,7 @@ any active state → failed | canceled
 | 单元 | 各包 `*_test.go` | TDD，表驱动 |
 | 契约 | `api/v1/contract_test.go`、`result_test.go` | 锁 endpoint 响应结构 + RBAC 403 + gap registry |
 | 集成 | `test/integration/` | 全链路/计费/隔离/并发 |
-| Python | `engines/tests/test_scraper.py` | 10 用例：Scrapling 去重/降级/路由 |
+| Python | `engines/tests/`（4 个文件） | 50 用例：Scrapling + LLM 客户端 + 五维分析/引用保真/报告（FakeLLM 离线） |
 | E2E | `web/e2e/production.spec.ts` | 23 用例，打生产站点 |
 
 ## MVP Scope
@@ -231,6 +234,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
+- 迁移 0005：analyses.dimensions JSONB 列 —— **部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server**
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
 - 运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 

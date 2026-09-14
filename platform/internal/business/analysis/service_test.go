@@ -335,6 +335,53 @@ func TestServiceRerun_fromTerminalStates(t *testing.T) {
 	}
 }
 
+// Rerun 是「作为一次全新运行重新入队」：上一轮的结果与 warning 必须清空。
+// warning 是追加语义（SetWarning 只增不删），旧降级原因一旦残留，重跑
+// 即使完全成功，详情页仍会显示「部分维度分析失败」；旧洞察/报告挂在
+// queued 任务上也与状态自相矛盾。回归锚点：P0 修复后部分维度失败会
+// 更频繁地写入 warning，该残留从偶发变成必现。
+func TestServiceRerun_clearsStaleWarningAndResults(t *testing.T) {
+	svc, q := newTestAnalysisService(t)
+	ch := subscribeTasks(t, q)
+	a := createAnalysis(t, svc, "tenant-1")
+	nextTask(t, ch) // consume the initial enqueue
+
+	ctx := context.Background()
+	advanceTo(t, svc, "tenant-1", a.ID, "acquiring_budget", "fetching", "analyzing", "generating_report", "completed")
+	if err := svc.SetWarning(ctx, "tenant-1", a.ID, "部分维度分析失败：热度与传播路径（超时）"); err != nil {
+		t.Fatalf("SetWarning failed: %v", err)
+	}
+	if err := svc.SetInsight(ctx, "tenant-1", a.ID, InsightResult{
+		Summary:    "上一轮摘要",
+		Sentiments: []Sentiment{{DocumentID: "d1", Sentiment: "negative", Score: 0.7}},
+		Dimensions: sampleDimensions(),
+	}); err != nil {
+		t.Fatalf("SetInsight failed: %v", err)
+	}
+	if err := svc.SetReport(ctx, "tenant-1", a.ID, "rep-old", "<html>old</html>"); err != nil {
+		t.Fatalf("SetReport failed: %v", err)
+	}
+
+	if err := svc.Rerun(ctx, "tenant-1", a.ID); err != nil {
+		t.Fatalf("Rerun failed: %v", err)
+	}
+	got, err := svc.Get(ctx, "tenant-1", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Warning != "" {
+		t.Errorf("Warning = %q, want cleared on rerun", got.Warning)
+	}
+	if got.Summary != "" || len(got.Sentiments) != 0 || len(got.Dimensions) != 0 {
+		t.Errorf("stale insight survived rerun: summary=%q sents=%d dims=%d",
+			got.Summary, len(got.Sentiments), len(got.Dimensions))
+	}
+	if got.ReportID != "" || got.ReportContent != "" {
+		t.Errorf("stale report survived rerun: id=%q", got.ReportID)
+	}
+	nextTask(t, ch) // rerun 重新入队
+}
+
 func TestServiceRerun_activeAnalysisReturnsConflict(t *testing.T) {
 	svc, _ := newTestAnalysisService(t)
 	a := createAnalysis(t, svc, "tenant-1")

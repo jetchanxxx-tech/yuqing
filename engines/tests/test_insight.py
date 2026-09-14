@@ -74,7 +74,7 @@ class FakeLLM:
 @pytest.fixture
 def fake_llm(monkeypatch):
     fake = FakeLLM()
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
     return fake
 
 
@@ -114,7 +114,7 @@ def test_analyze_with_documents_returns_sentiments_topics_summary(fake_llm):
 
 
 def test_analyze_without_api_key_returns_503(fake_llm, monkeypatch):
-    monkeypatch.setattr(insight_engine, "DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr(insight_engine, "LLM_API_KEY", "")
     resp = client.post("/analyze", json={"documents": DOCS})
 
     assert resp.status_code == 503

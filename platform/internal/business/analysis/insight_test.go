@@ -207,6 +207,53 @@ func TestPipeline_analyzeAndReportPopulateResults(t *testing.T) {
 	}
 }
 
+// 部分维度失败（引擎返回非空结果 + warning）不致命：
+// 洞察结果必须照常写入，warning 记录降级原因 —— 而不是丢弃整份洞察。
+// 这是 P0 修复的回归锚点：此前实现里 warn 非空会跳过 SetInsight，
+// 报告随后拿到 insightAvailable=false，用户看到的是一份空报告。
+func TestPipeline_partialDimensionFailureKeepsInsight(t *testing.T) {
+	fetcher := &fakeFetcher{docs: sampleDocs(2)}
+	analyzer := &fakeAnalyzer{res: InsightResult{
+		Summary:    "部分维度缺失的摘要",
+		Sentiments: []Sentiment{{DocumentID: "doc-a", Sentiment: "negative", Score: 0.7}},
+		Dimensions: sampleDimensions()[:1], // 5 维只剩 1 维
+		Warning:    "部分维度分析失败：热度与传播路径（超时）",
+	}}
+	generator := &fakeGenerator{res: ReportResult{ReportID: "rep-1", Content: "<html>x</html>"}}
+
+	p, svc := newTestPipeline(t, fetcher, 5e9)
+	p = p.WithAnalyzer(analyzer).WithGenerator(generator)
+	ctx := context.Background()
+
+	created, _ := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
+	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	got, _ := svc.Get(ctx, "t1", created.ID)
+	if got.State != StateCompleted {
+		t.Fatalf("state = %q, want completed", got.State)
+	}
+	// ① 洞察结果照常落库（维度/情感/摘要都不丢）
+	if got.Summary != "部分维度缺失的摘要" {
+		t.Errorf("summary = %q, want insight summary kept", got.Summary)
+	}
+	if len(got.Sentiments) != 1 || len(got.Dimensions) != 1 {
+		t.Errorf("insight partially kept: sents=%d dims=%d", len(got.Sentiments), len(got.Dimensions))
+	}
+	// ② 引擎侧降级原因合并进任务 warning
+	if got.Warning == "" {
+		t.Error("warning should carry engine-side partial failure reason")
+	}
+	// ③ 报告引擎被告知洞察可用（有部分结果可写），而不是全部降级
+	if !generator.gotReq.InsightAvailable {
+		t.Error("InsightAvailable should be true when partial insight exists")
+	}
+	if len(generator.gotReq.Dimensions) != 1 {
+		t.Errorf("generator dims = %d, want 1", len(generator.gotReq.Dimensions))
+	}
+}
+
 // 分析失败不致命：任务仍 completed，但记录 warning。
 func TestPipeline_analyzeFailureRecordsWarningNotFailed(t *testing.T) {
 	fetcher := &fakeFetcher{docs: sampleDocs(1)}
