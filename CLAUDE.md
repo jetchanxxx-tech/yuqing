@@ -224,7 +224,7 @@ any active state → failed | canceled
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
 | F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段） |
 | F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ LLM 真实调用 + 五维研判，管线全链路已接入（生产实测 357s） |
-| F18 | 收费体系（方案 B 渗透型） | 📋 已规划待确认 —— `docs/planning/BILLING_PLAN.html`（Lite 99/Pro 999/Ent 4999，毛利 70-88%），**5 个决策点用户确认前不实施** |
+| F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施 —— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）** |
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
 | — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线 |
 
@@ -238,7 +238,10 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
-- 迁移 0005：analyses.dimensions JSONB 列 —— **部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server**
+- 迁移 0005：analyses.dimensions JSONB 列；**迁移 0006：收费体系三表（report_credits/credit_transactions/orders）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
+- 收费体系语义：每次分析 Create/Rerun 各扣 1 次额度，管线失败/取消自动回补；额度不足 HTTP 402 `NO_CREDITS`；新注册赠 1 次试用；beta 公测期额度不过期
+- 分析模式：套餐裁剪 quick（Lite 3 维速览，尝试 thinking=disabled 压成本）/ full（5 维）；Go→Python 经 `InsightAnalyzeReq.Mode` 透传，Python 侧 400 时自动去掉 thinking 参数重试
+- 支付回调路由 `/api/v1/callbacks/payment/:channel` 是唯一免鉴权业务端点 —— 安全完全依赖渠道验签，改动 payment 包时必须保持防线顺序：验签 → 金额核验 → pending→paid 原子跃迁（provider_txn_id 唯一）→ 幂等发放
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
 - **规范化部署手册 `docs/ops/DEPLOYMENT_RUNBOOK.md`**（新服务器/其他智能体照此执行，含全部踩坑）；运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
