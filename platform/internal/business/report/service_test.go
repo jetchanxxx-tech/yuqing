@@ -156,10 +156,10 @@ func TestServiceDownloadURL_planGating(t *testing.T) {
 	}{
 		{"free can download html", "free", "html", false},
 		{"free cannot download markdown", "free", "markdown", true},
-		{"pro can download markdown", "pro", "markdown", false},
-		{"pro cannot download pdf", "pro", "pdf", true},
-		{"business can download pdf", "business", "pdf", false},
-		{"business can download docx", "business", "docx", false},
+		{"lite can download markdown", "lite", "markdown", false},
+		{"lite cannot download pdf", "lite", "pdf", true},
+		{"pro can download pdf", "pro", "pdf", false},
+		{"pro cannot download docx", "pro", "docx", true},
 		{"enterprise can download everything", "enterprise", "docx", false},
 	}
 	for _, tt := range tests {
@@ -204,7 +204,7 @@ func TestServiceDownloadURL_unknownPlanOrTenant(t *testing.T) {
 
 func TestServiceDownloadURL_formatMismatch(t *testing.T) {
 	svc, _, tenantPlans := newTestReportService(t)
-	tenantPlans["tenant-1"] = "business"
+	tenantPlans["tenant-1"] = "enterprise"
 	r := createReport(t, svc, "tenant-1", "analysis-1", "pdf")
 
 	_, err := svc.DownloadURL(context.Background(), "tenant-1", r.ID, "docx")

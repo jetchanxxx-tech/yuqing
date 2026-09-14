@@ -8,6 +8,8 @@ import (
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/config"
 	"github.com/yuqing/platform/internal/engine"
+	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/tenant"
 	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
@@ -35,6 +37,22 @@ func pipelineBudget(cfg *config.Config) time.Duration {
 	add(cfg.Engines.Insight.Timeout, cfg.Engines.Insight.URL != "")
 	add(cfg.Engines.Report.Timeout, cfg.Engines.Report.URL != "")
 	return total
+}
+
+// analysisModeFor 返回「租户 → 套餐裁剪模式」解析闭包：Lite/体验档 quick
+// （3 维速览），Pro 及以上 full（5 维完整研判）。未知租户/套餐与 report
+// gating 同口径 fail-closed 到 quick（最受限档）。
+func analysisModeFor(tenantSvc *tenant.Service) func(string) string {
+	return func(tenantID string) string {
+		t, err := tenantSvc.Get(context.Background(), tenantID)
+		if err != nil {
+			return billing.ModeQuick
+		}
+		if p := billing.DefaultPlans()[t.PlanCode]; p != nil && p.AnalysisMode != "" {
+			return p.AnalysisMode
+		}
+		return billing.ModeQuick
+	}
 }
 
 // engineFetcher 把引擎客户端适配为 analysis.Fetcher，
@@ -82,6 +100,7 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 		AnalysisID:   req.AnalysisID,
 		AnalysisType: req.AnalysisType,
 		Title:        req.Title,
+		Mode:         req.Mode,
 	})
 	if err != nil {
 		return analysis.InsightResult{}, err
@@ -216,8 +235,12 @@ func startPipeline(
 	report *engine.RealReportEngine,
 	timeout time.Duration,
 	log *slog.Logger,
+	modeFor func(tenantID string) string,
 ) *analysis.Pipeline {
 	p := analysis.NewPipeline(svc, &engineFetcher{crawler: crawler}, timeout, log)
+	if modeFor != nil {
+		p = p.WithModeFor(modeFor)
+	}
 	if insight != nil {
 		p = p.WithAnalyzer(&engineInsightAdapter{ins: insight})
 	}

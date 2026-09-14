@@ -43,6 +43,10 @@ type InsightAnalyzeReq struct {
 	// LLM 供应商可配置（后台「数据源配置」在线修改，零重启透传引擎）：
 	LLMBaseURL string `json:"llm_base_url,omitempty"`
 	LLMModel   string `json:"llm_model,omitempty"`
+	// Mode 是套餐裁剪模式："" / "full" = 5 维完整研判（思考型），
+	// "quick" = 3 维速览（热度/情感/原因，尝试关闭思考以压成本）。
+	// Lite/体验档传 quick。
+	Mode string `json:"mode,omitempty"`
 }
 
 // InsightAnalyzeResp is the deep analysis response.

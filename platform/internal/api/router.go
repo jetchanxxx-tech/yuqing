@@ -32,6 +32,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	authGroup := r.Group("/api/v1/auth")
 	v1.RegisterAuthRoutes(authGroup, deps)
 
+	// 支付渠道回调（公开路由，免鉴权）：安全由渠道验签保证（防线 1）。
+	r.POST("/api/v1/callbacks/payment/:channel", v1.HandlePaymentCallback(deps))
+
 	// Authenticated routes. AuthAny accepts a JWT access token or a tenant
 	// API key (Authorization: Bearer pangu_…); deps.APIKey may be nil, in
 	// which case key credentials fail closed and JWT behavior is unchanged.

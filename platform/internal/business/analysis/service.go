@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,6 +41,38 @@ type Service struct {
 	concurrency int
 	store       analysisStore
 	docs        documentStore
+	credits     CreditReserver
+}
+
+// CreditReserver 是报告额度闸门（可选注入）。nil 时 Create/Rerun 不做额度
+// 检查（既有测试与开发模式零改动）；生产由组合根注入 credit.Service。
+// 语义：Create/Rerun 各扣 1 次；管线失败（markFailed）与用户取消（Cancel）
+// 回补；回补按 analysis_id 配对消费流水，天然幂等。
+type CreditReserver interface {
+	TryConsume(ctx context.Context, tenantID, analysisID string) error
+	RefundByAnalysis(ctx context.Context, tenantID, analysisID string) (bool, error)
+}
+
+// SetCreditReserver 注入额度闸门。
+func (s *Service) SetCreditReserver(r CreditReserver) { s.credits = r }
+
+// consumeCredit 扣 1 次额度；未配置闸门时直接放行。
+func (s *Service) consumeCredit(ctx context.Context, tenantID, analysisID string) error {
+	if s.credits == nil {
+		return nil
+	}
+	return s.credits.TryConsume(ctx, tenantID, analysisID)
+}
+
+// refundCredit 回补失败/取消任务的额度（尽力而为：回补失败只记日志，
+// 不能掩盖管线原始错误；流水留痕可由运营对账修正）。
+func (s *Service) refundCredit(ctx context.Context, tenantID, analysisID string) {
+	if s.credits == nil {
+		return
+	}
+	if _, err := s.credits.RefundByAnalysis(ctx, tenantID, analysisID); err != nil {
+		slog.Warn("analysis: 额度回补失败", "tenant_id", tenantID, "analysis_id", analysisID, "err", err)
+	}
 }
 
 // NewService creates an analysis orchestration service over in-memory stores
@@ -134,16 +167,24 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		Sources:      req.Sources,
 	}
 
+	// 额度闸门：先扣后做。扣减成功后的任何失败路径都必须回补。
+	if err := s.consumeCredit(ctx, req.TenantID, result.ID); err != nil {
+		return nil, err // ErrNoCredits → API 402
+	}
+
 	if err := s.store.put(ctx, req.TenantID, result); err != nil {
+		s.refundCredit(ctx, req.TenantID, result.ID)
 		return nil, err
 	}
 
 	// 消息必须带 tenantID：store 按租户分桶，仅凭 analysisID 无法定位任务。
 	payload, err := json.Marshal(TaskMessage{AnalysisID: result.ID, TenantID: req.TenantID})
 	if err != nil {
+		s.refundCredit(ctx, req.TenantID, result.ID)
 		return nil, fmt.Errorf("analysis: marshal task: %w", err)
 	}
 	if err := s.queue.Publish(ctx, topicAnalysisTasks, payload); err != nil {
+		s.refundCredit(ctx, req.TenantID, result.ID)
 		return nil, fmt.Errorf("analysis: failed to enqueue: %w", err)
 	}
 	return result, nil
@@ -160,8 +201,13 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]AnalysisResult, 
 }
 
 // Cancel aborts an active analysis. Terminal analyses cannot be canceled.
+// 用户主动取消 = 没有得到分析产物，额度随之回补。
 func (s *Service) Cancel(ctx context.Context, tenantID, analysisID string) error {
-	return s.transition(ctx, tenantID, analysisID, StateCanceled)
+	if err := s.transition(ctx, tenantID, analysisID, StateCanceled); err != nil {
+		return err
+	}
+	s.refundCredit(ctx, tenantID, analysisID)
+	return nil
 }
 
 // Transition moves an analysis along the state machine. It is the single
@@ -200,6 +246,12 @@ func (s *Service) transition(ctx context.Context, tenantID, analysisID string, t
 // 旧洞察/报告挂在 queued 任务上也与状态自相矛盾。旧报告记录仍在
 // reports 列表（report.Service 独立存储），此处只解除 analyses 行上的关联。
 func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error {
+	// 重跑同样消耗 1 次额度（每轮管线都是真实的 LLM 成本）。
+	// 上一轮如果是失败终态，其额度已在 markFailed 时回补。
+	if err := s.consumeCredit(ctx, tenantID, analysisID); err != nil {
+		return err
+	}
+
 	err := s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
 		if !IsTerminal(string(a.State)) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict,
@@ -220,15 +272,18 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error 
 		return nil
 	})
 	if err != nil {
+		s.refundCredit(ctx, tenantID, analysisID)
 		return err
 	}
 
 	// Re-enqueue: same payload contract as Create（JSON + tenantID）。
 	payload, err := json.Marshal(TaskMessage{AnalysisID: analysisID, TenantID: tenantID})
 	if err != nil {
+		s.refundCredit(ctx, tenantID, analysisID)
 		return fmt.Errorf("analysis: marshal task: %w", err)
 	}
 	if err := s.queue.Publish(ctx, topicAnalysisTasks, payload); err != nil {
+		s.refundCredit(ctx, tenantID, analysisID)
 		return fmt.Errorf("analysis: failed to re-enqueue: %w", err)
 	}
 	return nil
@@ -260,14 +315,21 @@ func (s *Service) advance(ctx context.Context, tenantID, analysisID string, to S
 }
 
 // markFailed 标记任务失败并记录错误码。已是终态时不做改动（幂等）。
+// 真正发生 failed 跃迁时回补本轮消耗的额度（重复调用是 no-op，不重复退）。
 func (s *Service) markFailed(ctx context.Context, tenantID, analysisID, code string) error {
-	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+	didFail := false
+	err := s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
 		if IsTerminal(string(a.State)) {
 			return nil // 用户已取消或任务已完成，保留原状态
 		}
 		a.State = StateFailed
 		a.ErrorCode = code
 		a.FinishedAt = time.Now().UTC()
+		didFail = true
 		return nil
 	})
+	if err == nil && didFail {
+		s.refundCredit(ctx, tenantID, analysisID)
+	}
+	return err
 }

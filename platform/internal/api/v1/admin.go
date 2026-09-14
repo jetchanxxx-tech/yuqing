@@ -158,7 +158,7 @@ func (s *Services) handlePlatformUsage(c *gin.Context) {
 // sortedPlans returns the four tiers in a stable order.
 func sortedPlans() []*billing.Plan {
 	plans := billing.DefaultPlans()
-	order := []string{"free", "pro", "business", "enterprise"}
+	order := []string{"free", "lite", "pro", "enterprise"}
 	out := make([]*billing.Plan, 0, len(order))
 	for _, code := range order {
 		if p, ok := plans[code]; ok {

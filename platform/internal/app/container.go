@@ -27,6 +27,8 @@ import (
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/credit"
+	"github.com/yuqing/platform/internal/platform/payment"
 	"github.com/yuqing/platform/internal/platform/settings"
 	"github.com/yuqing/platform/internal/platform/tenant"
 	"github.com/yuqing/platform/internal/platform/usage"
@@ -47,6 +49,8 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		apiKeyStore      apikey.Store
 		platformSettings settings.Store
 		usageMeter       usage.PlatformMeter
+		creditSvc        *credit.Service
+		platformPool     *pgxpool.Pool
 	)
 
 	if cfg.Store.Driver == "postgres" {
@@ -55,6 +59,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			MaxConns:    cfg.DB.MaxConns,
 		})
 		pool := dbManager.Platform(context.Background())
+		platformPool = pool
 
 		tenantStore = tenant.NewPGStore(pool)
 		authStore = auth.NewPGStore(pool)
@@ -66,6 +71,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		})
 		apiKeyStore = apikey.NewPGStore(pool)
 		usageMeter = usage.NewPGMeter(pool)
+		creditSvc = credit.NewService(credit.NewPGStore(pool))
 
 		var err error
 		platformSettings, err = settings.NewPGStore(pool, map[string]string{
@@ -89,6 +95,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		alertStore = alert.NewMemoryStore()
 		apiKeyStore = apikey.NewMemoryStore()
 		usageMeter = usage.NewMeter()
+		creditSvc = credit.NewService(credit.NewMemoryStore())
 
 		// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
 		// Admins can override via PUT /api/v1/admin/settings.
@@ -100,7 +107,15 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		})
 	}
 
+	// 报告额度闸门：Create/Rerun 各扣 1 次，管线失败/取消自动回补。
+	analysisSvc.SetCreditReserver(creditSvc)
+
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
+
+	// 新租户注册赠 1 次试用额度（方案 B：试用归 Lite 档体验）。
+	authSvc.SetPostRegister(func(ctx context.Context, tenantID string) error {
+		return creditSvc.GrantTrial(ctx, tenantID, credit.TrialCredits)
+	})
 
 	// 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
 	// 用该邮箱注册的账号即获得平台管理权限（YUQING_BOOTSTRAP_ADMIN_EMAIL）。
@@ -177,18 +192,39 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
-		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report, pipelineBudget(cfg), logger)
+		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report,
+			pipelineBudget(cfg), logger, analysisModeFor(tenantSvc))
 	}
 
+	// ── 收费体系（方案 B）────────────────────────────────────
+	// 支付渠道经 Registry 懒构建 + 配置哈希缓存：admin 后台改渠道配置
+	// 零重启生效。beta 部署时渠道配置为空 —— 购买页不显示任何渠道，
+	// 待用户在 admin 界面填入商户参数后渠道自动出现。
+	paymentRegistry := payment.NewRegistry(func(ctx context.Context, key string) (string, error) {
+		return platformSettings.Get(ctx, key)
+	})
+	var paymentStore payment.Store
+	if platformPool != nil {
+		paymentStore = payment.NewPGStore(platformPool)
+	} else {
+		paymentStore = payment.NewMemoryStore()
+	}
+	initialProviders, _ := paymentRegistry.Resolve(context.Background())
+	paymentSvc := payment.NewService(paymentStore, creditSvc, initialProviders, logger)
+	paymentSvc.SetProviderReload(paymentRegistry.Resolve)
+
 	return &v1.Services{
-		Auth:      authSvc,
-		Analysis:  analysisSvc,
-		Dashboard: dashboardSvc,
-		Report:    reportSvc,
-		Tenant:    tenantSvc,
-		Alert:     alertSvc,
-		Settings:  platformSettings,
-		APIKey:    apiKeySvc,
-		Usage:     usageMeter,
+		Auth:            authSvc,
+		Analysis:        analysisSvc,
+		Dashboard:       dashboardSvc,
+		Report:          reportSvc,
+		Tenant:          tenantSvc,
+		Alert:           alertSvc,
+		Settings:        platformSettings,
+		APIKey:          apiKeySvc,
+		Usage:           usageMeter,
+		Credits:         creditSvc,
+		Payment:         paymentSvc,
+		PaymentRegistry: paymentRegistry,
 	}
 }

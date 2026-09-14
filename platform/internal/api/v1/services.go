@@ -10,6 +10,8 @@ import (
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/credit"
+	"github.com/yuqing/platform/internal/platform/payment"
 	"github.com/yuqing/platform/internal/platform/settings"
 	"github.com/yuqing/platform/internal/platform/tenant"
 	"github.com/yuqing/platform/internal/platform/usage"
@@ -32,6 +34,11 @@ type Services struct {
 	Settings  settings.Store
 	APIKey    *apikey.Service
 	Usage     usage.PlatformMeter
+
+	// 收费体系（方案 B）：额度与支付。
+	Credits        *credit.Service
+	Payment        *payment.Service
+	PaymentRegistry *payment.Registry // 可空：nil 时购买页看不到可用渠道
 
 	// SSEPollInterval is how often /analyses/:id/events re-reads the state
 	// machine while streaming. Zero selects the default (1s); tests shrink it.

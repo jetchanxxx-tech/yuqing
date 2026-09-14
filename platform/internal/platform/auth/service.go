@@ -74,6 +74,15 @@ type Service struct {
 	// bootstrapAdminEmail: 用该邮箱注册的用户额外获得 platform_admin 角色。
 	// 空值表示不启用（默认）。见 SetBootstrapAdminEmail。
 	bootstrapAdminEmail string
+
+	// postRegister 注册成功后的钩子（组合根接入 credit.Service：新租户赠
+	// 试用额度）。失败不阻断注册（用户仍可购买），只降级为无试用额度。
+	postRegister func(ctx context.Context, tenantID string) error
+}
+
+// SetPostRegister 挂接注册后回调。
+func (s *Service) SetPostRegister(fn func(ctx context.Context, tenantID string) error) {
+	s.postRegister = fn
 }
 
 // SetBootstrapAdminEmail 配置引导管理员邮箱（大小写不敏感）。
@@ -148,6 +157,14 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	m := Member{TenantID: tenantID, UserID: userID, Role: roleTenantAdmin}
 	if err := s.store.CreateMember(ctx, m); err != nil {
 		return nil, nil, err
+	}
+
+	// 注册后钩子（试用额度发放等）。尽力而为：失败不阻断注册。
+	if s.postRegister != nil {
+		if err := s.postRegister(ctx, tenantID); err != nil {
+			// 试用额度发放失败只影响体验，账号/租户已创建成功
+			_ = err
+		}
 	}
 
 	// Free plan: 1M token hard cap applied at provisioning time.

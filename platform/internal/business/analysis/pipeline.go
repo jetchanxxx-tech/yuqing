@@ -81,6 +81,8 @@ type Pipeline struct {
 	generator ReportGenerator  // nil = 未配置，跳过报告并记录 warning
 	timeout   time.Duration
 	log       *slog.Logger
+	// modeFor 按租户返回套餐裁剪模式（quick/full）；nil = 全部 full。
+	modeFor func(tenantID string) string
 }
 
 // NewPipeline 创建管线。timeout <= 0 时使用默认 3 分钟。
@@ -105,6 +107,20 @@ func (p *Pipeline) WithAnalyzer(a InsightAnalyzer) *Pipeline {
 func (p *Pipeline) WithGenerator(g ReportGenerator) *Pipeline {
 	p.generator = g
 	return p
+}
+
+// WithModeFor 注入套餐模式解析（租户 → quick/full）。nil = 全部完整模式。
+func (p *Pipeline) WithModeFor(fn func(tenantID string) string) *Pipeline {
+	p.modeFor = fn
+	return p
+}
+
+// modeForTenant 解析租户当前的分析模式；未注入或解析失败按完整模式。
+func (p *Pipeline) modeForTenant(tenantID string) string {
+	if p.modeFor == nil {
+		return ""
+	}
+	return p.modeFor(tenantID)
 }
 
 // Handle 处理一条任务消息。返回 error 表示任务未能正常走完
@@ -217,6 +233,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		AnalysisType: p.analysisType(ctx, msg),
 		Title:        p.analysisName(ctx, msg),
 		Documents:    docs,
+		Mode:         p.modeForTenant(msg.TenantID),
 	})
 	if err != nil {
 		p.log.Warn("pipeline: insight analysis failed",

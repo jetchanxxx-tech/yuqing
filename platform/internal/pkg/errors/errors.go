@@ -11,6 +11,7 @@ import (
 var (
 	ErrBudgetExceeded  = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
 	ErrQuotaExceeded   = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
+	ErrNoCredits       = newSentinel("NO_CREDITS", http.StatusPaymentRequired)
 	ErrTenantSuspended = newSentinel("TENANT_SUSPENDED", http.StatusForbidden)
 	ErrNotFound        = newSentinel("NOT_FOUND", http.StatusNotFound)
 	ErrForbidden       = newSentinel("FORBIDDEN", http.StatusForbidden)

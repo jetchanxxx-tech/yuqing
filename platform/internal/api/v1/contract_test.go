@@ -47,6 +47,11 @@ func newContractEnv(t *testing.T) (*gin.Engine, *v1.Services) {
 	cfg.RateLimit.Enabled = false
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	deps := app.Build(cfg, logger)
+	// 契约测试的租户是伪造 principal（t_contract），不走注册流程 ——
+	// 预置额度绕过创建闸门（额度语义本身由 credit 包契约测试覆盖）。
+	if deps.Credits != nil {
+		_ = deps.Credits.GrantPurchase(context.Background(), "t_contract", "contract-seed", 1000)
+	}
 	return api.NewRouter(cfg, logger, deps), deps
 }
 
@@ -1009,7 +1014,7 @@ func TestContract_billingPlans_frontendFields(t *testing.T) {
 			t.Errorf("plan %q price_monthly_cny = %v, want non-negative number", code, pm["price_monthly_cny"])
 		}
 	}
-	for _, want := range []string{"free", "pro", "business", "enterprise"} {
+	for _, want := range []string{"free", "lite", "pro", "enterprise"} {
 		if !seen[want] {
 			t.Errorf("plans missing tier %q", want)
 		}

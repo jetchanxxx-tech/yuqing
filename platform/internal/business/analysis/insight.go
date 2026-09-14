@@ -63,6 +63,9 @@ type InsightRequest struct {
 	AnalysisType string
 	Title        string // 分析任务名，供维度分析 prompt 定位分析对象
 	Documents    []Document
+	// Mode 是套餐裁剪模式（"" / full = 5 维；quick = 3 维速览）。
+	// 空值引擎按 full 处理，既有调用方零改动。
+	Mode string
 }
 
 // InsightAnalyzer performs sentiment/topic/summary analysis.

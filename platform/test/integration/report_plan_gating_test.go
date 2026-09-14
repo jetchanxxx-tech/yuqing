@@ -73,22 +73,27 @@ func TestIntegration_reportPlanGating(t *testing.T) {
 		}
 	})
 
-	t.Run("pro plan unlocks markdown but still blocks pdf", func(t *testing.T) {
+	t.Run("pro plan unlocks markdown and pdf but blocks docx", func(t *testing.T) {
 		md := createFor(t, "t-pro", "markdown")
 		if _, err := download(t, "t-pro", md.ID, "markdown"); err != nil {
 			t.Fatalf("pro markdown download failed: %v", err)
 		}
 		pdf := createFor(t, "t-pro", "pdf")
-		_, err := download(t, "t-pro", pdf.ID, "pdf")
+		if _, err := download(t, "t-pro", pdf.ID, "pdf"); err != nil {
+			t.Fatalf("pro pdf download failed: %v（方案 B Pro 含 PDF）", err)
+		}
+		docx := createFor(t, "t-pro", "docx")
+		_, err := download(t, "t-pro", docx.ID, "docx")
 		if !pkgerrors.Is(err, pkgerrors.ErrForbidden) {
-			t.Fatalf("pro pdf download err = %v, want ErrForbidden", err)
+			t.Fatalf("pro docx download err = %v, want ErrForbidden", err)
 		}
 	})
 
-	t.Run("business plan downloads pdf", func(t *testing.T) {
-		r := createFor(t, "t-business", "pdf")
-		if _, err := download(t, "t-business", r.ID, "pdf"); err != nil {
-			t.Fatalf("business pdf download failed: %v", err)
+	t.Run("lite plan blocks pdf", func(t *testing.T) {
+		r := createFor(t, "t-lite", "pdf")
+		_, err := download(t, "t-lite", r.ID, "pdf")
+		if !pkgerrors.Is(err, pkgerrors.ErrForbidden) {
+			t.Fatalf("lite pdf download err = %v, want ErrForbidden", err)
 		}
 	})
 
