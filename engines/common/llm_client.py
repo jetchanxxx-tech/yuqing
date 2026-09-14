@@ -38,12 +38,17 @@ class LLMClient:
     async def chat_json(self, model: str, messages: list[dict], **kwargs) -> dict:
         """Chat with JSON output mode; returns the parsed content as a dict.
 
-        思考型模型（如 glm-5.3-flash）的 content 之外的 reasoning 不参与解析；
-        response_format=json_object 若被供应商拒绝，由调用方按 4xx 走降级。
+        思考型模型（如 glm-5.3-flash）会先产出 reasoning_content 再输出 content
+        —— max_tokens 是两者之和，给小了 content 直接为空（生产实测踩坑）。
+        finish_reason=length 时显式报「输出被截断」，而不是模糊的 invalid JSON。
         """
         kwargs.setdefault("response_format", {"type": "json_object"})
         resp = await self.chat(model, messages, **kwargs)
-        content = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        choice = (resp.get("choices") or [{}])[0]
+        content = (choice.get("message") or {}).get("content", "")
+        if choice.get("finish_reason") == "length" and not content.strip():
+            raise ValueError(
+                "LLM 输出被截断（思考内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
         return _parse_json_content(content)
 
 

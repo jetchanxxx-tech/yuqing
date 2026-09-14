@@ -409,7 +409,7 @@ async def _analyze_one_dimension(
             {"role": "user", "content": prompt},
         ],
         temperature=0.6,
-        max_tokens=4096,
+        max_tokens=8192,
     )
     if not isinstance(data, dict):
         raise ValueError(f"dimension {spec.id} returned non-object")
