@@ -55,8 +55,8 @@ func TestContract_billing_planB(t *testing.T) {
 	t.Run("POST /billing/orders 未配置渠道 fail-closed", func(t *testing.T) {
 		w := doReq(t, r, http.MethodPost, "/api/v1/billing/orders", tok,
 			map[string]any{"sku_code": "lite", "channel": "alipay"})
-		if w.Code == http.StatusCreated {
-			t.Fatal("未配置渠道不应创建成功（防线下收款无凭证）")
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400（业务拒绝而非服务器故障）\nbody: %s", w.Code, w.Body.String())
 		}
 	})
 

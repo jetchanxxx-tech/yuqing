@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -171,6 +172,12 @@ func (s *Services) handleCreateOrder(c *gin.Context) {
 	}
 	order, err := s.Payment.Create(c.Request.Context(), tenantID, req.SKUCode, req.Channel)
 	if err != nil {
+		// 渠道未配置是用户可理解的业务拒绝（购买页不应展示该渠道），
+		// 映射 400 而非 500 —— 配置缺失不该像服务器故障。
+		if errors.Is(err, payment.ErrNotConfigured) {
+			badRequest(c, "该支付渠道暂未开放，请选择其他方式")
+			return
+		}
 		respondError(c, err)
 		return
 	}
