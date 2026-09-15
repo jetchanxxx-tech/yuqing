@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>盘古舆情 · 热榜聚合页方案（定稿）</title>
+<style>
+body{font-family:"Microsoft YaHei",sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#1f2328;line-height:1.7}
+h1{border-bottom:3px solid #FF2442;padding-bottom:8px}
+h2{margin-top:28px;border-left:4px solid #FF2442;padding-left:10px}
+table{border-collapse:collapse;width:100%;margin:12px 0}
+th,td{border:1px solid #d0d7de;padding:6px 10px;text-align:left;font-size:14px}
+th{background:#f6f8fa}
+code,pre{background:#f6f8fa;border-radius:6px;font-family:Consolas,monospace}
+pre{padding:12px;overflow-x:auto;font-size:13px}
+.tag{display:inline-block;background:#FF2442;color:#fff;border-radius:4px;padding:1px 8px;font-size:12px}
+.gray{color:#57606a;font-size:13px}
+</style>
+</head>
+<body>
+<h1>「热榜」聚合页方案 <span class="tag">定稿 · 待开发</span></h1>
+<p class="gray">2026-09-15 产品经理 × 开发总监碰撞定稿，创始人批准。范围红线：本页面只做多平台热榜快照展示，上轮订阅/个性化/计费融合方案作废。</p>
+
+<h2>1. 定位</h2>
+<p>登录用户均可看的多平台<b>实时热榜快照</b>页。零存储、零计费、零 LLM。成功标准唯一：<b>日打开率</b>。</p>
+
+<h2>2. 页面（产品）</h2>
+<table>
+<tr><th>项</th><th>决策</th></tr>
+<tr><td>形态</td><td>Tab 切换（不做聚合流 —— 各平台第 1 名不可比，保护排名语义）；Tab 由后端平台清单数据驱动</td></tr>
+<tr><td>平台顺序</td><td>微博 → B站 → 知乎 →（实测达标后）抖音、小红书；不达准入线不上线、不留灰 Tab</td></tr>
+<tr><td>条目</td><td>排名 + 标题（即外链，新窗口）+ 热度值；Top3 标色；不显示逐条时间（数据没有，不装），列表级「更新于 HH:MM」</td></tr>
+<tr><td>三态</td><td><b>ok</b> 正常 / <b>stale</b> 旧数据 +「更新于 X 分钟前」/ <b>error</b> 空态 + 重试。宁可示弱不可装死</td></tr>
+<tr><td>刷新</td><td>切 Tab 拉取 + 手动刷新按钮；服务端共享 TTL 5 分钟；固定弱提示「实时快照，不保留历史」</td></tr>
+<tr><td>命名/入口</td><td>「热榜」<code>/trends</code>；导航第二位（仪表盘之后），不改默认落地页</td></tr>
+<tr><td>钩子</td><td>条目 hover「分析」图标 → 跳新建分析页预填关键词（≈带参数链接，扣额度走正常流程，本页不弹窗不感知额度）</td></tr>
+</table>
+
+<h2>3. 范围红线（不做）</h2>
+<p>不订阅、不落库、不碰计费、不做 LLM、不做推送/大屏/移动端、不开放任意 RSS 路由自由订阅。</p>
+
+<h2>4. 技术（开发）</h2>
+<pre>
+RSSHub 自建 unit (127.0.0.1:1200, 仅 loopback)
+  → Go server 内存缓存 map[平台]*Feed，后台单 ticker 每 5min 刷全部
+     （每平台独立 10s 超时 + recover；失败保留 last-good 置 stale）
+  → GET /api/v1/trends  纯内存返回（JWT 必需，错误也 200+error 态）
+  → 前端 TanStack Query 60-120s 轮询 + Tab 渲染
+</pre>
+<ul>
+<li>结构：<code>internal/business/trends</code> 新包，与 analysis 零耦合；Item{Rank,Title,URL}；内存 &lt;1MB 不淘汰</li>
+<li>重启行为：缓存清零不补偿，启动即首轮刷新，5-15s 内首屏可用</li>
+<li>不引入 SSE/ETag/消息队列 —— 此规模均为过度设计</li>
+</ul>
+
+<h2>5. 路由准入（0.5 天 spike）</h2>
+<table>
+<tr><th>平台</th><th>路由</th><th>免Cookie</th><th>置信度</th></tr>
+<tr><td>微博</td><td><code>/weibo/search/hot</code></td><td>是</td><td>高</td></tr>
+<tr><td>B站</td><td><code>/bilibili/hot-search</code></td><td>是</td><td>高</td></tr>
+<tr><td>知乎</td><td><code>/zhihu/hotlist</code></td><td>是</td><td>中高</td></tr>
+<tr><td>抖音</td><td>热点榜路由待核实</td><td>否</td><td>低（严格反爬+Puppeteer）</td></tr>
+<tr><td>小红书</td><td>大概率不存在或不稳</td><td>—</td><td>低</td></tr>
+</table>
+<p><b>准入线：免 Cookie、≥20 条、&lt;15s</b>。不达标 Tab 显示「即将上线」或砍。<b>若抖音/小红书全灭 → 生产不装 Chromium</b>（省 300-400MB）。</p>
+
+<h2>6. 部署</h2>
+<ul>
+<li><code>yuqing-rsshub.service</code>：低权用户、<b>只绑 127.0.0.1:1200（绝不暴露公网）</b>、MemoryHigh=700M/MemoryMax=900M、Restart=on-failure</li>
+<li>生产零构建：dev 机构建 tarball（dist+node_modules）推送；版本钉 git tag + 月度路由冒烟脚本</li>
+<li>四坑沿用：tarball 推送 / Ubuntu 24.04 chromium snap 陷阱（npx puppeteer browsers install chrome）/ 低权用户 / MemoryMax</li>
+<li>若需 Chromium：池钉死 1，与 analysis 管线浏览器共享全局信号量</li>
+</ul>
+
+<h2>7. 工作量与验收</h2>
+<table>
+<tr><th>分项</th><th>人天</th></tr>
+<tr><td>路由验证 spike</td><td>0.5</td></tr>
+<tr><td>后端 Cache+ticker+handler+测试（罐头 RSS XML 单测，三态流转 -race）</td><td>1.5</td></tr>
+<tr><td>前端单页 Tab+三态</td><td>1.5</td></tr>
+<tr><td>部署 unit+deploy.sh+runbook</td><td>1</td></tr>
+<tr><td>联调缓冲</td><td>0.5</td></tr>
+<tr><td><b>合计</b></td><td><b>3.5-5</b></td></tr>
+</table>
+<p>契约测试锁 /trends 结构（鉴权 401、RSSHub 不可达不 5xx）；E2E 冒烟：登录→热榜页 ≥1 平台 ≥10 条；杀进程降级验证进 runbook 人工项。</p>
+<p><b>上线门槛：微博/B站/知乎三 Tab 全绿即上线。</b></p>
+</body>
+</html>

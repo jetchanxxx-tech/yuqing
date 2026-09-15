@@ -224,11 +224,13 @@ any active state → failed | canceled
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
 | F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段） |
 | F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ LLM 真实调用 + 五维研判，管线全链路已接入（生产实测 357s） |
-| F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施 —— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）** |
+| F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施**并部署生产**（2026-09-15，迁移 0006 已 applied）—— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）**。admin 账号策略：仅商务演示用，额度手工 SQL 发放（现 99 次 + enterprise 档），无无限额度机制，发放走 grant 流水留痕 |
 | F19 | 手机号注册 / 登录 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：注册凭证仅邮箱（CITEXT 唯一），UID 是 ULID，无 phone 字段。要做：users.phone 唯一列 + 短信验证码（阿里云/腾讯云 SMS，需签名报备）+ 注册/登录/找回密码三路改造 + 邮箱账号绑定手机 |
 | F20 | 企业实名认证 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：Enterprise 付费即开通，无认证流程。要做：认证表（营业执照/法人身份证/对公账户/凭证上传 + pending→approved→rejected 状态机）+ admin 审核界面 + Enterprise 购买联动；材料清单已给用户（执照/法人/对公打款或转账验证/经办人委托书/NDA 数据合规签署）；过渡期对公转账 + admin 人工开通 |
+| F21 | 热榜聚合页（微博/B站/知乎/抖音/小红书快照） | 📋 **定稿待开发（用户已批准）** —— `docs/planning/TRENDS_PAGE_PLAN.html`。纯快照零存储零计费：RSSHub 自建 unit（只绑 127.0.0.1:1200）→ Go server 内存缓存（ticker 5min 全平台刷，失败保留 last-good 三态 ok/stale/error）→ GET /api/v1/trends → 前端 Tab。3.5-5 人天；准入线免 Cookie/≥20条/<15s |
+| F22 | Admin 成本计算器（LLM/爬虫单价统计换算） | 📋 方案已提待用户确认 —— 引擎响应透传 usage → analyses 表加 llm_in/out_tokens+bocha_calls 列（quick/full 分开）→ admin 单价配置（platform_settings）+ 实测单次报告成本 + 各套餐毛利换算。约 3-4 人天；历史分析无 usage 不可回填，从上线起积累 |
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
-| — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线 |
+| — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线（F22 是它的第一步） |
 
 ## 部署与运维
 
