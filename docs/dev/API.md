@@ -166,37 +166,81 @@ data: {"state":"fetching","progress":45}
 
 ---
 
-## 计费
+## 计费（F18 收费体系 · 方案 B）
+
+额度模型：每次分析 Create/Rerun 各扣 1 次；管线失败/取消自动回补；额度不足返回 `402 NO_CREDITS`。新注册赠 1 次试用。
 
 ### GET /billing/plans
-套餐列表
+套餐目录 + 加购 SKU + 当前可用支付渠道（未配置渠道不出现在列表）。
 
 ```json
 // Response 200
 { "plans": [
-  { "code": "free", "name": "体验版", "price": 0, "quota": "1M tokens" },
-  { "code": "pro", "name": "专业版", "price": 9900, "quota": "10M tokens" },
-  { "code": "business", "name": "企业版", "price": 49900, "quota": "100M tokens" },
-  { "code": "enterprise", "name": "旗舰版", "price": 0, "quota": "unlimited" }
-]}
+    { "code": "free",  "name": "体验版", "price_monthly_cny": 0,      "credits_per_cycle": 0,  "analysis_mode": "quick" },
+    { "code": "lite",  "name": "速览版", "price_monthly_cny": 9900,   "credits_per_cycle": 4,  "analysis_mode": "quick" },
+    { "code": "pro",   "name": "研判版", "price_monthly_cny": 99900,  "credits_per_cycle": 10, "analysis_mode": "full" },
+    { "code": "enterprise", "name": "旗舰版", "price_monthly_cny": 499900, "credits_per_cycle": 50, "analysis_mode": "full", "priority_queue": true } ],
+  "addons": [ { "code": "addon_report", "name": "报告加购包", "kind": "addon", "price_cents": 6900, "credits": 1 } ],
+  "channels": [ "alipay", "wechat", "unionpay" ] }
 ```
 
-### GET /billing/subscription
-当前订阅状态
+### GET /billing/credits
+额度余额与当前套餐标记。
 
-### POST /billing/subscribe
-升级/订阅套餐
+```json
+// Response 200
+{ "balance": 7, "plan_code": "pro" }
+```
+
+### GET /billing/transactions
+额度流水（新→旧，最多 100 条）。reason ∈ `trial`/`grant`/`purchase`/`consume`/`refund`。
+
+```json
+// Response 200
+{ "transactions": [ { "id": "01...", "delta": -1, "reason": "consume", "analysis_id": "01...",
+    "balance_after": 6, "created_at": "..." } ], "total": 1 }
+```
+
+### POST /billing/orders
+创建支付订单（金额/额度取自服务端目录，前端只传选择）。渠道未配置 → 400。
 
 ```json
 // Request
-{ "plan_code": "pro" }
+{ "sku_code": "lite", "channel": "alipay" }
+// Response 201
+{ "order": { "id": "01...", "amount_cents": 9900, "credits": 4, "state": "pending",
+    "qr_code_url": "https://qr.alipay.com/...", "channel": "alipay", "expires_at": "..." } }
 ```
 
-### GET /billing/usage
-用量概览
+### GET /billing/orders/:id
+订单详情。**轮询即对账**：pending 订单顺带向渠道主动查单（回调丢失时自愈入账）。轮询建议 3s。
 
-### GET /billing/invoices
-账单记录
+### POST /callbacks/payment/:channel
+支付渠道异步回调（**免鉴权**，安全完全依赖渠道验签）。仅由支付宝/微信/银联服务器调用。响应为渠道要求的 ACK 格式；验签/金额不符返回 400。
+
+### GET /billing/orders/:id/paypage?token=<access_token>
+银联收银台跳转页（HTML 表单自动提交；浏览器跳转无法带 Authorization 头，改用 query token）。
+
+### 旧占位端点
+`GET /billing/subscription`、`POST /billing/subscribe`、`GET /billing/usage`、`GET /billing/invoices`（+ `:id/download`）—— 订阅制时代占位，保留 JSON envelope，P2 订阅化时替换。
+
+---
+
+## 热榜（F21）
+
+### GET /trends
+多平台热榜快照（纯内存缓存，服务端 5 分钟刷新；无租户维度，登录即可看）。**不落库**，快照过了就过了。
+
+```json
+// Response 200
+{ "platforms": [
+    { "name": "微博", "status": "ok", "updated_at": "...", "items": [
+        { "rank": 1, "title": "…", "url": "https://…", "hot": "486.2万" } ] },
+    { "name": "知乎", "status": "stale", "items": [ "..." ], "error": "" },
+    { "name": "B站", "status": "error", "items": [], "error": "该平台暂不可用" } ] }
+```
+
+三态语义：`ok` 实时 / `stale` 上次成功快照（`updated_at` 为真实新鲜度）/ `error` 无数据。RSSHub 不可达时**仍返回 200**（数据源状态，非服务器故障）；服务未配置（rsshub_base 空）→ `503 TRENDS_UNAVAILABLE`。
 
 ---
 
@@ -206,6 +250,19 @@ data: {"state":"fetching","progress":45}
 
 ### GET /admin/tenants
 租户列表
+
+### GET+PUT /admin/settings（含支付渠道配置 · F18）
+数据源与支付渠道统一读写。支付渠道值为 **JSON 字符串**（各渠道结构不同），保存即时生效（购买页渠道列表与支付回调验签实时读表）。
+
+```json
+// PUT /admin/settings 请求体（各渠道可独立保存；未提及的键不变）
+{
+  "payment_alipay":   "{\"enabled\":true,\"app_id\":\"2021...\",\"private_key\":\"...\",\"alipay_public_key\":\"...\",\"notify_url\":\"https://<域名>/api/v1/callbacks/payment/alipay\"}",
+  "payment_wechat":   "{\"enabled\":false,\"appid\":\"wx...\",\"mch_id\":\"...\",\"mch_serial_no\":\"...\",\"private_key\":\"...\",\"api_v3_key\":\"...\",\"notify_url\":\"...\"}",
+  "payment_unionpay": "{\"enabled\":false,\"mer_id\":\"...\",\"sign_cert_pfx\":\"<base64 .pfx>\",\"sign_cert_password\":\"...\",\"notify_url\":\"...\",\"front_url\":\"...\"}"
+}
+```
+启用开关即渠道的 `enabled` 字段；支付回调地址格式固定为 `https://<域名>/api/v1/callbacks/payment/<channel>`。
 
 ### POST /admin/tenants/:id/suspend
 挂起租户

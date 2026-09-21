@@ -29,9 +29,11 @@ func NewRealCrawlerEngine(baseURL, authToken string, bochaKeyFunc func() string)
 		authToken:    authToken,
 		bochaKeyFunc: bochaKeyFunc,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			// 一次 /search = Bocha 搜索 + 逐 URL 抓正文（含慢站 30s 超时重试），
+			// 60s 会把总时长破线的成功采集误判为失败（生产实测），放宽到 180s
+			Timeout: 180 * time.Second,
 		},
-		timeout: 60 * time.Second,
+		timeout: 180 * time.Second,
 	}
 }
 
