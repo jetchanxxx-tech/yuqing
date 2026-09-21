@@ -66,8 +66,9 @@ func TestContract_trends(t *testing.T) {
 		if !ok {
 			t.Fatalf("platforms missing or not array: %v", body)
 		}
-		if len(platforms) != 5 {
-			t.Fatalf("platforms = %d, want 5", len(platforms))
+		// 平台数与 trends.hotPlatforms 准入清单一致（V1: 微博/B站/知乎）
+		if len(platforms) != 3 {
+			t.Fatalf("platforms = %d, want 3", len(platforms))
 		}
 		for _, raw := range platforms {
 			p := raw.(map[string]interface{})

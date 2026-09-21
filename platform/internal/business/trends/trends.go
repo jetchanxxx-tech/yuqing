@@ -51,6 +51,9 @@ type Service struct {
 }
 
 // hotPlatforms 是 V1 平台清单与 RSSHub 路由（顺序即前端 Tab 顺序）。
+// 准入线（TRENDS_PAGE_PLAN.html §5）：免 Cookie、≥20 条、<15s。
+// 抖音/小红书需 Puppeteer 且反爬严格，生产内存不足以承载 Chromium，
+// 未过准入线暂不上 —— 路由保留在注释里，准入后加回即可。
 var hotPlatforms = []struct {
 	name  string
 	route string
@@ -58,8 +61,8 @@ var hotPlatforms = []struct {
 	{"微博", "/weibo/search/hot"},
 	{"B站", "/bilibili/ranking/0/3"},
 	{"知乎", "/zhihu/hotlist"},
-	{"抖音", "/douyin/hot"},
-	{"小红书", "/xiaohongshu/board/homefeed_recommend"},
+	// {"抖音", "/douyin/hot"},            // 未过准入线：严格反爬+Puppeteer
+	// {"小红书", "/xiaohongshu/board/homefeed_recommend"}, // 未过准入线：路由不稳
 }
 
 // NewService creates a trends service and starts the refresh ticker.
