@@ -99,6 +99,8 @@ class PageScraper:
         key = bocha_key or BOCHA_API_KEY
 
         if key:
+            # 有 key 时 Bocha 失败必须抛错 —— 绝不静默降级为空/假数据
+            #（生产上 key 失效若静默，会产出「看起来成功」的假报告）
             found = await self._bocha_search(keyword, key)
             # Bocha 返回通用网页结果，归到第一个数据源名下
             if sources:
@@ -188,8 +190,11 @@ class PageScraper:
                 logger.info(f"Bocha search '{keyword}': {len(out)} results")
                 return out
         except Exception as e:
-            logger.warning(f"Bocha search failed for '{keyword}': {e}")
-            return []
+            # 数据诚信：配置了 key 却调用失败（401/超时/限流）时抛错，
+            # 由调用方返回 5xx → Go 管线 fetch_failed + 额度回补；
+            # 绝不返回空列表让上层误以为「无结果」。
+            logger.error(f"Bocha search failed for '{keyword}': {e}")
+            raise
 
     # ------------------------------------------------------------------
     # Internal helpers
