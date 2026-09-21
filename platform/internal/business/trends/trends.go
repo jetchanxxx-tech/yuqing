@@ -52,8 +52,8 @@ var hotPlatforms = []struct {
 	route string
 }{
 	{"微博", "/weibo/search/hot"},
-	{"B站", "/bilibili/ranking/0/3"},
-	{"知乎", "/zhihu/hotlist"},
+	{"B站", "/bilibili/hot-search"},
+	{"知乎", "/zhihu/hot"},
 	// {"抖音", "/douyin/hot"},            // 未过准入线：严格反爬+Puppeteer
 	// {"小红书", "/xiaohongshu/board/homefeed_recommend"}, // 未过准入线：路由不稳
 }

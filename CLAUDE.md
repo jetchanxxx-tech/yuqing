@@ -227,7 +227,7 @@ any active state → failed | canceled
 | F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施**并部署生产**（2026-09-15，迁移 0006 已 applied）—— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）**。admin 账号策略：仅商务演示用，额度手工 SQL 发放（现 99 次 + enterprise 档），无无限额度机制，发放走 grant 流水留痕 |
 | F19 | 手机号注册 / 登录 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：注册凭证仅邮箱（CITEXT 唯一），UID 是 ULID，无 phone 字段。要做：users.phone 唯一列 + 短信验证码（阿里云/腾讯云 SMS，需签名报备）+ 注册/登录/找回密码三路改造 + 邮箱账号绑定手机 |
 | F20 | 企业实名认证 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：Enterprise 付费即开通，无认证流程。要做：认证表（营业执照/法人身份证/对公账户/凭证上传 + pending→approved→rejected 状态机）+ admin 审核界面 + Enterprise 购买联动；材料清单已给用户（执照/法人/对公打款或转账验证/经办人委托书/NDA 数据合规签署）；过渡期对公转账 + admin 人工开通 |
-| F21 | 热榜聚合页（微博/B站/知乎/抖音/小红书快照） | 📋 **定稿待开发（用户已批准）** —— `docs/planning/TRENDS_PAGE_PLAN.html`。纯快照零存储零计费：RSSHub 自建 unit（只绑 127.0.0.1:1200）→ Go server 内存缓存（ticker 5min 全平台刷，失败保留 last-good 三态 ok/stale/error）→ GET /api/v1/trends → 前端 Tab。3.5-5 人天；准入线免 Cookie/≥20条/<15s |
+| F21 | 热榜聚合页（微博/B站/知乎快照） | ✅ **已开发并部署生产**（2026-09-22，yuqing2.pangu-cloud.com）—— RSSHub 自建 unit（`LISTEN_INADDR_ANY=0` 只绑 127.0.0.1:1200 + Playwright Chromium）→ Go server 内存缓存（ticker 5min，三态 ok/stale/error）→ GET /api/v1/trends → 前端 `/trends` Tab + 分析预填钩子。实测：微博 20 条/B站 10 条/知乎 20 条全 ok；抖音/小红书未过准入线（需 Chromium+反爬）暂缓。代码审核 15 项发现全修复（cache 值语义消除数据竞争等） |
 | F22 | Admin 成本计算器（LLM/爬虫单价统计换算） | 📋 方案已提待用户确认 —— 引擎响应透传 usage → analyses 表加 llm_in/out_tokens+bocha_calls 列（quick/full 分开）→ admin 单价配置（platform_settings）+ 实测单次报告成本 + 各套餐毛利换算。约 3-4 人天；历史分析无 usage 不可回填，从上线起积累 |
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
 | — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线（F22 是它的第一步） |
@@ -247,6 +247,8 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - 分析模式：套餐裁剪 quick（Lite 3 维速览，尝试 thinking=disabled 压成本）/ full（5 维）；Go→Python 经 `InsightAnalyzeReq.Mode` 透传，Python 侧 400 时自动去掉 thinking 参数重试
 - 支付回调路由 `/api/v1/callbacks/payment/:channel` 是唯一免鉴权业务端点 —— 安全完全依赖渠道验签，改动 payment 包时必须保持防线顺序：验签 → 金额核验 → pending→paid 原子跃迁（provider_txn_id 唯一）→ 幂等发放
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
+- **🔴 部署铁律（用户 2026-09-22 明令）：一切编译/构建只在本地完成后上传**（Go 交叉编译、前端 dist、RSSHub tarball 等）—— 服务器只做解压/配置/迁移/启停。生产服务器内存小，任何构建都可能打满内存打死 sshd（RSSHub tsc 构建实测打挂 1.7Gi 服务器）
+- **双生产环境**：老机 47.120.20.10（Ubuntu/PG，收费体系 beta 首发地，RSSHub build 风暴后曾 SSH 不可达）；新机 101.96.209.90:22352 = **yuqing2.pangu-cloud.com**（CentOS Stream 9 / 4C3.6Gi / oneinstack 源码 nginx / **MySQL 与 PG 并存**——平台用新装 PG15，MySQL 留给用户既有业务；Redis 8.4 空密码；Node 在 /usr/local/node/bin）。F21/RSSHub/Playwright 装于新机；老机数据未迁移（用户未要求）
 - **规范化部署手册 `docs/ops/DEPLOYMENT_RUNBOOK.md`**（新服务器/其他智能体照此执行，含全部踩坑）；运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
 ## 凭据与安全

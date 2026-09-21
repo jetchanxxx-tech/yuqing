@@ -8,10 +8,12 @@ Type=simple
 User=yuqing
 Group=yuqing
 WorkingDirectory=/opt/rsshub
-# 只绑 loopback：仅 yuqing-server 本机访问，绝不暴露公网
-ExecStart=/usr/bin/node /opt/rsshub/dist/index.js
+# 只绑 loopback：仅 yuqing-server 本机访问，绝不暴露公网（部署后 ss -tlnp 复核）
+ExecStart=/usr/bin/node /opt/rsshub/dist/index.mjs
 Environment=PORT=1200
 Environment=NODE_ENV=production
+# RSSHub 官方 start 脚本同款参数（大响应头场景）
+Environment=NODE_OPTIONS=--max-http-header-size=32768
 # 可选：REDIS 连接复用现有 Redis 做路由缓存（有界内存）
 # Environment=REDIS_URL=redis://127.0.0.1:6379/
 Restart=on-failure
