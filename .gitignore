@@ -36,3 +36,4 @@ platform/config.yaml
 
 # Claude 会话工作区（嵌入 git 仓库，绝不入库）
 .claude/worktrees/
+spike/rsshub-test/
