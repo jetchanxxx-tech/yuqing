@@ -134,13 +134,14 @@ QUICK_DIMENSION_IDS = ("heat", "sentiment", "deep_cause")
 
 
 def _quick_thinking_kwargs(mode: str) -> dict:
-    """quick 模式尝试关闭思考（Flash 思考型 reasoning 消耗是成本的 10 倍级）。
+    """quick 模式降思考档为 low（智谱 GLM-5.3-flash 是思考模型，
+    不支持完全关闭 —— 官方 1210 错误明示可取 low/high/max）。
 
-    该字段是智谱 GLM-4.5+ 系列的思考开关；供应商不认识时会在请求阶段报
-    400 —— 调用方（_chat_json_smart）去掉该参数重试一次，功能优先于成本优化。
+    供应商不认识该字段时会在请求阶段报 400 —— 调用方
+    （_chat_json_smart）去掉该参数重试一次，功能优先于成本优化。
     """
     if mode == "quick":
-        return {"thinking": {"type": "disabled"}}
+        return {"thinking": {"type": "low"}}
     return {}
 
 

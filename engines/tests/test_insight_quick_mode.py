@@ -121,16 +121,16 @@ def test_full_mode_keeps_five_dimensions(patch_client):
 
 
 def test_quick_mode_disables_thinking_on_all_llm_calls(patch_client):
-    """quick 模式的每一次 LLM 调用都带 thinking=disabled（Lite 成本模型的关键）。"""
+    """quick 模式的每一次 LLM 调用都带 thinking=low（智谱不支持 disabled，low 是最低档）。"""
     llm = KwargsFakeLLM()
     patch_client(llm)
     client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x", "mode": "quick"})
 
     assert len(llm.calls) >= 5  # 情感话题 1 + 维度 3 + 摘要 1
     assert len(llm.thinking_calls()) == len(llm.calls), \
-        "quick 模式存在未关闭思考的调用（Lite 档成本失控）"
+        "quick 模式存在未降思考档的调用（Lite 档成本失控）"
     for _, kwargs in llm.thinking_calls():
-        assert kwargs["thinking"] == {"type": "disabled"}
+        assert kwargs["thinking"] == {"type": "low"}
 
 
 def test_full_mode_never_sends_thinking_param(patch_client):
