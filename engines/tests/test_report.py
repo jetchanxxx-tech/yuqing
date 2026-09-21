@@ -72,7 +72,7 @@ class FakeLLM:
 @pytest.fixture
 def fake_llm(monkeypatch):
     fake = FakeLLM()
-    monkeypatch.setattr(report_engine, "build_client", lambda api_key="", base_url="": fake)
+    monkeypatch.setattr(report_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
     return fake
 
 

@@ -72,10 +72,11 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas
 LLM_MODEL = os.environ.get("LLM_MODEL", "glm-5.3-flash")
 
 
-def build_client(api_key: str = "", base_url: str = "") -> LLMClient:
+def build_client(api_key: str = "", base_url: str = "", timeout: float = 120.0) -> LLMClient:
     """Build an LLMClient. api_key 为空时回退环境变量 LLM_API_KEY。
 
     兼容旧名：DEEPSEEK_API_KEY 仍被读取（迁移期），LLM_API_KEY 优先。
+    timeout：思考型模型单次推理可能 2-5 分钟，调用方按需放宽。
     """
     key = api_key or os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
-    return LLMClient(base_url=base_url or LLM_BASE_URL, api_key=key)
+    return LLMClient(base_url=base_url or LLM_BASE_URL, api_key=key, timeout=timeout)

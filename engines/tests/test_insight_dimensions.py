@@ -132,7 +132,7 @@ def _no_retry_backoff(monkeypatch):
 @pytest.fixture
 def dim_llm(monkeypatch):
     fake = DimensionFakeLLM()
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
     return fake
 
 
@@ -239,7 +239,7 @@ def test_topic_without_dates_falls_back_to_stable(monkeypatch):
     LLM 此处谎报 rising；只有代码侧的「无日期→stable」才能产生 stable。
     """
     fake = DimensionFakeLLM(topic_trend="rising")
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
 
     no_dates = [{k: v for k, v in d.items() if k != "published_at"} for d in DOCS]
     resp = client.post("/analyze", json={"documents": no_dates, "api_key": "sk-x"})
@@ -252,7 +252,7 @@ def test_topic_without_dates_falls_back_to_stable(monkeypatch):
 def test_single_dimension_failure_degrades_not_fatal(monkeypatch):
     """单个维度调用失败：其余维度照常返回 + warning，不整单 502。"""
     fake = DimensionFakeLLM(fail_dims={"heat"})
-    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="": fake)
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
 
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
 
@@ -333,7 +333,7 @@ def test_fabricated_quotes_dropped_with_warning(monkeypatch):
             return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
 
     fake = QuoteLLM()
-    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
 
     resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
 
@@ -361,7 +361,7 @@ def test_quotes_normalized_against_whitespace(monkeypatch):
             return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
 
     fake = WhitespaceLLM()
-    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
 
     resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
 
@@ -395,7 +395,7 @@ def test_wrapped_quotes_not_mass_dropped(monkeypatch):
             return await DimensionFakeLLM.chat_json(self, model, messages, **kwargs)
 
     fake = WrappedLLM()
-    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
 
     resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
 
@@ -439,7 +439,7 @@ class FlakyDimLLM(DimensionFakeLLM):
 
 def test_retry_recovers_transient_dimension_failure(monkeypatch):
     fake = FlakyDimLLM(fail_dim='heat', fail_times=1)
-    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
 
     resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
 
@@ -453,7 +453,7 @@ def test_retry_recovers_transient_dimension_failure(monkeypatch):
 
 def test_persistent_dimension_failure_after_retry_lands_in_failed(monkeypatch):
     fake = FlakyDimLLM(fail_dim='heat', fail_times=99)
-    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='': fake)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
 
     resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
 

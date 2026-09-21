@@ -532,7 +532,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": ""}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url)
+    llm = build_client(key, req.llm_base_url, timeout=300)
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
@@ -633,7 +633,7 @@ async def sentiment(req: SentimentRequest) -> dict:
         return {"results": []}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url)
+    llm = build_client(key, req.llm_base_url, timeout=300)
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(

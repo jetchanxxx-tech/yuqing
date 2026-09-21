@@ -90,7 +90,7 @@ def _no_retry_backoff(monkeypatch):
 def patch_client(monkeypatch):
     def _patch(llm: KwargsFakeLLM):
         monkeypatch.setattr(insight_engine, "build_client",
-                            lambda api_key="", base_url="": llm)
+                            lambda api_key="", base_url="", timeout=120.0: llm)
     return _patch
 
 
