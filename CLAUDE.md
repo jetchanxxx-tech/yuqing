@@ -248,7 +248,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - 支付回调路由 `/api/v1/callbacks/payment/:channel` 是唯一免鉴权业务端点 —— 安全完全依赖渠道验签，改动 payment 包时必须保持防线顺序：验签 → 金额核验 → pending→paid 原子跃迁（provider_txn_id 唯一）→ 幂等发放
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
 - **🔴 部署铁律（用户 2026-09-22 明令）：一切编译/构建只在本地完成后上传**（Go 交叉编译、前端 dist、RSSHub tarball 等）—— 服务器只做解压/配置/迁移/启停。生产服务器内存小，任何构建都可能打满内存打死 sshd（RSSHub tsc 构建实测打挂 1.7Gi 服务器）
-- **双生产环境**：老机 47.120.20.10（Ubuntu/PG，收费体系 beta 首发地，RSSHub build 风暴后曾 SSH 不可达）；新机 101.96.209.90:22352 = **yuqing2.pangu-cloud.com**（CentOS Stream 9 / 4C3.6Gi / oneinstack 源码 nginx / **MySQL 与 PG 并存**——平台用新装 PG15，MySQL 留给用户既有业务；Redis 8.4 空密码；Node 在 /usr/local/node/bin）。F21/RSSHub/Playwright 装于新机；老机数据未迁移（用户未要求）
+- **唯一生产环境 = yuqing2.pangu-cloud.com**（101.96.209.90:22352，CentOS Stream 9 / 4C3.6Gi / oneinstack 源码 nginx / PG15 平台库 + 用户自有 MySQL 并存 / Redis 8.4 / Node 在 /usr/local/node/bin）。老机 47.120.20.10 的部署配置已废弃（用户 2026-09-22 确认丢弃，其上数据未迁移）
 - **规范化部署手册 `docs/ops/DEPLOYMENT_RUNBOOK.md`**（新服务器/其他智能体照此执行，含全部踩坑）；运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
 ## 凭据与安全
