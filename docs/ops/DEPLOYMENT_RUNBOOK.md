@@ -1,8 +1,10 @@
 # 盘古舆情 · 规范化部署手册（Runbook）
 
-> 适用：在全新 Ubuntu 24.04 服务器上从零部署盘古舆情到生产可用。
+> 适用：§1-8 为标准 Ubuntu 24.04 全新部署流程；§9 为 **yuqing2.pangu-cloud.com 生产环境**（CentOS Stream 9 / oneinstack，当前唯一生产）的专章。
 > 也可供其他智能体/运维人员照步骤执行。所有历史踩坑已内嵌为「⚠️ 坑位」提示。
-> 最后验证：2026-09-15（生产 47.120.20.10）
+> 最后验证：2026-09-22（yuqing2 全链路 E2E 通过）
+>
+> 🔴 **最高优先级铁律：一切编译/构建只在本地完成后上传**（Go 交叉编译、前端 dist、RSSHub tarball）。服务器只做解压/配置/迁移/启停 —— 构建上服务器 = 内存打满打死 sshd（实测两次）。
 
 ---
 
@@ -215,3 +217,121 @@ bash /opt/pangu-source/scripts/healthcheck.sh
 ```
 
 > 详细运维（日志/备份/巡检/故障排查）见 `docs/ops/OPS_MANUAL.html`。
+
+---
+
+## 9. yuqing2 生产环境专章（CentOS Stream 9 / oneinstack，当前唯一生产）
+
+> 环境：101.96.209.90:22352（jet，sudo），域名 yuqing2.pangu-cloud.com，4C/3.6Gi/40G。
+> 与 §1-8 的 Ubuntu 流程**不通用**：dnf 而非 apt、PG15 需 PGDG 源、nginx 为 oneinstack 源码版（/usr/local/nginx，vhost include 机制）、Node 为 oneinstack 版（/usr/local/node/bin，**systemd 必须写全路径**）、Python 需另装 3.11。
+> 老机 47.120.20.10 的部署配置已废弃（2026-09-22 用户确认）。
+
+### 9.1 差异速查
+
+| 项 | Ubuntu §1-8 | yuqing2 (CentOS 9) |
+|---|---|---|
+| 包管理 | apt | dnf（PG15 用 PGDG 源 `--nobest`，兼容系统 OpenSSL 1.1.1） |
+| Python | 3.11 系统自带 | `dnf install python3.11 python3.11-pip`（系统 3.9 不够用） |
+| nginx | apt 版，conf 在 /etc/nginx | 源码版 /usr/local/nginx，站点 conf 在 `conf/vhost/*.conf` |
+| Node | 无要求 | oneinstack 版 /usr/local/node/bin/node（v22） |
+| MySQL | 无 | **用户自有业务用，勿动**；平台用新装 PG15 |
+| swap | — | 必须（`dd` 2G swapfile + fstab），无 swap 的 dnf/构建会 OOM |
+
+### 9.2 部署步骤（全流程无编译，材料本地备好）
+
+```bash
+# ① 本地准备（Windows 开发机）：
+#    Go: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/yuqing-{server,worker,cli} ./cmd/{server,worker,cli}
+#    前端: cd web && npm run build && tar czf dist.tar.gz dist
+#    RSSHub: 本地 clone + npm install --legacy-peer-deps + npm run build
+#            → tar czf rsshub-dist.tar.gz dist node_modules package.json
+#    源码: git archive --prefix=pangu-src/ --format=tar.gz -o src.tar.gz HEAD
+# ② SFTP 全部上传至 /tmp（paramiko，见运维记忆；sshpass 在 Windows 不可用）
+```
+
+```bash
+# ③ 服务器：swap + PG15 + Python3.11 + 用户（见会话脚本 deploy_new_p1*.py 要点）
+sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 && sudo chmod 600 /swapfile \
+  && sudo mkswap /swapfile && sudo swapon /swapfile
+sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+sudo dnf -qy module disable postgresql
+sudo dnf install -y --nobest postgresql15-server postgresql15-contrib   # --nobest 兼容 OpenSSL 1.1.1
+sudo /usr/pgsql-15/bin/postgresql-15-setup initdb
+sudo systemctl enable --now postgresql-15
+# pg_hba：host 127.0.0.1/32 改 scram-sha-256，restart
+sudo dnf install -y python3.11 python3.11-pip
+sudo useradd -r -m -d /opt/yuqing -s /sbin/nologin yuqing
+
+# ④ PG 库/角色/citext（密码示例 Yuq2Pg_2026!，生产请自定）
+sudo -u postgres psql -c "CREATE USER yuqing WITH PASSWORD '***' CREATEDB;"
+sudo -u postgres createdb -O yuqing yuqing_platform
+sudo -u postgres psql -d yuqing_platform -c "GRANT ALL ON SCHEMA public TO yuqing; CREATE EXTENSION citext;"
+
+# ⑤ 源码/二进制/dist 解压就位（/opt/pangu-source 与 /opt/yuqing/bin、web/dist）
+# ⑥ config.yaml 手写（driver: postgres + engines 全 127.0.0.1 + insight/report timeout 420s
+#    + query timeout 180s + rsshub_base: "http://127.0.0.1:1200"），chmod 600
+# ⑦ engines.env（chmod 600）：BOCHA_API_KEY / LLM_API_KEY / LLM_BASE_URL / LLM_MODEL
+# ⑧ 迁移：cd /opt/yuqing && YUQING_CONFIG=... bin/yuqing-cli migrate platform   # 0001-0006
+# ⑨ bootstrap drop-in + 7 个 systemd unit（源码 scripts/systemd/）→ enable --now
+#    ⚠️ 全部引擎 unit 模板自带 EnvironmentFile=-/opt/yuqing/config/engines.env，勿删
+```
+
+### 9.3 RSSHub 部署（F21 热榜数据适配层）
+
+```bash
+sudo mkdir -p /opt/rsshub/logs            # ⚠️ 坑：winston 启动时要写 logs/，缺了 crash-loop
+sudo tar xzf /tmp/rsshub-dist.tar.gz -C /opt/rsshub   # 本地构建的 dist+node_modules+package.json
+sudo chown -R yuqing:yuqing /opt/rsshub
+# unit: scripts/systemd/yuqing-rsshub.service（要点：
+#   ExecStart=<node全路径> /opt/rsshub/dist/index.mjs    # ⚠️ 产物是 .mjs 非 .js
+#   Environment=PORT=1200
+#   Environment=LISTEN_INADDR_ANY=0                      # ⚠️ 不设则绑 0.0.0.0 公网暴露
+#   Environment=NODE_OPTIONS=--max-http-header-size=32768
+#   MemoryHigh=700M MemoryMax=900M                       # OOM 时死 rsshub 不死 PG
+#   ProtectSystem=strict + 预建 logs 目录）
+sudo systemctl enable --now yuqing-rsshub
+ss -tlnp | grep 1200        # ⚠️ 必须显示 127.0.0.1:1200，出现 *:1200 = 公网暴露
+```
+
+**Playwright Chromium**（部分热榜路由需浏览器渲染）：
+```bash
+# ⚠️ 坑：--with-deps 在 CentOS 9 卡死 —— 系统依赖手动 dnf（nss/atk/cups-libs/mesa-libgbm/alsa-lib 等）
+# ⚠️ 下载用 npmmirror CDN；⚠️ 浏览器默认装 $HOME/.cache（service 用户 home=/opt/yuqing）——
+#    就让它装在 /opt/yuqing/.cache/ms-playwright，不要改 PLAYWRIGHT_BROWSERS_PATH（改了反而不生效）
+sudo env PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \
+  PATH=/usr/local/node/bin:$PATH /usr/local/node/bin/npx playwright install chromium-headless-shell
+sudo chown -R yuqing:yuqing /opt/yuqing/.cache
+sudo systemctl restart yuqing-rsshub
+```
+
+### 9.4 nginx 站点（oneinstack 风格 + 自签 SSL）
+
+```bash
+sudo openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+  -keyout /usr/local/nginx/conf/ssl/yuqing2.pangu-cloud.com.key \
+  -out /usr/local/nginx/conf/ssl/yuqing2.pangu-cloud.com.crt -subj "/CN=yuqing2.pangu-cloud.com"
+# vhost conf：/usr/local/nginx/conf/vhost/yuqing2.pangu-cloud.com.conf
+#   root /opt/yuqing/web/dist; location /api/ 反代 127.0.0.1:8080（proxy_buffering off 供 SSE）;
+#   location / try_files $uri /index.html（SPA）。写完 nginx -t && nginx -s reload
+sudo chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑：home 目录 700，nginx(www) 穿越不了 → 500
+```
+
+### 9.5 LLM 中转站配置（当前：sub.geiliapi.com/v1 + deepseek-v4.1-flash）
+
+- engines.env 三键：`LLM_BASE_URL=https://sub.geiliapi.com/v1`（**带 /v1**）、`LLM_API_KEY`、`LLM_MODEL=deepseek-v4.1-flash`
+- 同时 UPDATE `platform_settings` 表同名键（⚠️ 坑：种子逻辑「键存在不覆盖」—— 首启后改 env 无效，必须直接 UPDATE 表或删键重启）
+- 中转站要点：该站唯一模型 deepseek-v4.1-flash（思考型，reasoning 吃 max_tokens）；间歇 503 过载需重试；Go crawler HTTP 超时已 180s（internal/engine/real.go，勿回 60s）
+- quick 模式思考档：`thinking: {"type": "low"}`（智谱/DeepSeek 思考模型不支持 disabled，官方错误 1210）
+
+### 9.6 yuqing2 验收清单
+
+```
+□ systemctl is-active 8 服务（7 引擎/平台 + yuqing-rsshub）
+□ curl 127.0.0.1:8080/api/v1/health → ok
+□ curl 127.0.0.1:8002/health → dims:5 quick_dimensions:3 llm:true
+□ curl 127.0.0.1:1200/weibo/search/hot?format=json → 200 且 ≥20 条
+□ ss -tlnp | grep 1200 → 仅 127.0.0.1（公网暴露 = 事故）
+□ 登录 → GET /trends → 三平台 items 非空
+□ 创建真实分析 → completed，result 五维+摘要+报告齐备，warning 为空
+□ 外网 https://yuqing2.pangu-cloud.com/ 200（自签证书浏览器需手动信任）
+```
