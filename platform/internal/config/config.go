@@ -11,19 +11,19 @@ import (
 
 // Config is the root configuration structure.
 type Config struct {
-	Server      ServerConfig    `yaml:"server"`
-	DB          DBConfig        `yaml:"db"`
-	Store       StoreConfig     `yaml:"store"`
-	Cache       CacheConfig     `yaml:"cache"`
-	Queue       QueueConfig     `yaml:"queue"`
-	LLM         LLMConfig       `yaml:"llm"`
-	Storage     StorageConfig   `yaml:"storage"`
-	Search      SearchConfig    `yaml:"search"`
-	Auth        AuthConfig      `yaml:"auth"`
-	Billing     BillingConfig   `yaml:"billing"`
-	Engines     EnginesConfig   `yaml:"engines"`
-	RateLimit   RateLimitConfig `yaml:"rateLimit"`
-	RSSHubBase  string          `yaml:"rsshub_base"`  // F21 热榜聚合 RSSHub 地址
+	Server     ServerConfig    `yaml:"server"`
+	DB         DBConfig        `yaml:"db"`
+	Store      StoreConfig     `yaml:"store"`
+	Cache      CacheConfig     `yaml:"cache"`
+	Queue      QueueConfig     `yaml:"queue"`
+	LLM        LLMConfig       `yaml:"llm"`
+	Storage    StorageConfig   `yaml:"storage"`
+	Search     SearchConfig    `yaml:"search"`
+	Auth       AuthConfig      `yaml:"auth"`
+	Billing    BillingConfig   `yaml:"billing"`
+	Engines    EnginesConfig   `yaml:"engines"`
+	RateLimit  RateLimitConfig `yaml:"rateLimit"`
+	RSSHubBase string          `yaml:"rsshub_base"` // F21 热榜聚合 RSSHub 地址
 }
 
 // StoreConfig selects the persistence backend for all services.
@@ -50,11 +50,11 @@ type DBConfig struct {
 	ReadWriteSplit bool     `yaml:"readWriteSplit"`
 	MaxConns       int      `yaml:"maxConns"`
 	Tenant         struct {
-		AutoCreate     bool   `yaml:"autoCreate"`
-		MigrateOnBoot  bool   `yaml:"migrateOnBoot"`
-		PoolMaxConns   int    `yaml:"poolMaxConns"`
-		MaxPools       int    `yaml:"maxPools"`
-		IdleTimeout    string `yaml:"idleTimeout"`
+		AutoCreate    bool   `yaml:"autoCreate"`
+		MigrateOnBoot bool   `yaml:"migrateOnBoot"`
+		PoolMaxConns  int    `yaml:"poolMaxConns"`
+		MaxPools      int    `yaml:"maxPools"`
+		IdleTimeout   string `yaml:"idleTimeout"`
 	} `yaml:"tenant"`
 }
 
@@ -77,15 +77,15 @@ type LLMConfig struct {
 
 // ModelConfig defines one LLM model.
 type ModelConfig struct {
-	ID                 string  `yaml:"id"`
-	Provider           string  `yaml:"provider"`
-	BaseURL            string  `yaml:"baseUrl"`
-	APIKey             string  `yaml:"apiKey"`
-	InputCostPerM      float64 `yaml:"inputCostPerM"`
-	OutputCostPerM     float64 `yaml:"outputCostPerM"`
-	UserInputPricePerM float64 `yaml:"userInputPricePerM"`
+	ID                  string  `yaml:"id"`
+	Provider            string  `yaml:"provider"`
+	BaseURL             string  `yaml:"baseUrl"`
+	APIKey              string  `yaml:"apiKey"`
+	InputCostPerM       float64 `yaml:"inputCostPerM"`
+	OutputCostPerM      float64 `yaml:"outputCostPerM"`
+	UserInputPricePerM  float64 `yaml:"userInputPricePerM"`
 	UserOutputPricePerM float64 `yaml:"userOutputPricePerM"`
-	MaxTokens          int     `yaml:"maxTokens"`
+	MaxTokens           int     `yaml:"maxTokens"`
 }
 
 // StorageConfig holds object storage settings.
@@ -177,11 +177,11 @@ func (c *Config) Validate() error {
 // defaultConfig returns a Config with safe defaults applied.
 func defaultConfig() *Config {
 	return &Config{
-		Server: ServerConfig{Addr: ":8080", Env: "production"},
-		Store:  StoreConfig{Driver: "memory"},
-		Queue:  QueueConfig{Driver: "memory"},
-		Cache:  CacheConfig{TTL: "60s"},
-		LLM:    LLMConfig{DefaultProvider: "deepseek"},
+		Server:  ServerConfig{Addr: ":8080", Env: "production"},
+		Store:   StoreConfig{Driver: "memory"},
+		Queue:   QueueConfig{Driver: "memory"},
+		Cache:   CacheConfig{TTL: "60s"},
+		LLM:     LLMConfig{DefaultProvider: "deepseek"},
 		Storage: StorageConfig{Driver: "local"},
 		Search:  SearchConfig{Driver: "pg"},
 		Auth:    AuthConfig{AccessTTL: "15m", RefreshTTL: "720h"},
@@ -207,6 +207,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("APP_AUTH_JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v
+	}
+	if v := os.Getenv("APP_RSSHUB_BASE"); v != "" {
+		cfg.RSSHubBase = v
 	}
 	// Config path separator normalized from underscores to dots.
 	// e.g., APP_DB_READ_WRITE_SPLIT → db.readWriteSplit

@@ -64,5 +64,9 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("forced shutdown", slog.Any("err", err))
 	}
+	// F21 热榜刷新循环收口（最坏等待单平台超时 10s，10s shutdown 预算内）
+	if deps.Trends != nil {
+		deps.Trends.Close()
+	}
 	logger.Info("server stopped")
 }

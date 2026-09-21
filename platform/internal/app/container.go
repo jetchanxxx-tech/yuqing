@@ -77,10 +77,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 		var err error
 		platformSettings, err = settings.NewPGStore(pool, map[string]string{
-			"bocha_api_key":  os.Getenv("BOCHA_API_KEY"),
-			"llm_api_key":    os.Getenv("LLM_API_KEY"),
-			"llm_base_url":   os.Getenv("LLM_BASE_URL"),
-			"llm_model":      os.Getenv("LLM_MODEL"),
+			"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
+			"llm_api_key":   os.Getenv("LLM_API_KEY"),
+			"llm_base_url":  os.Getenv("LLM_BASE_URL"),
+			"llm_model":     os.Getenv("LLM_MODEL"),
 		})
 		if err != nil {
 			panic(fmt.Sprintf("app: seed settings: %v", err))
@@ -102,10 +102,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
 		// Admins can override via PUT /api/v1/admin/settings.
 		platformSettings = settings.NewMemoryStore(map[string]string{
-			"bocha_api_key":  os.Getenv("BOCHA_API_KEY"),
-			"llm_api_key":    os.Getenv("LLM_API_KEY"),
-			"llm_base_url":   os.Getenv("LLM_BASE_URL"),
-			"llm_model":      os.Getenv("LLM_MODEL"),
+			"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
+			"llm_api_key":   os.Getenv("LLM_API_KEY"),
+			"llm_base_url":  os.Getenv("LLM_BASE_URL"),
+			"llm_model":     os.Getenv("LLM_MODEL"),
 		})
 	}
 
@@ -220,7 +220,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// 5 分钟定时全平台刷新。未配置时 trends 为 nil → API 返回 503。
 	var trendsSvc *trends.Service
 	if rsshubBase := cfg.RSSHubBase; rsshubBase != "" {
-		trendsSvc = trends.NewService(rsshubBase, 5*time.Minute)
+		trendsSvc = trends.NewService(rsshubBase, 5*time.Minute, logger)
 	} else {
 		logger.Warn("trends: 未配置 rsshub_base，热榜聚合不可用")
 	}

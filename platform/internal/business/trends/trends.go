@@ -1,5 +1,9 @@
 // Package trends provides hot-topic aggregation from multiple platforms via RSSHub.
-// 纯快照零存储：内存缓存 + 定时刷新，失败保留 last-good 三态（ok/stale/error）。
+// 纯快照零存储：进程内共享缓存 + 定时刷新，失败保留 last-good 三态（ok/stale/error）。
+//
+// 并发约定（审核修复）：cache 存 Platform 值而非指针 —— GetAll/Get 在锁内
+// 按值拷贝返回，调用方（JSON 序列化、测试断言）永远不与刷新 goroutine
+// 共享可变内存；map 的读写全部在锁内。
 package trends
 
 import (
@@ -8,6 +12,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -17,7 +22,7 @@ import (
 
 // Platform represents a single platform's hot topics snapshot.
 type Platform struct {
-	Name      string    `json:"name"`       // "微博" | "B站" | "知乎" | "抖音" | "小红书"
+	Name      string    `json:"name"`       // "微博" | "B站" | "知乎"
 	Items     []Item    `json:"items"`      // 热榜条目
 	Status    string    `json:"status"`     // "ok" | "stale" | "error"
 	Error     string    `json:"error"`      // Status=error 时的错误描述
@@ -32,25 +37,13 @@ const (
 
 // Item is a single hot topic entry.
 type Item struct {
-	Rank  int    `json:"rank"`          // 1 起的排名
+	Rank  int    `json:"rank"` // 1 起的排名
 	Title string `json:"title"`
 	URL   string `json:"url"`
 	Hot   string `json:"hot,omitempty"` // 热度值（可选）
 }
 
-// Service aggregates hot topics from RSSHub with in-memory caching.
-type Service struct {
-	rsshubBase    string
-	refreshPeriod time.Duration
-
-	mu    sync.RWMutex
-	cache map[string]*Platform // key = platform name
-
-	stopCh chan struct{}
-	wg     sync.WaitGroup
-}
-
-// hotPlatforms 是 V1 平台清单与 RSSHub 路由（顺序即前端 Tab 顺序）。
+// hotPlatforms 是 V1 平台清单与 RSSHub 路由（顺序即前端 Tab 顺序，GetAll 依此排序）。
 // 准入线（TRENDS_PAGE_PLAN.html §5）：免 Cookie、≥20 条、<15s。
 // 抖音/小红书需 Puppeteer 且反爬严格，生产内存不足以承载 Chromium，
 // 未过准入线暂不上 —— 路由保留在注释里，准入后加回即可。
@@ -65,53 +58,86 @@ var hotPlatforms = []struct {
 	// {"小红书", "/xiaohongshu/board/homefeed_recommend"}, // 未过准入线：路由不稳
 }
 
+// Service aggregates hot topics from RSSHub with in-memory caching.
+type Service struct {
+	rsshubBase    string
+	refreshPeriod time.Duration
+	logger        *slog.Logger
+
+	mu       sync.RWMutex
+	cache    map[string]Platform // 值语义：锁外永远不共享可变内存
+	stopCh   chan struct{}
+	cancel   context.CancelFunc
+	closeOne sync.Once
+	wg       sync.WaitGroup
+}
+
 // NewService creates a trends service and starts the refresh ticker.
 // rsshubBase should be "http://127.0.0.1:1200" for local deployment.
 //
 // cache 先预填全部平台的 error 空快照：GetAll 永远返回完整 Tab 清单
-//（首屏立即可渲染「加载中/暂不可用」），首轮刷新在后台异步完成 ——
-// NewService 绝不同步等待网络（RSSHub 挂了不能拖慢 server 启动）。
-func NewService(rsshubBase string, refreshPeriod time.Duration) *Service {
+// （首屏立即可渲染「加载中/暂不可用」），首轮刷新在后台异步完成 ——
+// NewService 同步路径零网络 IO，RSSHub 挂了不能拖慢 server 启动。
+// logger 传 nil 时退回 slog.Default。
+func NewService(rsshubBase string, refreshPeriod time.Duration, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{
-		rsshubBase:    rsshubBase,
+		rsshubBase:    strings.TrimRight(rsshubBase, "/"),
 		refreshPeriod: refreshPeriod,
-		cache:         make(map[string]*Platform),
+		logger:        logger,
+		cache:         make(map[string]Platform),
 		stopCh:        make(chan struct{}),
+		cancel:        cancel,
 	}
 
 	for _, p := range hotPlatforms {
-		s.cache[p.name] = &Platform{Name: p.name, Status: StateError, Error: "正在加载"}
+		s.cache[p.name] = Platform{Name: p.name, Status: StateError, Error: "正在加载", UpdatedAt: time.Now()}
 	}
 
-	// 后台异步：首轮刷新 + ticker 循环
 	s.wg.Add(1)
-	go s.refreshLoop()
+	go s.refreshLoop(ctx)
 
 	return s
 }
 
-// GetAll returns cached snapshots for all platforms.
-func (s *Service) GetAll(ctx context.Context) []*Platform {
+// GetAll returns snapshots for all platforms in Tab order (value copies).
+func (s *Service) GetAll(ctx context.Context) []Platform {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make([]*Platform, 0, len(s.cache))
-	for _, p := range s.cache {
-		result = append(result, p)
+	out := make([]Platform, 0, len(hotPlatforms))
+	for _, hp := range hotPlatforms {
+		if p, ok := s.cache[hp.name]; ok {
+			out = append(out, p)
+		}
 	}
-	return result
+	return out
 }
 
-// Close stops the refresh ticker.
+// Get returns a value copy of one platform's snapshot (测试与排障用).
+func (s *Service) Get(name string) (Platform, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.cache[name]
+	return p, ok
+}
+
+// Close stops the refresh loop. 幂等；最坏等待在飞刷新完成（单平台 10s 超时）。
 func (s *Service) Close() {
-	close(s.stopCh)
+	s.closeOne.Do(func() {
+		close(s.stopCh)
+		s.cancel()
+	})
 	s.wg.Wait()
 }
 
-func (s *Service) refreshLoop() {
+func (s *Service) refreshLoop(ctx context.Context) {
 	defer s.wg.Done()
 	// 首轮立即刷，之后按周期
-	s.refreshAll(context.Background())
+	s.refreshAll(ctx)
 
 	ticker := time.NewTicker(s.refreshPeriod)
 	defer ticker.Stop()
@@ -119,7 +145,7 @@ func (s *Service) refreshLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			s.refreshAll(context.Background())
+			s.refreshAll(ctx)
 		case <-s.stopCh:
 			return
 		}
@@ -131,15 +157,18 @@ func (s *Service) refreshAll(ctx context.Context) {
 		snapshot := s.fetchPlatform(ctx, p.name, p.route)
 
 		s.mu.Lock()
-		old := s.cache[p.name]
-		if snapshot.Status == StateOK || old == nil {
-			s.cache[p.name] = snapshot
-		} else if len(old.Items) > 0 {
-			// 有过 last-good 数据 → 保留并标记 stale
+		old, had := s.cache[p.name]
+		switch {
+		case snapshot.Status == StateOK:
+			s.cache[p.name] = *snapshot
+		case had && len(old.Items) > 0:
+			// 有 last-good 数据 → 保留并标记 stale（更新时间不变，前端显示真实新鲜度）
 			old.Status = StateStale
 			s.cache[p.name] = old
+		default:
+			// 从未成功过：落入新 error 快照，让用户/运维看到真实失败原因
+			s.cache[p.name] = *snapshot
 		}
-		// else：从未成功过（预填 error 空快照），保持 error
 		s.mu.Unlock()
 	}
 }
@@ -151,28 +180,29 @@ func (s *Service) fetchPlatform(ctx context.Context, name, route string) *Platfo
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return &Platform{Name: name, Status: StateError, Error: err.Error()}
+		return s.errorSnapshot(name, err)
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return &Platform{Name: name, Status: StateError, Error: err.Error()}
+		return s.errorSnapshot(name, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return &Platform{
-			Name:   name,
-			Status: StateError,
-			Error:  fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)),
-		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return s.errorSnapshot(name, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
 	var feed jsonFeed
 	if err := json.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		return &Platform{Name: name, Status: StateError, Error: "JSON decode: " + err.Error()}
+		return s.errorSnapshot(name, fmt.Errorf("JSON decode: %w", err))
+	}
+
+	if len(feed.Items) == 0 {
+		// 上游 200 + 空列表：按失败处理，防止以「ok + 0 条」清掉 last-good
+		return s.errorSnapshot(name, fmt.Errorf("上游返回空列表"))
 	}
 
 	items := make([]Item, 0, len(feed.Items))
@@ -196,6 +226,17 @@ func (s *Service) fetchPlatform(ctx context.Context, name, route string) *Platfo
 		Name:      name,
 		Items:     items,
 		Status:    StateOK,
+		UpdatedAt: time.Now(),
+	}
+}
+
+// errorSnapshot 构造失败快照并记 warn（运维排障线索）。
+func (s *Service) errorSnapshot(name string, err error) *Platform {
+	s.logger.Warn("trends: 平台热榜抓取失败", slog.String("platform", name), slog.String("err", err.Error()))
+	return &Platform{
+		Name:      name,
+		Status:    StateError,
+		Error:     err.Error(),
 		UpdatedAt: time.Now(),
 	}
 }

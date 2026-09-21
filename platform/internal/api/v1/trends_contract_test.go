@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/yuqing/platform/internal/api"
 	"github.com/yuqing/platform/internal/app"
@@ -48,13 +47,15 @@ func TestContract_trends(t *testing.T) {
 
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		deps2 := app.Build(cfg, logger)
+		t.Cleanup(func() {
+			if deps2.Trends != nil {
+				deps2.Trends.Close()
+			}
+		})
 		if deps2.Credits != nil {
 			_ = deps2.Credits.GrantPurchase(context.Background(), "t_contract", "contract-seed", 1000)
 		}
 		r2 := api.NewRouter(cfg, logger, deps2)
-
-		// 等待后台首轮刷新失败落定（异步，秒级）
-		time.Sleep(200 * time.Millisecond)
 
 		w := doReq(t, r2, http.MethodGet, "/api/v1/trends", tok, nil)
 		if w.Code != http.StatusOK {
@@ -73,8 +74,9 @@ func TestContract_trends(t *testing.T) {
 		for _, raw := range platforms {
 			p := raw.(map[string]interface{})
 			status, _ := p["status"].(string)
-			if status != "error" && status != "stale" && status != "ok" {
-				t.Errorf("platform %v invalid status %q", p["name"], status)
+			// 地址必不可达：首轮刷新落定后必须全 error，不允许伪造 stale
+			if status != "error" {
+				t.Errorf("platform %v status = %q, want error", p["name"], status)
 			}
 		}
 	})

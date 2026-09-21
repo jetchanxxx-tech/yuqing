@@ -148,11 +148,17 @@ function PlatformFeed({ platform }: { platform: TrendPlatform }) {
           {
             title: '标题',
             dataIndex: 'title',
-            render: (title: string, item: TrendItem) => (
-              <a href={item.url} target="_blank" rel="noreferrer" style={{ fontWeight: item.rank <= 3 ? 600 : 400 }}>
-                {title}
-              </a>
-            ),
+            render: (title: string, item: TrendItem) => {
+              // 只渲染 http(s) 外链，防数据源异常时注入 javascript: scheme
+              const safe = /^https?:\/\//.test(item.url);
+              return safe ? (
+                <a href={item.url} target="_blank" rel="noreferrer" style={{ fontWeight: item.rank <= 3 ? 600 : 400 }}>
+                  {title}
+                </a>
+              ) : (
+                <span>{title}</span>
+              );
+            },
           },
           {
             title: '热度',
