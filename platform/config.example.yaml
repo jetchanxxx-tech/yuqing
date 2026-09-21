@@ -92,6 +92,10 @@ engines:
     url: "http://localhost:8004"
     timeout: "300s"
 
+# F21 热榜聚合 — RSSHub 自建实例（只绑 127.0.0.1，勿暴露公网）。
+# 留空则热榜 API 返回 503（页面显示「暂不可用」）。
+rsshub_base: ""               # e.g. "http://127.0.0.1:1200"
+
 # 数据采集 — Bocha AI 搜索 API key（注册: open.bochaai.com）
 # 部署时设置环境变量: export BOCHA_API_KEY=sk-xxx
 # 或在 config.yaml 中直接填入

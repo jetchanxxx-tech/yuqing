@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yuqing/platform/internal/api/v1"
@@ -20,6 +21,7 @@ import (
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/business/dashboard"
 	"github.com/yuqing/platform/internal/business/report"
+	"github.com/yuqing/platform/internal/business/trends"
 	"github.com/yuqing/platform/internal/config"
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/pkg/db"
@@ -213,6 +215,16 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	paymentSvc := payment.NewService(paymentStore, creditSvc, initialProviders, logger)
 	paymentSvc.SetProviderReload(paymentRegistry.Resolve)
 
+	// ── 热榜聚合（F21）────────────────────────────────────────
+	// RSSHub 地址可配置（生产绑 127.0.0.1:1200，测试用公共实例），
+	// 5 分钟定时全平台刷新。未配置时 trends 为 nil → API 返回 503。
+	var trendsSvc *trends.Service
+	if rsshubBase := cfg.RSSHubBase; rsshubBase != "" {
+		trendsSvc = trends.NewService(rsshubBase, 5*time.Minute)
+	} else {
+		logger.Warn("trends: 未配置 rsshub_base，热榜聚合不可用")
+	}
+
 	return &v1.Services{
 		Auth:            authSvc,
 		Analysis:        analysisSvc,
@@ -226,5 +238,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		Credits:         creditSvc,
 		Payment:         paymentSvc,
 		PaymentRegistry: paymentRegistry,
+		Trends:          trendsSvc,
 	}
 }

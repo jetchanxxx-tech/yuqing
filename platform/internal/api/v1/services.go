@@ -20,6 +20,7 @@ import (
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/business/dashboard"
 	"github.com/yuqing/platform/internal/business/report"
+	"github.com/yuqing/platform/internal/business/trends"
 )
 
 // Services bundles the service dependencies v1 handlers call. It is wired
@@ -36,9 +37,12 @@ type Services struct {
 	Usage     usage.PlatformMeter
 
 	// 收费体系（方案 B）：额度与支付。
-	Credits        *credit.Service
-	Payment        *payment.Service
+	Credits         *credit.Service
+	Payment         *payment.Service
 	PaymentRegistry *payment.Registry // 可空：nil 时购买页看不到可用渠道
+
+	// F21 热榜聚合：可空，nil 时 API 返回 503。
+	Trends *trends.Service
 
 	// SSEPollInterval is how often /analyses/:id/events re-reads the state
 	// machine while streaming. Zero selects the default (1s); tests shrink it.

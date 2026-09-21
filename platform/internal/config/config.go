@@ -11,18 +11,19 @@ import (
 
 // Config is the root configuration structure.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	DB        DBConfig        `yaml:"db"`
-	Store     StoreConfig     `yaml:"store"`
-	Cache     CacheConfig     `yaml:"cache"`
-	Queue     QueueConfig     `yaml:"queue"`
-	LLM       LLMConfig       `yaml:"llm"`
-	Storage   StorageConfig   `yaml:"storage"`
-	Search    SearchConfig    `yaml:"search"`
-	Auth      AuthConfig      `yaml:"auth"`
-	Billing   BillingConfig   `yaml:"billing"`
-	Engines   EnginesConfig   `yaml:"engines"`
-	RateLimit RateLimitConfig `yaml:"rateLimit"`
+	Server      ServerConfig    `yaml:"server"`
+	DB          DBConfig        `yaml:"db"`
+	Store       StoreConfig     `yaml:"store"`
+	Cache       CacheConfig     `yaml:"cache"`
+	Queue       QueueConfig     `yaml:"queue"`
+	LLM         LLMConfig       `yaml:"llm"`
+	Storage     StorageConfig   `yaml:"storage"`
+	Search      SearchConfig    `yaml:"search"`
+	Auth        AuthConfig      `yaml:"auth"`
+	Billing     BillingConfig   `yaml:"billing"`
+	Engines     EnginesConfig   `yaml:"engines"`
+	RateLimit   RateLimitConfig `yaml:"rateLimit"`
+	RSSHubBase  string          `yaml:"rsshub_base"`  // F21 热榜聚合 RSSHub 地址
 }
 
 // StoreConfig selects the persistence backend for all services.

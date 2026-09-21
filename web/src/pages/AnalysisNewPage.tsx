@@ -22,7 +22,7 @@ import {
   SafetyOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createAnalysis } from '../api/analyses';
 import { getCredits, getUsage } from '../api/billing';
 import {
@@ -44,11 +44,16 @@ const STEP_LABELS = ['分析类型', '关键词设置', '数据源选择', '确�
 export default function AnalysisNewPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [current, setCurrent] = useState(0);
   const [name, setName] = useState('');
   const [type, setType] = useState<AnalysisType | null>(null);
-  const [keywords, setKeywords] = useState<string[]>([]);
+  // ?keywords= 支持「热榜 → 分析」预填（热榜页「分析」按钮带参数跳入）
+  const [keywords, setKeywords] = useState<string[]>(() => {
+    const kw = searchParams.get('keywords');
+    return kw ? [kw.trim()].filter(Boolean) : [];
+  });
   const [sources, setSources] = useState<SourceKey[]>([]);
 
   const usageQ = useQuery({ queryKey: ['billing', 'usage'], queryFn: getUsage, staleTime: 30_000 });

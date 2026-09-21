@@ -12,6 +12,7 @@ import { ApiErrorHandler } from './components/ApiErrorHandler';
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const TrendsPage = lazy(() => import('./pages/TrendsPage'));
 const AnalysisNewPage = lazy(() => import('./pages/AnalysisNewPage'));
 const AnalysisListPage = lazy(() => import('./pages/AnalysisListPage'));
 const AnalysisDetailPage = lazy(() => import('./pages/AnalysisDetailPage'));
@@ -87,6 +88,7 @@ export default function App() {
                   <Route element={<RequireAuth><MainLayout /></RequireAuth>}>
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/trends" element={<TrendsPage />} />
                     <Route path="/analyses/new" element={<AnalysisNewPage />} />
                     <Route path="/analyses" element={<AnalysisListPage />} />
                     <Route path="/analyses/:id" element={<AnalysisDetailPage />} />

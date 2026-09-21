@@ -1,12 +1,13 @@
 import { Layout, Menu, Button, Dropdown } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { DashboardOutlined, PlusOutlined, FileTextOutlined, CreditCardOutlined, SettingOutlined, LogoutOutlined, BarChartOutlined } from '@ant-design/icons';
+import { DashboardOutlined, PlusOutlined, FileTextOutlined, CreditCardOutlined, SettingOutlined, LogoutOutlined, BarChartOutlined, FireOutlined } from '@ant-design/icons';
 import { useAuth } from '../stores/auth';
 
 const { Header, Sider, Content } = Layout;
 
 const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据面板' },
+  { key: '/trends', icon: <FireOutlined />, label: '热榜' },
   { key: '/analyses/new', icon: <PlusOutlined />, label: '新建分析' },
   { key: '/analyses', icon: <BarChartOutlined />, label: '分析任务' },
   { key: '/reports', icon: <FileTextOutlined />, label: '报告中心' },
