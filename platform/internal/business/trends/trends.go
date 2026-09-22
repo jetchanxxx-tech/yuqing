@@ -43,8 +43,9 @@ type Item struct {
 	Hot   string `json:"hot,omitempty"` // 热度值（可选）
 }
 
-// hotPlatforms 是 V1 平台清单与 RSSHub 路由（顺序即前端 Tab 顺序，GetAll 依此排序）。
-// 准入线（TRENDS_PAGE_PLAN.html §5）：免 Cookie、≥20 条、<15s。
+// hotPlatforms 是 V2 平台清单与 RSSHub 路由（顺序即前端 Tab 顺序，GetAll 依此排序）。
+// 准入线（TRENDS_PAGE_PLAN.html §5）：免 Cookie、≥20 条、<15s，且在生产
+// RSSHub 上实测连续 3 次可用（2026-09-22 实测：新浪科技/36氪 3 连发全过）。
 // 抖音/小红书需 Puppeteer 且反爬严格，生产内存不足以承载 Chromium，
 // 未过准入线暂不上 —— 路由保留在注释里，准入后加回即可。
 var hotPlatforms = []struct {
@@ -54,8 +55,11 @@ var hotPlatforms = []struct {
 	{"微博", "/weibo/search/hot"},
 	{"B站", "/bilibili/hot-search"},
 	{"知乎", "/zhihu/hot"},
+	{"新浪科技", "/sina/rollnews"},
+	{"36氪", "/36kr/newsflashes"},
 	// {"抖音", "/douyin/hot"},            // 未过准入线：严格反爬+Puppeteer
 	// {"小红书", "/xiaohongshu/board/homefeed_recommend"}, // 未过准入线：路由不稳
+	// {"IT之家", "/ithome/rank"},         // 实测 503：路由在但上游抓取失败
 }
 
 // Service aggregates hot topics from RSSHub with in-memory caching.

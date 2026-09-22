@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, Space, Table, Tabs, Tooltip, Typography,
+  Alert, Button, Card, Empty, Input, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  FireOutlined, ReloadOutlined, RocketOutlined,
+  FireOutlined, ReloadOutlined, RocketOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { getTrends, type TrendItem, type TrendPlatform } from '../api/trends';
@@ -20,6 +20,7 @@ const STATUS_TAG: Record<string, { color: string; text: string }> = {
 /**
  * F21 热榜聚合页：多平台热榜快照（纯展示，零存储零计费）。
  * 服务端 5 分钟共享缓存；本页条目过了就过了，不保留历史。
+ * 支持跨平台关键字过滤：输入关键字后聚合展示所有平台的命中条目。
  */
 export default function TrendsPage() {
   // refetchInterval 90s：服务端 5min 缓存，前端轻轮询只为多 Tab 场景保鲜
@@ -31,7 +32,20 @@ export default function TrendsPage() {
 
   const platforms = trendsQ.data ?? [];
   const [activeKey, setActiveKey] = useState<string>('');
+  const [keyword, setKeyword] = useState('');
+  const kw = keyword.trim().toLowerCase();
   const active = platforms.find((p) => p.name === activeKey) ?? platforms[0];
+
+  // 跨平台聚合命中项（仅关键字非空时使用）
+  const hits = useMemo(() => {
+    if (!kw) return [];
+    return platforms.flatMap((p) =>
+      p.items
+        .filter((it) => it.title.toLowerCase().includes(kw))
+        .map((it) => ({ ...it, platform: p.name, platformStatus: p.status })),
+    );
+  }, [platforms, kw]);
+  const hitCount = hits.length;
 
   return (
     <div>
@@ -44,13 +58,23 @@ export default function TrendsPage() {
             实时快照，不保留历史 · 每 5 分钟自动更新
           </Typography.Text>
         </div>
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={() => void trendsQ.refetch()}
-          loading={trendsQ.isFetching}
-        >
-          刷新
-        </Button>
+        <Space>
+          <Input
+            allowClear
+            prefix={<SearchOutlined style={{ color: 'rgba(0,0,0,0.3)' }} />}
+            placeholder="跨平台搜索热榜关键字"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            style={{ width: 240 }}
+          />
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => void trendsQ.refetch()}
+            loading={trendsQ.isFetching}
+          >
+            刷新
+          </Button>
+        </Space>
       </div>
 
       {trendsQ.isLoading && (
@@ -69,7 +93,25 @@ export default function TrendsPage() {
         />
       )}
 
-      {platforms.length > 0 && (
+      {platforms.length > 0 && kw !== '' && (
+        <Card style={{ borderRadius: 16 }} styles={{ body: { paddingTop: 8 } }}>
+          <div style={{ padding: '12px 16px 4px' }}>
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              关键字「{keyword.trim()}」在全部平台共命中 <strong>{hitCount}</strong> 条
+            </Typography.Text>
+          </div>
+          {hitCount === 0 ? (
+            <Empty
+              style={{ padding: '24px 0 32px' }}
+              description={`所有平台的热榜中都没有包含「${keyword.trim()}」的条目`}
+            />
+          ) : (
+            <HitsTable hits={hits} />
+          )}
+        </Card>
+      )}
+
+      {platforms.length > 0 && kw === '' && (
         <Card style={{ borderRadius: 16 }} styles={{ body: { paddingTop: 8 } }}>
           <Tabs
             activeKey={active?.name}
@@ -91,6 +133,92 @@ export default function TrendsPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+interface HitItem extends TrendItem {
+  platform: string;
+  platformStatus: string;
+}
+
+/** 跨平台搜索结果表：每条带来源平台标记，保留"分析"跳转 */
+function HitsTable({ hits }: { hits: HitItem[] }) {
+  return (
+    <Table<HitItem>
+      size="middle"
+      rowKey={(it) => `${it.platform}-${it.rank}`}
+      dataSource={hits}
+      pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (t) => `共 ${t} 条` }}
+      locale={{ emptyText: '暂无数据' }}
+      columns={[
+        {
+          title: '平台',
+          dataIndex: 'platform',
+          width: 100,
+          render: (platform: string, it: HitItem) => (
+            <Space size={4}>
+              <span
+                style={{
+                  width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
+                  background: STATUS_TAG[it.platformStatus]?.color ?? '#9ca3af',
+                }}
+              />
+              <Tag style={{ marginInlineEnd: 0 }}>{platform}</Tag>
+            </Space>
+          ),
+        },
+        {
+          title: '#',
+          dataIndex: 'rank',
+          width: 56,
+          render: (rank: number) => (
+            <span style={{
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              color: rank <= 3 ? '#FF2442' : 'rgba(0,0,0,0.45)',
+            }}>
+              {rank}
+            </span>
+          ),
+        },
+        {
+          title: '标题',
+          dataIndex: 'title',
+          render: (title: string, item: TrendItem) => {
+            // 只渲染 http(s) 外链，防数据源异常时注入 javascript: scheme
+            const safe = /^https?:\/\//.test(item.url);
+            return safe ? (
+              <a href={item.url} target="_blank" rel="noreferrer">{title}</a>
+            ) : (
+              <span>{title}</span>
+            );
+          },
+        },
+        {
+          title: '热度',
+          dataIndex: 'hot',
+          width: 110,
+          render: (hot?: string) =>
+            hot ? (
+              <span style={{ color: '#FF2442', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{hot}</span>
+            ) : (
+              <span style={{ color: 'rgba(0,0,0,0.3)' }}>-</span>
+            ),
+        },
+        {
+          title: '',
+          key: 'action',
+          width: 90,
+          render: (_: unknown, item: TrendItem) => (
+            <Tooltip title="用该关键词发起深度分析（消耗 1 次报告额度）">
+              <Link to={`/analyses/new?keywords=${encodeURIComponent(item.title)}`}>
+                <Button size="small" icon={<RocketOutlined />}>分析</Button>
+              </Link>
+            </Tooltip>
+          ),
+        },
+      ]}
+    />
   );
 }
 
