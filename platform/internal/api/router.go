@@ -32,6 +32,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	authGroup := r.Group("/api/v1/auth")
 	v1.RegisterAuthRoutes(authGroup, deps)
 
+	// 邮箱验证落地页（公开）：用户点击邮件链接时不带 Authorization 头。
+	v1.RegisterUserCenterPublicRoutes(authGroup, deps)
+
 	// 支付渠道回调（公开路由，免鉴权）：安全由渠道验签保证（防线 1）。
 	r.POST("/api/v1/callbacks/payment/:channel", v1.HandlePaymentCallback(deps))
 
@@ -53,6 +56,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 		v1.RegisterBillingRoutes(api, deps)
 		v1.RegisterTrendsRoutes(api, deps)
 		v1.RegisterAdminRoutes(api, deps)
+		v1.RegisterUserCenterRoutes(api, deps)
 	}
 
 	return r

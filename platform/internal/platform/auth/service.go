@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -32,6 +33,14 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Name         string
+	// ── 用户中心 P0 字段（迁移 0007；memory store 全量支持，pg store 渐进接线）──
+	Phone             string
+	AvatarURL         string
+	Timezone          string
+	EmailVerifiedAt   *time.Time
+	PhoneVerifiedAt   *time.Time
+	PasswordChangedAt *time.Time
+	TrialAnalysisUsed int
 }
 
 // Tenant is the platform tenant row created during registration.
@@ -78,6 +87,22 @@ type Service struct {
 	// postRegister 注册成功后的钩子（组合根接入 credit.Service：新租户赠
 	// 试用额度）。失败不阻断注册（用户仍可购买），只降级为无试用额度。
 	postRegister func(ctx context.Context, tenantID string) error
+
+	// ── 用户中心 P0 依赖（组合根装配；nil = 功能未启用，fail-closed）──
+	userStore     UserStore          // 用户中心存储
+	verifications VerificationStore // 验证码/验证 token 存储
+	smsSender     SMSProvider        // 短信发送
+	emailSender   MailSender         // 邮件发送
+	verifyBaseURL string             // 邮箱验证链接前缀（如 https://yuqing2.pangu-cloud.com）
+}
+
+// EnableUserCenter 装配用户中心 P0 依赖（组合根调用）。
+func (s *Service) EnableUserCenter(users UserStore, verifications VerificationStore, sms SMSProvider, mail MailSender, verifyBaseURL string) {
+	s.userStore = users
+	s.verifications = verifications
+	s.smsSender = sms
+	s.emailSender = mail
+	s.verifyBaseURL = verifyBaseURL
 }
 
 // SetPostRegister 挂接注册后回调。

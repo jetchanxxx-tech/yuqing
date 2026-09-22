@@ -15,6 +15,9 @@ type Provider interface {
 
 	// SendTestEmail 发送测试邮件（管理后台配置验证）
 	SendTestEmail(ctx context.Context, to string) error
+
+	// SendRaw 发送自定义 HTML 邮件（用户中心等通用场景）
+	SendRaw(ctx context.Context, to, subject, htmlBody string) error
 }
 
 // Config 邮件服务配置

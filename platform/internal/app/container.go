@@ -123,6 +123,27 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// 用该邮箱注册的账号即获得平台管理权限（YUQING_BOOTSTRAP_ADMIN_EMAIL）。
 	authSvc.SetBootstrapAdminEmail(os.Getenv("YUQING_BOOTSTRAP_ADMIN_EMAIL"))
 
+	// 用户中心 P0：邮箱验证 / 手机号绑定 / 个人资料 / 修改密码。
+	// UserStore 复用 authStore 底层实现（内存/PG 都实现了 UserStore）；
+	// 验证凭据按 driver 选存储；邮件/短信通道从 settings 动态读取（admin 在线配置）。
+	userStore, ok := authStore.(auth.UserStore)
+	if !ok {
+		panic("app: auth store does not implement auth.UserStore")
+	}
+	var verifications auth.VerificationStore
+	if cfg.Store.Driver == "postgres" && platformPool != nil {
+		verifications = auth.NewPGVerificationStore(platformPool)
+	} else {
+		verifications = auth.NewMemoryVerificationStore()
+	}
+	authSvc.EnableUserCenter(
+		userStore,
+		verifications,
+		NewSettingsSMS(platformSettings),
+		NewSettingsMailer(platformSettings),
+		os.Getenv("YUQING_PUBLIC_BASE_URL"),
+	)
+
 	tenantSvc := tenant.NewService(tenantStore)
 
 	// Report plan gating resolves the tenant's current plan from the shared

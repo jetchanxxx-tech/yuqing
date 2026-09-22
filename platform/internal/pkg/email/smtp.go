@@ -58,6 +58,11 @@ func (p *SMTPProvider) SendTestEmail(ctx context.Context, to string) error {
 	return p.sendEmail(to, "邮件服务测试 - 盘古舆情", html)
 }
 
+// SendRaw 发送自定义 HTML 邮件。
+func (p *SMTPProvider) SendRaw(_ context.Context, to, subject, htmlBody string) error {
+	return p.sendEmail(to, subject, htmlBody)
+}
+
 // sendEmail SMTP 发送邮件实现
 func (p *SMTPProvider) sendEmail(to, subject, htmlBody string) error {
 	from := fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress)

@@ -2,6 +2,9 @@
 -- 用户中心 P0 功能：修改密码 + 邮箱验证 + 个人资料 + 手机号绑定
 -- 基于：用户决策 2026-09-22 + 方案 B（允许试用 1 次）
 
+-- EXCLUDE USING gist 约束需要 btree_gist 扩展（text 等值比较）
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 -- ─────────────────────────────────────────────────────────
 -- 1. users 表新增字段
 -- ─────────────────────────────────────────────────────────
@@ -119,26 +122,26 @@ COMMENT ON CONSTRAINT unique_phone_purpose_recent ON sms_verification_codes IS '
 
 -- ─────────────────────────────────────────────────────────
 -- 5. platform_settings 新增配置项（邮件/短信服务）
--- ─────────────────────────────────────────────────────────
+-- 表结构（0002）：key/value/updated_at 三列，无 description
 -- 邮件服务配置（Resend / SMTP）
-INSERT INTO platform_settings (key, value, description) VALUES
-  ('email_provider', 'resend', '邮件服务商：resend | smtp'),
-  ('resend_api_key', '', 'Resend API Key'),
-  ('email_from_address', 'noreply@pangu-cloud.com', '发件人邮箱'),
-  ('email_from_name', '盘古舆情', '发件人名称'),
-  ('smtp_host', '', 'SMTP 主机（备选）'),
-  ('smtp_port', '465', 'SMTP 端口'),
-  ('smtp_username', '', 'SMTP 用户名'),
-  ('smtp_password', '', 'SMTP 密码')
+INSERT INTO platform_settings (key, value) VALUES
+  ('email_provider', 'resend'),
+  ('resend_api_key', ''),
+  ('email_from_address', 'noreply@pangu-cloud.com'),
+  ('email_from_name', '盘古舆情'),
+  ('smtp_host', ''),
+  ('smtp_port', '465'),
+  ('smtp_username', ''),
+  ('smtp_password', '')
 ON CONFLICT (key) DO NOTHING;
 
 -- 短信服务配置（阿里云 / 腾讯云）
-INSERT INTO platform_settings (key, value, description) VALUES
-  ('sms_provider', 'aliyun', '短信服务商：aliyun | tencent'),
-  ('sms_access_key_id', '', 'AccessKey ID'),
-  ('sms_access_key_secret', '', 'AccessKey Secret'),
-  ('sms_sign_name', '盘古舆情', '短信签名'),
-  ('sms_template_code', '', '短信模板 ID')
+INSERT INTO platform_settings (key, value) VALUES
+  ('sms_provider', 'aliyun'),
+  ('sms_access_key_id', ''),
+  ('sms_access_key_secret', ''),
+  ('sms_sign_name', '盘古舆情'),
+  ('sms_template_code', '')
 ON CONFLICT (key) DO NOTHING;
 
 -- +goose Down

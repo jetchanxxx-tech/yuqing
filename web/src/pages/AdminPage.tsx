@@ -45,6 +45,7 @@ export default function AdminPage() {
         items={[
           { key: 'tenants', label: '租户管理', children: <TenantsTab /> },
           { key: 'datasource', label: '数据源配置', children: <DataSourceTab /> },
+          { key: 'notify', label: '通知服务', children: <NotifyTab /> },
           { key: 'payment', label: '支付渠道', children: <PaymentTab /> },
         ]}
       />
@@ -514,4 +515,239 @@ function PaymentTab() {
     );
   }
   return <div style={{ maxWidth: 760 }}>{PAYMENT_CHANNELS.map(renderChannel)}</div>;
+}
+
+// ════════════════════════════════════════════════════════════
+// 通知服务（邮件 Resend/SMTP + 短信 阿里云/腾讯云）
+// ════════════════════════════════════════════════════════════
+
+function NotifyTab() {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const settingsQ = useQuery({ queryKey: ['admin', 'settings'], queryFn: getAdminSettings });
+  const saveQ = useMutation({
+    mutationFn: (patch: Record<string, string>) => updateAdminSettings(patch),
+    onSuccess: () => {
+      message.success('配置已保存，即刻生效');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
+    },
+  });
+
+  const s = settingsQ.data ?? {};
+  const emailReady =
+    (s.email_provider === 'resend' && !!s.resend_api_key && !!s.email_from_address) ||
+    (s.email_provider === 'smtp' && !!s.smtp_host && !!s.email_from_address);
+  const smsReady = !!s.sms_access_key_id && !!s.sms_template_code;
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Alert
+        type="info"
+        showIcon
+        message="邮件与短信通道（独立部署各环境自行配置）"
+        description="邮箱验证、找回密码、告警通知走邮件通道；手机号绑定与后续手机号登录走短信通道。密钥保存在平台配置中，保存后即刻生效、无需重启。"
+      />
+
+      {/* ── 邮件服务 ── */}
+      <Card style={{ borderRadius: 16 }} title="📧 邮件服务">
+        <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="当前状态">
+            <Tag color={emailReady ? 'success' : 'warning'}>{emailReady ? '已配置' : '未配置'}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Resend Key">{maskKey(s.resend_api_key)}</Descriptions.Item>
+          <Descriptions.Item label="发件人">{s.email_from_address || '未配置'}</Descriptions.Item>
+        </Descriptions>
+
+        <EmailForm initial={s} saving={saveQ.isPending} onSave={(patch) => saveQ.mutate(patch)} />
+      </Card>
+
+      {/* ── 短信服务 ── */}
+      <Card style={{ borderRadius: 16 }} title="📱 短信服务">
+        <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="当前状态">
+            <Tag color={smsReady ? 'success' : 'warning'}>{smsReady ? '已配置' : '未配置'}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="AccessKey">{maskKey(s.sms_access_key_id)}</Descriptions.Item>
+          <Descriptions.Item label="签名">{s.sms_sign_name || '未配置'}</Descriptions.Item>
+        </Descriptions>
+
+        <SmsForm initial={s} saving={saveQ.isPending} onSave={(patch) => saveQ.mutate(patch)} />
+      </Card>
+    </Space>
+  );
+}
+
+function EmailForm({
+  initial,
+  saving,
+  onSave,
+}: {
+  initial: Record<string, string | undefined>;
+  saving: boolean;
+  onSave: (patch: Record<string, string>) => void;
+}) {
+  const [provider, setProvider] = useState(initial.email_provider || 'resend');
+  const [resendKey, setResendKey] = useState('');
+  const [fromAddr, setFromAddr] = useState(initial.email_from_address || '');
+  const [fromName, setFromName] = useState(initial.email_from_name || '');
+  const [smtpHost, setSmtpHost] = useState(initial.smtp_host || '');
+  const [smtpPort, setSmtpPort] = useState(initial.smtp_port || '465');
+  const [smtpUser, setSmtpUser] = useState(initial.smtp_username || '');
+  const [smtpPass, setSmtpPass] = useState('');
+
+  const save = () => {
+    const patch: Record<string, string> = {
+      email_provider: provider,
+      email_from_address: fromAddr.trim(),
+      email_from_name: fromName.trim() || '盘古舆情',
+    };
+    if (provider === 'resend') {
+      if (resendKey.trim()) patch.resend_api_key = resendKey.trim();
+    } else {
+      patch.smtp_host = smtpHost.trim();
+      patch.smtp_port = smtpPort.trim() || '465';
+      patch.smtp_username = smtpUser.trim();
+      if (smtpPass.trim()) patch.smtp_password = smtpPass.trim();
+    }
+    onSave(patch);
+  };
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <div>
+        <Typography.Text strong>服务商</Typography.Text>
+        <div style={{ marginTop: 8 }}>
+          <Space>
+            {['resend', 'smtp'].map((p) => (
+              <Button key={p} type={provider === p ? 'primary' : 'default'} onClick={() => setProvider(p)}>
+                {p === 'resend' ? 'Resend（推荐）' : 'SMTP（自定义）'}
+              </Button>
+            ))}
+          </Space>
+        </div>
+      </div>
+
+      {provider === 'resend' ? (
+        <div>
+          <Typography.Text strong>Resend API Key</Typography.Text>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 13, margin: '4px 0 8px' }}>
+            免费 3000 封/月，注册获取：resend.com（填新 Key 才会覆盖旧值）
+          </Typography.Paragraph>
+          <Input.Password
+            placeholder="re_..."
+            value={resendKey}
+            onChange={(e) => setResendKey(e.target.value)}
+            style={{ maxWidth: 520 }}
+          />
+        </div>
+      ) : (
+        <>
+          <div>
+            <Typography.Text strong>SMTP 主机 / 端口</Typography.Text>
+            <Space style={{ marginTop: 8 }}>
+              <Input placeholder="smtp.example.com" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} style={{ width: 320 }} />
+              <Input placeholder="465" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} style={{ width: 90 }} />
+            </Space>
+          </div>
+          <div>
+            <Typography.Text strong>SMTP 用户名 / 密码</Typography.Text>
+            <Space style={{ marginTop: 8 }}>
+              <Input placeholder="用户名" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} style={{ width: 200 }} />
+              <Input.Password placeholder="密码（填新值才覆盖）" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} style={{ width: 300 }} />
+            </Space>
+          </div>
+        </>
+      )}
+
+      <div>
+        <Typography.Text strong>发件人</Typography.Text>
+        <Space style={{ marginTop: 8 }}>
+          <Input placeholder="noreply@your-domain.com" value={fromAddr} onChange={(e) => setFromAddr(e.target.value)} style={{ width: 320 }} />
+          <Input placeholder="发件人名称（盘古舆情）" value={fromName} onChange={(e) => setFromName(e.target.value)} style={{ width: 200 }} />
+        </Space>
+      </div>
+
+      <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
+        保存邮件配置
+      </Button>
+    </Space>
+  );
+}
+
+function SmsForm({
+  initial,
+  saving,
+  onSave,
+}: {
+  initial: Record<string, string | undefined>;
+  saving: boolean;
+  onSave: (patch: Record<string, string>) => void;
+}) {
+  const [provider, setProvider] = useState(initial.sms_provider || 'aliyun');
+  const [akId, setAkId] = useState('');
+  const [akSecret, setAkSecret] = useState('');
+  const [signName, setSignName] = useState(initial.sms_sign_name || '');
+  const [templateCode, setTemplateCode] = useState(initial.sms_template_code || '');
+  const [sdkAppId, setSdkAppId] = useState(initial.sms_sdk_app_id || '');
+
+  const save = () => {
+    const patch: Record<string, string> = {
+      sms_provider: provider,
+      sms_sign_name: signName.trim(),
+      sms_template_code: templateCode.trim(),
+    };
+    if (akId.trim()) patch.sms_access_key_id = akId.trim();
+    if (akSecret.trim()) patch.sms_access_key_secret = akSecret.trim();
+    if (provider === 'tencent') patch.sms_sdk_app_id = sdkAppId.trim();
+    onSave(patch);
+  };
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <div>
+        <Typography.Text strong>服务商</Typography.Text>
+        <div style={{ marginTop: 8 }}>
+          <Space>
+            {['aliyun', 'tencent'].map((p) => (
+              <Button key={p} type={provider === p ? 'primary' : 'default'} onClick={() => setProvider(p)}>
+                {p === 'aliyun' ? '阿里云' : '腾讯云'}
+              </Button>
+            ))}
+          </Space>
+        </div>
+      </div>
+
+      <div>
+        <Typography.Text strong>AccessKey ID / Secret</Typography.Text>
+        <Space style={{ marginTop: 8 }}>
+          <Input placeholder="AccessKey ID（填新值才覆盖）" value={akId} onChange={(e) => setAkId(e.target.value)} style={{ width: 260 }} />
+          <Input.Password placeholder="AccessKey Secret（填新值才覆盖）" value={akSecret} onChange={(e) => setAkSecret(e.target.value)} style={{ width: 300 }} />
+        </Space>
+      </div>
+
+      {provider === 'tencent' && (
+        <div>
+          <Typography.Text strong>SDK AppID（腾讯云专属）</Typography.Text>
+          <div style={{ marginTop: 8 }}>
+            <Input placeholder="14xxx" value={sdkAppId} onChange={(e) => setSdkAppId(e.target.value)} style={{ width: 260 }} />
+          </div>
+        </div>
+      )}
+
+      <div>
+        <Typography.Text strong>短信签名 / 验证码模板 ID</Typography.Text>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13, margin: '4px 0 8px' }}>
+          签名需营业执照报备（1-2 工作日）；模板示例：「您的验证码为{'{'}code{'}'}，5分钟内有效」
+        </Typography.Paragraph>
+        <Space>
+          <Input placeholder="盘古舆情" value={signName} onChange={(e) => setSignName(e.target.value)} style={{ width: 200 }} />
+          <Input placeholder="SMS_12345678" value={templateCode} onChange={(e) => setTemplateCode(e.target.value)} style={{ width: 240 }} />
+        </Space>
+      </div>
+
+      <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
+        保存短信配置
+      </Button>
+    </Space>
+  );
 }

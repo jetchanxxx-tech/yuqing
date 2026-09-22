@@ -89,3 +89,17 @@ func (p *ResendProvider) SendTestEmail(ctx context.Context, to string) error {
 
 	return nil
 }
+
+// SendRaw 发送自定义 HTML 邮件。
+func (p *ResendProvider) SendRaw(_ context.Context, to, subject, htmlBody string) error {
+	params := &resend.SendEmailRequest{
+		From:    fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress),
+		To:      []string{to},
+		Subject: subject,
+		Html:    htmlBody,
+	}
+	if _, err := p.client.Emails.Send(params); err != nil {
+		return fmt.Errorf("resend send email failed: %w", err)
+	}
+	return nil
+}
