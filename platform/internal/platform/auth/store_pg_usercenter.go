@@ -180,10 +180,10 @@ func (s *PGVerificationStore) ConsumeEmailToken(ctx context.Context, token strin
 	return nil
 }
 
-// SaveSMSCode 保存验证码（phone 主键，同手机号覆盖旧码 = 天然防刷限流辅助）。
+// SaveSMSCode 保存验证码（phone 唯一，同手机号覆盖旧码 = 天然防刷限流辅助）。
 func (s *PGVerificationStore) SaveSMSCode(ctx context.Context, phone, purpose, code string, ttl time.Duration) error {
-	const q = `INSERT INTO sms_verification_codes (phone, code, purpose, expires_at)
-		VALUES ($1, $2, $3, $4)
+	const q = `INSERT INTO sms_verification_codes (id, phone, code, purpose, expires_at)
+		VALUES (md5(random()::text), $1, $2, $3, $4)
 		ON CONFLICT (phone) DO UPDATE SET code = EXCLUDED.code,
 			purpose = EXCLUDED.purpose, expires_at = EXCLUDED.expires_at, created_at = now()`
 	if _, err := s.pool.Exec(ctx, q, phone, code, purpose, time.Now().Add(ttl)); err != nil {

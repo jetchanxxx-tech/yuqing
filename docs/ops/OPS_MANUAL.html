@@ -31,7 +31,7 @@
 <div class="wrap">
 
 <h1>盘古舆情 · 运维手册</h1>
-<p style="color:var(--fg-2)">适用版本：yuqing 命名主线（2026-09-13）· 生产环境 https://yuqing.pangu-cloud.com · 服务器 47.120.20.10（Ubuntu 24.04）</p>
+<p style="color:var(--fg-2)">适用版本：yuqing 命名主线（2026-09-13）· <b>当前唯一生产环境：https://yuqing2.pangu-cloud.com</b>（101.96.209.90:22352，CentOS Stream 9，2026-09-22 起）· 老机 47.120.20.10（Ubuntu 24.04）已废弃。本手册组件级说明通用，环境差异与 yuqing2 专章见 <a href="DEPLOYMENT_RUNBOOK.md">DEPLOYMENT_RUNBOOK.md</a> §9</p>
 
 <nav>
   <a href="#repo">① 代码与部署</a>
@@ -43,6 +43,7 @@
   <a href="#logs">⑦ 日志路径</a>
   <a href="#health">⑧ 自检与自启</a>
   <a href="#cert">⑨ 证书/备份/排障</a>
+  <a href="#usercenter">⑩ 用户中心</a>
 </nav>
 
 <!-- ═══════════════════ ① 代码与部署 ═══════════════════ -->
@@ -282,7 +283,31 @@ gunzip -c yuqing_platform-XXXX.sql.gz | sudo -u postgres psql -d yuqing_platform
 </table>
 </div>
 
-<p style="color:var(--fg-2);margin-top:40px">盘古舆情 · 运维手册 v2.0（2026-09-13）· 配套文档：<a href="DEPLOYMENT_LOG.html">部署日志</a>、<a href="CICD_PLAN.html">CI/CD 规划</a></p>
+<!-- ═══════════════════ ⑩ 用户中心 ═══════════════════ -->
+<h2 id="usercenter">十、用户中心运维（v0.1.1-beta，2026-09-22 上线）</h2>
+<div class="card">
+<h3>10.1 通知服务配置（管理后台 → 通知服务 Tab）</h3>
+<p>用户中心邮件（验证/改密）与短信（手机绑定）的供应商凭据<b>用户自备</b>（供应商账号实名与签名/模板报备由使用者办理）。admin 在「通知服务」Tab 在线填写，存 <code>platform_settings</code> 表，保存即时生效、<b>无需重启</b>。配置键在迁移 0007 已 seed（空值占位），后台只需填值。</p>
+<table>
+  <tr><th>通道</th><th>供应商</th><th>配置键（platform_settings）</th></tr>
+  <tr><td rowspan="2">邮件</td><td>Resend</td><td><code>email_provider=resend</code>、<code>resend_api_key</code>、<code>email_from_address</code>（必填）、<code>email_from_name</code></td></tr>
+  <tr><td>SMTP</td><td><code>email_provider=smtp</code>、<code>smtp_host</code> / <code>smtp_port</code>（缺省 465）/ <code>smtp_username</code> / <code>smtp_password</code>、<code>email_from_address</code>（必填）</td></tr>
+  <tr><td>短信</td><td>阿里云 / 腾讯云</td><td><code>sms_provider=aliyun|tencent</code>、<code>sms_access_key_id</code> / <code>sms_access_key_secret</code>（腾讯云对应 SecretId/SecretKey）、<code>sms_sign_name</code>、<code>sms_template_code</code>；腾讯云另需 <code>sms_sdk_app_id</code></td></tr>
+</table>
+<div class="note warn"><b>未配置 = fail-closed</b>：发码接口直接报错 <code>mail: email_from_address not configured (admin settings)</code> / <code>sms: sms_provider not configured (admin settings)</code>，不会静默吞码。排查用户「收不到验证码」第一步：看后台通知服务是否已配置、供应商侧余额与签名/模板状态。</div>
+
+<h3>10.2 防刷机制</h3>
+<table>
+  <tr><th>机制</th><th>阈值</th><th>表现</th></tr>
+  <tr><td>发码节流</td><td>同一目标（邮箱/手机号）<b>60 秒一次</b></td><td>超频 HTTP <b>429</b>（QUOTA_EXCEEDED，提示稍候再试）</td></tr>
+  <tr><td>验证码防穷举</td><td>单个验证码<b>错误 5 次作废</b></td><td>第 5 次错码后验证码立即作废，此后即使提交正确码也 404（too many attempts, code invalidated），须重新发码</td></tr>
+</table>
+
+<h3>10.3 trial_analysis_used 字段语义</h3>
+<p>方案 B 试用机制：<b>邮箱未验证的用户允许试用 1 次分析</b>。额度记录在 <code>users.trial_analysis_used</code>，消费时原子扣减（0→1，UPDATE 带 <code>WHERE COALESCE(trial_analysis_used,0)=0</code> 条件，单条 SQL 竞态安全），用完即止、无恢复机制。</p>
+</div>
+
+<p style="color:var(--fg-2);margin-top:40px">盘古舆情 · 运维手册 v2.1（2026-09-22）· 配套文档：<a href="DEPLOYMENT_LOG.html">部署日志</a>、<a href="CICD_PLAN.html">CI/CD 规划</a></p>
 </div>
 </body>
 </html>

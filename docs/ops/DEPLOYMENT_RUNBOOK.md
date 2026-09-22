@@ -335,3 +335,28 @@ sudo chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑�
 □ 创建真实分析 → completed，result 五维+摘要+报告齐备，warning 为空
 □ 外网 https://yuqing2.pangu-cloud.com/ 200（自签证书浏览器需手动信任）
 ```
+
+### 9.7 v0.1.1-beta 用户中心部署记录（2026-09-22）
+
+**部署内容**：
+
+- 迁移 0007（`platform/migrations/platform/0007_user_center_p0.sql`）：users 新列（`phone` / `trial_analysis_used` / `email_verified_at` / `avatar_url` / `timezone` / `password_changed_at`）+ 三张新表（`verification_tokens` / `sms_verification_codes` / `login_sessions`）+ platform_settings 邮件/短信配置键 seed（`email_*` / `smtp_*` / `resend_api_key` / `sms_*`）
+- 三二进制（server / worker / cli，本地交叉编译上传）+ 前端 dist
+- 新增 systemd drop-in `/etc/systemd/system/yuqing-server.service.d/public-base-url.conf`：注入 `YUQING_PUBLIC_BASE_URL=https://yuqing2.pangu-cloud.com` —— 邮箱验证链接的基地址改由环境变量注入，不再取请求 Host 头（防 Host 头伪造投毒验证邮件链接）
+
+**部署顺序**（实测有效，后续升级照此）：
+
+```
+停服(server+worker) → 换二进制/dist → 事务试跑迁移（sed 提取 Up 段，BEGIN; \i up.sql; ROLLBACK; 验语法不落库）
+  → 正式迁移 → 注入 drop-in + daemon-reload → 启服 → 验收
+```
+
+**⚠️ 本次三个踩坑（后续升级必读）**：
+
+| # | 坑 | 说明 |
+|---|---|---|
+| ① | yuqing-cli 用 embed FS 打包迁移 SQL | 迁移 SQL 在**编译期**嵌入二进制（go:embed）——改服务器磁盘上的迁移文件**无效**，必须本地重编译 CLI 再上传。磁盘上 `/opt/yuqing/migrations/` 那份只是留档 |
+| ② | PL/pgSQL `$$` 块必须加 StatementBegin/End 标记 | goose 默认按分号切割语句，`DO $$ ... $$` / 函数体内的分号会被腰斩，报 `42601 syntax error`。**psql 直接执行能过但 goose 失败**——两种执行器对「语句边界」的语义不同。`$$` 块前后必须加 `-- +goose StatementBegin` / `-- +goose StatementEnd` |
+| ③ | yuqing-cli 必须带 YUQING_CONFIG | unit 的 WorkingDirectory=/opt/yuqing 但 config.yaml 在 `config/` 子目录，裸跑 `bin/yuqing-cli` 找不到配置。统一写法：`cd /opt/yuqing && YUQING_CONFIG=/opt/yuqing/config/config.yaml bin/yuqing-cli migrate platform` |
+
+**部署后复核（2026-09-22 全通过）**：8 服务全 active；goose_db_version=7（0001-0007 全 applied）；users 六新列 + 三新表在位；/api/v1/health 200；`PUT /auth/password`、`GET /user/profile` 未带 token → 401；`GET /auth/verify-email` 缺 token → 400（非 404）；server 近 1 小时日志零 error/panic。二进制 md5（与本地构建产物一致）：server `fc710f0b7b4a3c2ab6ce891097322b46`、worker `32780f6387227f7875b9422196b45183`、cli `e3cc2a846fe4701504f4f3cbed4da12a`。

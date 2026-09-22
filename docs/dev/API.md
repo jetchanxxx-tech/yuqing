@@ -244,6 +244,86 @@ data: {"state":"fetching","progress":45}
 
 ---
 
+## 用户中心
+
+账户自助管理：密码修改、邮箱验证、个人资料、手机号绑定。除 `GET /verify-email`（邮件链接落地）外均需 `Authorization: Bearer <access_token>`。
+
+### PUT /auth/password
+修改登录密码。新密码要求 ≥8 位且含字母与数字（强度不足返回 `409`）；成功后**当前登录态立即失效**，需用新密码重新登录。
+
+```json
+// Request
+{ "old_password": "********", "new_password": "********" }
+// Response 200
+{ "message": "password changed, please log in again" }
+```
+
+### POST /auth/send-verification-email
+发送邮箱验证邮件（60s 节流，窗口内重复请求 `429`）。邮件服务未配置时返回 500（fail-closed，不会产生「看似已发送」的假状态）。
+
+```json
+// Response 200
+{ "message": "verification email sent" }
+```
+
+### GET /verify-email?token=xxx
+邮箱验证链接落地端点（**免鉴权**，用户从邮件点击跳转）。token 一次性，验证成功后 `email_verified=true`；token 无效或过期返回 `404 NOT_FOUND`。
+
+```json
+// Response 200
+{ "message": "email verified successfully" }
+```
+
+### GET /user/profile
+当前用户资料。`phone` 脱敏返回（如 `138****8000`，未绑定为空串）；`trial_used` 表示免费试用分析是否已消耗（0/1）。
+
+```json
+// Response 200
+{ "id": "01...", "email": "alice@example.com", "name": "Alice", "avatar_url": "",
+  "timezone": "Asia/Shanghai", "phone": "", "email_verified": false, "phone_verified": false,
+  "trial_used": 0, "password_changed_at": "" }
+```
+
+### PUT /user/profile
+修改昵称与时区。昵称 2-20 字符，超长返回 `409`。
+
+```json
+// Request
+{ "name": "新昵称", "timezone": "Asia/Shanghai" }
+// Response 200（返回更新后的完整 profile，结构同 GET /user/profile）
+```
+
+### POST /user/phone/send-code
+发送短信验证码（绑定场景，6 位数字，5 分钟有效）。60s 节流（`429`）；同一手机号新码覆盖旧码。短信服务未配置时返回 500（fail-closed）。
+
+```json
+// Request
+{ "phone": "13800138000" }
+// Response 200
+{ "message": "verification code sent", "expires_in": 300 }
+```
+
+### POST /user/phone/bind
+校验验证码并绑定手机号。验证码输错 5 次即作废（防穷举，`404`）；手机号已被其他账号占用返回 `409`。
+
+```json
+// Request
+{ "phone": "13800138000", "code": "123456" }
+// Response 200（返回更新后的完整 profile，结构同 GET /user/profile）
+```
+
+### POST /user/phone/unbind
+解绑手机号。需验证登录密码（防会话劫持，密码错误 `401`）；**唯一登录方式保护**：邮箱未验证时拒绝解绑（`409`），避免账号失去唯一可登录凭证。
+
+```json
+// Request
+{ "password": "********" }
+// Response 200
+{ "message": "phone unbound" }
+```
+
+---
+
 ## 管理员
 
 权限：`platform_admin` 角色
@@ -293,5 +373,5 @@ data: {"state":"fetching","progress":45}
 | `NOT_FOUND` | 404 | 资源不存在 |
 | `BUDGET_EXCEEDED` | 429 | Token 配额已用完 |
 | `QUOTA_EXCEEDED` | 429 | 并发/次数配额已满 |
-| `CONFLICT` | 409 | 资源冲突 |
+| `CONFLICT` | 409 | 资源冲突（邮箱/手机号已被占用、昵称长度不符、密码强度不足、唯一登录方式保护等） |
 | `INTERNAL` | 500 | 服务器内部错误 |
