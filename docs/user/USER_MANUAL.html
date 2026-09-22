@@ -364,6 +364,7 @@
         <li><a class="sub" href="#s2-8">2.8 账单</a></li>
         <li><a class="sub" href="#s2-9">2.9 账户设置</a></li>
         <li><a class="sub" href="#s2-10">2.10 用户中心</a></li>
+        <li><a class="sub" href="#s2-11">2.11 热榜</a></li>
         <li><a href="#s3">3. 告警配置教程</a></li>
         <li><a href="#s4">4. 管理员手册</a></li>
         <li><a href="#s5">5. 常见问题 FAQ</a></li>
@@ -930,6 +931,31 @@
           </ul>
           <div class="callout info"><p>凭据未配置时，用户端发送验证邮件 / 短信验证码会提示服务未配置——这是有意的安全保护：系统宁可拒绝发送，也不会在凭据缺失时假装发送成功。</p></div>
           <div class="shot"><span class="shot-line">[截图: 用户中心 —— 账户安全 / 个人资料 / 手机绑定]</span></div>
+        </div>
+
+        <div class="panel" id="s2-11">
+          <h3 style="margin-top:0;">2.11 热榜</h3>
+          <p>左侧导航「<b>热榜</b>」聚合多平台实时热点，作为发起舆情分析的起点。纯快照零存储零计费：服务端每 5 分钟自动刷新，条目过了就过了，不保留历史。</p>
+
+          <h4>当前支持的平台（5 个）</h4>
+          <ul class="plain">
+            <li><b>微博</b> · 热搜榜（20 条）；</li>
+            <li><b>B站</b> · 热搜（10 条）；</li>
+            <li><b>知乎</b> · 热榜（20 条）；</li>
+            <li><b>新浪科技</b> · 科技滚动新闻（20 条）；</li>
+            <li><b>36氪</b> · 科技商业快讯（20 条）。</li>
+          </ul>
+          <p>每个平台 Tab 旁的状态点表示数据健康度：<span style="color:#02b940;">●</span> 实时 / <span style="color:#ff7d03;">●</span> 数据延迟（显示上次成功快照）/ <span style="color:#9ca3af;">●</span> 暂不可用。</p>
+
+          <h4>跨平台关键字搜索</h4>
+          <ol class="steps">
+            <li>在页面右上角的搜索框输入关键字（如「新能源」）；</li>
+            <li>页面自动切换为<b>聚合搜索结果</b>：所有平台热榜中包含该关键字的条目一起列出，每条带<b>来源平台</b>标记，顶部显示命中总数；</li>
+            <li>点击条目的「分析」按钮，可直接用该标题发起深度分析（消耗 1 次报告额度）；</li>
+            <li>清空搜索框即恢复按平台 Tab 浏览。</li>
+          </ol>
+          <div class="callout info"><p><b>提示：</b>搜索为客户端过滤（不区分大小写的子串匹配），只覆盖当前已加载的热榜快照；快照不保留历史，想追热点建议看到即分析。</p></div>
+          <div class="shot"><span class="shot-line">[截图: 热榜页 —— 平台 Tab + 跨平台关键字搜索结果]</span></div>
         </div>
       </section>
 
