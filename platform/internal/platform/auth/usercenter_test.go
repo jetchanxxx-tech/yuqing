@@ -307,3 +307,114 @@ func TestTokenIsTwentyFourDigits(t *testing.T) {
 	}
 	_ = time.Now() // 保持 time 导入（ smsCodeTTL 使用）
 }
+
+// ─── 补充覆盖（2026-09-22 测试验证轮） ──────────────────────────
+
+func TestBindPhoneConsumesCodeAfterSuccess(t *testing.T) {
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "pass1234")
+	sms := &fakeSMS{}
+	svc.smsSender = sms
+
+	if err := svc.SendPhoneCode(context.Background(), "u1", "13800138000"); err != nil {
+		t.Fatalf("SendPhoneCode: %v", err)
+	}
+	if err := svc.BindPhone(context.Background(), "u1", "13800138000", sms.code); err != nil {
+		t.Fatalf("BindPhone: %v", err)
+	}
+	// 同码二次绑定必须失败：验证码已消费（防重放）
+	if err := svc.BindPhone(context.Background(), "u1", "13800138000", sms.code); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("绑定成功后同码二次 bind 应 401，得到 %v", err)
+	}
+}
+
+func TestVerificationExpiryBoundaries(t *testing.T) {
+	_, _, verifs := newUCService(t)
+	ctx := context.Background()
+
+	// 邮箱 token 过期边界：过期条目 Load 视为不存在（MemoryVerificationStore expiresAt 判断）
+	if err := verifs.SaveEmailToken(ctx, "expired-tok", "u1", -time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifs.LoadEmailToken(ctx, "expired-tok"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		t.Fatalf("过期 email token 应 404，得到 %v", err)
+	}
+	if err := verifs.SaveEmailToken(ctx, "live-tok", "u1", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if uid, err := verifs.LoadEmailToken(ctx, "live-tok"); err != nil || uid != "u1" {
+		t.Fatalf("未过期 email token 应可读取，got %q %v", uid, err)
+	}
+
+	// 短信验证码过期边界
+	if err := verifs.SaveSMSCode(ctx, "13800138000", "bind", "123456", -time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifs.LoadSMSCode(ctx, "13800138000", "bind"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		t.Fatalf("过期短信验证码应 404，得到 %v", err)
+	}
+}
+
+func TestGetProfilePhoneMasking(t *testing.T) {
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "pass1234")
+	ctx := context.Background()
+
+	// 未绑定手机号：phone 原样输出空串（maskPhone 对非 11 位不加工），phone_verified=false
+	prof, err := svc.GetProfile(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof["phone"] != "" {
+		t.Errorf("未绑定手机号时 phone 应为空串，得到 %q", prof["phone"])
+	}
+	if prof["phone_verified"] != false {
+		t.Error("未绑定时 phone_verified 应为 false")
+	}
+
+	// 绑定后脱敏输出：3+4+4 掩码
+	if err := users.SetPhone(ctx, "u1", "13800138000"); err != nil {
+		t.Fatal(err)
+	}
+	prof, err = svc.GetProfile(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof["phone"] != "138****8000" {
+		t.Errorf("phone 应脱敏为 138****8000，得到 %q", prof["phone"])
+	}
+	if prof["phone_verified"] != true {
+		t.Error("绑定后 phone_verified 应为 true")
+	}
+}
+
+func TestChangePasswordTokenLifecycle(t *testing.T) {
+	// MVP 不撤销旧 token（无服务端会话表可撤销）——锁定现状语义：
+	// 旧密码立即失效、新密码可登录；旧 refresh token 因 JWT 无状态仍可换新
+	// （不 crash），强制重登由客户端丢弃 token 实现（handler 注释承诺）。
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "oldpass1")
+	ctx := context.Background()
+
+	// 构造改密前签发的旧 token 对（Refresh 仅验签不查 store，与主 store 数据无关）
+	pair, err := GenerateTokenPair(Principal{UserID: "u1", Email: "a@test.com"}, "test-secret", "15m", "720h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Authenticate(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("改密前旧 access token 应有效: %v", err)
+	}
+
+	if err := svc.ChangePassword(ctx, "u1", "oldpass1", "newpass99"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	// 旧 refresh token 仍可换新：MVP 不撤销（现状锁定，实现撤销时更新本测试）
+	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != nil {
+		t.Fatalf("旧 refresh token 在 MVP 下不应 crash: %v", err)
+	}
+	// 改密后旧 access token 仍验签通过（同上，无 crash）
+	if _, err := svc.Authenticate(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("旧 access token 在 MVP 下不应 crash: %v", err)
+	}
+}

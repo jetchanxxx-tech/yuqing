@@ -157,7 +157,8 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone stri
 		return err
 	}
 	name = strings.TrimSpace(name)
-	if name != "" && (len(name) < 2 || len(name) > 20) {
+	// 按 rune 计数（中文一字 = 一符），避免多字节误判长度
+	if n := len([]rune(name)); name != "" && (n < 2 || n > 20) {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "name must be 2-20 characters")
 	}
 	return s.userStore.UpdateProfile(ctx, userID, name, "", timezone)

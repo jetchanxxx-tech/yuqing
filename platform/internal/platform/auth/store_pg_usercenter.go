@@ -133,7 +133,7 @@ func (s *PGStore) execUserUpdate(ctx context.Context, q string, args ...any) err
 // ─── VerificationStore（PG 实现） ─────────────────────────────
 
 // PGVerificationStore 验证凭据存储。
-// 邮箱 token → verification_tokens 表（token_type='email_verify'，
+// 邮箱 token → verification_tokens 表（type='email_verify'，
 // user_id 列存目标用户）；
 // 短信验证码 → sms_verification_codes 表（phone 主键，同手机号覆盖旧码）。
 type PGVerificationStore struct {
@@ -147,7 +147,7 @@ func NewPGVerificationStore(pool *pgxpool.Pool) *PGVerificationStore {
 
 // SaveEmailToken 保存邮箱验证 token（同 token 覆盖延长）。
 func (s *PGVerificationStore) SaveEmailToken(ctx context.Context, token, userID string, ttl time.Duration) error {
-	const q = `INSERT INTO verification_tokens (id, user_id, token_type, token, expires_at)
+	const q = `INSERT INTO verification_tokens (id, user_id, type, token, expires_at)
 		VALUES (md5(random()::text), $2, 'email_verify', $1, $3)
 		ON CONFLICT (token) DO UPDATE SET expires_at = EXCLUDED.expires_at, used_at = NULL`
 	if _, err := s.pool.Exec(ctx, q, token, userID, time.Now().Add(ttl)); err != nil {
@@ -159,7 +159,7 @@ func (s *PGVerificationStore) SaveEmailToken(ctx context.Context, token, userID 
 // LoadEmailToken 读取未消费未过期的 token 对应的 userID。
 func (s *PGVerificationStore) LoadEmailToken(ctx context.Context, token string) (string, error) {
 	const q = `SELECT user_id FROM verification_tokens
-		WHERE token = $1 AND token_type = 'email_verify' AND used_at IS NULL AND expires_at > now()`
+		WHERE token = $1 AND type = 'email_verify' AND used_at IS NULL AND expires_at > now()`
 	var userID string
 	err := s.pool.QueryRow(ctx, q, token).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {

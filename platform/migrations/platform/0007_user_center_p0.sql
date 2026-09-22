@@ -1,9 +1,9 @@
 -- +goose Up
 -- 用户中心 P0 功能：修改密码 + 邮箱验证 + 个人资料 + 手机号绑定
 -- 基于：用户决策 2026-09-22 + 方案 B（允许试用 1 次）
-
--- EXCLUDE USING gist 约束需要 btree_gist 扩展（text 等值比较）
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+-- 防刷设计：验证码/ token 采「同键覆盖」语义（SaveSMSCode/SaveEmailToken 的
+-- ON CONFLICT DO UPDATE），handler 级 60s 限流在 P1 落地；不用 EXCLUDE 约束
+-- （now() 不可变 + 会卡住 5 分钟内的合法重发场景）。
 
 -- ─────────────────────────────────────────────────────────
 -- 1. users 表新增字段
@@ -40,23 +40,17 @@ CREATE TABLE verification_tokens (
     id         TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token      TEXT UNIQUE NOT NULL,
-    type       TEXT NOT NULL, -- email_verification | password_reset
+    type       TEXT NOT NULL, -- email_verify | password_reset
     expires_at TIMESTAMPTZ NOT NULL,
     used_at    TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    -- 防刷：同类型 token 5 分钟内只能发 1 次
-    CONSTRAINT unique_user_type_recent
-        EXCLUDE USING btree (user_id WITH =, type WITH =)
-        WHERE (created_at > now() - interval '5 minutes' AND used_at IS NULL)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_verification_tokens_token ON verification_tokens(token) WHERE used_at IS NULL;
 CREATE INDEX idx_verification_tokens_user_type ON verification_tokens(user_id, type);
 CREATE INDEX idx_verification_tokens_expires ON verification_tokens(expires_at) WHERE used_at IS NULL;
 
-COMMENT ON TABLE verification_tokens IS '验证 token 表：邮箱验证、找回密码';
-COMMENT ON CONSTRAINT unique_user_type_recent ON verification_tokens IS '防刷：同类型 token 5 分钟内只能发 1 次';
+COMMENT ON TABLE verification_tokens IS '验证 token 表：邮箱验证、找回密码（token 一次性，消费后置 used_at）';
 
 -- ─────────────────────────────────────────────────────────
 -- 3. login_sessions 表（登录历史，滚动窗口 100 条）
@@ -98,27 +92,20 @@ COMMENT ON FUNCTION cleanup_old_login_sessions IS '滚动窗口触发器：每�
 
 -- ─────────────────────────────────────────────────────────
 -- 4. sms_verification_codes 表（短信验证码，5 分钟过期）
+-- phone 唯一：SaveSMSCode 走 ON CONFLICT (phone) 覆盖旧码（= 天然防刷限流辅助）
 -- ─────────────────────────────────────────────────────────
 CREATE TABLE sms_verification_codes (
     id         TEXT PRIMARY KEY,
-    phone      TEXT NOT NULL,
+    phone      TEXT NOT NULL UNIQUE,
     code       TEXT NOT NULL,  -- 6 位数字
     purpose    TEXT NOT NULL,  -- bind_phone | login | reset_password
     expires_at TIMESTAMPTZ NOT NULL,
-    used_at    TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    -- 防刷：同手机号同用途 60 秒内只能发 1 次
-    CONSTRAINT unique_phone_purpose_recent
-        EXCLUDE USING btree (phone WITH =, purpose WITH =)
-        WHERE (created_at > now() - interval '60 seconds' AND used_at IS NULL)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sms_codes_phone_purpose ON sms_verification_codes(phone, purpose);
-CREATE INDEX idx_sms_codes_expires ON sms_verification_codes(expires_at) WHERE used_at IS NULL;
+CREATE INDEX idx_sms_codes_expires ON sms_verification_codes(expires_at);
 
-COMMENT ON TABLE sms_verification_codes IS '短信验证码表：5 分钟过期，60 秒防刷';
-COMMENT ON CONSTRAINT unique_phone_purpose_recent ON sms_verification_codes IS '防刷：同手机号同用途 60 秒内只能发 1 次';
+COMMENT ON TABLE sms_verification_codes IS '短信验证码表：5 分钟过期；同手机号覆盖旧码';
 
 -- ─────────────────────────────────────────────────────────
 -- 5. platform_settings 新增配置项（邮件/短信服务）
