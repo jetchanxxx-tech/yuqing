@@ -70,6 +70,8 @@ CREATE INDEX idx_login_sessions_user_id_logged_in ON login_sessions(user_id, log
 COMMENT ON TABLE login_sessions IS '登录历史表：滚动窗口保留最近 100 条/用户';
 
 -- 滚动窗口触发器函数（每次插入后保留最近 100 条）
+-- goose 按分号切语句，PL/pgSQL 的 $$ 块必须用 StatementBegin/End 包裹
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION cleanup_old_login_sessions()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -83,6 +85,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trigger_cleanup_login_sessions
 AFTER INSERT ON login_sessions
