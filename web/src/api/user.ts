@@ -53,12 +53,12 @@ export async function sendPhoneCode(phone: string) {
 }
 
 export async function bindPhone(phone: string, code: string) {
-  const { data } = await client.put<UserProfile>('/user/phone/bind', { phone, code });
+  const { data } = await client.post<UserProfile>('/user/phone/bind', { phone, code });
   return data;
 }
 
 export async function unbindPhone(password: string) {
-  const { data } = await client.put<{ message: string }>('/user/phone/unbind', { password });
+  const { data } = await client.post<{ message: string }>('/user/phone/unbind', { password });
   return data.message;
 }
 

@@ -7,9 +7,11 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"html"
 	"math/big"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -30,11 +32,56 @@ func isStrongPassword(p string) bool {
 // chinaPhoneRe 中国大陆手机号。
 var chinaPhoneRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
-// 验证码/token 有效期。
+// 验证码/token 有效期与防刷窗口。
 const (
 	smsCodeTTL    = 5 * time.Minute
 	emailTokenTTL = 24 * time.Hour
+	sendWindow    = 60 * time.Second // 发码节流：同目标 60s 一次
+	maxCodeTries  = 5                // 单验证码最多尝试次数，超限作废
 )
+
+// senderThrottle 发送节流器（进程内，单实例部署语义）。
+// 生产当前为单实例 server，多实例部署时需换 Redis（与管线同批演进）。
+type senderThrottle struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+// allow 记录并检查：window 内同 key 只允许一次。
+func (t *senderThrottle) allow(key string, window time.Duration) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.last == nil {
+		t.last = make(map[string]time.Time)
+	}
+	if ts, ok := t.last[key]; ok && time.Since(ts) < window {
+		return false
+	}
+	t.last[key] = time.Now()
+	return true
+}
+
+// codeTries 验证码错误尝试计数（与节流同生命周期语义）。
+type codeTries struct {
+	mu    sync.Mutex
+	count map[string]int
+}
+
+func (t *codeTries) failAndExceeded(key string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.count == nil {
+		t.count = make(map[string]int)
+	}
+	t.count[key]++
+	return t.count[key] >= maxCodeTries
+}
+
+func (t *codeTries) reset(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.count, key)
+}
 
 // requireDeps 返回用户中心依赖，未装配时报错。
 func (s *Service) requireDeps() error {
@@ -43,6 +90,10 @@ func (s *Service) requireDeps() error {
 	}
 	return nil
 }
+
+// VerifyBaseURL 返回组合根注入的站点基地址（邮箱验证链接用）；
+// 为空时 handler 回退到请求 Host。
+func (s *Service) VerifyBaseURL() string { return s.verifyBaseURL }
 
 // ChangePassword 修改密码：验证旧密码 → 强度校验（≥8 位字母+数字）→ 更新哈希。
 // 调用方（handler）负责在成功后撤销 refresh token 强制重登。
@@ -82,6 +133,10 @@ func (s *Service) SendVerificationEmail(ctx context.Context, userID, verifyBaseU
 	}
 	if u.EmailVerifiedAt != nil {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "email already verified")
+	}
+	// 防刷：同用户 60s 只发一封（防邮件轰炸；节流在真正发送前）
+	if !s.sendGate.allow("mail:"+userID, sendWindow) {
+		return pkgerrors.Wrap(pkgerrors.ErrQuotaExceeded, "please wait before requesting another email")
 	}
 	token := newToken()
 	if err := s.verifications.SaveEmailToken(ctx, token, userID, emailTokenTTL); err != nil {
@@ -179,6 +234,10 @@ func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string) error
 	if existing, err := s.userByPhone(ctx, phone); err == nil && existing != nil && existing.ID != userID {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "phone already bound to another account")
 	}
+	// 防刷：同手机号 60s 只发一条（短信按条计费，此闸在真正发送前）
+	if !s.sendGate.allow("sms:"+phone, sendWindow) {
+		return pkgerrors.Wrap(pkgerrors.ErrQuotaExceeded, "please wait before requesting another code")
+	}
 	code := newSMSCode()
 	if err := s.verifications.SaveSMSCode(ctx, phone, "bind", code, smsCodeTTL); err != nil {
 		return err
@@ -186,18 +245,25 @@ func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string) error
 	return s.smsSender.Send(ctx, phone, "SMS_BIND_PHONE", map[string]string{"code": code})
 }
 
-// BindPhone 校验验证码并绑定手机号。
+// BindPhone 校验验证码并绑定手机号。错误尝试 ≥5 次作废验证码（防穷举）。
 func (s *Service) BindPhone(ctx context.Context, userID, phone, code string) error {
 	if err := s.requireDeps(); err != nil {
 		return err
 	}
 	stored, err := s.verifications.LoadSMSCode(ctx, phone, "bind")
 	if err != nil || stored != code {
+		tryKey := "bind:" + phone
+		if err == nil && s.codeTries.failAndExceeded(tryKey) {
+			_ = s.verifications.ConsumeSMSCode(ctx, phone, "bind")
+			s.codeTries.reset(tryKey)
+			return pkgerrors.Wrap(pkgerrors.ErrNotFound, "too many attempts, code invalidated")
+		}
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid or expired code")
 	}
 	if err := s.userStore.SetPhone(ctx, userID, phone); err != nil {
 		return err
 	}
+	s.codeTries.reset("bind:" + phone)
 	return s.verifications.ConsumeSMSCode(ctx, phone, "bind")
 }
 
@@ -263,6 +329,8 @@ func buildVerifyEmailHTML(name, link string) string {
 	if name == "" {
 		name = "用户"
 	}
+	// 昵称来自用户输入，插 HTML 前转义（防 HTML 注入）；link 由服务端拼装
+	safeName := html.EscapeString(name)
 	return fmt.Sprintf(`<!DOCTYPE html><html><body style="font-family:sans-serif;line-height:1.6">
 <div style="max-width:560px;margin:0 auto;padding:24px">
 <h2 style="color:#4f46e5">盘古舆情</h2>
@@ -271,5 +339,5 @@ func buildVerifyEmailHTML(name, link string) string {
 <p><a href="%s" style="display:inline-block;background:#4f46e5;color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none">验证邮箱</a></p>
 <p style="font-size:13px;color:#64748b">或复制链接到浏览器：<br><code>%s</code></p>
 <p style="font-size:13px;color:#64748b">此链接 24 小时内有效。如果您没有注册盘古舆情，请忽略此邮件。</p>
-</div></body></html>`, name, link, link)
+</div></body></html>`, safeName, link, link)
 }

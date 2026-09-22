@@ -173,12 +173,19 @@ function ProfileTab() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const profileQ = useQuery({ queryKey: ['user', 'profile'], queryFn: getProfile });
+  const [sendCountdown, setSendCountdown] = useState(0);
 
   const profile = profileQ.data;
 
   useEffect(() => {
     if (profile) form.setFieldsValue({ name: profile.name, timezone: profile.timezone || 'Asia/Shanghai' });
   }, [profile, form]);
+
+  useEffect(() => {
+    if (sendCountdown <= 0) return;
+    const t = setTimeout(() => setSendCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [sendCountdown]);
 
   const saveM = useMutation({
     mutationFn: (v: { name: string; timezone: string }) => updateProfile(v),
@@ -190,8 +197,22 @@ function ProfileTab() {
 
   const sendM = useMutation({
     mutationFn: sendVerificationEmail,
-    onSuccess: (msg) => message.success(msg || '验证邮件已发送，请查收'),
+    onSuccess: (msg) => {
+      message.success(msg || '验证邮件已发送，请查收');
+      setSendCountdown(60);
+    },
   });
+
+  const sendButton = (
+    <Button
+      size="small"
+      disabled={sendCountdown > 0}
+      loading={sendM.isPending}
+      onClick={() => sendM.mutate()}
+    >
+      {sendCountdown > 0 ? `${sendCountdown}s 后可重发` : '发送验证邮件'}
+    </Button>
+  );
 
   if (profile && !profile.email_verified) {
     return (
@@ -201,11 +222,7 @@ function ProfileTab() {
           showIcon
           message="邮箱未验证"
           description="验证邮箱后可解锁全部功能（未验证也可免费试用 1 次分析）。"
-          action={
-            <Button size="small" loading={sendM.isPending} onClick={() => sendM.mutate()}>
-              发送验证邮件
-            </Button>
-          }
+          action={sendButton}
           style={{ marginBottom: 16 }}
         />
         <ProfileForm form={form} profile={profile} saving={saveM.isPending} onSave={(v) => saveM.mutate(v)} />

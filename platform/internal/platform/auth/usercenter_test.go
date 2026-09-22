@@ -418,3 +418,87 @@ func TestChangePasswordTokenLifecycle(t *testing.T) {
 		t.Fatalf("旧 access token 在 MVP 下不应 crash: %v", err)
 	}
 }
+
+func TestUpdateProfileNameLengthByRune(t *testing.T) {
+	// 482a581 修复后昵称按 rune 计数（中文一字一符），锁定边界行为
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "pass1234")
+	ctx := context.Background()
+
+	// 7 个汉字（UTF-8 下 21 字节）应通过——字节计数时曾被误拒
+	if err := svc.UpdateProfile(ctx, "u1", "一二三四五六七", "UTC"); err != nil {
+		t.Errorf("7 个汉字昵称应通过（rune 计数）: %v", err)
+	}
+	// 1 个汉字 = 1 rune，仍应被拒（2 字符下限）
+	if err := svc.UpdateProfile(ctx, "u1", "测", ""); !pkgerrors.Is(err, pkgerrors.ErrConflict) {
+		t.Errorf("1 个汉字昵称应被拒，得到 %v", err)
+	}
+	// 边界：20 rune 恰好通过，21 rune 拒绝
+	twenty := strings.Repeat("字", 20)
+	if err := svc.UpdateProfile(ctx, "u1", twenty, ""); err != nil {
+		t.Errorf("20 个汉字应通过: %v", err)
+	}
+	if err := svc.UpdateProfile(ctx, "u1", strings.Repeat("字", 21), ""); err == nil {
+		t.Error("21 个汉字应被拒")
+	}
+	u, err := users.GetByID(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Name != twenty {
+		t.Errorf("昵称应保持为最后合法值 %q，得到 %q", twenty, u.Name)
+	}
+}
+
+func TestSendPhoneCodeThrottledPerPhone(t *testing.T) {
+	// 482a581 后新增的进程内 60s 节流（sendGate），锁定同手机号限频行为
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "pass1234")
+	svc.smsSender = &fakeSMS{}
+	ctx := context.Background()
+
+	if err := svc.SendPhoneCode(ctx, "u1", "13800138000"); err != nil {
+		t.Fatalf("首次发码应成功: %v", err)
+	}
+	// 60s 窗口内同手机号第二次发码应被节流（429）
+	err := svc.SendPhoneCode(ctx, "u1", "13800138000")
+	if !pkgerrors.Is(err, pkgerrors.ErrQuotaExceeded) {
+		t.Fatalf("60s 内重复发码应 ErrQuotaExceeded，得到 %v", err)
+	}
+	// 不同手机号互不影响
+	if err := svc.SendPhoneCode(ctx, "u1", "13900139000"); err != nil {
+		t.Fatalf("不同手机号不应被节流: %v", err)
+	}
+}
+
+func TestBindPhoneCodeInvalidatedAfterFiveWrongTries(t *testing.T) {
+	// 错误尝试 ≥5 次作废验证码（防穷举）：第 5 次错码后，正确码也不再可用
+	svc, users, _ := newUCService(t)
+	seedUser(t, users, "u1", "a@test.com", "pass1234")
+	sms := &fakeSMS{}
+	svc.smsSender = sms
+	ctx := context.Background()
+
+	if err := svc.SendPhoneCode(ctx, "u1", "13800138000"); err != nil {
+		t.Fatal(err)
+	}
+	// 第 1-4 次错误：401（码仍有效）
+	for i := 0; i < 4; i++ {
+		err := svc.BindPhone(ctx, "u1", "13800138000", "000000")
+		if !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+			t.Fatalf("第 %d 次错码应 401，得到 %v", i+1, err)
+		}
+	}
+	// 第 5 次错误：触发作废 → 404
+	if err := svc.BindPhone(ctx, "u1", "13800138000", "000000"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		t.Fatalf("第 5 次错码应作废验证码（404），得到 %v", err)
+	}
+	// 作废后即使拿到正确验证码也不能绑定
+	if err := svc.BindPhone(ctx, "u1", "13800138000", sms.code); err == nil {
+		t.Fatal("作废后正确码不应绑定成功")
+	}
+	u, _ := users.GetByID(ctx, "u1")
+	if u.Phone != "" {
+		t.Errorf("手机号不应被绑定，got %q", u.Phone)
+	}
+}

@@ -128,7 +128,8 @@ INSERT INTO platform_settings (key, value) VALUES
   ('sms_access_key_id', ''),
   ('sms_access_key_secret', ''),
   ('sms_sign_name', '盘古舆情'),
-  ('sms_template_code', '')
+  ('sms_template_code', ''),
+  ('sms_sdk_app_id', '')
 ON CONFLICT (key) DO NOTHING;
 
 -- +goose Down

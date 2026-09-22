@@ -73,19 +73,23 @@ func (s *Services) handleChangePassword(c *gin.Context) {
 }
 
 // handleSendVerificationEmail POST /auth/send-verification-email
-// 验证链接基于请求的 Host 构造（反代后 X-Forwarded-Proto 优先）。
+// 验证链接基地址优先取组合根注入的 YUQING_PUBLIC_BASE_URL（防 Host 头伪造）；
+// 未配置时回退请求 Host（反代后 X-Forwarded-Proto 优先）。
 func (s *Services) handleSendVerificationEmail(c *gin.Context) {
 	userID, ok := requireUserID(c)
 	if !ok {
 		return
 	}
-	scheme := "https"
-	if fwd := c.GetHeader("X-Forwarded-Proto"); fwd != "" {
-		scheme = fwd
-	} else if c.Request.TLS == nil {
-		scheme = "http"
+	baseURL := s.Auth.VerifyBaseURL()
+	if baseURL == "" {
+		scheme := "https"
+		if fwd := c.GetHeader("X-Forwarded-Proto"); fwd != "" {
+			scheme = fwd
+		} else if c.Request.TLS == nil {
+			scheme = "http"
+		}
+		baseURL = scheme + "://" + c.Request.Host
 	}
-	baseURL := scheme + "://" + c.Request.Host
 
 	if err := s.Auth.SendVerificationEmail(c.Request.Context(), userID, baseURL); err != nil {
 		respondError(c, err)

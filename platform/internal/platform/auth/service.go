@@ -89,11 +89,15 @@ type Service struct {
 	postRegister func(ctx context.Context, tenantID string) error
 
 	// ── 用户中心 P0 依赖（组合根装配；nil = 功能未启用，fail-closed）──
-	userStore     UserStore          // 用户中心存储
+	userStore     UserStore         // 用户中心存储
 	verifications VerificationStore // 验证码/验证 token 存储
-	smsSender     SMSProvider        // 短信发送
-	emailSender   MailSender         // 邮件发送
-	verifyBaseURL string             // 邮箱验证链接前缀（如 https://yuqing2.pangu-cloud.com）
+	smsSender     SMSProvider       // 短信发送
+	emailSender   MailSender        // 邮件发送
+	verifyBaseURL string            // 邮箱验证链接前缀（如 https://yuqing2.pangu-cloud.com）
+
+	// 防刷（进程内；单实例部署语义，多实例时换 Redis）
+	sendGate  senderThrottle // 发码节流：同目标 60s 一次
+	codeTries codeTries      // 验证码错误尝试计数（≥5 次作废）
 }
 
 // EnableUserCenter 装配用户中心 P0 依赖（组合根调用）。
