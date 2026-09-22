@@ -91,13 +91,19 @@ func (s *PGStore) UpdateProfile(ctx context.Context, userID, name, avatarURL, ti
 }
 
 // SetPhone 绑定手机号。唯一索引冲突 → ErrConflict，用户不存在 → ErrNotFound。
+// 注意唯一冲突判断必须在 wrapDB 之前：wrapDB 会吞掉原始 PgError（只留文本），
+// 之后 IsUniqueViolation 永远 false（契约测试实测踩过）。
 func (s *PGStore) SetPhone(ctx context.Context, userID, phone string) error {
 	const q = `UPDATE users SET phone = $2, phone_verified_at = now() WHERE id = $1`
-	if err := s.execUserUpdate(ctx, q, userID, phone); err != nil {
+	tag, err := s.pool.Exec(ctx, q, userID, phone)
+	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict, "phone already bound to another account")
 		}
-		return err
+		return wrapDB(err, "update user phone")
+	}
+	if tag.RowsAffected() == 0 {
+		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 	}
 	return nil
 }

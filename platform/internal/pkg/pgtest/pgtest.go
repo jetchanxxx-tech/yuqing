@@ -220,26 +220,71 @@ func upSection(script string) string {
 	return script
 }
 
-// splitStatements 把脚本拆成一条条可单独 Exec 的语句，并丢掉纯注释行。
+// splitStatements 把脚本拆成一条条可单独 Exec 的语句，并丢掉整行注释。
 //
-// 这些迁移文件里没有 dollar-quoted 函数体、也没有字符串字面量中的分号，
-// 因此按 ";" 切分是安全的；出现上述写法时需要换成真正的 SQL 解析。
+// 按 ";" 切分，但 dollar-quoted（$$...$$，PL/pgSQL 函数体）内部的分号不切。
+// 状态机按行推进：整行注释（-- 开头）不参与 $$ 计数——迁移 0007 的说明
+// 注释里就写着 "$$"，若被计入会翻转错状态（实测踩过）；函数体内部的
+// 注释行则原样保留（PL/pgSQL 合法语法），只是同样不参与计数。
+// 本项目不使用带标签的 dollar-quote（$tag$）。
 func splitStatements(script string) []string {
 	var out []string
-	for _, chunk := range strings.Split(script, ";") {
-		var lines []string
-		for _, line := range strings.Split(chunk, "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "--") {
-				continue
-			}
-			lines = append(lines, line)
+	var stmt strings.Builder
+
+	inDollar := false
+	flush := func() {
+		if s := strings.TrimSpace(stmt.String()); s != "" {
+			out = append(out, s)
 		}
-		stmt := strings.TrimSpace(strings.Join(lines, "\n"))
-		if stmt == "" {
-			continue
-		}
-		out = append(out, stmt)
+		stmt.Reset()
 	}
+
+	for _, line := range strings.Split(script, "\n") {
+		trimmed := strings.TrimSpace(line)
+		isWholeLineComment := strings.HasPrefix(trimmed, "--")
+
+		if isWholeLineComment && !inDollar {
+			continue // 语句间注释：整行丢弃，不扫描
+		}
+
+		rest := line
+		for {
+			if inDollar {
+				// 函数体内：只找闭合 $$，分号与注释文本都原样保留
+				if i := strings.Index(rest, "$$"); i >= 0 {
+					stmt.WriteString(rest[:i+2])
+					rest = rest[i+2:]
+					inDollar = false
+					continue
+				}
+				stmt.WriteString(rest)
+				rest = ""
+				stmt.WriteByte('\n')
+				break
+			}
+			// 语句内：分号切割，$$ 开启函数体
+			i := strings.IndexByte(rest, ';')
+			d := strings.Index(rest, "$$")
+			switch {
+			case d >= 0 && (i < 0 || d < i):
+				stmt.WriteString(rest[:d+2])
+				rest = rest[d+2:]
+				inDollar = true
+			case i >= 0:
+				stmt.WriteString(rest[:i])
+				flush()
+				rest = rest[i+1:]
+			default:
+				stmt.WriteString(rest)
+				rest = ""
+				stmt.WriteByte('\n')
+			}
+			if rest == "" {
+				break
+			}
+		}
+	}
+	flush()
 	return out
 }
 
