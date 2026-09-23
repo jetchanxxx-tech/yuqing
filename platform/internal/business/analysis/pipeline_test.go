@@ -6,8 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/yuqing/platform/internal/business/report"
 )
 
 // fakeFetcher 注入采集结果，避免测试依赖真实 Python 引擎。
@@ -38,6 +41,20 @@ func newTestPipeline(t *testing.T, fetcher Fetcher, timeout time.Duration) (*Pip
 	t.Helper()
 	svc, _ := newTestAnalysisService(t)
 	p := NewPipeline(svc, fetcher, timeout, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return p, svc
+}
+
+// newTestPipelineWithReportSvc creates a pipeline with report service injected.
+func newTestPipelineWithReportSvc(t *testing.T, fetcher Fetcher, reportSvc reportSvc) (*Pipeline, *Service) {
+	t.Helper()
+	svc, _ := newTestAnalysisService(t)
+	p := NewPipeline(svc, fetcher, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// fakeGenerator 已在 insight_test.go 定义，此处复用
+	p = p.WithGenerator(&fakeGenerator{res: ReportResult{
+		ReportID: "gen-test",
+		Content:  "<h1>测试报告</h1>",
+	}})
+	p = p.WithReportSvc(reportSvc)
 	return p, svc
 }
 
@@ -216,6 +233,106 @@ func TestPipeline_rejectsIncompleteMessage(t *testing.T) {
 				t.Error("expected error for incomplete message")
 			}
 		})
+	}
+}
+
+// ── 报告记录创建（P0：报告中心闭环）─────────────────────
+
+// fakeReportSvc 记录 CreateFromAnalysis 调用。
+type fakeReportSvc struct {
+	mu      sync.Mutex
+	calls   []struct{ tenantID, analysisID, format, createdBy string }
+	records map[string]*report.Report // keyed by analysisID, stores created reports
+}
+
+func newFakeReportSvc() *fakeReportSvc {
+	return &fakeReportSvc{records: make(map[string]*report.Report)}
+}
+
+func (f *fakeReportSvc) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, struct{ tenantID, analysisID, format, createdBy string}{tenantID, analysisID, format, createdBy})
+	return "report-" + analysisID, nil
+}
+
+// TestPipeline_createsReportRecordAfterCompletion 是报告中心闭环的 TDD 测试。
+// RED：analyses 已含 report_content，但 reports 表从未写入 → 当前 reports 表行数 = 0。
+// GREEN：管线完成后调 CreateFromAnalysis，reports 表新增 1 行。
+func TestPipeline_createsReportRecordAfterCompletion(t *testing.T) {
+	fetcher := &fakeFetcher{docs: sampleDocs(3)}
+	reportSvc := newFakeReportSvc()
+	p, svc := newTestPipelineWithReportSvc(t, fetcher, reportSvc)
+
+	ctx := context.Background()
+	created, err := svc.Create(ctx, CreateAnalysisRequest{
+		TenantID: "t_report", UserID: "user-123",
+		Name: "报告中心测试", Keywords: []string{"测试"},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t_report"}); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	// RED 断言：管线完成后 reports 表应有 1 条记录（当前 = 0，会失败）
+	reportSvc.mu.Lock()
+	gotCalls := len(reportSvc.calls)
+	reportSvc.mu.Unlock()
+	if gotCalls == 0 {
+		t.Errorf("REPORT RECORD: reports 表行数 = 0（从未写入）；want ≥ 1 — 管线 runReport 尚未调 CreateFromAnalysis")
+	}
+
+	// GREEN 断言：调用的参数正确
+	if gotCalls > 0 {
+		reportSvc.mu.Lock()
+		call := reportSvc.calls[0]
+		reportSvc.mu.Unlock()
+		if call.tenantID != "t_report" {
+			t.Errorf("tenantID = %q, want t_report", call.tenantID)
+		}
+		if call.analysisID != created.ID {
+			t.Errorf("analysisID = %q, want %s", call.analysisID, created.ID)
+		}
+		if call.format != "html" {
+			t.Errorf("format = %q, want html", call.format)
+		}
+		if call.createdBy != "user-123" {
+			t.Errorf("createdBy = %q, want user-123", call.createdBy)
+		}
+	}
+}
+
+// TestPipeline_createsNewReportOnRerun 是 Rerun 多报告策略的 TDD 测试。
+// RED：Rerun 后同一 analysis_id 仍只有 1 条报告记录（覆盖逻辑或未新建）。
+// GREEN：Rerun 后 reports 表同一 analysis_id 有 2 条记录（版本 1 和 2）。
+func TestPipeline_createsNewReportOnRerun(t *testing.T) {
+	reportSvc := newFakeReportSvc()
+	fetcher := &fakeFetcher{docs: sampleDocs(2)}
+	p, svc := newTestPipelineWithReportSvc(t, fetcher, reportSvc)
+
+	ctx := context.Background()
+	created, _ := svc.Create(ctx, CreateAnalysisRequest{
+		TenantID: "t_rerun", UserID: "user-456",
+		Name: "Rerun 测试", Keywords: []string{"测试"},
+	})
+
+	// 第一次分析
+	p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t_rerun"})
+
+	// Rerun：发布新消息，同一 pipeline 处理
+	_ = svc.Rerun(ctx, "t_rerun", created.ID)
+	p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t_rerun"})
+
+	reportSvc.mu.Lock()
+	gotCalls := len(reportSvc.calls)
+	reportSvc.mu.Unlock()
+
+	// RED 断言：同一 analysis_id 应有 2 条报告记录（当前 = 1，不会为 Rerun 新建）
+	if gotCalls < 2 {
+		t.Errorf("REPORT RECORD (RERUN): 同一 analysis_id 报告数 = %d；want 2 — Rerun 应新建报告记录而非覆盖", gotCalls)
 	}
 }
 

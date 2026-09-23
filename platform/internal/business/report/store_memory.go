@@ -25,7 +25,7 @@ func NewMemoryStore() *MemoryStore {
 var _ Store = (*MemoryStore)(nil)
 
 // Create inserts a report under a tenant; duplicate IDs conflict.
-func (m *MemoryStore) Create(_ context.Context, tenantID string, r Report) error {
+func (m *MemoryStore) Create(_ context.Context, tenantID, createdBy string, r Report) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

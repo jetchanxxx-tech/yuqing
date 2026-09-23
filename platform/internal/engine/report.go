@@ -80,5 +80,43 @@ func (e *RealReportEngine) Generate(ctx context.Context, req *ReportGenerateReq)
 	return &out, nil
 }
 
+// GenerateStream requests a report in the given format (html/docx) and returns
+// the response body as a stream. Caller must close the returned ReadCloser.
+func (e *RealReportEngine) GenerateStream(ctx context.Context, req *ReportGenerateReq, format string) (io.ReadCloser, error) {
+	if e.apiKeyFunc != nil {
+		req.APIKey = e.apiKeyFunc()
+	}
+	if e.llmOptsFunc != nil {
+		req.LLMBaseURL, req.LLMModel = e.llmOptsFunc()
+	}
+	req.Format = format
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("report: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", e.baseURL+"/generate", bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("report: new request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if e.authToken != "" {
+		httpReq.Header.Set("X-Internal-Token", e.authToken)
+	}
+
+	resp, err := e.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("report: call engine: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return nil, fmt.Errorf("report: engine returned %d: %s", resp.StatusCode, string(data))
+	}
+
+	return resp.Body, nil
+}
+
 // Compile-time interface check.
 var _ ReportEngine = (*RealReportEngine)(nil)

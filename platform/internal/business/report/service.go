@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -28,9 +29,10 @@ func NewService(store Store, planCodeFor func(tenantID string) string, planProvi
 	return &Service{store: store, planCodeFor: planCodeFor, planProvider: planProvider}
 }
 
-// CreateFromAnalysis creates a completed report for an analysis in a format
-// from report.Formats. file_key follows reports/{id}.{format}.
-func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format string) (*Report, error) {
+// CreateFromAnalysis creates a completed report for an analysis.
+// createdBy is the user's UUID who triggered the report (written to reports.created_by).
+// report_version is auto-assigned: 1 for the first report, incremented for subsequent ones.
+func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (*Report, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("report: tenant_id is required")
 	}
@@ -42,17 +44,23 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 	}
 
 	reportID := id.New()
-	r := Report{
-		ID:         reportID,
-		AnalysisID: analysisID,
-		Format:     format,
-		Status:     statusCompleted,
-		FileKey:    fmt.Sprintf("reports/%s.%s", reportID, format),
+	version := 1
+	if r, _ := s.store.List(ctx, tenantID, Filter{AnalysisID: analysisID, Limit: 0}); len(r) > 0 {
+		version = len(r) + 1
 	}
-	if err := s.store.Create(ctx, tenantID, r); err != nil {
+	rp := Report{
+		ID:            reportID,
+		AnalysisID:    analysisID,
+		Format:        format,
+		Status:        statusCompleted,
+		FileKey:       fmt.Sprintf("reports/%s.%s", reportID, format),
+		ReportVersion: version,
+		CreatedBy:     createdBy,
+	}
+	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		return nil, err
 	}
-	return &r, nil
+	return &rp, nil
 }
 
 // Get returns one report scoped to the tenant.
@@ -106,10 +114,5 @@ func (s *Service) plan(code string) *billing.Plan {
 }
 
 func supportedFormat(format string) bool {
-	for _, f := range Formats {
-		if f == format {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Formats, format)
 }

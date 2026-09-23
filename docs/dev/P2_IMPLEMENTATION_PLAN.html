@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>v0.1.2-beta 迭代实施方案 — 盘古舆情 P0 四大缺口修复</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; margin: 40px; max-width: 1100px; line-height: 1.8; }
+  h1 { color: #1677ff; border-bottom: 3px solid #1677ff; padding-bottom: 12px; }
+  h2 { color: #0958d9; margin-top: 32px; border-left: 4px solid #1677ff; padding-left: 12px; }
+  h3 { color: #389e0d; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d9d9d9; padding: 10px 14px; text-align: left; }
+  th { background: #f0f5ff; color: #1677ff; }
+  tr:nth-child(even) { background: #fafafa; }
+  code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: "Consolas", monospace; }
+  pre { background: #f5f5f5; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  .p0 { color: #cf1322; font-weight: bold; }
+  .p1 { color: #d46b08; font-weight: bold; }
+  .done { color: #389e0d; }
+  .todo { color: #d46b08; }
+  .warn { color: #cf1322; }
+  ul { margin: 8px 0; }
+  li { margin: 6px 0; }
+  .task { background: #fffbe6; border-left: 3px solid #faad14; padding: 10px 14px; margin: 12px 0; }
+  .risk { background: #fff2f0; border-left: 3px solid #ff4d4f; padding: 10px 14px; margin: 12px 0; }
+  .section { margin: 24px 0; }
+  blockquote { background: #f9f9f9; border-left: 4px solid #d9d9d9; padding: 12px 16px; margin: 12px 0; }
+  .checkbox { margin-right: 8px; }
+</style>
+</head>
+<body>
+
+<h1>v0.1.2-beta 迭代实施方案</h1>
+<p><strong>版本</strong>：v0.1.2-beta &nbsp;|&nbsp; <strong>日期</strong>：2026-09-23 &nbsp;|&nbsp; <strong>状态</strong>：技术方案待评审</p>
+<p><strong>背景</strong>：v0.1.1-beta 上线后三方评审发现 4 项产品缺口，P0 定级修复（报告中心空白 + 数据源标签错标）</p>
+
+<hr>
+
+<h2>一、迭代元信息</h2>
+
+<table>
+  <tr><th>项目</th><th>内容</th></tr>
+  <tr><td>版本号</td><td>v0.1.2-beta</td></tr>
+  <tr><td>发布日期</td><td>2026-09-25（预计）</td></tr>
+  <tr><td>总工期</td><td>4.5 人天</td></tr>
+  <tr><td>前置依赖</td><td>迁移 0008（analyses/reports 新增 created_by 列）</td></tr>
+  <tr><td>部署方式</td><td>本地交叉编译 → 上传 → 迁移 → systemd 重启</td></tr>
+</table>
+
+<h3>风险点</h3>
+<div class="risk">
+<ul>
+  <li><strong>R1</strong>：迁移 0008 需在服务重启前执行，顺序错误导致新列不存在时报错</li>
+  <li><strong>R2</strong>：docx 生成依赖 python-docx 库，需在 engines venv 中安装</li>
+  <li><strong>R3</strong>：历史数据回填期间 analyses 表被持续写入，需评估锁定时间</li>
+  <li><strong>R4</strong>：Bocha source 分类逻辑需生产实测验证正则覆盖度</li>
+</ul>
+</div>
+
+<hr>
+
+<h2>二、架构变更</h2>
+
+<h3>2.1 迁移 0008 SQL</h3>
+
+<pre>
+-- +goose Up
+-- 报告中心 + 用户归属：新增 created_by 列支持报告多版本与用户隔离
+
+-- 1. analyses 表新增 created_by（UUID，nullable → 非空回填见 CLI）
+ALTER TABLE analyses ADD COLUMN created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- 2. reports 表新增 created_by（UUID，nullable）
+ALTER TABLE reports ADD COLUMN created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- 3. reports 表新增 report_version（INTEGER，版本号用于多报告对照）
+ALTER TABLE reports ADD COLUMN report_version INTEGER NOT NULL DEFAULT 1;
+
+-- 4. 回填历史数据：analyses.created_by 从 members 表关联（tenant_id + 租户第一个成员）
+WITH first_member AS (
+  SELECT tenant_id, user_id,
+         ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY created_at) AS rn
+  FROM members
+)
+UPDATE analyses a
+SET created_by = fm.user_id
+FROM first_member fm
+WHERE a.tenant_id = fm.tenant_id AND fm.rn = 1
+  AND a.created_by IS NULL;
+
+-- 5. 回填历史数据：reports.created_by 从 analyses.created_by 继承
+UPDATE reports r
+SET created_by = a.created_by
+FROM analyses a
+WHERE r.analysis_id = a.id AND r.created_by IS NULL;
+
+-- 6. 非空约束（回填后）
+ALTER TABLE analyses ALTER COLUMN created_by SET NOT NULL;
+ALTER TABLE reports ALTER COLUMN created_by SET NOT NULL;
+
+-- +goose Down
+ALTER TABLE reports DROP COLUMN IF EXISTS report_version;
+ALTER TABLE reports DROP COLUMN IF EXISTS created_by;
+ALTER TABLE analyses DROP COLUMN IF EXISTS created_by;
+</pre>
+
+<blockquote>
+<strong>说明</strong>：
+<ul>
+  <li>analyses.created_by 在创建时由 <code>analysis.Service.Create</code> 从 <code>req.UserID</code> 写入</li>
+  <li>reports.created_by 在管线调 <code>CreateFromAnalysis</code> 时写入</li>
+  <li>历史回填由 CLI 单独执行，不阻塞迁移</li>
+</ul>
+</blockquote>
+
+<h3>2.2 Rerun 多报告策略</h3>
+
+<p><strong>决策</strong>：同 analysis_id 多行报告，<code>report_version</code> 字段区分版本，<code>created_at</code> 排序</p>
+
+<table>
+  <tr><th>字段</th><th>说明</th></tr>
+  <tr><td>id</td><td>ULID，每次 CreateFromAnalysis 新建</td></tr>
+  <tr><td>analysis_id</td><td>关联分析 ID（不变）</td></tr>
+  <tr><td>report_version</td><td>版本号（同一 analysis 的第 N 次报告）</td></tr>
+  <tr><td>format</td><td>html / docx</td></tr>
+  <tr><td>status</td><td>completed / failed</td></tr>
+  <tr><td>created_at</td><td>创建时间（排序用）</td></tr>
+  <tr><td>created_by</td><td>创建人 UUID</td></tr>
+</table>
+
+<p>报告列表排序：<code>ORDER BY created_at DESC</code>，最新版在前。用户可对照任意两个版本。</p>
+
+<h3>2.3 docx 生成位置</h3>
+
+<p><strong>决策</strong>：Python report_engine 生成（python-docx 成熟稳定），Go 侧流式代理下载</p>
+
+<ul>
+  <li>Python <code>report_engine/main.py</code> 新增 <code>/generate_docx</code> 端点，输入同 <code>/generate</code>，输出 docx 二进制流</li>
+  <li>Go <code>report.Service.DownloadURL</code> 返回 <code>/tenants/{id}/reports/{id}/download?format=docx</code></li>
+  <li>Go HTTP handler 流式转发 Python 返回的 docx 二进制（避免大文件内存峰值）</li>
+  <li>python-docx 生成 docx 文件写入 <code>/tmp/reports/{report_id}.docx</code>，Go handler 从该路径读取并设置 <code>Content-Disposition: attachment</code></li>
+</ul>
+
+<blockquote>
+<strong>为什么不纯 Go 生成</strong>：HTML 模板已有完整渲染逻辑，python-docx 直接复用报告结构，Go 侧重写成本高且易引入不一致
+</blockquote>
+
+<h3>2.4 历史回填策略</h3>
+
+<p><strong>决策</strong>：仅 HTML（从 <code>analyses.report_content</code> 提取），docx 不回填（需重跑 LLM，成本过高）</p>
+
+<pre>
+-- 回填 CLI：读取所有 completed analyses，提取 report_content 生成 report 记录
+-- 伪代码逻辑：
+--   FOR each analysis WHERE state='completed' AND report_content != '' AND created_by IS NOT NULL:
+--       version = COUNT(*) + 1 WHERE analysis_id = this.analysis_id
+--       INSERT reports (id, analysis_id, created_by, format='html', status='completed',
+--                       file_key=..., created_at=analysis.finished_at, report_version=version)
+</pre>
+
+<hr>
+
+<h2>三、四大问题技术方案（P0 优先级）</h2>
+
+<h3>3.1 <span class="p0">P0</span> 报告中心空白 — 管线调 CreateFromAnalysis</h3>
+
+<h4>问题根因</h4>
+<p><code>platform/internal/business/analysis/pipeline.go:269</code> 只调用 <code>svc.SetReport()</code>（写 <code>analyses.report_content</code>），从不调 <code>report.Service.CreateFromAnalysis()</code>，导致 <code>reports</code> 表零行。</p>
+
+<h4>修复方案</h4>
+
+<p><strong>Step 1</strong>：修改 <code>pipeline.go</code> 的 <code>runReport</code> 方法，管线完成后调 <code>report.Service.CreateFromAnalysis()</code></p>
+
+<pre>
+// runReport 末尾新增（pipeline.go ~269行）：
+// 管线只写 analyses.report_content（维持现状）
+// 新增：同步创建 reports 表记录
+if res.Content != "" {
+    // 创建 HTML 报告记录
+    r, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html")
+    if err != nil {
+        p.log.Warn("pipeline: create report record failed", slog.String("err", err.Error()))
+        // 非致命：analyses 已写入，报告内容不丢
+    } else {
+        p.log.Info("pipeline: report record created",
+            slog.String("report_id", r.ID), slog.String("analysis_id", msg.AnalysisID))
+    }
+}
+</pre>
+
+<p><strong>Step 2</strong>：Go HTTP download handler 流式代理 docx（<code>platform/internal/api/v1/reports.go</code>）</p>
+
+<pre>
+GET /tenants/:tenant_id/reports/:report_id/download?format=html|docx
+  → 读取 reports 表 FileKey
+  → HTML: 直接返回 analyses.report_content
+  → docx: HTTP GET {report_engine}/download/{file_key} → 流式转发响应头 + body
+  → Content-Type: application/octet-stream
+  → Content-Disposition: attachment; filename="report_{id}.{format}"
+</pre>
+
+<h4>TDD 测试清单</h4>
+
+<table>
+  <tr><th>测试</th><th>描述</th><th>预期</th></tr>
+  <tr><td>RED-1</td><td>管线完成后 <code>SELECT COUNT(*) FROM reports</code></td><td>&gt; 0（当前=0）</td></tr>
+  <tr><td>RED-2</td><td>GET <code>/reports/:id/download?format=html</code></td><td>HTTP 200，Content-Type: text/html</td></tr>
+  <tr><td>RED-3</td><td>GET <code>/reports/:id/download?format=docx</code></td><td>HTTP 200，Content-Type: application/octet-stream</td></tr>
+  <tr><td>RED-4</td><td>Rerun 分析后 <code>SELECT COUNT(*) FROM reports WHERE analysis_id=?</code></td><td>= 2（原始 + 重跑）</td></tr>
+</table>
+
+<h3>3.2 <span class="p0">P0</span> 数据源标签错标 — 域名正则分类</h3>
+
+<h4>问题根因</h4>
+<p><code>engines/common/scraper.py:106-107</code>：<code>all_candidates[sources[0]] = found</code> — 所有 Bocha 搜索结果被强制归类为用户勾选的第一数据源，即使来源是其他平台。</p>
+
+<h4>修复方案</h4>
+
+<p><strong>Step 1</strong>：修复配额截断 bug（<code>scraper.py ~116行</code>）</p>
+
+<pre>
+# 错误：按 source 顺序处理，每个 source 取前 max_per_source
+# 正确：先收集所有结果，再按全局优先级截断
+candidates = all_candidates.get(source, [])[:max_per_source]  # BUG: 勾选越多结果越少
+
+# 修复：合并所有 source 的候选，再按全局 max_per_source 截断
+all_urls = []
+for src, cands in all_candidates.items():
+    for cand in cands:
+        all_urls.append((cand.get("url"), src))
+# 全局去重 + 截断
+unique_urls = _dedupe_by_url(all_urls)[:max_per_source * len(sources)]
+</pre>
+
+<p><strong>Step 2</strong>：按 URL 域名自动分类</p>
+
+<pre>
+import re
+
+DOMAIN_SOURCE_MAP = {
+    r"weibo\.com|sina\.com\.cn": "weibo",
+    r"mp\.weixin\.qq\.com": "weixin",
+    r"xiaohongshu\.com|xhslink\.com": "xiaohongshu",
+    r"bilibili\.com|b23\.tv": "bilibili",
+    r"douyin\.com|iesdouyin\.com": "douyin",
+    r"kuaishou\.com|ksurl\.cn": "kuaishou",
+    r"zhihu\.com": "zhihu",
+    r"36kr\.com": "news",         # 36氪归新闻
+    r"sina\.com\.cn/news": "news", # 新浪新闻归新闻
+    r"news\.|newspaper\.": "news",
+}
+
+def classify_by_domain(url: str) -> str:
+    """根据 URL 域名推断数据源类型"""
+    for pattern, source in DOMAIN_SOURCE_MAP.items():
+        if re.search(pattern, url, re.IGNORECASE):
+            return source
+    return "custom_web"  # 未知来源
+
+# 应用：_bocha_search 返回的每个结果按域名分类
+for item in bocha_results:
+    item["source_type"] = classify_by_domain(item["url"])
+</pre>
+
+<p><strong>Step 3</strong>：用户勾选来源作为「过滤」而非「分类」</p>
+
+<pre>
+# 用户勾选决定「允许哪些来源」，不决定「结果归哪类」
+# Bocha 搜索返回所有结果 → 按域名分类 → 过滤用户勾选之外的数据源
+final_results = [
+    doc for doc in classified_results
+    if doc["source_type"] in user_selected_sources
+]
+</pre>
+
+<h4>TDD 测试清单</h4>
+
+<table>
+  <tr><th>测试</th><th>输入</th><th>预期</th></tr>
+  <tr><td>RED-S1</td><td>Bilibili URL <code>b23.tv/xxx</code></td><td>source_type = "bilibili"</td></tr>
+  <tr><td>RED-S2</td><td>微博 URL <code>weibo.com/xxx</code></td><td>source_type = "weibo"</td></tr>
+  <tr><td>RED-S3</td><td>未知 URL <code>example.com/news</code></td><td>source_type = "custom_web"</td></tr>
+  <tr><td>RED-S4</td><td>勾选 news + weibo，Bocha 返回 20 条</td><td>结果数 ≤ 20，不受勾选数量影响</td></tr>
+</table>
+
+<h3>3.3 <span class="p1">P1</span> 面板数据不分用户 — Sources/Topics 真实计算</h3>
+
+<h4>问题根因</h4>
+<p><code>platform/internal/business/dashboard/service.go:14-27</code>：<code>fixedSources</code> 和 <code>fixedTopics</code> 是硬编码"雅阁后排"占位数据，从不计算真实文档来源。</p>
+
+<h4>修复方案</h4>
+
+<p><strong>Step 1</strong>：documentStore 新增按 tenantID 聚合方法</p>
+
+<pre>
+// platform/internal/business/analysis/store.go 新增接口
+type documentStore interface {
+    // ... 现有方法 ...
+    ListByTenant(ctx context.Context, tenantID string) ([]Document, error)
+    AggregateSources(ctx context.Context, tenantID string) ([]SourceShare, error)
+    AggregateTopics(ctx context.Context, tenantID string) ([]Topic, error)
+}
+</pre>
+
+<p><strong>Step 2</strong>：PG 实现（<code>store_pg.go</code>）</p>
+
+<pre>
+-- AggregateSources SQL
+SELECT
+    COALESCE(doc.source_type, 'custom_web') AS source,
+    COUNT(*) AS doc_count
+FROM raw_documents rd
+JOIN analyses a ON rd.analysis_id = a.id
+WHERE a.tenant_id = $1 AND a.state = 'completed'
+GROUP BY rd.source_type
+ORDER BY doc_count DESC;
+
+-- AggregateTopics SQL
+SELECT
+    t.name,
+    t.doc_count,
+    t.trend
+FROM topics t
+JOIN analyses a ON t.analysis_id = a.id
+WHERE a.tenant_id = $1 AND a.state = 'completed'
+ORDER BY t.doc_count DESC;
+</pre>
+
+<p><strong>Step 3</strong>：dashboard/service.go 替换硬编码</p>
+
+<pre>
+func (s *Service) Sources(ctx context.Context, tenantID string) (*SourceBreakdown, error) {
+    if s.docStore == nil {
+        return &SourceBreakdown{Sources: fixedSources}, nil // 降级
+    }
+    return s.docStore.AggregateSources(ctx, tenantID)
+}
+
+func (s *Service) Topics(ctx context.Context, tenantID string) ([]Topic, error) {
+    if s.docStore == nil {
+        return fixedTopics, nil // 降级
+    }
+    return s.docStore.AggregateTopics(ctx, tenantID)
+}
+</pre>
+
+<h3>3.4 <span class="p1">P1</span> 分析类型选择无效 — 前端 UI 降级</h3>
+
+<h4>问题根因</h4>
+<p><code>analysis_type</code> 仅用于 LLM 提示词语境，实际维度选择由 <code>mode</code>（quick/full）驱动。用户选择分析类型无实质作用。</p>
+
+<h4>修复方案</h4>
+
+<p><strong>前端 UI 调整</strong>：将「分析类型」从独立必选下拉框降级为可选 tag标签，不影响后端逻辑</p>
+
+<pre>
+# 分析类型选择器改造
+&lt;Form.Item label="分析类型"&gt;
+  &lt;Select placeholder="选择分析类型（可选）"&gt;
+    &lt;Option value="product_quality"&gt;产品质量型&lt;/Option&gt;
+    &lt;Option value="service_complaint"&gt;服务投诉型&lt;/Option&gt;
+    &lt;Option value="price_dispute"&gt;价格争议型&lt;/Option&gt;
+    &lt;Option value="default"&gt;通用舆情&lt;/Option&gt;
+  &lt;/Select&gt;
+  &lt;Text type="secondary"&gt;可选标签，用于优化分析提示词&lt;/Text&gt;
+&lt;/Form.Item&gt;
+</pre>
+
+<p>后端逻辑不变：<code>mode</code> 仍驱动 quick（3维速览）/ full（5维）裁剪。</p>
+
+<hr>
+
+<h2>四、TDD 测试清单</h2>
+
+<h3>4.1 报告中心（RED → GREEN）</h3>
+
+<table>
+  <tr><th>ID</th><th>测试描述</th><th>RED（失败原因）</th><th>GREEN（通过条件）</th></tr>
+  <tr><td>R-01</td><td>管线完成后 reports 表行数</td><td>= 0（从未写入）</td><td>&gt; 0</td></tr>
+  <tr><td>R-02</td><td>GET /reports/:id/download?format=html</td><td>404（无记录）</td><td>200 + HTML 内容</td></tr>
+  <tr><td>R-03</td><td>GET /reports/:id/download?format=docx</td><td>404（docx 未实现）</td><td>200 + docx 二进制</td></tr>
+  <tr><td>R-04</td><td>Rerun 后 reports 表同一 analysis_id 行数</td><td>= 1（不新建）</td><td>= 2（原始 + 重跑）</td></tr>
+  <tr><td>R-05</td><td>DownloadURL 套餐格式权限检查</td><td>无检查</td><td>Lite 套餐 403 html/docx</td></tr>
+</table>
+
+<h3>4.2 数据源标签（RED → GREEN）</h3>
+
+<table>
+  <tr><th>ID</th><th>测试描述</th><th>RED（失败原因）</th><th>GREEN（通过条件）</th></tr>
+  <tr><td>S-01</td><td>Bocha 返回 B站 URL 的 source_type</td><td>= sources[0]</td><td>= "bilibili"</td></tr>
+  <tr><td>S-02</td><td>Bocha 返回微博 URL 的 source_type</td><td>= sources[0]</td><td>= "weibo"</td></tr>
+  <tr><td>S-03</td><td>勾选 2 个来源时结果总数</td><td>&lt; 勾选 1 个时的结果数</td><td>= 不变</td></tr>
+  <tr><td>S-04</td><td>未勾选来源过滤结果</td><td>无过滤</td><td>只返回勾选来源</td></tr>
+</table>
+
+<h3>4.3 E2E 冒烟测试</h3>
+
+<pre>
+1. 登录账号（邮箱已验证）
+2. 创建分析任务（关键词："特斯拉"，来源：微博 + B站）
+3. 等待分析完成（state=completed）
+4. 访问 /reports → 报告列表非空
+5. 点击下载 HTML → 浏览器下载 .html 文件
+6. 点击下载 Word → 浏览器下载 .docx 文件
+7. 创建第二次分析 → /reports 列表行数 +1
+8. Rerun 第一次分析 → /reports 列表行数 +2（两次报告都存在）
+</pre>
+
+<hr>
+
+<h2>五、实施步骤（带时间估算）</h2>
+
+<h3>Step 0：迁移 0008 + 回填 CLI（0.5d）</h3>
+<div class="task">
+<ul>
+  <li class="checkbox"><del>编写 <code>platform/migrations/platform/0008_report_center.sql</code></li>
+  <li class="checkbox"><del>实现回填 CLI <code>yuqing-cli backfill-reports</code></li>
+  <li class="checkbox"><del>本地测试迁移 + 回填</li>
+  <li class="checkbox"><del>生产执行：先迁移，再起新 server，最后回填 CLI</li>
+</ul>
+<strong>产出</strong>：迁移文件 + 回填 CLI 二进制<br>
+<strong>风险</strong>：analyses 表大时回填耗时，需用 COPY 或分批
+</div>
+
+<h3>Step 1：报告接线（1.5d）</h3>
+<div class="task">
+<ul>
+  <li><strong>1.1 (0.5d)</strong>：TDD RED-01（断言 reports 表空），修改 pipeline.go 调 CreateFromAnalysis，GREEN</li>
+  <li><strong>1.2 (0.3d)</strong>：TDD RED-02，HTTP handler 返回 HTML 内容</li>
+  <li><strong>1.3 (0.4d)</strong>：report_engine 新增 /generate_docx 端点（python-docx）</li>
+  <li><strong>1.4 (0.3d)</strong>：TDD RED-03，Go handler 流式代理 docx 下载</li>
+</ul>
+<strong>产出</strong>：报告中心可用，HTML + docx 双格式下载<br>
+<strong>关键技术</strong>：管线非致命降级（CreateFromAnalysis 失败不阻塞 analyses 写入）
+</div>
+
+<h3>Step 2：数据源标签修复（0.5d）</h3>
+<div class="task">
+<ul>
+  <li><strong>2.1 (0.2d)</strong>：TDD S-01/S-02/S-03，scraper.py 按域名分类</li>
+  <li><strong>2.2 (0.2d)</strong>：修复配额截断 bug（合并去重后再截断）</li>
+  <li><strong>2.3 (0.1d)</strong>：生产 Bocha 测试（不同域名 URL）</li>
+</ul>
+<strong>产出</strong>：数据源标签准确，勾选数量不影响结果总数
+</div>
+
+<h3>Step 3：面板真实计算（1d）</h3>
+<div class="task">
+<ul>
+  <li><strong>3.1 (0.4d)</strong>：documentStore 新增聚合接口 + PG 实现</li>
+  <li><strong>3.2 (0.3d)</strong>：dashboard/service.go 替换固定数据</li>
+  <li><strong>3.3 (0.3d)</strong>：迁移 0008 新增 raw_documents.source_type 索引</li>
+</ul>
+<strong>产出</strong>：面板 Sources/Topics 显示真实数据
+</div>
+
+<h3>Step 4：分析类型 UI 降级（0.5d）</h3>
+<div class="task">
+<ul>
+  <li><strong>4.1 (0.3d)</strong>：前端表单改造，类型从必选降为可选 tag</li>
+  <li><strong>4.2 (0.2d)</strong>：文案更新（明确「分析类型用于提示词优化」）</li>
+</ul>
+<strong>产出</strong>：用户预期对齐实际功能
+</div>
+
+<h3>Step 5：Code Review</h3>
+<div class="task">
+<ul>
+  <li>5 角度审查：边界条件 / 权限校验 / 降级路径 / 并发安全 / 性能影响</li>
+  <li>特别关注：reports 表并发写入冲突（同一 analysis_id 多 Rerun）</li>
+  <li>报告：<code>docs/dev/reviews/REVIEW_P2.md</code></li>
+</ul>
+</div>
+
+<h3>Step 6：产品 + 测试验收</h3>
+<div class="task">
+<ul>
+  <li>PM：报告下载体验 + 数据源标签准确性 + 面板数据</li>
+  <li>QA：E2E 全链路 + 边界条件（无分析/无报告/套餐权限）</li>
+</ul>
+</div>
+
+<hr>
+
+<h2>六、部署检查清单</h2>
+
+<h3>部署前准备</h3>
+<ul>
+  <li class="checkbox"><input type="checkbox"> Go 交叉编译：<code>cd platform && make build</code>（Linux amd64 二进制）</li>
+  <li class="checkbox"><input type="checkbox"> engines venv 安装：<code>pip install python-docx</code></li>
+  <li class="checkbox"><input type="checkbox"> yuqing-cli 重编译（含迁移 0008）</li>
+  <li class="checkbox"><input type="checkbox"> 前端构建：<code>cd web && npm run build</code></li>
+</ul>
+
+<h3>部署步骤（生产服务器）</h3>
+<ol>
+  <li><strong>备份</strong>：<code>pg_dump yuqing_platform &gt; backup_$(date +%Y%m%d).sql</code></li>
+  <li><strong>迁移</strong>：<code>YUQING_CONFIG=/opt/yuqing/config/config.yaml ./yuqing-cli migrate platform</code></li>
+  <li><strong>上传二进制</strong>：
+    <ul>
+      <li><code>yuqing-server</code> → <code>/opt/yuqing/bin/</code></li>
+      <li><code>yuqing-report-engine</code> venv → <code>/opt/yuqing/engines/</code></li>
+      <li><code>dist/</code> → <code>/opt/yuqing/web/</code></li>
+    </ul>
+  </li>
+  <li><strong>回填历史</strong>：<code>./yuqing-cli backfill-reports</code></li>
+  <li><strong>重启服务</strong>：
+    <ul>
+      <li><code>sudo systemctl restart yuqing-server</code></li>
+      <li><code>sudo systemctl restart yuqing-report</code></li>
+    </ul>
+  </li>
+  <li><strong>健康检查</strong>：
+    <ul>
+      <li><code>curl https://yuqing2.pangu-cloud.com/api/v1/health</code></li>
+      <li>创建测试分析 → 报告中心有记录</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>回滚路径</h3>
+<table>
+  <tr><th>故障场景</th><th>回滚命令</th></tr>
+  <tr><td>迁移失败</td><td><code>pg_restore -d yuqing_platform backup_$(date +%Y%m%d).sql</code></td></tr>
+  <tr><td>server 启动失败</td><td><code>systemctl stop yuqing-server && cp /opt/yuqing/bin/yuqing-server.bak /opt/yuqing/bin/yuqing-server && systemctl start yuqing-server</code></td></tr>
+  <tr><td>report_engine 异常</td><td><code>systemctl restart yuqing-report</code>（HTML 降级可用）</td></tr>
+</table>
+
+<hr>
+
+<h2>七、关键技术决策汇总</h2>
+
+<table>
+  <tr><th>决策点</th><th>选项 A</th><th>选项 B（选）</th><th>决策理由</th></tr>
+  <tr><td>docx 生成位置</td><td>Go 侧（新依赖）</td><td><strong>Python report_engine</strong></td><td>复用现有 HTML 模板结构，python-docx 成熟稳定</td></tr>
+  <tr><td>Rerun 多报告策略</td><td>覆盖旧报告</td><td><strong>每次新建报告记录</strong></td><td>保留新旧对照能力，符合用户决策</td></tr>
+  <tr><td>下载端点</td><td>预签名 URL</td><td><strong>流式传输</strong></td><td>无对象存储（本地 FS），流式代理避免内存峰值</td></tr>
+  <tr><td>历史回填</td><td>重跑 LLM 生成 docx</td><td><strong>仅 HTML（已有）</strong></td><td>docx 回填需重跑 LLM，成本过高且可能超时</td></tr>
+  <tr><td>source 分类</td><td>用户勾选决定</td><td><strong>URL 域名正则</strong></td><td>Bocha 无 source 参数，域名是最可靠分类依据</td></tr>
+  <tr><td>面板真实计算时机</td><td>实时聚合</td><td><strong>documentStore 聚合查询</strong></td><td>raw_documents 已按 analysis_id 索引，tenant 级别聚合成本可控</td></tr>
+</table>
+
+<hr>
+
+<h2>八、附录</h2>
+
+<h3>A. 修改文件清单</h3>
+<ul>
+  <li><code>platform/migrations/platform/0008_report_center.sql</code>（新建）</li>
+  <li><code>platform/internal/business/analysis/pipeline.go</code>（调 CreateFromAnalysis）</li>
+  <li><code>platform/internal/business/report/model.go</code>（新增字段）</li>
+  <li><code>platform/internal/business/report/store.go</code>（聚合接口）</li>
+  <li><code>platform/internal/business/report/pg_store.go</code>（PG 聚合实现）</li>
+  <li><code>platform/internal/business/dashboard/service.go</code>（替换硬编码）</li>
+  <li><code>platform/internal/api/v1/reports.go</code>（下载 handler）</li>
+  <li><code>engines/common/scraper.py</code>（域名分类 + 配额 bug）</li>
+  <li><code>engines/report_engine/main.py</code>（docx 生成端点）</li>
+  <li><code>web/src/pages/AnalysisPage.tsx</code>（UI 降级）</li>
+</ul>
+
+<h3>B. 依赖包</h3>
+<ul>
+  <li>Python：<code>python-docx&gt;=1.1.0</code>（加入 engines/requirements.txt）</li>
+  <li>Go：无新依赖（复用现有 pgx + Gin）</li>
+</ul>
+
+<h3>C. 相关文档</h3>
+<ul>
+  <li>部署手册：<code>docs/ops/DEPLOYMENT_RUNBOOK.md</code></li>
+  <li>Code Review 报告：<code>docs/dev/reviews/REVIEW_P2.md</code>（Step 5 产出）</li>
+  <li>CLAUDE.md §已知产品缺口</li>
+</ul>
+
+<hr>
+
+<p style="color: #8c8c8c; font-size: 13px; text-align: right;">
+  编制：开发总监 &nbsp;|&nbsp; 审核：待定 &nbsp;|&nbsp; 发布：2026-09-23
+</p>
+
+</body>
+</html>

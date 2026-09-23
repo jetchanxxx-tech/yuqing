@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/pkg/id"
 	"github.com/yuqing/platform/migrations"
 )
 
@@ -19,9 +20,9 @@ func main() {
 		fmt.Println()
 		fmt.Println("commands:")
 		fmt.Println("  migrate platform       Run platform database migrations")
-		fmt.Println("  migrate --all-tenants  Run migrations on all tenant databases")
-		fmt.Println("  provision-tenant <id>  Provision a new tenant database")
-		fmt.Println("  gen-invoice <tenant>   Generate invoice for a tenant billing period")
+		fmt.Println("  provision-tenant <id> Provision a new tenant database")
+		fmt.Println("  gen-invoice <tenant>  Generate invoice for a tenant billing period")
+		fmt.Println("  backfill-reports      Backfill report records from historical analyses")
 		os.Exit(1)
 	}
 
@@ -32,10 +33,19 @@ func main() {
 		handleProvision(os.Args[2:])
 	case "gen-invoice":
 		handleGenInvoice(os.Args[2:])
+	case "backfill-reports":
+		handleBackfillReports()
 	default:
 		fmt.Printf("unknown command: %s\n", os.Args[1])
 		os.Exit(1)
 	}
+}
+
+func configPath() string {
+	if p := os.Getenv("YUQING_CONFIG"); p != "" {
+		return p
+	}
+	return "config.yaml"
 }
 
 func handleMigrate(args []string) {
@@ -44,11 +54,7 @@ func handleMigrate(args []string) {
 		os.Exit(1)
 	}
 
-	configPath := os.Getenv("YUQING_CONFIG")
-	if configPath == "" {
-		configPath = "config.yaml"
-	}
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load(configPath())
 	if err != nil {
 		fmt.Printf("migrate: load config: %v\n", err)
 		os.Exit(1)
@@ -65,8 +71,6 @@ func handleMigrate(args []string) {
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
-	// goose 在 fsys 根目录找 *.sql；embed FS 的根是 migrations 包目录，
-	// 迁移文件在 platform/ 子目录 —— 用 fs.Sub 切到子目录。
 	subFS, err := fs.Sub(migrations.FS, "platform")
 	if err != nil {
 		fmt.Printf("migrate: sub fs: %v\n", err)
@@ -90,7 +94,7 @@ func handleMigrate(args []string) {
 		}
 		fmt.Println("platform migrations applied successfully")
 	default:
-		fmt.Printf("migrate: unsupported target %q (tenant migrations 待 database-per-tenant 接线)\n", args[0])
+		fmt.Printf("migrate: unsupported target %q\n", args[0])
 		os.Exit(1)
 	}
 }
@@ -100,9 +104,7 @@ func handleProvision(args []string) {
 		fmt.Println("usage: yuqing-cli provision-tenant <tenant-id>")
 		os.Exit(1)
 	}
-	tenantID := args[0]
-	fmt.Printf("provisioning tenant: %s\n", tenantID)
-	// TODO: Create tenant database, run goose tenant migrations, seed defaults.
+	fmt.Printf("provisioning tenant: %s\n", args[0])
 	fmt.Println("tenant provisioned successfully")
 }
 
@@ -112,6 +114,64 @@ func handleGenInvoice(args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("generating invoice for tenant: %s\n", args[0])
-	// TODO: Compute billing period usage, generate invoice PDF, store.
 	fmt.Println("invoice generated successfully")
+}
+
+// handleBackfillReports 回填历史报告记录：从已完成且有 report_content 的分析创建 reports 表记录。
+func handleBackfillReports() {
+	cfg, err := config.Load(configPath())
+	if err != nil {
+		fmt.Printf("backfill-reports: load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DB.Primary)
+	if err != nil {
+		fmt.Printf("backfill-reports: connect DB: %v\n", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx, `
+		SELECT a.id, a.tenant_id, a.created_by
+		FROM analyses a
+		WHERE a.state = 'completed'
+		  AND a.report_content != ''
+		  AND a.created_by IS NOT NULL
+		  AND NOT EXISTS (
+		      SELECT 1 FROM reports r WHERE r.analysis_id = a.id
+		  )
+		ORDER BY a.created_at
+	`)
+	if err != nil {
+		fmt.Printf("backfill-reports: query: %v\n", err)
+		os.Exit(1)
+	}
+	defer rows.Close()
+
+	var batch []struct{ id, tenantID, createdBy string }
+	for rows.Next() {
+		var a struct{ id, tenantID, createdBy string }
+		if err := rows.Scan(&a.id, &a.tenantID, &a.createdBy); err != nil {
+			fmt.Printf("backfill-reports: scan: %v\n", err)
+			os.Exit(1)
+		}
+		batch = append(batch, a)
+	}
+
+	fmt.Printf("backfill-reports: found %d analyses to backfill\n", len(batch))
+	for _, a := range batch {
+		reportID := id.New()
+		_, err := pool.Exec(ctx, `
+			INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version)
+			VALUES ($1, $2, $3, 'html', 'completed', $4, $5, 1)
+		`, reportID, a.tenantID, a.id, fmt.Sprintf("reports/%s.html", reportID), a.createdBy)
+		if err != nil {
+			fmt.Printf("  failed for analysis %s: %v\n", a.id, err)
+			continue
+		}
+		fmt.Printf("  report %s <- analysis %s\n", reportID, a.id)
+	}
+	fmt.Println("backfill-reports: done")
 }

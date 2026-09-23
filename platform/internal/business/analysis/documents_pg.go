@@ -49,6 +49,11 @@ FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2
 ORDER BY id`
 
 	countDocumentsSQL = `SELECT count(*) FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2`
+
+	listByTenantSQL = `SELECT id, title, url, content, author, source_type, source_name,
+	published_at, content_hash
+	FROM raw_documents WHERE tenant_id = $1
+	ORDER BY published_at DESC NULLS LAST, id`
 )
 
 // add 批量写入采集结果（pgx.Batch：一次往返，避免逐条 INSERT 的延迟）。
@@ -111,6 +116,35 @@ func (d *pgDocumentStore) count(ctx context.Context, tenantID, analysisID string
 		return 0, pgInternal(err)
 	}
 	return n, nil
+}
+
+// ListByTenant returns all documents for a tenant (dashboard Sources aggregation).
+func (d *pgDocumentStore) ListByTenant(ctx context.Context, tenantID string) ([]Document, error) {
+	rows, err := d.pool.Query(ctx, listByTenantSQL, tenantID)
+	if err != nil {
+		return nil, pgInternal(err)
+	}
+	defer rows.Close()
+
+	var out []Document
+	for rows.Next() {
+		var (
+			doc         Document
+			publishedAt *time.Time
+		)
+		if err := rows.Scan(&doc.ID, &doc.Title, &doc.URL, &doc.Content, &doc.Author,
+			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash); err != nil {
+			return nil, pgInternal(err)
+		}
+		if publishedAt != nil {
+			doc.PublishedAt = publishedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, doc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, pgInternal(err)
+	}
+	return out, nil
 }
 
 // documentArgs 组装一行 raw_documents 的参数。

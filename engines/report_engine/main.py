@@ -3,6 +3,7 @@
 LLM 失败时降级为纯数据报告：保留情感统计/话题/文档列表，
 AI 研判段落替换为「AI 研判不可用」提示 —— 结果呈现优于整体失败。
 """
+import io
 import os
 import uuid
 from datetime import datetime
@@ -10,9 +11,18 @@ from html import escape
 from string import Template
 
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
+
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
@@ -549,20 +559,244 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     return _TEMPLATE.substitute(title=title, generated_at=generated_at, body=body)
 
 
+def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
+    """渲染 Word 文档报告。降级策略与 HTML 版一致。"""
+    if not DOCX_AVAILABLE:
+        raise RuntimeError("python-docx not installed")
+
+    doc = Document()
+    stats = _sentiment_stats(req.sentiments)
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # 标题
+    title_para = doc.add_heading(req.title, level=1)
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    meta = doc.add_paragraph(f"生成时间：{generated_at} · 盘古舆情平台")
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in meta.runs:
+        run.font.size = Pt(10)
+        run.font.color.rgb = RGBColor(107, 114, 128)
+
+    if not req.documents:
+        doc.add_paragraph("暂无数据")
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    # 概览数据
+    doc.add_heading("概览", level=2)
+    if req.sentiments:
+        overview_table = doc.add_table(rows=1, cols=4)
+        overview_table.style = 'Light Grid Accent 1'
+        hdr_cells = overview_table.rows[0].cells
+        hdr_cells[0].text = "采集文档"
+        hdr_cells[1].text = "正面"
+        hdr_cells[2].text = "负面"
+        hdr_cells[3].text = "中性"
+        row_cells = overview_table.add_row().cells
+        row_cells[0].text = str(len(req.documents))
+        row_cells[1].text = str(stats["positive"])
+        row_cells[2].text = str(stats["negative"])
+        row_cells[3].text = str(stats["neutral"])
+    else:
+        doc.add_paragraph(f"采集文档：{len(req.documents)}")
+        doc.add_paragraph("情感分析不可用（未产出或调用失败），以下为数据汇总。", style='Intense Quote')
+
+    # AI 研判
+    if insight:
+        if insight.get("event_nature"):
+            doc.add_paragraph(f"事件定性：{insight.get('event_nature', '')}", style='Intense Quote')
+        if insight.get("action_advice"):
+            doc.add_paragraph(f"行动建议：{insight.get('action_advice', '')}", style='Intense Quote')
+
+        doc.add_heading("执行摘要", level=2)
+        doc.add_paragraph(insight.get("executive_summary", ""))
+
+        analyses = _topic_analyses(insight.get("topic_analyses"))
+        if analyses:
+            doc.add_heading("话题研判", level=2)
+            for topic, analysis in analyses:
+                p = doc.add_paragraph()
+                p.add_run(f"{topic}：").bold = True
+                p.add_run(analysis)
+
+        # 风险研判
+        risks = insight.get("risk_points")
+        if isinstance(risks, list) and risks:
+            doc.add_heading("风险研判", level=2)
+            dict_risks = [r for r in risks if isinstance(r, dict)]
+            if dict_risks:
+                risk_table = doc.add_table(rows=1, cols=4)
+                risk_table.style = 'Light Grid Accent 1'
+                hdr = risk_table.rows[0].cells
+                hdr[0].text = "等级"
+                hdr[1].text = "类型"
+                hdr[2].text = "描述"
+                hdr[3].text = "佐证"
+                for r in dict_risks:
+                    row = risk_table.add_row().cells
+                    row[0].text = str(r.get("level", ""))
+                    row[1].text = str(r.get("type", ""))
+                    row[2].text = str(r.get("desc", ""))
+                    row[3].text = str(r.get("evidence", ""))
+            else:
+                for r in _str_list(risks):
+                    doc.add_paragraph(r, style='List Bullet')
+
+        # 应对建议
+        recs = insight.get("recommendations")
+        if isinstance(recs, list) and recs:
+            doc.add_heading("应对建议", level=2)
+            dict_recs = [r for r in recs if isinstance(r, dict)]
+            if dict_recs:
+                by_stage: dict[str, list] = {}
+                for r in dict_recs:
+                    by_stage.setdefault(str(r.get("stage") or "未分阶段"), []).append(r)
+                for stage, items in by_stage.items():
+                    doc.add_paragraph(stage, style='Intense Quote')
+                    for r in items:
+                        p = doc.add_paragraph(style='List Bullet')
+                        p.add_run(r.get("action", "")).bold = True
+                        if r.get("rationale"):
+                            p.add_run(f" —— {r.get('rationale', '')}")
+            else:
+                for r in _str_list(recs):
+                    doc.add_paragraph(r, style='List Bullet')
+    else:
+        doc.add_paragraph("AI 研判不可用（未配置或调用失败），以下为数据汇总。", style='Intense Quote')
+
+    # 五维研判
+    dims = [d for d in req.dimensions if isinstance(d, dict)] if isinstance(req.dimensions, list) else []
+    if dims:
+        doc.add_heading("五维研判", level=2)
+        for d in dims:
+            doc.add_heading(d.get("name", "未命名维度"), level=3)
+            if d.get("findings"):
+                p = doc.add_paragraph()
+                p.add_run("核心发现：").bold = True
+                p.add_run(d.get("findings", ""))
+            for dp in _str_list(d.get("data_points")):
+                doc.add_paragraph(dp, style='List Bullet')
+            quotes = d.get("quotes")
+            if isinstance(quotes, list):
+                for q in quotes:
+                    if isinstance(q, dict) and str(q.get("text", "")).strip():
+                        doc.add_paragraph(q.get("text", ""), style='Intense Quote')
+                        if q.get("source"):
+                            doc.add_paragraph(f"—— {q.get('source', '')}", style='Quote')
+            if d.get("deep_read"):
+                p = doc.add_paragraph()
+                p.add_run("深入解读：").bold = True
+                p.add_run(d.get("deep_read", ""))
+            if d.get("trend"):
+                doc.add_paragraph(f"趋势：{d.get('trend', '')}")
+
+    # 话题聚类
+    topic_rows = [t for t in req.topics if isinstance(t, dict)]
+    if topic_rows:
+        doc.add_heading("话题聚类", level=2)
+        topic_table = doc.add_table(rows=1, cols=4)
+        topic_table.style = 'Light Grid Accent 1'
+        hdr = topic_table.rows[0].cells
+        hdr[0].text = "话题"
+        hdr[1].text = "关键词"
+        hdr[2].text = "文档数"
+        hdr[3].text = "趋势"
+        for t in topic_rows:
+            row = topic_table.add_row().cells
+            row[0].text = str(t.get("name", ""))
+            row[1].text = ", ".join(_str_list(t.get("keywords")))
+            row[2].text = str(t.get("doc_count", 0))
+            row[3].text = str(t.get("trend", ""))
+
+    # 平台对比
+    platform_rows = _platform_breakdown(req.documents, req.sentiments)
+    if platform_rows:
+        doc.add_heading("平台对比", level=2)
+        platform_table = doc.add_table(rows=1, cols=5)
+        platform_table.style = 'Light Grid Accent 1'
+        hdr = platform_table.rows[0].cells
+        hdr[0].text = "平台"
+        hdr[1].text = "内容数"
+        hdr[2].text = "正面"
+        hdr[3].text = "负面"
+        hdr[4].text = "中性"
+        for r in platform_rows:
+            row = platform_table.add_row().cells
+            row[0].text = r["platform"]
+            row[1].text = str(r["docs"])
+            row[2].text = str(r["pos"])
+            row[3].text = str(r["neg"])
+            row[4].text = str(r["neu"])
+
+    # 情感演变轨迹
+    timeline_rows = _sentiment_timeline(req.documents, req.sentiments)
+    if timeline_rows:
+        doc.add_heading("情感演变轨迹", level=2)
+        timeline_table = doc.add_table(rows=1, cols=5)
+        timeline_table.style = 'Light Grid Accent 1'
+        hdr = timeline_table.rows[0].cells
+        hdr[0].text = "日期"
+        hdr[1].text = "文档数"
+        hdr[2].text = "正面"
+        hdr[3].text = "负面"
+        hdr[4].text = "中性"
+        for r in timeline_rows:
+            row = timeline_table.add_row().cells
+            row[0].text = r["date"]
+            row[1].text = str(r["docs"])
+            row[2].text = str(r["pos"])
+            row[3].text = str(r["neg"])
+            row[4].text = str(r["neu"])
+
+    # 文档明细
+    doc_rows = [d for d in req.documents[:50] if isinstance(d, dict)]
+    if doc_rows:
+        doc.add_heading("文档明细", level=2)
+        doc_table = doc.add_table(rows=1, cols=3)
+        doc_table.style = 'Light Grid Accent 1'
+        hdr = doc_table.rows[0].cells
+        hdr[0].text = "#"
+        hdr[1].text = "标题"
+        hdr[2].text = "来源"
+        for i, d in enumerate(doc_rows, 1):
+            row = doc_table.add_row().cells
+            row[0].text = str(i)
+            row[1].text = d.get("title", "")
+            row[2].text = d.get("source_name") or d.get("source_type", "")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "engine": "report", "llm": bool(LLM_API_KEY)}
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest) -> GenerateResponse:
+async def generate(req: GenerateRequest):
     """LLM 研判 + 模板渲染。LLM 不可用时降级为数据报告。"""
     report_id = "rep-" + uuid.uuid4().hex[:16]
     insight = await _llm_insight(req)
-    content = _render(req, insight)
-    return GenerateResponse(
-        report_id=report_id,
-        file_key=f"reports/{report_id}.html",
-        format="html",
-        content=content,
-    )
+
+    if req.format == "docx":
+        if not DOCX_AVAILABLE:
+            return {"error": "python-docx not installed"}, 500
+        content_bytes = _render_docx(req, insight)
+        return StreamingResponse(
+            io.BytesIO(content_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={report_id}.docx"}
+        )
+    else:
+        # HTML (default)
+        content = _render(req, insight)
+        return GenerateResponse(
+            report_id=report_id,
+            file_key=f"reports/{report_id}.html",
+            format="html",
+            content=content,
+        )

@@ -179,6 +179,8 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	// ReportEngine 在外层声明，以便 API handler 使用
+	var reportEngine *engine.RealReportEngine
 	if cfg.Engines.Query.URL == "" {
 		logger.Warn("pipeline: 未配置 engines.query.url，分析任务将停留在 queued")
 	} else {
@@ -202,7 +204,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		}
 		// insight/report 引擎未配置时传 nil —— 管线跳过对应步骤并记录 warning
 		var insight *engine.RealInsightEngine
-		var report *engine.RealReportEngine
 		if cfg.Engines.Insight.URL != "" {
 			insight = engine.NewRealInsightEngine(
 				cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
@@ -210,13 +211,13 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			logger.Warn("pipeline: 未配置 engines.insight.url，情感/话题分析将降级")
 		}
 		if cfg.Engines.Report.URL != "" {
-			report = engine.NewRealReportEngine(
+			reportEngine = engine.NewRealReportEngine(
 				cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
-		startPipeline(context.Background(), q, analysisSvc, crawler, insight, report,
-			pipelineBudget(cfg), logger, analysisModeFor(tenantSvc))
+		startPipeline(context.Background(), q, analysisSvc, crawler, insight, reportEngine,
+			reportSvc, pipelineBudget(cfg), logger, analysisModeFor(tenantSvc))
 	}
 
 	// ── 收费体系（方案 B）────────────────────────────────────
@@ -260,5 +261,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		Payment:         paymentSvc,
 		PaymentRegistry: paymentRegistry,
 		Trends:          trendsSvc,
+		ReportEngine:    reportEngine,
 	}
 }

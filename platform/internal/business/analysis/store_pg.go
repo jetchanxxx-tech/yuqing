@@ -41,13 +41,13 @@ const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, er
 // GET /analyses/:id/result 返回，那条路径走 get）。
 const analysisColumnsList = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content`
+	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content, created_by`
 
 const insertAnalysisSQL = `INSERT INTO analyses (
 	id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`
 
 // updateAnalysisSQL 用 $1/$2 定位行（id + tenant_id），其余列整体写回：
 // mutate 的读-改-写语义在内存版是「改指针指向的对象」，在 pg 版是「整行 UPDATE」。
@@ -55,7 +55,7 @@ const updateAnalysisSQL = `UPDATE analyses SET
 	name = $3, analysis_type = $4, state = $5, progress = $6, error_code = $7,
 	started_at = $8, finished_at = $9, created_at = $10, keywords = $11, sources = $12,
 	doc_count = $13, summary = $14, warning = $15, sentiments = $16, topics = $17,
-	dimensions = $18, report_id = $19, report_content = $20
+	dimensions = $18, report_id = $19, report_content = $20, created_by = $21
 WHERE id = $1 AND tenant_id = $2`
 
 // put 写入一条新分析；ID 已存在（含他租户）报 ErrConflict。
@@ -147,7 +147,7 @@ func analysisArgs(tenantID string, a *AnalysisResult) []any {
 		nullableTime(a.StartedAt), nullableTime(a.FinishedAt), createdAtOrNow(a.CreatedAt),
 		marshalJSON(a.Keywords), marshalJSON(a.Sources), a.DocCount,
 		a.Summary, a.Warning, marshalJSON(a.Sentiments), marshalJSON(a.Topics),
-		marshalJSON(a.Dimensions), a.ReportID, a.ReportContent,
+		marshalJSON(a.Dimensions), a.ReportID, a.ReportContent, a.CreatedBy,
 	}
 }
 
@@ -169,7 +169,7 @@ func scanAnalysis(row pgx.Row) (*AnalysisResult, error) {
 	if err := row.Scan(
 		&a.ID, &tenantID, &a.Name, &a.AnalysisType, &state, &a.Progress, &a.ErrorCode,
 		&startedAt, &finishedAt, &a.CreatedAt, &keywords, &sources, &a.DocCount,
-		&a.Summary, &a.Warning, &sentiments, &topics, &dimensions, &a.ReportID, &a.ReportContent,
+		&a.Summary, &a.Warning, &sentiments, &topics, &dimensions, &a.ReportID, &a.ReportContent, &a.CreatedBy,
 	); err != nil {
 		return nil, err
 	}

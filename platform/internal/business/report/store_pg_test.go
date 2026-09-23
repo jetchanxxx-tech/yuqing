@@ -79,7 +79,7 @@ func TestReportStore_createGetRoundTrip(t *testing.T) {
 			defer cleanup(other)
 
 			want := sampleReport("analysis-1", "html")
-			if err := st.Create(ctx, tenant, want); err != nil {
+			if err := st.Create(ctx, tenant, "user-1", want); err != nil {
 				t.Fatalf("Create failed: %v", err)
 			}
 			got, err := st.Get(ctx, tenant, want.ID)
@@ -121,10 +121,10 @@ func TestReportStore_createDuplicateConflicts(t *testing.T) {
 			defer cleanup(tenant)
 
 			r := sampleReport("analysis-1", "html")
-			if err := st.Create(ctx, tenant, r); err != nil {
+			if err := st.Create(ctx, tenant, "user-1", r); err != nil {
 				t.Fatalf("首次 Create failed: %v", err)
 			}
-			if err := st.Create(ctx, tenant, r); !pkgerrors.Is(err, pkgerrors.ErrConflict) {
+			if err := st.Create(ctx, tenant, "user-1", r); !pkgerrors.Is(err, pkgerrors.ErrConflict) {
 				t.Errorf("重复 ID Create error = %v, want ErrConflict", err)
 			}
 		})
@@ -155,9 +155,10 @@ func TestReportStore_listFiltersAndPaginates(t *testing.T) {
 			foreign := sampleReport("analysis-1", "html")
 			for _, tc := range []struct {
 				tenantID string
+				creator string
 				r        Report
-			}{{tenant, first}, {tenant, second}, {other, foreign}} {
-				if err := st.Create(ctx, tc.tenantID, tc.r); err != nil {
+			}{{tenant, "user-1", first}, {tenant, "user-1", second}, {other, "user-2", foreign}} {
+				if err := st.Create(ctx, tc.tenantID, tc.creator, tc.r); err != nil {
 					t.Fatalf("Create failed: %v", err)
 				}
 			}
@@ -237,7 +238,7 @@ func TestReportStore_updateStatus(t *testing.T) {
 			defer cleanup(other)
 
 			r := sampleReport("analysis-1", "html")
-			if err := st.Create(ctx, tenant, r); err != nil {
+			if err := st.Create(ctx, tenant, "user-1", r); err != nil {
 				t.Fatalf("Create failed: %v", err)
 			}
 			if err := st.UpdateStatus(ctx, tenant, r.ID, "failed"); err != nil {
@@ -285,7 +286,7 @@ func TestPGReportStore_titleAndSummaryNotPersisted(t *testing.T) {
 	r := sampleReport("analysis-1", "html")
 	r.Title = "雅阁后排舆情监测报告"
 	r.SummaryJSON = `{"positive":3,"negative":7}`
-	if err := st.Create(ctx, tenant, r); err != nil {
+	if err := st.Create(ctx, tenant, "user-1", r); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 	got, err := st.Get(ctx, tenant, r.ID)

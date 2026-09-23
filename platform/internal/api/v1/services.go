@@ -21,6 +21,7 @@ import (
 	"github.com/yuqing/platform/internal/business/dashboard"
 	"github.com/yuqing/platform/internal/business/report"
 	"github.com/yuqing/platform/internal/business/trends"
+	"github.com/yuqing/platform/internal/engine"
 )
 
 // Services bundles the service dependencies v1 handlers call. It is wired
@@ -43,6 +44,9 @@ type Services struct {
 
 	// F21 热榜聚合：可空，nil 时 API 返回 503。
 	Trends *trends.Service
+
+	// ReportEngine proxies docx generation to Python report_engine
+	ReportEngine *engine.RealReportEngine
 
 	// SSEPollInterval is how often /analyses/:id/events re-reads the state
 	// machine while streaming. Zero selects the default (1s); tests shrink it.
