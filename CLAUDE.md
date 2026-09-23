@@ -243,6 +243,18 @@ any active state → failed | canceled
 | — | PostgreSQL store（持久化） | ✅ pgx store 已接线（store.driver: postgres），生产重启不丢数据 |
 | — | LLM 调用平台侧计量（MeteredProvider 接真实调用） | ❌ Python 引擎直连 LLM 供应商，Go 侧计量未接线（F22 是它的第一步） |
 
+### 已知产品缺口（2026-09-23 三方评审定级，改动相关代码前必读）
+
+| 缺口 | 代码真相 | 定级 |
+|------|----------|------|
+| **数据源标签错标** | `engines/common/scraper.py:104-107`：Bocha 请求只带关键词无来源参数，**全部结果贴 sources[0] 标签**；配额截断 bug 使勾选来源越多结果越少；6 选项中公众号/小红书/B站/抖音恒 0 结果 | P0 止血：按 URL 域名归类；P1：site: 限定（需生产准入实测） |
+| **报告中心空白** | 管线只写 `analyses.report`（pipeline.go:269），**从不调** `report.Service.CreateFromAnalysis` → reports 表 0 行；`reports.go:62-82` 下载端点是回环桩；前端文案已承诺"自动生成"。契约测试曾把"空列表"断言为合法——半成品被固化为契约 | P0：接线 + HTML 下载（report_content 即存储）+ 存量回填 CLI |
+| 分析类型无实质作用 | `analysis_type` 仅拼入 LLM 提示词（insight_engine main.py:167,438），维度只由 mode（quick/full）驱动；表单文案过度承诺 | P1：降为可选 tag + 类型注入五维人设；明确不做类型驱动维度 |
+| 面板未绑用户 + 假数据 | dashboard 只按 tenantID 聚合（租户级是 ToB 正确默认，保留）；**Sources/Topics 是硬编码"雅阁后排"占位**（dashboard/service.go:14-27），换真需文档级聚合 | P2：created_by 筛选（迁移 0008）；换真 2-3 天 |
+| analyses 无 user_id 列 | `CreateAnalysisRequest.UserID` 在 `Service.Create`（service.go:159-168）被丢弃，DTO→模型→store 三处未通；reports 归属（created_by）与"只看我的"筛选都依赖此列 | 迁移 0008 一次性补：analyses.created_by + reports.created_by |
+
+修复方案全文：产品决策与工作量评估已评审定稿（P0 约 3-4 人天：报告闭环 + 来源标签止血）。**未拍板**：PDF 路线（PM 主张复用生产 Chromium 懒生成 vs 开发主张延后）、docx 排期、Rerun 报告覆盖策略。
+
 ## 部署与运维
 
 ```bash
@@ -278,6 +290,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - HTTP handlers: thin — DTO 校验 → service → `respondError`。v1 路由全部经 `v1.Services` 注入
 - 套餐特性：`billing.DefaultPlans()[code]` + feature key，不硬编码
 - TDD: 先写失败测试 RED → 最小实现 GREEN → 重构。**禁止先写实现再补测试**
+- 测试规范升级（2026-09-23 漏测复盘后生效）：① **替身/真实路径必须对账**——凡有 fake/mock 降级路径的功能（Bocha/LLM/存储），每迭代用真实凭据跑最小对账清单（结果留档 reviews/），替身绿 ≠ 生产对；② **无验收标准不排测**——排测任务必须带"用户可感知的完成定义"，缺失时测试报告显式标注"按实现行为测试，不构成产品验收"；③ gap registry 条目带 registered_at，超一迭代未动自动升 severity，BLOCKER 项存在时"测试全绿"不构成发布口径
 - Code review: 5 角度审查，报告留 `docs/dev/reviews/REVIEW_REPORT.md`（§5/§8 等章节记录已知遗留项）
 - 前端: 页面数据经 `web/src/api/*.ts` 统一 axios（401 自动 refresh），错误信封经 ApiErrorHandler；图表色 负面 `#FF2442` / 中性 `#9ca3af` / 正面 `#02b940`
 - 前端任务页带分阶段预估时长提示（实测 357s 校准：采集 1-2 分/五维分析 3-5 分/报告 1 分），RUNNING_HINTS 在 AnalysisDetailPage.tsx
