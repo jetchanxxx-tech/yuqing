@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # ── Go (platform/) ────────────────────────────────────────
 cd platform
-make test                            # go test ./... -count=1 -race （353 用例 / 20 包）
+make test                            # go test ./... -count=1 -race （26 包；含用户中心 auth 契约 11+ 测试）
 go test ./... -count=1               # 不带 -race 的快速跑
 go test -run TestRegister ./internal/platform/auth/   # 单个测试
 go test ./internal/api/v1/ -count=1  # 单个包（契约测试）
@@ -44,7 +44,7 @@ npm run lint                         # oxlint
 npx playwright test --config e2e/playwright.config.ts     # 本地 dev server 冒烟
 npx playwright test --config e2e/production.config.ts     # 打生产站点（27 用例）
 # 生产套件凭据**只能**来自环境变量，缺失时 spec 直接抛错：
-#   E2E_EMAIL / E2E_PASSWORD / E2E_BASE_URL（默认 https://yuqing.pangu-cloud.com）
+#   E2E_EMAIL / E2E_PASSWORD / E2E_BASE_URL（默认 https://yuqing.pangu-cloud.com —— 老机域名已废弃，打生产时显式设为 https://yuqing2.pangu-cloud.com）
 #   E2E_BOCHA_KEY 可选，用于 5.3 数据源写入验证
 
 # ── Python engines (engines/) ─────────────────────────────
@@ -61,7 +61,7 @@ BOCHA_API_KEY=sk-xxx uvicorn main:app --port 8000
 
 # ── 演示与部署 ────────────────────────────────────────────
 双击 demo/index.html                  # "雅阁后排" 7 步产品演示（零依赖，离线可用）
-sudo YUQING_DOMAIN=yuqing.pangu-cloud.com bash scripts/deploy.sh   # 幂等部署
+sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh   # 幂等部署（仅 Ubuntu；当前唯一生产 yuqing2 为 CentOS，流程见 RUNBOOK §9）
 ```
 
 ## Architecture: Modular Monolith
@@ -122,7 +122,7 @@ internal/
 ├── engine/      ← Go 契约 + HTTP transports (real.go → Python /search)
 ├── api/         ← thin handlers: DTO 校验 → service → respondError 信封
 │   middleware/  ← authn(JWT/ApiKey 双认证), tenant, RBAC, ratelimit, audit
-└── pkg/         ← db, queue, llm, storage, search, cache, id, errors, observ
+└── pkg/         ← db, queue, llm, email(Resend/SMTP), sms(阿里/腾讯), storage, id, errors, observ
 ```
 
 **Platform vs Business 双向禁止跨层 import**。已知例外仅 1 处：`business/report → platform/billing`（定价目录下沉 `pkg/` 是长期方案，当前用函数注入缓解，见 `docs/dev/reviews/REVIEW_REPORT.md` §8.4）。
@@ -178,8 +178,9 @@ gate（未设置时 skip，本地无 PG 也能全绿）。
 | `alert.Service` | Create/Check（negPct ≥ threshold 触发 + sender.Send） |
 | `apikey.Service` | CreateKey(pangu_+ULID, 只返回一次)/ValidateKey(fail-closed)/RevokeKey(跨租户 404) |
 | `usage.Meter` | Record/BudgetStatus/Aggregate（全租户聚合供 /admin/usage） |
+| `auth.Service`（用户中心） | ChangePassword/邮箱验证（token 一次性）/GetProfile/UpdateProfile/SendPhoneCode/BindPhone/UnbindPhone —— 依赖经 `EnableUserCenter()` 装配，未装配时全部方法 fail-closed |
 
-⚠️ 所有 store 均为**内存实现**，进程重启即丢失全部账号、任务与文档。PostgreSQL 迁移 SQL 已备但未接线。
+存储实现为 memory/postgres 双轨（见上 store.driver）。**凡给 PG 写的新 store 方法必须同步补契约测试**（auth 的范式见 `usercenter_pg_test.go`，用 `YUQING_TEST_PG_URL` gate 在装了 PG 的机器/生产上跑）—— v0.1.1 连续 4 个生产 PG bug 全部源于 PG 路径零覆盖，此为血泪教训。
 
 ### LLM Metered Provider (API resale)
 
@@ -202,6 +203,16 @@ any active state → failed | canceled
 
 `middleware.AuthAny`：`pangu_` 前缀分流到 ApiKey 验证（映射最小权限 `api_service` 角色），其余走 JWT。API Key 存 SHA-256 哈希，创建时仅返回一次原始值。
 
+### 用户中心（auth.EnableUserCenter 装配，v0.1.1-beta 上线）
+
+- **依赖注入语义**：`Service` 内的 userStore/verifications/smsSender/emailSender 全部可选，未装配时相关方法 fail-closed 返回 ErrInternal（绝不 panic）；组合根在 container.go 调 `EnableUserCenter()`
+- **VerificationStore 语义化接口**（SaveEmailToken/LoadEmailToken/ConsumeEmailToken/SaveSMSCode/...）：内存版（开发）与 PG 版（生产，verification_tokens + sms_verification_codes 两表）双实现；生产长期可换 Redis。防刷语义 = 「同键覆盖」而非 EXCLUDE 约束（EXCLUDE 曾因 now() 非 IMMUTABLE 与重发场景双重问题被删除）
+- **邮件/短信通道**：`app/usercenter.go` 的 settingsMailer/settingsSMS **每次发送时从 platform_settings 动态构建 Provider**（Resend/SMTP、阿里云/腾讯云，admin 后台「通知服务」改配置零重启生效）—— 项目定位独立部署产品，外部服务一律在线配置不硬编码；凭据未配置时 fail-closed 报 "not configured"
+- **防刷**：Service 层进程内 senderThrottle（同目标 60s 一次 → 429 QUOTA_EXCEEDED）+ codeTries（验证码错 ≥5 次作废）；单实例语义，多实例部署须换 Redis
+- **方案 B 试用**：邮箱未验证用户可创建 1 次分析（`trial_analysis_used` 0→1 原子扣减），验证后不限
+- **唯一登录方式保护**：邮箱未验证时不允许解绑手机号（409）；解绑需登录密码（防会话劫持）
+- ⚠️ 已知遗留：改密码不吊销旧 JWT（Y3，修法 = JWT iat 对比 PasswordChangedAt）；8 个端点未进契约测试（Y8）；腾讯云与阿里云共用 sms_access_key 键（Y6）
+
 ### 测试分层
 
 | 层 | 位置 | 规模 |
@@ -222,10 +233,10 @@ any active state → failed | canceled
 | F13 | SSE 实时推送 | ✅ 轮询实现 |
 | F14 | API Key 管理 | ✅ pangu_ 格式 |
 | F15 | /admin/usage 聚合 | ✅ Meter.Aggregate |
-| F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段） |
+| F16 | 数据源在线配置（Admin UI） | ✅ Bocha + LLM 供应商（Key/端点/模型三字段）+ **通知服务**（邮件 Resend/SMTP、短信阿里/腾讯，凭据用户自备未配置时 fail-closed） |
 | F17 | 情感分析 / 话题聚类 / 报告生成 | ✅ LLM 真实调用 + 五维研判，管线全链路已接入（生产实测 357s） |
-| F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施**并部署生产**（2026-09-15，迁移 0006 已 applied）—— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）**。admin 账号策略：仅商务演示用，额度手工 SQL 发放（现 99 次 + enterprise 档），无无限额度机制，发放走 grant 流水留痕 |
-| F19 | 手机号注册 / 登录 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：注册凭证仅邮箱（CITEXT 唯一），UID 是 ULID，无 phone 字段。要做：users.phone 唯一列 + 短信验证码（阿里云/腾讯云 SMS，需签名报备）+ 注册/登录/找回密码三路改造 + 邮箱账号绑定手机 |
+| F18 | 收费体系（方案 B 渗透型） | ✅ beta 已实施**并部署生产**（2026-09-15，迁移 0006 已 applied）—— Lite 99·4次·quick / Pro 999·10次·full / Ent 4999·50次；加购 69/次（渗透定价）；credit 包（402/回补/防超卖）+ payment 包（三防核验：验签→金额→原子跃迁）；三渠道二维码（支付宝/微信/银联，`internal/platform/payment/`，admin 后台配置商户参数即时生效）；**支付渠道未真实联调（等商户账号）**。admin 账号策略：仅商务演示用，额度手工 SQL 发放（2026-09-22 已补至 500 次），无无限额度机制，发放走 grant 流水留痕 |
+| F19 | 手机号注册 / 登录 | 📋 **下一版本迭代（用户 2026-09-15 指定）** —— **P0 基础已就绪（v0.1.1-beta）**：users.phone 列 + 短信验证码链路（阿里/腾讯可选）+ 绑定/解绑 + 防刷节流均已上线。剩余：手机号注册/登录/找回密码三路改造 + 登录态与验证码打通 |
 | F20 | 企业实名认证 | 📋 **下一版本迭代规划（用户 2026-09-15 指定）** —— 现状：Enterprise 付费即开通，无认证流程。要做：认证表（营业执照/法人身份证/对公账户/凭证上传 + pending→approved→rejected 状态机）+ admin 审核界面 + Enterprise 购买联动；材料清单已给用户（执照/法人/对公打款或转账验证/经办人委托书/NDA 数据合规签署）；过渡期对公转账 + admin 人工开通 |
 | F21 | 热榜聚合页（5 平台快照 + 跨平台搜索） | ✅ **已开发并部署生产**（2026-09-22，yuqing2.pangu-cloud.com）—— RSSHub 自建 unit（`LISTEN_INADDR_ANY=0` 只绑 127.0.0.1:1200 + Playwright Chromium）→ Go server 内存缓存（ticker 5min，三态 ok/stale/error）→ GET /api/v1/trends → 前端 `/trends` Tab + 分析预填钩子 + **跨平台关键字搜索框**（纯前端过滤，命中项带平台标记）。**平台清单 V2（2026-09-23）：微博 20 条/B站 10 条/知乎 20 条/新浪科技 20 条（/sina/rollnews）/36氪 20 条（/36kr/newsflashes）全 ok**——新平台准入须在生产 RSSHub 实测 3 连发；抖音/小红书未过准入线（需 Chromium+反爬）暂缓，IT之家/虎扑实测 503（路由在但上游失败）。代码审核 15 项发现全修复（cache 值语义消除数据竞争等） |
 | F22 | Admin 成本计算器（LLM/爬虫单价统计换算） | 📋 方案已提待用户确认 —— 引擎响应透传 usage → analyses 表加 llm_in/out_tokens+bocha_calls 列（quick/full 分开）→ admin 单价配置（platform_settings）+ 实测单次报告成本 + 各套餐毛利换算。约 3-4 人天；历史分析无 usage 不可回填，从上线起积累 |
@@ -242,7 +253,9 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
-- 迁移 0005：analyses.dimensions JSONB 列；**迁移 0006：收费体系三表（report_credits/credit_transactions/orders）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
+- 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
+- ⚠️ **迁移三踩坑（v0.1.1 实测，详见 RUNBOOK §9.7）**：① yuqing-cli 用 embed FS 把迁移 SQL 编译进二进制——改服务器磁盘迁移文件无效，必须重编译 CLI；② PL/pgSQL `$$` 块必须加 `-- +goose StatementBegin/End`，否则 goose 分句报 42601（psql 试跑通过 ≠ goose 通过）；③ CLI 必须带 `YUQING_CONFIG=/opt/yuqing/config/config.yaml`。部署前用 psql 事务试跑（BEGIN...ROLLBACK）验语法
+- server unit 已有 `public-base-url.conf` drop-in 注入 `YUQING_PUBLIC_BASE_URL`（邮箱验证链接基地址，防 Host 头伪造）
 - 收费体系语义：每次分析 Create/Rerun 各扣 1 次额度，管线失败/取消自动回补；额度不足 HTTP 402 `NO_CREDITS`；新注册赠 1 次试用；beta 公测期额度不过期
 - 分析模式：套餐裁剪 quick（Lite 3 维速览，尝试 thinking=disabled 压成本）/ full（5 维）；Go→Python 经 `InsightAnalyzeReq.Mode` 透传，Python 侧 400 时自动去掉 thinking 参数重试
 - 支付回调路由 `/api/v1/callbacks/payment/:channel` 是唯一免鉴权业务端点 —— 安全完全依赖渠道验签，改动 payment 包时必须保持防线顺序：验签 → 金额核验 → pending→paid 原子跃迁（provider_txn_id 唯一）→ 幂等发放
