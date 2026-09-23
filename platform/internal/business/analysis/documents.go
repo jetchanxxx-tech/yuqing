@@ -29,6 +29,8 @@ type documentStore interface {
 	add(ctx context.Context, tenantID, analysisID string, docs []Document) error
 	list(ctx context.Context, tenantID, analysisID string) ([]Document, error)
 	count(ctx context.Context, tenantID, analysisID string) (int, error)
+	// ListByTenant returns all documents for a tenant (dashboard aggregation).
+	ListByTenant(ctx context.Context, tenantID string) ([]Document, error)
 }
 
 // memoryDocumentStore 按租户+分析分桶保存采集结果（内存实现，重启即失）。
@@ -66,6 +68,16 @@ func (d *memoryDocumentStore) count(_ context.Context, tenantID, analysisID stri
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return len(d.data[tenantID][analysisID]), nil
+}
+
+func (d *memoryDocumentStore) ListByTenant(_ context.Context, tenantID string) ([]Document, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	var out []Document
+	for _, docs := range d.data[tenantID] {
+		out = append(out, docs...)
+	}
+	return out, nil
 }
 
 // ── Service 上的公开方法 ─────────────────────────────────
@@ -110,4 +122,16 @@ func (s *Service) DocumentCount(ctx context.Context, tenantID, analysisID string
 		return 0
 	}
 	return n
+}
+
+// AllDocuments returns all documents for a tenant (dashboard Sources aggregation).
+func (s *Service) AllDocuments(ctx context.Context, tenantID string) []Document {
+	docs, err := s.docs.ListByTenant(ctx, tenantID)
+	if err != nil {
+		slog.Default().Warn("analysis: 租户文档聚合失败",
+			slog.String("tenant_id", tenantID),
+			slog.String("err", err.Error()))
+		return []Document{}
+	}
+	return docs
 }

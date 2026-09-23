@@ -143,18 +143,36 @@ func TestTrend_emptyTenant(t *testing.T) {
 	}
 }
 
-func TestSources_fixedFourRows(t *testing.T) {
-	svc, _ := newTestDashboard(t)
+func TestSources_aggregatesRealDocuments(t *testing.T) {
+	svc, analysisSvc := newTestDashboard(t)
+	ctx := context.Background()
 
-	got, err := svc.Sources(context.Background(), "tenant-1")
+	// No documents → empty breakdown
+	got, err := svc.Sources(ctx, "tenant-1")
 	if err != nil {
 		t.Fatalf("Sources failed: %v", err)
 	}
-	if len(got.Sources) != 4 {
-		t.Fatalf("len(Sources) = %d, want 4 fixed source rows", len(got.Sources))
+	if len(got.Sources) != 0 {
+		t.Fatalf("no docs: len(Sources) = %d, want 0", len(got.Sources))
 	}
 
-	total := 0.0
+	// Add documents with different source types
+	analysisSvc.AddDocuments(ctx, "tenant-1", "a1", []analysis.Document{
+		{ID: "d1", SourceType: "weibo", Title: "微博文章"},
+		{ID: "d2", SourceType: "weibo", Title: "微博文章2"},
+		{ID: "d3", SourceType: "news", Title: "新闻"},
+	})
+	analysisSvc.AddDocuments(ctx, "tenant-1", "a2", []analysis.Document{
+		{ID: "d4", SourceType: "bilibili", Title: "B站视频"},
+	})
+
+	got, err = svc.Sources(ctx, "tenant-1")
+	if err != nil {
+		t.Fatalf("Sources with docs failed: %v", err)
+	}
+	if len(got.Sources) != 3 {
+		t.Fatalf("len(Sources) = %d, want 3 (weibo/news/bilibili)", len(got.Sources))
+	}
 	for _, s := range got.Sources {
 		if s.Name == "" {
 			t.Error("source row with empty name")
@@ -162,21 +180,16 @@ func TestSources_fixedFourRows(t *testing.T) {
 		if s.Count < 0 {
 			t.Errorf("source %s has negative count %d", s.Name, s.Count)
 		}
+	}
+	total := 0.0
+	for _, s := range got.Sources {
 		total += s.Pct
 	}
-	if !almostEqual(total, 100) {
+	if math.Abs(total-100) > 0.01 {
 		t.Errorf("percentages sum to %v, want 100", total)
 	}
-
-	// Fixed rows are tenant-independent placeholders for the MVP.
-	other, err := svc.Sources(context.Background(), "tenant-2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(other.Sources) != 4 || other.Sources[0].Name != got.Sources[0].Name {
-		t.Errorf("sources differ across tenants: %+v vs %+v", got.Sources, other.Sources)
-	}
 }
+
 
 func TestTopics_predefinedFour(t *testing.T) {
 	svc, _ := newTestDashboard(t)

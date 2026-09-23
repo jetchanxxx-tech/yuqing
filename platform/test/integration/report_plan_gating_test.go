@@ -38,7 +38,7 @@ func TestIntegration_reportPlanGating(t *testing.T) {
 
 	createFor := func(t *testing.T, tenantID, format string) *report.Report {
 		t.Helper()
-		r, err := svc.CreateFromAnalysis(ctx, tenantID, analysisID, format)
+		r, err := svc.CreateFromAnalysis(ctx, tenantID, analysisID, format, "user-1")
 		if err != nil {
 			t.Fatalf("CreateFromAnalysis(%s, %s) failed: %v", tenantID, format, err)
 		}
@@ -131,7 +131,7 @@ func TestIntegration_reportPlanGating(t *testing.T) {
 	})
 
 	t.Run("unsupported format is rejected at creation", func(t *testing.T) {
-		_, err := svc.CreateFromAnalysis(ctx, "t-business", analysisID, "pptx")
+		_, err := svc.CreateFromAnalysis(ctx, "t-business", analysisID, "pptx", "user-1")
 		if err == nil {
 			t.Fatal("CreateFromAnalysis accepted pptx")
 		}
@@ -174,7 +174,7 @@ func TestIntegration_reportFullChain(t *testing.T) {
 	}
 	svc := report.NewService(report.NewMemoryStore(), planFor, nil)
 
-	created, err := svc.CreateFromAnalysis(context.Background(), p.TenantID, "a-1", "html")
+	created, err := svc.CreateFromAnalysis(context.Background(), p.TenantID, "a-1", "html", "user-1")
 	if err != nil {
 		t.Fatalf("CreateFromAnalysis failed: %v", err)
 	}

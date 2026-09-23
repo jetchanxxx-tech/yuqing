@@ -67,7 +67,7 @@ export default function AnalysisNewPage() {
 
   const canNext =
     current === 0
-      ? name.trim().length >= 2 && type !== null
+      ? name.trim().length >= 2
       : current === 1
         ? keywords.length >= 1
         : current === 2
@@ -167,7 +167,10 @@ export default function AnalysisNewPage() {
               onChange={(e) => setName(e.target.value)}
               style={{ maxWidth: 480, marginBottom: 24 }}
             />
-            <Typography.Title level={5}>选择分析类型</Typography.Title>
+            <Typography.Title level={5}>选择分析类型（可选）</Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginTop: -8, marginBottom: 16 }}>
+              可选标签，用于优化分析提示词。若不选择，系统将使用通用分析模式。
+            </Typography.Paragraph>
             <Row gutter={[16, 16]}>
               {ANALYSIS_TYPES.map((t, i) => typeCard(t, i))}
             </Row>

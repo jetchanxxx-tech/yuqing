@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yuqing/platform/internal/business/analysis"
+	"github.com/yuqing/platform/internal/business/report"
 	"github.com/yuqing/platform/internal/config"
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/platform/billing"
@@ -185,6 +186,19 @@ func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportR
 	return analysis.ReportResult{ReportID: resp.ReportID, Content: resp.Content}, nil
 }
 
+// reportSvcAdapter 把 *report.Service 适配为 analysis.reportSvc 接口。
+type reportSvcAdapter struct {
+	svc *report.Service
+}
+
+func (a *reportSvcAdapter) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (string, error) {
+	r, err := a.svc.CreateFromAnalysis(ctx, tenantID, analysisID, format, createdBy)
+	if err != nil || r == nil {
+		return "", err
+	}
+	return r.ID, nil
+}
+
 func toEngineDocuments(docs []analysis.Document) []engine.Document {
 	out := make([]engine.Document, 0, len(docs))
 	for _, d := range docs {
@@ -233,6 +247,7 @@ func startPipeline(
 	crawler *engine.RealCrawlerEngine,
 	insight *engine.RealInsightEngine,
 	report *engine.RealReportEngine,
+	reportSvc *report.Service, // nil = 跳过 reports 表写入（向后兼容）
 	timeout time.Duration,
 	log *slog.Logger,
 	modeFor func(tenantID string) string,
@@ -246,6 +261,9 @@ func startPipeline(
 	}
 	if report != nil {
 		p = p.WithGenerator(&engineReportAdapter{rep: report})
+	}
+	if reportSvc != nil {
+		p = p.WithReportSvc(&reportSvcAdapter{svc: reportSvc})
 	}
 
 	err := q.Subscribe(ctx, analysis.TopicAnalysisTasks, func(ctx context.Context, msg queue.Message) error {

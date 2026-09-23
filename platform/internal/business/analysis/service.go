@@ -123,6 +123,8 @@ type AnalysisResult struct {
 	StartedAt    time.Time `json:"started_at,omitempty"`
 	FinishedAt   time.Time `json:"finished_at,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+	// CreatedBy is the user who created this analysis (迁移 0008).
+	CreatedBy string `json:"created_by,omitempty"`
 
 	// 采集参数 —— 管线据此知道搜什么。
 	// 不持久化关键词则任务无法被处理（管线只拿到 ID，无从得知检索词）。
@@ -145,6 +147,9 @@ type AnalysisResult struct {
 	ReportContent string `json:"-"`
 }
 
+// GetCreatedBy implements the interface used by Pipeline.createdBy.
+func (a *AnalysisResult) GetCreatedBy() string { return a.CreatedBy }
+
 // Create validates parameters, persists the analysis as queued, and
 // publishes a task so workers pick it up.
 func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*AnalysisResult, error) {
@@ -165,6 +170,7 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		CreatedAt:    now,
 		Keywords:     req.Keywords,
 		Sources:      req.Sources,
+		CreatedBy:    req.UserID,
 	}
 
 	// 额度闸门：先扣后做。扣减成功后的任何失败路径都必须回补。

@@ -9,13 +9,62 @@ import (
 	"github.com/yuqing/platform/internal/business/report"
 )
 
-// fixedSources are the four source rows the MVP dashboard always shows.
-// Simplified until the documents store can back real per-source counts.
-var fixedSources = []SourceShare{
-	{Name: "微博", Count: 40, Pct: 40},
-	{Name: "公众号", Count: 30, Pct: 30},
-	{Name: "新闻", Count: 20, Pct: 20},
-	{Name: "小红书", Count: 10, Pct: 10},
+// Sources returns real per-source document counts aggregated from all completed analyses.
+// Falls back to zero-value breakdown when no documents are available.
+func (s *Service) Sources(ctx context.Context, tenantID string) (*SourceBreakdown, error) {
+	docs := s.analysisSvc.AllDocuments(ctx, tenantID)
+	if len(docs) == 0 {
+		return &SourceBreakdown{Sources: []SourceShare{}}, nil
+	}
+
+	counts := make(map[string]int)
+	for _, d := range docs {
+		if d.SourceType != "" {
+			counts[d.SourceType]++
+		}
+	}
+
+	total := 0
+	for _, c := range counts {
+		total += c
+	}
+	var rows []SourceShare
+	for src, cnt := range counts {
+		var pct float64
+		if total > 0 {
+			pct = float64(cnt) / float64(total) * 100
+		}
+		rows = append(rows, SourceShare{
+			Name:  displayName(src),
+			Count: cnt,
+			Pct:   pct,
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Count > rows[j].Count })
+	return &SourceBreakdown{Sources: rows}, nil
+}
+
+func displayName(src string) string {
+	switch src {
+	case "weibo":
+		return "微博"
+	case "weixin":
+		return "公众号"
+	case "news":
+		return "新闻"
+	case "xiaohongshu":
+		return "小红书"
+	case "bilibili":
+		return "B站"
+	case "douyin":
+		return "抖音"
+	case "zhihu":
+		return "知乎"
+	case "kuaishou":
+		return "快手"
+	default:
+		return "其他"
+	}
 }
 
 // fixedTopics are the four predefined topic rows for the MVP dashboard.
@@ -29,17 +78,15 @@ var fixedTopics = []Topic{
 // Service aggregates dashboard data from the analysis and report services.
 type Service struct {
 	analysisSvc *analysis.Service
-	reportSvc   *report.Service // reserved for document-level metrics
+	reportSvc  *report.Service
 }
 
 // NewService wires the dashboard to live services.
-// reportSvc may be nil until report-backed metrics are implemented.
 func NewService(analysisSvc *analysis.Service, reportSvc *report.Service) *Service {
 	return &Service{analysisSvc: analysisSvc, reportSvc: reportSvc}
 }
 
-// Overview computes summary cards from the tenant's analyses:
-// total runs, active runs and the completed success rate.
+// Overview computes summary cards from the tenant's analyses.
 func (s *Service) Overview(ctx context.Context, tenantID string) (*Overview, error) {
 	items, err := s.analysisSvc.List(ctx, tenantID)
 	if err != nil {
@@ -69,10 +116,7 @@ func (s *Service) Overview(ctx context.Context, tenantID string) (*Overview, err
 	}, nil
 }
 
-// Trend returns daily analysis counts grouped by creation date. Scores is
-// the average sentiment per day; document-level sentiment is not persisted
-// yet, so it is emitted as a zero-aligned slice (never null) to keep the
-// frontend chart contract intact.
+// Trend returns daily analysis counts grouped by creation date.
 func (s *Service) Trend(ctx context.Context, tenantID string) (*TrendSeries, error) {
 	items, err := s.analysisSvc.List(ctx, tenantID)
 	if err != nil {
@@ -97,13 +141,6 @@ func (s *Service) Trend(ctx context.Context, tenantID string) (*TrendSeries, err
 		scores = append(scores, 0)
 	}
 	return &TrendSeries{Dates: dates, Counts: series, Scores: scores}, nil
-}
-
-// Sources returns the fixed four-source breakdown (MVP placeholder).
-func (s *Service) Sources(_ context.Context, _ string) (*SourceBreakdown, error) {
-	rows := make([]SourceShare, len(fixedSources))
-	copy(rows, fixedSources)
-	return &SourceBreakdown{Sources: rows}, nil
 }
 
 // Topics returns the four predefined topic rows (MVP placeholder).

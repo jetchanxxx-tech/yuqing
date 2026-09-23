@@ -79,10 +79,17 @@ type Pipeline struct {
 	fetcher   Fetcher
 	analyzer  InsightAnalyzer  // nil = 未配置，跳过分析并记录 warning
 	generator ReportGenerator  // nil = 未配置，跳过报告并记录 warning
+	reportSvc reportSvc        // nil = 跳过报告记录创建（向后兼容）
 	timeout   time.Duration
 	log       *slog.Logger
 	// modeFor 按租户返回套餐裁剪模式（quick/full）；nil = 全部 full。
 	modeFor func(tenantID string) string
+}
+
+// reportSvc 报告服务的最小接口（避免 business/analysis → business/report 循环依赖）。
+// 返回报告 ID（空串表示创建失败但非致命）。
+type reportSvc interface {
+	CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (string, error)
 }
 
 // NewPipeline 创建管线。timeout <= 0 时使用默认 3 分钟。
@@ -112,6 +119,13 @@ func (p *Pipeline) WithGenerator(g ReportGenerator) *Pipeline {
 // WithModeFor 注入套餐模式解析（租户 → quick/full）。nil = 全部完整模式。
 func (p *Pipeline) WithModeFor(fn func(tenantID string) string) *Pipeline {
 	p.modeFor = fn
+	return p
+}
+
+// WithReportSvc 注入报告服务，用于在管线完成后创建 reports 表记录。
+// nil = 跳过记录创建（向后兼容旧配置）。
+func (p *Pipeline) WithReportSvc(svc reportSvc) *Pipeline {
+	p.reportSvc = svc
 	return p
 }
 
@@ -270,7 +284,27 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Docume
 		p.log.Warn("pipeline: store report failed", slog.String("err", err.Error()))
 		return ""
 	}
+	// 同步写入 reports 表（报告中心闭环）。失败不致命：analyses 已写入，报告内容不丢。
+	if p.reportSvc != nil {
+		createdBy := p.createdBy(ctx, msg)
+		if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", createdBy); err != nil {
+			p.log.Warn("pipeline: create report record failed",
+				slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
+		} else {
+			p.log.Info("pipeline: report record created",
+				slog.String("analysis_id", msg.AnalysisID))
+		}
+	}
 	return ""
+}
+
+// createdBy 从 analysis 对象提取 created_by UUID。
+func (p *Pipeline) createdBy(ctx context.Context, msg TaskMessage) string {
+	a, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
+	if err != nil || a == nil {
+		return ""
+	}
+	return a.CreatedBy
 }
 
 // analysisType 读取任务的类型（供分析器提示词使用）。

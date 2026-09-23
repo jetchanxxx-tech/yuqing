@@ -23,7 +23,7 @@ func newTestReportService(t *testing.T) (*Service, *MemoryStore, map[string]stri
 
 func createReport(t *testing.T, svc *Service, tenantID, analysisID, format string) *Report {
 	t.Helper()
-	r, err := svc.CreateFromAnalysis(context.Background(), tenantID, analysisID, format)
+	r, err := svc.CreateFromAnalysis(context.Background(), tenantID, analysisID, format, "user-1")
 	if err != nil {
 		t.Fatalf("CreateFromAnalysis(%s) failed: %v", format, err)
 	}
@@ -56,7 +56,7 @@ func TestServiceCreateFromAnalysis_unsupportedFormat(t *testing.T) {
 	svc, st, _ := newTestReportService(t)
 
 	for _, format := range []string{"", "md", "exe", "HTML"} {
-		if _, err := svc.CreateFromAnalysis(context.Background(), "tenant-1", "analysis-1", format); err == nil {
+		if _, err := svc.CreateFromAnalysis(context.Background(), "tenant-1", "analysis-1", format, "user-1"); err == nil {
 			t.Errorf("CreateFromAnalysis(%q): expected error", format)
 		}
 	}
@@ -68,10 +68,10 @@ func TestServiceCreateFromAnalysis_unsupportedFormat(t *testing.T) {
 func TestServiceCreateFromAnalysis_missingArguments(t *testing.T) {
 	svc, _, _ := newTestReportService(t)
 
-	if _, err := svc.CreateFromAnalysis(context.Background(), "", "analysis-1", "html"); err == nil {
+	if _, err := svc.CreateFromAnalysis(context.Background(), "", "analysis-1", "html", "user-1"); err == nil {
 		t.Error("empty tenant_id: expected error")
 	}
-	if _, err := svc.CreateFromAnalysis(context.Background(), "tenant-1", "", "html"); err == nil {
+	if _, err := svc.CreateFromAnalysis(context.Background(), "tenant-1", "", "html", "user-1"); err == nil {
 		t.Error("empty analysis_id: expected error")
 	}
 }
@@ -230,7 +230,7 @@ func TestServiceDownloadURL_notFound(t *testing.T) {
 func TestMemoryStore_UpdateStatusAndFilter(t *testing.T) {
 	st := NewMemoryStore()
 	r := Report{ID: "report-1", AnalysisID: "analysis-1", Title: "", Format: "html", Status: "queued", FileKey: "reports/report-1.html"}
-	if err := st.Create(context.Background(), "tenant-1", r); err != nil {
+	if err := st.Create(context.Background(), "tenant-1", "user-1", r); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 

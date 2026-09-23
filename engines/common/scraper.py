@@ -7,6 +7,7 @@ Requirements: pip install scrapling[fetchers] httpx
 import hashlib
 import logging
 import os
+import re
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -102,9 +103,15 @@ class PageScraper:
             # 有 key 时 Bocha 失败必须抛错 —— 绝不静默降级为空/假数据
             #（生产上 key 失效若静默，会产出「看起来成功」的假报告）
             found = await self._bocha_search(keyword, key)
-            # Bocha 返回通用网页结果，归到第一个数据源名下
-            if sources:
-                all_candidates[sources[0]] = found
+            # Bocha 返回通用网页结果，按 URL 域名分类（P0 修复）
+            for item in found:
+                url = item.get("url", "")
+                if not url:
+                    continue
+                stype = _classify_by_domain(url)
+                if stype not in all_candidates:
+                    all_candidates[stype] = []
+                all_candidates[stype].append(item)
         else:
             for source in sources:
                 all_candidates[source] = [
@@ -113,40 +120,47 @@ class PageScraper:
                 ]
 
         # 2. 抓取正文 + 去重
-        for source in sources:
-            candidates = all_candidates.get(source, [])[:max_per_source]
-            if not candidates:
-                continue
-            mode = self._source_mode(source)
+        # 配额截断修复（P0 bug）：先收集所有候选 URL，再按用户勾选的来源过滤，
+        # 最后截取全局 max_per_source（而非每个 source 单独截断 → 勾越多结果越多）。
+        all_urls: list[tuple[str, dict]] = []  # (source_type, candidate)
+        for stype, candidates in all_candidates.items():
             for cand in candidates:
-                url = cand.get("url", "")
-                if not url:
-                    continue
-                doc = self.fetch(url, source_type=source, mode=mode)
+                all_urls.append((stype, cand))
 
-                # 抓取失败或正文为空时，退回 Bocha 摘要 —— 摘要虽短，
-                # 但保证搜索结果不因目标站反爬而全部丢失
-                if doc.error or not doc.content:
-                    snippet = cand.get("snippet", "")
-                    if not snippet:
-                        continue
-                    doc = ScrapedDocument(
-                        title=cand.get("title", ""),
-                        url=url,
-                        content=snippet,
-                        source_type=source,
-                        error="",  # 摘要兜底视为有效结果
-                    )
-                if not doc.title:
-                    doc.title = cand.get("title", "")
+        for stype, cand in all_urls:
+            url = cand.get("url", "")
+            if not url:
+                continue
+            mode = self._source_mode(stype)
+            doc = self.fetch(url, source_type=stype, mode=mode)
 
-                doc.content_hash = _hash_content(doc.content)
-                if doc.content_hash in seen_hashes:
+            # 抓取失败或正文为空时，退回 Bocha 摘要 —— 摘要虽短，
+            # 但保证搜索结果不因目标站反爬而全部丢失
+            if doc.error or not doc.content:
+                snippet = cand.get("snippet", "")
+                if not snippet:
                     continue
-                seen_hashes.add(doc.content_hash)
-                doc.source_type = source
-                doc.source_name = _source_display_name(source)
-                results.append(doc)
+                doc = ScrapedDocument(
+                    title=cand.get("title", ""),
+                    url=url,
+                    content=snippet,
+                    source_type=stype,
+                    error="",  # 摘要兜底视为有效结果
+                )
+            if not doc.title:
+                doc.title = cand.get("title", "")
+
+            doc.content_hash = _hash_content(doc.content)
+            if doc.content_hash in seen_hashes:
+                continue
+            seen_hashes.add(doc.content_hash)
+            doc.source_type = stype
+            doc.source_name = _source_display_name(stype)
+            results.append(doc)
+
+        # 全局截断：无论选几个源，最多返回 max_per_source 条（P0 bug 修复）
+        if len(results) > max_per_source:
+            results = results[:max_per_source]
 
         return results
 
@@ -299,3 +313,26 @@ def _source_display_name(source: str) -> str:
         "zhihu": "知乎", "rss": "RSS", "custom_web": "自定义",
     }
     return names.get(source, source)
+
+
+# URL 域名 → 数据源类型映射（P0 数据源标签修复）
+_DOMAIN_SOURCE_MAP = [
+    (re.compile(r"weibo\.com|sina\.com\.cn", re.IGNORECASE), "weibo"),
+    (re.compile(r"mp\.weixin\.qq\.com", re.IGNORECASE), "weixin"),
+    (re.compile(r"xiaohongshu\.com|xhslink\.com", re.IGNORECASE), "xiaohongshu"),
+    (re.compile(r"bilibili\.com|b23\.tv", re.IGNORECASE), "bilibili"),
+    (re.compile(r"douyin\.com|iesdouyin\.com", re.IGNORECASE), "douyin"),
+    (re.compile(r"kuaishou\.com|ksurl\.cn", re.IGNORECASE), "kuaishou"),
+    (re.compile(r"zhihu\.com", re.IGNORECASE), "zhihu"),
+    (re.compile(r"36kr\.com", re.IGNORECASE), "news"),
+    (re.compile(r"sohu\.com|ifeng\.com|qq\.com/news", re.IGNORECASE), "news"),
+    (re.compile(r"baidu\.com/s", re.IGNORECASE), "news"),
+]
+
+
+def _classify_by_domain(url: str) -> str:
+    """根据 URL 域名推断数据源类型（P0 修复：Bocha 结果不再强制归 sources[0]）。"""
+    for pattern, source in _DOMAIN_SOURCE_MAP:
+        if pattern.search(url):
+            return source
+    return "custom_web"
