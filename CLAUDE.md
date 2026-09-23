@@ -103,6 +103,7 @@ POST /analyses → store 写入(state=queued) → queue 发布 TaskMessage{analy
 - 管线对已终态任务幂等（重复投递直接跳过）
 - 进度百分比常量定义在 `pipeline.go`，前端据此渲染进度条
 - `analyzing` 调 `InsightAnalyzer`（情感/话题/摘要），`generating_report` 调 `ReportGenerator`（HTML 报告）。两者**失败不致命**：任务仍 completed，warning 记录降级原因（采集结果不能因分析失败丢弃）。引擎未配置（URL 为空）时对应步骤跳过并记 warning
+- **v0.1.2+ 管线接线 report.Service**：`generating_report` 步骤调用 `report.Service.CreateFromAnalysis` 写入 reports 表，记录 `analysis_id` 和 `created_by`，报告中心据此展示和筛选
 - 洞察/报告经 `app/pipeline.go` 的 adapter 适配（engine → analysis 接口），business 层不 import engine 包
 - **warning 语义**：warn 只描述降级程度，不决定「是否保存」—— 洞察结果非空（哪怕部分维度失败）即 SetInsight；`InsightAvailable` = 有产出而非零告警
 - **引用保真**：维度「逐字原声」必须是源文档正文的归一化子串（去空白比较），编造引语丢弃并记 warning（`insight_engine._verify_quotes`）
@@ -135,11 +136,11 @@ Python 引擎**不是**同等完成度。改动前先确认：
 |------|------|------|
 | `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
 | `insight_engine` | 8002 | ✅ **真实实现** — LLM 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
-| `report_engine` | 8003 | ✅ **真实实现** — LLM 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告 |
+| `report_engine` | 8003 | ✅ **真实实现** — LLM 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告；**v0.1.2+ 支持 docx 流式生成**（python-docx） |
 | `forum_engine` | 8004 | ⚠️ Mock — 预置"雅阁后排"4 Agent × 3 轮辩论 |
 | `media_engine` | 8001 | ⚠️ Mock — 5 条预置多模态结果 |
 
-`/analyses/:id/result` 返回 `summary`/`sentiments`(计数+明细)/`topics`/`dimensions`(五维研判)/`report`(HTML)/`warning`。前端详情页「五维研判」Tab 渲染维度结论（Collapse 折叠面板）。
+`/analyses/:id/result` 返回 `summary`/`sentiments`(计数+明细)/`topics`/`dimensions`(五维研判)/`report`(HTML)/`warning`。前端详情页「五维研判」Tab 渲染维度结论（Collapse 折叠面板）。**v0.1.2+** 报告中心（`/reports`）提供 HTML/docx 下载，套餐 gating：Lite 只能 HTML，Pro+ 可 docx。
 
 ## Key Design Patterns
 
@@ -245,13 +246,16 @@ any active state → failed | canceled
 
 ### 已知产品缺口（2026-09-23 三方评审定级，改动相关代码前必读）
 
+**v0.1.2-beta（2026-09-23）已修复：**
+- ✅ **报告中心空白** — 管线接线完成（pipeline.go 调用 report.Service），下载端点实现（HTML 直接返回 + docx 流式代理 Python 引擎），存量回填 CLI（`yuqing-cli backfill-reports`）
+- ✅ **分析类型无实质作用** — 前端降为可选 tag（web/src/pages/AnalysisNewPage.tsx），辅助文案明确"用于优化提示词"
+- ✅ **面板假数据** — dashboard.Sources/Topics 真实聚合 documents 表（dashboard/service.go），移除硬编码"雅阁后排"占位
+- ✅ **analyses/reports 无 created_by** — 迁移 0008 添加列，管线/报告创建时记录用户归属
+
+**待修复（v0.1.3+）：**
 | 缺口 | 代码真相 | 定级 |
 |------|----------|------|
-| **数据源标签错标** | `engines/common/scraper.py:104-107`：Bocha 请求只带关键词无来源参数，**全部结果贴 sources[0] 标签**；配额截断 bug 使勾选来源越多结果越少；6 选项中公众号/小红书/B站/抖音恒 0 结果 | P0 止血：按 URL 域名归类；P1：site: 限定（需生产准入实测） |
-| **报告中心空白** | 管线只写 `analyses.report`（pipeline.go:269），**从不调** `report.Service.CreateFromAnalysis` → reports 表 0 行；`reports.go:62-82` 下载端点是回环桩；前端文案已承诺"自动生成"。契约测试曾把"空列表"断言为合法——半成品被固化为契约 | P0：接线 + HTML 下载（report_content 即存储）+ 存量回填 CLI |
-| 分析类型无实质作用 | `analysis_type` 仅拼入 LLM 提示词（insight_engine main.py:167,438），维度只由 mode（quick/full）驱动；表单文案过度承诺 | P1：降为可选 tag + 类型注入五维人设；明确不做类型驱动维度 |
-| 面板未绑用户 + 假数据 | dashboard 只按 tenantID 聚合（租户级是 ToB 正确默认，保留）；**Sources/Topics 是硬编码"雅阁后排"占位**（dashboard/service.go:14-27），换真需文档级聚合 | P2：created_by 筛选（迁移 0008）；换真 2-3 天 |
-| analyses 无 user_id 列 | `CreateAnalysisRequest.UserID` 在 `Service.Create`（service.go:159-168）被丢弃，DTO→模型→store 三处未通；reports 归属（created_by）与"只看我的"筛选都依赖此列 | 迁移 0008 一次性补：analyses.created_by + reports.created_by |
+| **数据源标签错标** | `engines/common/scraper.py:104-107`：Bocha 请求只带关键词无来源参数，**全部结果贴 sources[0] 标签**；v0.1.2 止血方案按 URL 域名归类（微博/小红书/B站/抖音/公众号/新闻），但仍存在配额截断 bug（勾选来源越多结果越少） | ⚠️ P0 已止血；P1 根治：site: 限定或并发请求（2-3 天，需生产实测） |
 
 修复方案全文：产品决策与工作量评估已评审定稿（P0 约 3-4 人天：报告闭环 + 来源标签止血）。**未拍板**：PDF 路线（PM 主张复用生产 Chromium 懒生成 vs 开发主张延后）、docx 排期、Rerun 报告覆盖策略。
 
@@ -265,8 +269,9 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
-- 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
+- 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）**；**迁移 0008（v0.1.2-beta）：analyses.created_by + reports.created_by 列（报告归属）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
 - ⚠️ **迁移三踩坑（v0.1.1 实测，详见 RUNBOOK §9.7）**：① yuqing-cli 用 embed FS 把迁移 SQL 编译进二进制——改服务器磁盘迁移文件无效，必须重编译 CLI；② PL/pgSQL `$$` 块必须加 `-- +goose StatementBegin/End`，否则 goose 分句报 42601（psql 试跑通过 ≠ goose 通过）；③ CLI 必须带 `YUQING_CONFIG=/opt/yuqing/config/config.yaml`。部署前用 psql 事务试跑（BEGIN...ROLLBACK）验语法
+- **v0.1.2+ 存量数据回填**：`yuqing-cli backfill-reports` 从 analyses.report_content 回填 reports 表（历史分析的报告）
 - server unit 已有 `public-base-url.conf` drop-in 注入 `YUQING_PUBLIC_BASE_URL`（邮箱验证链接基地址，防 Host 头伪造）
 - 收费体系语义：每次分析 Create/Rerun 各扣 1 次额度，管线失败/取消自动回补；额度不足 HTTP 402 `NO_CREDITS`；新注册赠 1 次试用；beta 公测期额度不过期
 - 分析模式：套餐裁剪 quick（Lite 3 维速览，尝试 thinking=disabled 压成本）/ full（5 维）；Go→Python 经 `InsightAnalyzeReq.Mode` 透传，Python 侧 400 时自动去掉 thinking 参数重试
