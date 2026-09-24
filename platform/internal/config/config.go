@@ -166,6 +166,9 @@ func (c *Config) Validate() error {
 	if c.DB.Primary == "" {
 		return fmt.Errorf("db.primary is required")
 	}
+	if c.Auth.JWTSecret == "" {
+		return fmt.Errorf("auth.jwt_secret is required")
+	}
 	for _, m := range c.LLM.Models {
 		if m.ID == "" {
 			return fmt.Errorf("llm.models[].id must not be empty")

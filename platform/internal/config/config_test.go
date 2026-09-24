@@ -14,6 +14,8 @@ server:
   env: dev
 db:
   primary: "postgres://u:p@localhost:5432/db"
+auth:
+  jwtSecret: "test-secret-key"
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -41,6 +43,8 @@ server:
   env: production
 db:
   primary: "postgres://u:p@localhost:5432/db"
+auth:
+  jwtSecret: "test-jwt-secret"
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -81,6 +85,8 @@ server:
   env: dev
 db:
   primary: "postgres://u:p@localhost:5432/db"
+auth:
+  jwtSecret: "test-secret"
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -113,6 +119,7 @@ func TestValidate_LLMPricingConsistency(t *testing.T) {
 	cfg := Config{
 		Server: ServerConfig{Addr: ":8080", Env: "dev"},
 		DB:     DBConfig{Primary: "postgres://x"},
+		Auth:   AuthConfig{JWTSecret: "test-secret"},
 		LLM: LLMConfig{
 			Models: []ModelConfig{
 				{ID: "dummy", Provider: "test", InputCostPerM: 0.14, OutputCostPerM: 0.42},
