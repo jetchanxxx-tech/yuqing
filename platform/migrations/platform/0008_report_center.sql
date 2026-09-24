@@ -10,13 +10,13 @@
 -- ─────────────────────────────────────────────────────────
 -- 1. analyses 表新增 created_by
 -- ─────────────────────────────────────────────────────────
-ALTER TABLE analyses ADD COLUMN created_by UUID;
+ALTER TABLE analyses ADD COLUMN created_by TEXT;
 
--- 回填：取 members 表该租户第一个成员（按 created_at 升序）
+-- 回填：取 tenant_members 表该租户第一个成员（按 user_id 字典序，确定性）
 WITH first_member AS (
     SELECT tenant_id, user_id,
-           ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY created_at) AS rn
-    FROM members
+           ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY user_id) AS rn
+    FROM tenant_members
 )
 UPDATE analyses a
 SET created_by = fm.user_id
@@ -30,13 +30,13 @@ ALTER TABLE analyses ALTER COLUMN created_by SET NOT NULL;
 
 -- FK + 索引
 ALTER TABLE analyses ADD CONSTRAINT fk_analyses_created_by
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE;
 CREATE INDEX idx_analyses_created_by ON analyses(created_by);
 
 -- ─────────────────────────────────────────────────────────
 -- 2. reports 表新增 created_by + report_version
 -- ─────────────────────────────────────────────────────────
-ALTER TABLE reports ADD COLUMN created_by UUID;
+ALTER TABLE reports ADD COLUMN created_by TEXT;
 ALTER TABLE reports ADD COLUMN report_version INTEGER NOT NULL DEFAULT 1;
 
 -- 回填：created_by 从 analyses.created_by 继承
@@ -51,7 +51,7 @@ ALTER TABLE reports ALTER COLUMN created_by SET NOT NULL;
 
 -- FK + 索引
 ALTER TABLE reports ADD CONSTRAINT fk_reports_created_by
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE;
 CREATE INDEX idx_reports_created_by ON reports(created_by);
 
 -- 回填 report_version：同一 analysis 按 created_at 升序编号

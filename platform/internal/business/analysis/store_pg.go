@@ -33,7 +33,7 @@ func newPGStore(pool *pgxpool.Pool) *pgStore { return &pgStore{pool: pool} }
 // analysisArgs 的参数顺序一致。
 const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by`
 
 // analysisColumnsList 供 list 使用：不取 KB 级 report_content ——
 // 详情页按秒轮询 /analyses/:id，内联整份报告会让每次轮询都传输正文。
