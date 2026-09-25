@@ -31,6 +31,8 @@ type documentStore interface {
 	count(ctx context.Context, tenantID, analysisID string) (int, error)
 	// ListByTenant returns all documents for a tenant (dashboard aggregation).
 	ListByTenant(ctx context.Context, tenantID string) ([]Document, error)
+	// clear removes all documents for a given analysis (used by Rerun to avoid accumulating old documents).
+	clear(ctx context.Context, tenantID, analysisID string) error
 }
 
 // memoryDocumentStore 按租户+分析分桶保存采集结果（内存实现，重启即失）。
@@ -78,6 +80,15 @@ func (d *memoryDocumentStore) ListByTenant(_ context.Context, tenantID string) (
 		out = append(out, docs...)
 	}
 	return out, nil
+}
+
+func (d *memoryDocumentStore) clear(_ context.Context, tenantID, analysisID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.data[tenantID] != nil {
+		delete(d.data[tenantID], analysisID)
+	}
+	return nil
 }
 
 // ── Service 上的公开方法 ─────────────────────────────────

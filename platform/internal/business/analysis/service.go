@@ -258,6 +258,12 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error 
 		return err
 	}
 
+	// Clear old documents before rerunning to avoid accumulating duplicates.
+	if err := s.docs.clear(ctx, tenantID, analysisID); err != nil {
+		s.refundCredit(ctx, tenantID, analysisID)
+		return fmt.Errorf("analysis: failed to clear documents: %w", err)
+	}
+
 	err := s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
 		if !IsTerminal(string(a.State)) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict,

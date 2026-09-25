@@ -54,6 +54,8 @@ ORDER BY id`
 	published_at, content_hash
 	FROM raw_documents WHERE tenant_id = $1
 	ORDER BY published_at DESC NULLS LAST, id`
+
+	deleteDocumentsSQL = `DELETE FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2`
 )
 
 // add 批量写入采集结果（pgx.Batch：一次往返，避免逐条 INSERT 的延迟）。
@@ -174,4 +176,13 @@ func nullablePublishedAt(s string) any {
 		return nil
 	}
 	return t.UTC()
+}
+
+// clear removes all documents for a given analysis (used by Rerun to avoid accumulating old documents).
+func (d *pgDocumentStore) clear(ctx context.Context, tenantID, analysisID string) error {
+	_, err := d.pool.Exec(ctx, deleteDocumentsSQL, tenantID, analysisID)
+	if err != nil {
+		return pgInternal(err)
+	}
+	return nil
 }
