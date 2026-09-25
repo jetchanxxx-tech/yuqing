@@ -19,11 +19,11 @@ func RegisterAnalysisRoutes(r *gin.RouterGroup, svcs *Services) {
 	analyses := r.Group("/analyses")
 	analyses.POST("", middleware.RequirePermission("analyses:create"), svcs.handleCreateAnalysis)
 	analyses.GET("", middleware.RequirePermission("analyses:list"), svcs.handleListAnalyses)
-	analyses.GET("/:id", svcs.handleGetAnalysis)
-	analyses.GET("/:id/result", svcs.handleGetAnalysisResult)
-	analyses.POST("/:id/cancel", svcs.handleCancelAnalysis)
-	analyses.POST("/:id/rerun", svcs.handleRerunAnalysis)
-	analyses.GET("/:id/events", middleware.RequirePermission("analyses:list"), svcs.handleAnalysisEvents)
+	analyses.GET("/:id", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysis)
+	analyses.GET("/:id/result", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysisResult)
+	analyses.POST("/:id/cancel", middleware.RequirePermission("analyses:cancel"), svcs.handleCancelAnalysis)
+	analyses.POST("/:id/rerun", middleware.RequirePermission("analyses:rerun"), svcs.handleRerunAnalysis)
+	analyses.GET("/:id/events", middleware.RequirePermission("analyses:read"), svcs.handleAnalysisEvents)
 }
 
 // handleCreateAnalysis creates a queued analysis and publishes its task.

@@ -179,7 +179,7 @@ func ValidateAccessToken(tokenString, secret string) (*Principal, error) {
 // RBAC: role → permission matrix.
 var rolePermissions = map[string][]string{
 	"platform_admin": {
-		"analyses:create", "analyses:list", "analyses:delete",
+		"analyses:create", "analyses:list", "analyses:read", "analyses:cancel", "analyses:rerun", "analyses:delete",
 		"reports:read", "reports:download",
 		"members:manage", "members:invite",
 		"billing:read", "billing:manage",
@@ -188,24 +188,24 @@ var rolePermissions = map[string][]string{
 		"apikeys:manage",
 	},
 	"tenant_admin": {
-		"analyses:create", "analyses:list", "analyses:delete",
+		"analyses:create", "analyses:list", "analyses:read", "analyses:cancel", "analyses:rerun", "analyses:delete",
 		"reports:read", "reports:download",
 		"members:manage", "members:invite",
 		"billing:read",
 		"apikeys:manage",
 	},
 	"analyst": {
-		"analyses:create", "analyses:list",
+		"analyses:create", "analyses:list", "analyses:read", "analyses:cancel",
 		"reports:read", "reports:download",
 	},
 	"viewer": {
-		"analyses:list",
+		"analyses:list", "analyses:read",
 		"reports:read",
 	},
 	// api_service is the least-privilege role granted to API-key principals
 	// (machine-to-machine): the read/create surface, never key management.
 	"api_service": {
-		"analyses:create", "analyses:list",
+		"analyses:create", "analyses:list", "analyses:read",
 		"reports:read", "reports:download",
 	},
 }

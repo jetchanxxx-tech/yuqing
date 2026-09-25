@@ -659,7 +659,9 @@ func TestContract_analyses_createGetListCancelRerun(t *testing.T) {
 	})
 
 	t.Run("rerun requeues a canceled analysis", func(t *testing.T) {
-		w := doReq(t, r, http.MethodPost, "/api/v1/analyses/"+createdID+"/rerun", tok, nil)
+		// Rerun requires analyses:rerun permission (Owner/Admin only)
+		adminTok := issueToken(t, principal("tenant_admin"))
+		w := doReq(t, r, http.MethodPost, "/api/v1/analyses/"+createdID+"/rerun", adminTok, nil)
 		if w.Code != http.StatusOK {
 			t.Fatalf("rerun status = %d, want 200\nbody: %s", w.Code, w.Body.String())
 		}

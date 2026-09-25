@@ -14,10 +14,10 @@ import (
 // RegisterReportRoutes mounts the report endpoints on the live report store.
 func RegisterReportRoutes(r *gin.RouterGroup, svcs *Services) {
 	reports := r.Group("/reports")
-	reports.GET("", svcs.handleListReports)
-	reports.GET("/:id", svcs.handleGetReport)
-	reports.GET("/:id/download", svcs.handleDownloadReport)
-	reports.GET("/templates", svcs.handleListTemplates)
+	reports.GET("", middleware.RequirePermission("reports:read"), svcs.handleListReports)
+	reports.GET("/:id", middleware.RequirePermission("reports:read"), svcs.handleGetReport)
+	reports.GET("/:id/download", middleware.RequirePermission("reports:download"), svcs.handleDownloadReport)
+	reports.GET("/templates", middleware.RequirePermission("reports:read"), svcs.handleListTemplates)
 }
 
 // handleListReports returns the tenant's reports. Unknown/missing reports are
