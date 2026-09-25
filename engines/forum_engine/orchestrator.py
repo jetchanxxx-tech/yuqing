@@ -7,20 +7,25 @@ from typing import Dict, Any, List
 from .agents import AGENTS, AgentRole
 from .prompts import format_prompt, get_all_prompts
 from .llm_client import LLMClient, calculate_cost_cny
+from .logging_system import get_logger, get_monitor
 import time
 
 
 class DebateOrchestrator:
     """多Agent辩论协调器。"""
 
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, analysis_id: str = "unknown"):
         """初始化协调器。
 
         Args:
             llm_client: LLM客户端实例
+            analysis_id: 分析ID（用于日志追踪）
         """
         self.llm_client = llm_client
+        self.analysis_id = analysis_id
         self.prompts = get_all_prompts()
+        self.logger = get_logger()
+        self.monitor = get_monitor()
 
     async def run_debate(
         self,
@@ -52,20 +57,25 @@ class DebateOrchestrator:
         rounds = []
         total_tokens = 0
 
-        # ══════════════════════════════════════════════════════════
-        # Round 1: 议题设定 + 初步陈述
-        # ══════════════════════════════════════════════════════════
+        # 记录辩论开始
+        self.logger.log_debate_start(self.analysis_id, topic)
 
-        # 1.1 主持人设定议题
-        moderator_agenda = await self._call_moderator_round1(topic, data_summary)
-        rounds.append({
-            "round": 1,
-            "agent": "主持人",
-            "role": "议题设定",
-            "statement": moderator_agenda["content"],
-            "timestamp": time.time()
-        })
-        total_tokens += moderator_agenda["tokens"]["total_tokens"]
+        try:
+            # ══════════════════════════════════════════════════════════
+            # Round 1: 议题设定 + 初步陈述
+            # ══════════════════════════════════════════════════════════
+
+            # 1.1 主持人设定议题
+            moderator_agenda = await self._call_moderator_round1(topic, data_summary)
+            rounds.append({
+                "round": 1,
+                "agent": "主持人",
+                "role": "议题设定",
+                "statement": moderator_agenda["content"],
+                "timestamp": time.time()
+            })
+            total_tokens += moderator_agenda["tokens"]["total_tokens"]
+            self.logger.log_llm_call("主持人", 1, moderator_agenda["tokens"]["total_tokens"], 0)
 
         # 1.2 4个专家并发初步陈述
         agent_r1_prompts = []
@@ -196,7 +206,36 @@ class DebateOrchestrator:
         # 计算观点相似度
         similarity_scores = self._calculate_similarity(agent_r1_views)
 
-        return {
+        # 记录相似度检查
+        passed = similarity_scores["avg"] < 0.6
+        self.logger.log_similarity_check(
+            similarity_scores["pairs"],
+            similarity_scores["avg"],
+            passed
+        )
+
+        # 记录辩论完成
+        duration_ms = int((time.time() - start_time) * 1000)
+        cost_cny = calculate_cost_cny(total_tokens)
+
+        self.logger.log_debate_complete(
+            self.analysis_id,
+            total_tokens,
+            cost_cny,
+            duration_ms,
+            similarity_scores["avg"]
+        )
+
+        # 更新性能监控
+        self.monitor.record_debate(
+            total_tokens,
+            cost_cny,
+            duration_ms,
+            similarity_scores["avg"],
+            error=False
+        )
+
+        result = {
             "rounds": rounds,
             "verdict": moderator_synthesis["content"],
             "confidence": 0.85,  # TODO: 从主持人综合研判中提取
@@ -207,6 +246,17 @@ class DebateOrchestrator:
                 "similarity_scores": similarity_scores
             }
         }
+
+        # 保存完整辩论结果到JSON（审计用）
+        self.logger.save_debate_json(self.analysis_id, result)
+
+        return result
+
+        except Exception as e:
+            # 记录错误
+            self.logger.log_debate_error(self.analysis_id, str(e))
+            self.monitor.record_debate(0, 0.0, 0, 0.0, error=True)
+            raise
 
     # ══════════════════════════════════════════════════════════
     # 私有辅助方法
