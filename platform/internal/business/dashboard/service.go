@@ -143,9 +143,42 @@ func (s *Service) Trend(ctx context.Context, tenantID string) (*TrendSeries, err
 	return &TrendSeries{Dates: dates, Counts: series, Scores: scores}, nil
 }
 
-// Topics returns the four predefined topic rows (MVP placeholder).
-func (s *Service) Topics(_ context.Context, _ string) ([]Topic, error) {
-	topics := make([]Topic, len(fixedTopics))
-	copy(topics, fixedTopics)
+// Topics returns aggregated topic statistics from all completed analyses.
+func (s *Service) Topics(ctx context.Context, tenantID string) ([]Topic, error) {
+	items, err := s.analysisSvc.List(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Aggregate topics across all completed analyses
+	topicCounts := make(map[string]int)
+	for _, a := range items {
+		if a.State != analysis.StateCompleted {
+			continue
+		}
+		for _, t := range a.Topics {
+			topicCounts[t.Name] += t.DocCount
+		}
+	}
+
+	// Convert to slice and sort by doc count (descending)
+	var topics []Topic
+	for name, count := range topicCounts {
+		topics = append(topics, Topic{
+			Name:     name,
+			DocCount: count,
+			Trend:    "stable", // Default trend; real trend calculation would require historical data
+		})
+	}
+
+	sort.Slice(topics, func(i, j int) bool {
+		return topics[i].DocCount > topics[j].DocCount
+	})
+
+	// Return top 4 topics (or fewer if less available)
+	if len(topics) > 4 {
+		topics = topics[:4]
+	}
+
 	return topics, nil
 }
