@@ -149,11 +149,13 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// Report plan gating resolves the tenant's current plan from the shared
 	// tenant store; unknown tenants default to the most restrictive plan.
 	planCodeFor := func(tenantID string) string {
-		t, err := tenantSvc.Get(context.Background(), tenantID)
-		if err != nil {
-			return ""
+		// P1-2 Solution A: Read plan_code from report_credits (single source of truth)
+		// instead of tenants.plan_code to avoid sync issues
+		planCode, err := creditSvc.PlanCode(context.Background(), tenantID)
+		if err != nil || planCode == "" {
+			return "" // Default to most restrictive (fail-closed)
 		}
-		return t.PlanCode
+		return planCode
 	}
 	planProvider := func(planCode string) *billing.Plan {
 		return billing.DefaultPlans()[planCode]
@@ -217,7 +219,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
 		startPipeline(context.Background(), q, analysisSvc, crawler, insight, reportEngine,
-			reportSvc, pipelineBudget(cfg), logger, analysisModeFor(tenantSvc))
+			reportSvc, pipelineBudget(cfg), logger, analysisModeFor(creditSvc))
 	}
 
 	// ── 收费体系（方案 B）────────────────────────────────────

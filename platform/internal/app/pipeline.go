@@ -10,7 +10,7 @@ import (
 	"github.com/yuqing/platform/internal/config"
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/platform/billing"
-	"github.com/yuqing/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
@@ -43,13 +43,14 @@ func pipelineBudget(cfg *config.Config) time.Duration {
 // analysisModeFor 返回「租户 → 套餐裁剪模式」解析闭包：Lite/体验档 quick
 // （3 维速览），Pro 及以上 full（5 维完整研判）。未知租户/套餐与 report
 // gating 同口径 fail-closed 到 quick（最受限档）。
-func analysisModeFor(tenantSvc *tenant.Service) func(string) string {
+// P1-2 Solution A: Read plan_code from credit service (single source of truth).
+func analysisModeFor(creditSvc *credit.Service) func(string) string {
 	return func(tenantID string) string {
-		t, err := tenantSvc.Get(context.Background(), tenantID)
-		if err != nil {
+		planCode, err := creditSvc.PlanCode(context.Background(), tenantID)
+		if err != nil || planCode == "" {
 			return billing.ModeQuick
 		}
-		if p := billing.DefaultPlans()[t.PlanCode]; p != nil && p.AnalysisMode != "" {
+		if p := billing.DefaultPlans()[planCode]; p != nil && p.AnalysisMode != "" {
 			return p.AnalysisMode
 		}
 		return billing.ModeQuick
