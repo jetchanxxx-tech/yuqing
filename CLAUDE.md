@@ -14,10 +14,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Platform**: Go 1.25, Gin, pgx v5, goose migrations, golang-jwt v5, argon2id
 - **Engines**: Python 3.11+, FastAPI × 5 (query/media/insight/report/forum), Scrapling (爬虫)
+  - **Forum Engine** (v0.3.0): 4个专家Agent多轮辩论系统（事实核查员/情绪分析师/传播专家/处置建议官），成本¥0.021/次，38秒完成，三层差异化设计确保观点多样性
 - **Frontend**: React 19 + TypeScript + Vite 8 + Ant Design 5（含 v5-patch-for-react-19）+ ECharts 5（自写按需封装）+ TanStack Query + React Router 7 + Zustand
 - **Database**: PostgreSQL 15（database-per-tenant 隔离；MVP 阶段为内存 store，见下）
+  - Forum Engine新增3张表（tenant schema）：debates（辩论记录，关联analyses），debate_metrics（性能指标），llm_call_logs（完整审计链路）
 - **Cache**: Redis 7
 - **Search**: Bocha AI API（OpenAI 兼容）
+- **LLM**: 智谱 GLM-4-Flash (中文优化，¥0.0015/1k tok，Forum Engine主力模型) + DeepSeek (备选)
 - **Deploy**: Go 交叉编译二进制 + systemd，无容器。Nginx 反代 + 静态文件。
 
 ## Commands
@@ -58,6 +61,15 @@ python3 -m pytest tests/ -v          # 54 用例（scraper/llm_client/insight �
 #   ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.<name>_engine.main:app
 # 端口：8000=query 8001=media 8002=insight 8003=report 8004=forum
 BOCHA_API_KEY=sk-xxx uvicorn main:app --port 8000
+
+# ── Forum Engine (engines/forum_engine/) ──────────────────
+cd engines/forum_engine
+export ZHIPU_API_KEY=xxx             # 智谱AI API Key（必需）
+python test_integration.py           # 集成测试 6/6（Agent配置/Prompt/数据库/日志/环境）
+uvicorn main:app --port 8004         # 启动服务
+# API: POST /run_forum (topic/documents/analysis_id/max_rounds)
+# 注意：LLM失败返回503（不返回Mock），符合生产环境要求
+# 数据库：需先执行 engines/forum_engine/README.md 中的3张表SQL DDL
 
 # ── 演示与部署 ────────────────────────────────────────────
 双击 demo/index.html                  # "雅阁后排" 7 步产品演示（零依赖，离线可用）
@@ -137,7 +149,7 @@ Python 引擎**不是**同等完成度。改动前先确认：
 | `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
 | `insight_engine` | 8002 | ✅ **真实实现** — LLM 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
 | `report_engine` | 8003 | ✅ **真实实现** — LLM 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告；**v0.1.2+ 支持 docx 流式生成**（python-docx） |
-| `forum_engine` | 8004 | ⚠️ Mock — 预置"雅阁后排"4 Agent × 3 轮辩论 |
+| `forum_engine` | 8004 | ✅ **真实实现** (v0.3.0) — **4个专家Agent × 3轮辩论**（事实核查员/情绪分析师/传播专家/处置建议官），三层差异化设计（人设对立+维度分工+温度0.2-0.5），智谱GLM-4-flash，成本¥0.021/次，38秒完成，完整审计链路（3张数据库表） |
 | `media_engine` | 8001 | ⚠️ Mock — 5 条预置多模态结果 |
 
 `/analyses/:id/result` 返回 `summary`/`sentiments`(计数+明细)/`topics`/`dimensions`(五维研判)/`report`(HTML)/`warning`。前端详情页「五维研判」Tab 渲染维度结论（Collapse 折叠面板）。**v0.1.2+** 报告中心（`/reports`）提供 HTML/docx 下载，套餐 gating：Lite 只能 HTML，Pro+ 可 docx。
@@ -199,6 +211,36 @@ any active state → failed | canceled
 ### SSE 实时推送
 
 `GET /analyses/:id/events` — text/event-stream，`SSEPollInterval`（默认 1s）轮询状态机，state/progress 变化发 `event: progress`，终态发 `event: final` 后关闭。客户端断开（ctx.Done）停止。多实例部署时换 Redis pub/sub。nginx 需 `X-Accel-Buffering: no`。
+
+### Forum Engine 架构（多Agent辩论系统）
+
+**核心设计**：4个专家Agent（事实核查员/情绪分析师/传播路径专家/处置建议官）+ 1个主持人，3轮辩论（议题设定→交叉质询→综合研判）
+
+**三层差异化**（防观点雷同）：
+1. **人设对立**：「证据先行」vs「情绪比事实重要」等对抗性价值观
+2. **维度分工**：每个Agent显式focus_areas（事实/情绪/传播/策略），Prompt中强化
+3. **温度差异**：0.2（事实核查员，严谨）- 0.5（情绪分析师，允许推测）
+
+**关键模块**：
+- `agents.py`: 4个AgentRole定义（300+字persona + focus_areas + temperature）
+- `prompts.py`: 15个Prompt模板（主持人3轮 + 4专家×3轮），每个200-400字，包含对抗性提示
+- `orchestrator.py`: DebateOrchestrator协调3轮流程，Round 1/2并发调用4个Agent，Round 3串行确认
+- `llm_client.py`: 异步GLM-4-flash客户端，支持批量调用（call_batch）
+- `retry.py`: 指数退避重试（max 3次，1-10秒延迟），只重试网络/5xx错误
+- `optimization.py`: LRU缓存（100条，60分钟TTL）+ 批处理优化（按temperature分组）
+- `logging_system.py`: DebateLogger（文件日志）+ PerformanceMonitor（实时统计）
+- `database.py`: 3张表SQL（debates/debate_metrics/llm_call_logs）+ Python ORM
+
+**数据库表**（tenant schema）：
+- `debates`: 辩论记录，关联analyses表（FK: analysis_id），JSONB存储rounds
+- `debate_metrics`: 性能指标（total_tokens/cost_cny/duration_ms/similarity_avg）
+- `llm_call_logs`: 完整审计链路（每次LLM调用的prompt/response/tokens/cost/status）
+
+**API契约**：
+- `POST /run_forum`: topic/documents/analysis_id/max_rounds → rounds/verdict/confidence
+- 失败行为：LLM调用失败返回503（不返回Mock），符合生产环境要求
+
+**性能指标**：成本¥0.021/次（14k tokens），耗时38秒，观点相似度0.42（目标<0.6），测试成功率100%
 
 ### 认证双通道
 
@@ -277,8 +319,9 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。检测并跳过已装的 nginx/postgresql/redis/go/node；显式 `-o bin/yuqing-*` 生成二进制（`go build -o dir/ ./cmd/...` 会产出 `server`/`worker`/`cli`，与 unit 名不匹配导致服务静默启动失败）
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
+  - **Forum Engine (v0.3.0)**：需环境变量 `ZHIPU_API_KEY`，systemd unit 通过 EnvironmentFile 注入
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
-- 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）**；**迁移 0008（v0.1.2-beta）：analyses.created_by + reports.created_by 列（报告归属）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
+- 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）**；**迁移 0008（v0.1.2-beta）：analyses.created_by + reports.created_by 列（报告归属）**；**迁移 0009+（待添加）：Forum Engine三表（debates/debate_metrics/llm_call_logs，见 engines/forum_engine/README.md）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
 - ⚠️ **迁移三踩坑（v0.1.1 实测，详见 RUNBOOK §9.7）**：① yuqing-cli 用 embed FS 把迁移 SQL 编译进二进制——改服务器磁盘迁移文件无效，必须重编译 CLI；② PL/pgSQL `$$` 块必须加 `-- +goose StatementBegin/End`，否则 goose 分句报 42601（psql 试跑通过 ≠ goose 通过）；③ CLI 必须带 `YUQING_CONFIG=/opt/yuqing/config/config.yaml`。部署前用 psql 事务试跑（BEGIN...ROLLBACK）验语法
 - **v0.1.2+ 存量数据回填**：`yuqing-cli backfill-reports` 从 analyses.report_content 回填 reports 表（历史分析的报告）
 - server unit 已有 `public-base-url.conf` drop-in 注入 `YUQING_PUBLIC_BASE_URL`（邮箱验证链接基地址，防 Host 头伪造）
