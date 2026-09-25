@@ -246,6 +246,13 @@ any active state → failed | canceled
 
 ### 已知产品缺口（2026-09-23 三方评审定级，改动相关代码前必读）
 
+**v0.1.2-beta-fix1（2026-09-25）已修复：**
+- ✅ **P1-4: Pro 套餐 DOCX 权限** — `billing.go` Pro plan `"reports:docx": true`
+- ✅ **P1-6: Rerun 清空旧文档** — documentStore 添加 `clear()` 方法，Rerun 前调用避免文档累积
+- ✅ **P1-8: Dashboard Topics 真实数据** — Topics 从完成分析聚合，移除"雅阁后排"假数据
+- ✅ **P1-13: python-docx 依赖** — engines/requirements.txt 添加 `python-docx>=1.1.0`
+- ✅ **P1-1: 权限边界定义** — 添加 `analyses:read/cancel/rerun` 权限，6 个端点补全 RBAC 中间件（最小权限原则：Viewer 只读，Analyst 可取消，Admin 可重跑）
+
 **v0.1.2-beta（2026-09-23）已修复：**
 - ✅ **报告中心空白** — 管线接线完成（pipeline.go 调用 report.Service），下载端点实现（HTML 直接返回 + docx 流式代理 Python 引擎），存量回填 CLI（`yuqing-cli backfill-reports`）
 - ✅ **分析类型无实质作用** — 前端降为可选 tag（web/src/pages/AnalysisNewPage.tsx），辅助文案明确"用于优化提示词"
@@ -255,6 +262,8 @@ any active state → failed | canceled
 **待修复（v0.1.3+）：**
 | 缺口 | 代码真相 | 定级 |
 |------|----------|------|
+| **P1-2: 套餐数据源不统一** | `tenants.plan_code` 与 `report_credits.plan_code` 不同步，JWT/计费读不同字段 | P1（方案待定：统一读 credits or 废弃 tenant 列） |
+| **P1-3: 报告下载接口形式** | 前端期待 `{download_url}` 结构，后端直接返回文件流 | P1（方案 A：改前端 responseType='blob'，1 小时） |
 | **数据源标签错标** | `engines/common/scraper.py:104-107`：Bocha 请求只带关键词无来源参数，**全部结果贴 sources[0] 标签**；v0.1.2 止血方案按 URL 域名归类（微博/小红书/B站/抖音/公众号/新闻），但仍存在配额截断 bug（勾选来源越多结果越少） | ⚠️ P0 已止血；P1 根治：site: 限定或并发请求（2-3 天，需生产实测） |
 
 修复方案全文：产品决策与工作量评估已评审定稿（P0 约 3-4 人天：报告闭环 + 来源标签止血）。**未拍板**：PDF 路线（PM 主张复用生产 Chromium 懒生成 vs 开发主张延后）、docx 排期、Rerun 报告覆盖策略。
