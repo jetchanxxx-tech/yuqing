@@ -82,7 +82,7 @@ func DefaultPlans() map[string]*Plan {
 			MaxConcurrent: 2, MaxSeatsVal: 3, RetentionDays: 180,
 			EnabledFeatures: map[string]bool{
 				"reports:html": true, "reports:markdown": true,
-				"reports:pdf": true, "reports:docx": false,
+				"reports:pdf": true, "reports:docx": true,
 				"api:read": true, "api:write": false,
 				"forum:debate": true, "custom_models": false,
 			},
