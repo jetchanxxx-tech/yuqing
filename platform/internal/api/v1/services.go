@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yuqing/platform/internal/api/middleware"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -47,6 +48,9 @@ type Services struct {
 
 	// ReportEngine proxies docx generation to Python report_engine
 	ReportEngine *engine.RealReportEngine
+
+	// PGPool is the platform PostgreSQL connection pool for schema validation
+	PGPool *pgxpool.Pool
 
 	// SSEPollInterval is how often /analyses/:id/events re-reads the state
 	// machine while streaming. Zero selects the default (1s); tests shrink it.
