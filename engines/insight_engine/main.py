@@ -537,8 +537,13 @@ async def analyze(req: AnalyzeRequest) -> dict:
     briefs = _doc_briefs(req.documents)
 
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
+    warnings = []
+
+    # ① 情感 + 话题（分类任务，temperature=0 求稳定；quick 模式同关思考）
+    # 失败不致命：维度分析比情感分类更有价值，容许降级
+    sentiments = []
+    topics = []
     try:
-        # ① 情感 + 话题（分类任务，temperature=0 求稳定；quick 模式同关思考）
         sent_topics = await _chat_json_smart(
             llm,
             model,
@@ -554,15 +559,16 @@ async def analyze(req: AnalyzeRequest) -> dict:
             mode=req.mode,
             temperature=0,
         )
+        sentiments = sent_topics.get("sentiments", []) if isinstance(sent_topics, dict) else []
+        topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
+        if not isinstance(topics, list):
+            topics = []
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM 调用失败: {exc}") from exc
-
-    sentiments = sent_topics.get("sentiments", []) if isinstance(sent_topics, dict) else []
-    topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
-    if not isinstance(topics, list):
-        topics = []
+        # 情感+话题失败降级，继续执行维度分析（维度是核心价值）
+        logger.warning("sentiment/topic analysis failed: %s; continuing with dimensions", exc)
+        warnings.append(f"情感和话题分析失败：{exc}")
 
     # ② 趋势由代码按发布时间计算，覆盖 LLM 的猜测
     trends = _compute_trends(topics, req.documents)
@@ -574,7 +580,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
     dimensions, failed = await _run_dimensions(
         llm, req.documents, req.analysis_type, req.title, model, req.mode
     )
-    warnings = [f"部分维度分析失败：{'；'.join(failed)}"] if failed else []
+    if failed:
+        warnings.append(f"部分维度分析失败：{'；'.join(failed)}")
     # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
     dropped = _verify_quotes(dimensions, req.documents)
     if dropped:
@@ -582,6 +589,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     warning = "；".join(warnings)
 
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
+    summary = ""
     try:
         summary_resp = await _chat_json_smart(
             llm,
@@ -612,10 +620,13 @@ async def analyze(req: AnalyzeRequest) -> dict:
             if isinstance(summary_resp, dict)
             else ""
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         # 摘要失败不影响已产出的维度结论
-        summary = ""
-        warning = (warning + "；" if warning else "") + f"摘要生成失败：{exc}"
+        logger.warning("summary generation failed: %s", exc)
+        warnings.append(f"摘要生成失败：{exc}")
+        warning = "；".join(warnings)
 
     return {
         "sentiments": sentiments,
