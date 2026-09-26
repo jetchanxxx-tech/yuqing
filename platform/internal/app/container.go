@@ -264,5 +264,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		PaymentRegistry: paymentRegistry,
 		Trends:          trendsSvc,
 		ReportEngine:    reportEngine,
+		PGPool:          platformPool,
 	}
 }

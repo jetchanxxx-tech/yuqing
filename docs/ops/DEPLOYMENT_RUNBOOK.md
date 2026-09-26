@@ -114,12 +114,31 @@ LLM_MODEL=glm-5.3-flash                              # 思考型模型，引擎�
 
 ### 4.3 数据库迁移（⚠️ 坑位⑥：顺序硬约束 —— 先迁移再起新 server）
 
+**重要**：部署前必须先执行 schema 验证，确保数据库迁移已应用。
+
 ```bash
 cd /opt/yuqing
+
+# Step 1: 验证 schema 与代码匹配（新增的自动化验证）
+bash scripts/pre-deploy-validation.sh
+# 如果验证失败，会提示需要执行的迁移
+
+# Step 2: 执行迁移（如果 Step 1 失败）
 YUQING_CONFIG=/opt/yuqing/config/config.yaml bin/yuqing-cli migrate platform
-# 应输出 applied: 0001..0005（0005 = analyses.dimensions 列；
-# 缺它新 server 所有 analyses 查询报 column does not exist）
+# 应输出 applied: 0001..0008（最新迁移）
+# - 0005 = analyses.dimensions 列
+# - 0008 = analyses.created_by + reports.created_by 列（报告归属）
+# 缺它会导致所有 analyses 查询报 "column created_by does not exist"
+
+# Step 3: 再次验证（确保迁移成功）
+bash scripts/pre-deploy-validation.sh
+# 必须通过后才能继续部署
 ```
+
+**新增的自动化保护**：
+- server 启动时会自动验证 `created_by` 等关键列存在
+- 如果 schema 不匹配会立即失败（fail-fast），避免运行时错误
+- CI 强制执行 PostgreSQL 测试，不允许跳过
 
 ### 4.4 引导管理员（platform_admin 无法从界面造出，必须在此声明）
 

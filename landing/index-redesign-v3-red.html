@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>盘古舆情 - AI 原生舆情监测平台 | 5 分钟生成专业研判报告</title>
+<meta name="description" content="盘古舆情是面向中小企业与个人品牌的 AI 原生 SaaS 舆情监测平台。多 Agent 辩论协作，把监测升级为研判。99 元/月起，注册即用，5 分钟出首份报告。">
+<meta name="keywords" content="舆情监测,AI舆情分析,品牌监测,口碑管理,社交媒体监测,多平台数据采集">
+
+<!-- ==========================================================
+     配色体系：取自 D:\dev\舆情监测\design\design-spec.md §3 色彩 Token
+     与 shared.css L1「小红书 RED」令牌块（两者完全一致，无冲突）
+     主色   --accent  #ff2442（品牌红，禁用渐变，每屏 ≤2 处）
+     语义色 success #02b940 / warn #ff7d03 / danger #ff2442
+     背景   #f5f5f5 画布 · #ffffff 卡片 · #fafafa 暖面
+     文字   rgba(0,0,0,.80 / .62 / .45 / .27) 四级软黑
+     中性填充 rgba(48,48,52,.05 / .10 / .16 / .20)
+     分隔   rgba(0,0,0,.08) / rgba(0,0,0,.05)
+     说明：本次仅替换颜色相关声明，间距/圆角/字号/动效沿用原页面
+     ========================================================== -->
+<style>
+/* ============ 色彩 Token（从设计稿原样提取） ============ */
+:root{
+  /* 主色 */
+  --accent:#ff2442; --accent-on:#ffffff; --accent-hover:#ff2e4d; --accent-active:#e6203a;
+  --accent-soft:rgba(255,36,66,.08);    /* 徽标底 / 激活态底 */
+  --accent-soft-2:rgba(255,36,66,.04);  /* 大面积淡底 */
+  --accent-ring:rgba(255,36,66,.35);    /* 焦点环 */
+  /* 语义色（仅状态徽标 / 图表） */
+  --success:#02b940; --success-bg:#eaf8ef;
+  --warn:#ff7d03;    --warn-bg:#fff2e6;
+  --danger:#ff2442;
+  /* 中性表面 */
+  --bg:#f5f5f5; --surface:#ffffff; --surface-warm:#fafafa;
+  /* 文字层级 */
+  --fg:rgba(0,0,0,.80); --fg-2:rgba(0,0,0,.62); --muted:rgba(0,0,0,.45); --meta:rgba(0,0,0,.27);
+  /* 分隔线 */
+  --border:rgba(0,0,0,.08); --border-soft:rgba(0,0,0,.05);
+  /* 中性填充（hover / 禁用 / 轨道 / 标签） */
+  --fill-1:rgba(48,48,52,.05);
+  --fill-2:rgba(48,48,52,.10);
+  --fill-3:rgba(48,48,52,.16);
+  --fill-4:rgba(48,48,52,.20);
+  /* 阴影：近乎零阴影，仅 hover 与浮层 */
+  --elev-flat:none;
+  --elev-raised:0 4px 12px rgba(0,0,0,.08);
+  --elev-overlay:0 8px 32px rgba(0,0,0,.12);
+
+  /* ===== 以下为非颜色 token，沿用原页面（未改动） ===== */
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --font-num:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --s-1:8px; --s-2:16px; --s-3:24px; --s-4:32px; --s-5:40px; --s-6:48px; --s-7:64px; --s-8:80px; --s-9:112px;
+  --r-sm:8px; --r-md:14px; --r-lg:20px; --r-xl:28px; --r-pill:999px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--font-sans); font-size:16px; line-height:1.7; color:var(--fg-2);
+  background:var(--bg); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+}
+img{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+:focus-visible{outline:3px solid var(--accent-ring); outline-offset:3px; border-radius:6px}
+::selection{background:var(--accent); color:var(--accent-on)}
+
+.skip-link{position:absolute;left:-9999px;top:0;z-index:999;background:var(--accent);color:#fff;padding:12px 20px;border-radius:0 0 var(--r-sm) 0}
+.skip-link:focus{left:0}
+
+/* ============ 布局容器 ============ */
+.container{width:100%;max-width:1200px;margin:0 auto;padding:0 var(--s-3)}
+.section{position:relative;padding:var(--s-9) 0}
+.section--light{background:var(--bg)}        /* 画布 */
+.section--mist{background:var(--surface-warm)} /* 暖面 */
+.section--tint{background:var(--surface)}    /* 白面，卡片靠淡描边分离 */
+[id]{scroll-margin-top:88px}
+
+/* 极淡竖纹（中性，不引入色相） */
+.section--light::before,.section--mist::before,.section--tint::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(to right,rgba(0,0,0,.03) 1px,transparent 1px);
+  background-size:96px 100%;
+  mask-image:linear-gradient(to bottom,#000 0,transparent 55%);
+  -webkit-mask-image:linear-gradient(to bottom,#000 0,transparent 55%);
+}
+.section--light .container,.section--mist .container,.section--tint .container{position:relative;z-index:1}
+
+/* ============ 分区标题 ============ */
+.section-head{max-width:760px;margin:0 auto var(--s-7);text-align:center}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:var(--s-1);
+  font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-soft);border:1px solid rgba(255,36,66,.16);
+  padding:6px 14px;border-radius:var(--r-pill);margin-bottom:var(--s-2);
+}
+.eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.section-title{font-size:clamp(28px,4vw,44px);line-height:1.25;font-weight:800;letter-spacing:-.02em;color:var(--fg)}
+.section-subtitle{margin-top:var(--s-2);font-size:clamp(15px,1.6vw,18px);color:var(--fg-2)}
+.title-rule{width:72px;height:4px;border-radius:var(--r-pill);margin:var(--s-3) auto 0;background:var(--accent)}
+
+/* ============ 按钮（全部药丸，主红不做渐变） ============ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s-1);
+  font-size:15px;font-weight:600;line-height:1;padding:14px 26px;border-radius:var(--r-pill);
+  border:1px solid transparent;cursor:pointer;white-space:nowrap;
+  transition:transform .22s var(--ease),box-shadow .22s var(--ease),background-color .22s var(--ease),color .22s var(--ease),border-color .22s var(--ease);
+}
+.btn:hover{transform:translateY(-2px) scale(1.03)}
+.btn:active{transform:scale(.96)}
+.btn-primary{background:var(--accent);color:var(--accent-on);box-shadow:none}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-hero{background:var(--accent);color:var(--accent-on);box-shadow:0 4px 12px rgba(255,36,66,.15)}
+.btn-hero:hover{background:var(--accent-hover)}
+.btn-secondary{background:var(--fill-2);color:var(--fg);border-color:transparent}
+.btn-secondary:hover{background:var(--fill-3)}
+.btn-outline{background:var(--surface);color:var(--accent);border-color:var(--accent)}
+.btn-outline:hover{background:var(--accent-soft);border-color:var(--accent-hover)}
+.btn-text{font-size:15px;font-weight:600;color:var(--fg-2);padding:10px 6px;transition:color .2s var(--ease)}
+.btn-text:hover{color:var(--accent)}
+.btn-sm{padding:11px 20px;font-size:14px}
+
+/* ==========================================================
+   1. 顶部导航
+   ========================================================== */
+.nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  padding:var(--s-2) 0;
+  transition:background-color .3s var(--ease),box-shadow .3s var(--ease),padding .3s var(--ease);
+}
+.nav.is-scrolled{background:var(--surface);box-shadow:var(--elev-raised);padding:10px 0}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--fg);font-size:19px;font-weight:700}
+.brand-mark{
+  width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  font-size:18px;font-weight:800;color:var(--accent-on);flex:none;
+  background:var(--accent);
+}
+.brand-accent{color:var(--accent)}
+.nav-links{display:flex;align-items:center;gap:4px}
+.nav-link{
+  position:relative;font-size:15px;font-weight:500;color:var(--fg-2);padding:10px 14px;border-radius:var(--r-pill);
+  transition:color .2s var(--ease),background-color .2s var(--ease);
+}
+.nav-link::after{
+  content:"";position:absolute;left:14px;right:14px;bottom:4px;height:2px;border-radius:2px;
+  background:var(--accent);transform:scaleX(0);transform-origin:left;
+  transition:transform .25s var(--ease);
+}
+.nav-link:hover{color:var(--accent);background:var(--accent-soft)}
+.nav-link:hover::after{transform:scaleX(1)}
+.nav-actions{display:flex;align-items:center;gap:var(--s-2)}
+.nav-toggle{display:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer;padding:0}
+.nav-toggle span{display:block;width:18px;height:2px;margin:4px auto;border-radius:2px;background:var(--fg-2);transition:transform .25s var(--ease),opacity .2s var(--ease)}
+.nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+.nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+.nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+
+/* ==========================================================
+   2. 主视觉区
+   ========================================================== */
+.hero{
+  position:relative;overflow:hidden;isolation:isolate;color:var(--fg);
+  padding:var(--s-9) 0 var(--s-8);
+  background:
+    radial-gradient(900px 520px at 6% -12%, rgba(255,36,66,.05), transparent 62%),
+    linear-gradient(180deg,var(--surface-warm) 0%,var(--surface) 58%);
+}
+.hero::before{
+  content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:linear-gradient(rgba(0,0,0,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.04) 1px,transparent 1px);
+  background-size:64px 64px;
+  mask-image:radial-gradient(1000px 620px at 46% 0%,#000 18%,transparent 78%);
+  -webkit-mask-image:radial-gradient(1000px 620px at 46% 0%,#000 18%,transparent 78%);
+}
+.hero::after{
+  content:"";position:absolute;z-index:-1;width:460px;height:460px;right:-150px;top:-150px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,36,66,.07),transparent 70%);
+  filter:blur(80px);animation:floatY 14s var(--ease) infinite alternate;
+}
+@keyframes floatY{from{transform:translate3d(0,0,0)}to{transform:translate3d(-40px,50px,0)}}
+
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:var(--s-7);align-items:center}
+.hero-badge{
+  display:inline-flex;align-items:center;gap:10px;padding:8px 16px 8px 12px;border-radius:var(--r-pill);
+  background:var(--surface);border:1px solid var(--border);
+  font-size:14px;font-weight:600;color:var(--fg-2);
+}
+.badge-dot{position:relative;width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.badge-dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--accent);animation:pulse 2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.6);opacity:0}}
+.hero-title{margin-top:var(--s-3);font-size:clamp(34px,5.4vw,60px);line-height:1.14;font-weight:800;letter-spacing:-.03em;color:var(--fg)}
+.gradient-text{color:var(--accent)}
+.hero-subtitle{margin-top:var(--s-3);font-size:clamp(15px,1.8vw,19px);line-height:1.8;color:var(--fg-2);max-width:56ch}
+.hero-actions{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-5)}
+
+/* Hero 数据条 */
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-2);margin-top:var(--s-6);
+  padding:var(--s-3) var(--s-2);border-radius:var(--r-lg);
+  background:var(--surface);border:1px solid var(--border);
+}
+.stat-item{text-align:center;padding:0 var(--s-1)}
+.stat-value{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:clamp(19px,2.4vw,26px);font-weight:800;letter-spacing:-.01em;color:var(--fg)}
+.stat-label{margin-top:6px;font-size:12.5px;color:var(--fg-2);line-height:1.4}
+.stat-divider{display:none}
+
+/* ============ 产品截图卡：按设计稿调性改为浅色工作台 ============ */
+.hero-visual{position:relative}
+.hero-visual::before{
+  content:"";position:absolute;inset:-6% -5% -12% -5%;z-index:0;border-radius:var(--r-xl);
+  background:radial-gradient(480px 300px at 58% 24%,rgba(255,36,66,.06),transparent 70%),
+             radial-gradient(380px 260px at 28% 78%,rgba(48,48,52,.06),transparent 72%);
+  filter:blur(24px);
+}
+.mock-frame{
+  position:relative;z-index:1;padding:10px;border-radius:var(--r-xl);background:var(--surface);
+  border:1px solid var(--border);box-shadow:var(--elev-overlay);
+}
+.mock{
+  border-radius:var(--r-lg);overflow:hidden;
+  background:var(--surface);border:1px solid var(--border-soft);
+  transform:perspective(1400px) rotateY(-6deg) rotateX(3deg);
+  transition:transform .5s var(--ease);
+}
+.mock:hover{transform:perspective(1400px) rotateY(0) rotateX(0)}
+.mock-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--surface-warm);border-bottom:1px solid var(--border)}
+.mock-dot{width:10px;height:10px;border-radius:50%;background:var(--fill-3)}
+.mock-name{margin-left:6px;font-size:12px;color:var(--muted);font-family:var(--font-num)}
+.mock-body{display:grid;grid-template-columns:76px 1fr;min-height:270px}
+.mock-side{padding:14px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:10px}
+.mock-side i{display:block;height:9px;border-radius:4px;background:var(--fill-2)}
+.mock-side i:nth-child(1){background:var(--accent);width:52px}
+.mock-main{padding:16px;display:flex;flex-direction:column;gap:14px}
+.mock-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.mock-kpi{padding:10px;border-radius:10px;background:var(--surface-warm);border:1px solid var(--border-soft)}
+.mock-kpi b{display:block;font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:16px;color:var(--fg)}
+.mock-kpi span{font-size:10.5px;color:var(--muted)}
+.mock-chart{
+  flex:1;display:flex;align-items:flex-end;gap:7px;padding:12px 12px 8px;border-radius:12px;
+  background:var(--surface-warm);border:1px solid var(--border-soft);
+}
+.mock-chart i{flex:1;border-radius:4px 4px 2px 2px;background:var(--fill-3);animation:grow 1.6s var(--ease) both}
+.mock-chart i:nth-child(1){height:38%} .mock-chart i:nth-child(2){height:62%}
+.mock-chart i:nth-child(3){height:45%} .mock-chart i:nth-child(4){height:82%}
+.mock-chart i:nth-child(5){height:56%} .mock-chart i:nth-child(6){height:94%}
+.mock-chart i:nth-child(7){height:70%} .mock-chart i:nth-child(8){height:52%}
+.mock-chart i:nth-child(6){background:var(--accent)}
+@keyframes grow{from{transform:scaleY(0);transform-origin:bottom}to{transform:scaleY(1);transform-origin:bottom}}
+.mock-tags{display:flex;flex-wrap:wrap;gap:8px}
+.mock-tag{font-size:11px;padding:5px 10px;border-radius:var(--r-pill);background:var(--fill-1);color:var(--fg-2);border:1px solid var(--border-soft)}
+.mock-tag.alt{background:var(--accent-soft);color:var(--accent);border-color:rgba(255,36,66,.18)}
+.mock-float{
+  position:absolute;z-index:2;right:-10px;bottom:-20px;display:flex;align-items:center;gap:10px;
+  padding:12px 16px;border-radius:14px;background:var(--surface);border:1px solid var(--border);
+  box-shadow:var(--elev-raised);animation:floatY2 6s var(--ease) infinite alternate;
+}
+@keyframes floatY2{from{transform:translate3d(0,0,0)}to{transform:translate3d(0,-12px,0)}}
+.mock-float .ring{
+  width:34px;height:34px;border-radius:50%;flex:none;
+  background:conic-gradient(var(--success) 0 72%,rgba(48,48,52,.18) 72% 88%,var(--danger) 88% 100%);
+  mask:radial-gradient(circle,transparent 56%,#000 58%);-webkit-mask:radial-gradient(circle,transparent 56%,#000 58%);
+}
+.mock-float b{display:block;font-size:13px;color:var(--fg)}
+.mock-float span{font-size:11px;color:var(--muted)}
+
+/* ==========================================================
+   3. 对比区
+   ========================================================== */
+.compare{border-radius:var(--r-xl);overflow:hidden;background:var(--surface);border:1px solid var(--border-soft)}
+.compare-row{display:grid;grid-template-columns:1.1fr 1fr 1.15fr;border-bottom:1px solid var(--border)}
+.compare-row:last-child{border-bottom:0}
+.compare-cell{padding:var(--s-3) var(--s-4);font-size:15px;color:var(--fg-2);display:flex;flex-direction:column;justify-content:center;gap:4px}
+.compare-row--head{background:var(--surface-warm);border-bottom:1px solid var(--border)}
+.compare-row--head .compare-cell{font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--fg-2);padding-top:var(--s-2);padding-bottom:var(--s-2)}
+.compare-cell--label{font-weight:700;color:var(--fg);background:var(--surface-warm);border-right:1px solid var(--border)}
+.compare-cell--label .idx{display:inline-block;font-family:var(--font-num);font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 7px;margin-right:8px;vertical-align:2px}
+.compare-cell--old{color:var(--fg-2)}
+.compare-cell--new{background:var(--accent-soft-2);color:var(--fg-2)}
+.compare-row:not(.compare-row--head):hover{background:var(--surface)}
+.compare-row:not(.compare-row--head):hover .compare-cell--new{background:var(--accent-soft)}
+.compare-cell strong{color:var(--fg);font-weight:700}
+.compare-cell--new strong{color:var(--accent)}
+.muted{font-size:13px;color:var(--fg-2)}
+.accent{font-size:13px;color:var(--success);font-weight:600}
+
+/* ==========================================================
+   4. 核心功能卡片
+   ========================================================== */
+.grid-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--s-3)}
+.card{
+  position:relative;display:flex;flex-direction:column;padding:var(--s-4);border-radius:var(--r-lg);
+  background:var(--surface);border:1px solid var(--border-soft);overflow:hidden;
+  transition:transform .28s var(--ease),box-shadow .28s var(--ease),border-color .28s var(--ease);
+}
+.card::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:2px;
+  background:var(--accent);
+  transform:scaleX(0);transform-origin:left;transition:transform .35s var(--ease);
+}
+.card:hover{transform:translateY(-6px);box-shadow:var(--elev-raised);border-color:var(--border)}
+.card:hover::before{transform:scaleX(1)}
+.card::after{
+  content:"";position:absolute;right:-60px;top:-60px;width:160px;height:160px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,36,66,.05),transparent 70%);pointer-events:none;
+}
+.icon-tile{
+  width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:26px;flex:none;
+  background:var(--fill-1);border:1px solid var(--border-soft);
+}
+.card h3{font-size:19px;font-weight:700;color:var(--fg);margin:var(--s-3) 0 var(--s-1)}
+.card p{font-size:14.5px;line-height:1.75;color:var(--fg-2);flex:1}
+.tag{align-self:flex-start;margin-top:var(--s-3);font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--r-pill);border:1px solid transparent}
+.tag--soon{background:var(--warn-bg);color:var(--warn);border-color:rgba(255,125,3,.28)}
+.tag--live{background:var(--success-bg);color:var(--success);border-color:rgba(2,185,64,.26)}
+.tag--wip{background:var(--fill-1);color:var(--fg-2);border-color:var(--border-soft)}
+.tag--live::before{content:"● ";font-size:9px;vertical-align:1px}
+
+/* ==========================================================
+   5. 差异化优势
+   ========================================================== */
+.adv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--s-3)}
+.adv{
+  position:relative;padding:var(--s-4);border-radius:var(--r-lg);overflow:hidden;
+  background:var(--surface);border:1px solid var(--border-soft);
+  transition:transform .28s var(--ease),box-shadow .28s var(--ease),border-color .28s var(--ease);
+}
+.adv:hover{transform:translateY(-6px);box-shadow:var(--elev-raised);border-color:var(--border)}
+.adv-no{
+  position:absolute;right:14px;top:-8px;font-family:var(--font-num);font-size:64px;font-weight:800;line-height:1;
+  color:transparent;-webkit-text-stroke:1px rgba(48,48,52,.18);pointer-events:none;
+}
+.adv h3{position:relative;font-size:19px;font-weight:700;color:var(--fg);margin-bottom:10px}
+.adv p{position:relative;font-size:14.5px;line-height:1.78;color:var(--fg-2)}
+
+/* ==========================================================
+   6. 定价
+   ========================================================== */
+.grid-price{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-2);align-items:start}
+.price{
+  position:relative;display:flex;flex-direction:column;padding:var(--s-4) var(--s-3);border-radius:var(--r-lg);
+  background:var(--surface);border:1px solid var(--border-soft);
+  transition:transform .28s var(--ease),box-shadow .28s var(--ease),border-color .28s var(--ease);
+}
+.price:hover{transform:translateY(-6px);box-shadow:var(--elev-raised);border-color:var(--border)}
+.price--hot{border:1px solid var(--accent);box-shadow:var(--elev-raised);transform:translateY(-10px);background:var(--surface)}
+.price--hot:hover{transform:translateY(-16px)}
+.price-badge{
+  position:absolute;top:-13px;left:50%;transform:translateX(-50%);white-space:nowrap;
+  font-size:12px;font-weight:700;color:var(--accent-on);letter-spacing:.08em;padding:5px 16px;border-radius:var(--r-pill);
+  background:var(--accent);
+}
+.price-name{font-size:16px;font-weight:700;color:var(--fg)}
+.price-amount{display:flex;align-items:baseline;gap:4px;margin:12px 0 2px;font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:38px;font-weight:800;letter-spacing:-.03em;color:var(--fg)}
+.price--hot .price-amount{color:var(--accent)}
+.price-period{font-size:13px;color:var(--fg-2);margin-bottom:var(--s-3)}
+.price-list{display:flex;flex-direction:column;gap:11px;padding:var(--s-3) 0;border-top:1px dashed var(--border);margin-bottom:var(--s-3)}
+.price-list li{display:flex;gap:10px;font-size:14px;line-height:1.6;color:var(--fg-2)}
+.price-list li strong{color:var(--fg)}
+.mark{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;margin-top:2px}
+.check{background:var(--success-bg);color:var(--success)}
+.cross{background:var(--fill-1);color:var(--muted)}
+.price .btn{margin-top:auto;width:100%}
+.price-note{margin-top:var(--s-5);display:grid;grid-template-columns:1fr 1fr;gap:var(--s-2)}
+.note-card{display:flex;gap:12px;align-items:flex-start;padding:var(--s-3);border-radius:var(--r-md);
+  background:var(--surface-warm);border:1px solid var(--border-soft)}
+.note-card p{font-size:14.5px;color:var(--fg-2);line-height:1.7}
+.note-card strong{color:var(--fg)}
+.note-ico{font-size:20px;line-height:1.4;flex:none}
+
+/* ==========================================================
+   7. 演示区
+   ========================================================== */
+.demo-card{display:grid;grid-template-columns:1.15fr .85fr;border-radius:var(--r-xl);overflow:hidden;
+  background:var(--surface);border:1px solid var(--border-soft)}
+.demo-visual{
+  position:relative;min-height:330px;display:grid;place-items:center;text-align:center;
+  background:var(--surface-warm);
+}
+.demo-visual::before{
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(0,0,0,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.04) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+.play-btn{
+  position:relative;width:88px;height:88px;border-radius:50%;display:grid;place-items:center;font-size:26px;color:var(--accent-on);
+  background:var(--accent);cursor:pointer;border:0;
+  box-shadow:0 0 0 12px var(--accent-soft), 0 4px 12px rgba(0,0,0,.08);
+  transition:transform .25s var(--ease);
+}
+.play-btn:hover{transform:scale(1.08)}
+.demo-visual p{position:relative;margin-top:var(--s-2);font-size:14px;color:var(--fg-2)}
+.demo-info{padding:var(--s-5) var(--s-4);display:flex;flex-direction:column;gap:var(--s-3)}
+.demo-info h3{font-size:22px;font-weight:800;color:var(--fg)}
+.demo-steps{display:flex;flex-direction:column;gap:12px}
+.demo-steps li{position:relative;padding-left:26px;font-size:14.5px;color:var(--fg-2);line-height:1.6}
+.demo-steps li::before{content:"";position:absolute;left:0;top:8px;width:10px;height:10px;border-radius:3px;background:var(--fill-4)}
+.demo-steps li::after{content:"";position:absolute;left:4px;top:20px;bottom:-10px;width:2px;border-radius:2px;background:var(--border)}
+.demo-steps li:last-child::after{display:none}
+.demo-info .btn{align-self:flex-start}
+
+/* ==========================================================
+   8. 技术架构
+   ========================================================== */
+.grid-tech{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--s-2)}
+.tech{position:relative;padding:var(--s-3);border-radius:var(--r-md);background:var(--surface);border:1px solid var(--border-soft);
+  transition:transform .26s var(--ease),box-shadow .26s var(--ease),border-color .26s var(--ease)}
+.tech:hover{transform:translateY(-5px);box-shadow:var(--elev-raised);border-color:var(--border)}
+.tech-ico{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:21px;margin-bottom:14px;
+  background:var(--fill-1);border:1px solid var(--border-soft)}
+.tech h4{font-size:16px;font-weight:700;color:var(--fg);margin-bottom:8px}
+.tech p{font-size:13.5px;line-height:1.7;color:var(--fg-2)}
+.tech-note{
+  margin-top:var(--s-5);padding:var(--s-3) var(--s-4);border-radius:var(--r-md);
+  background:var(--surface-warm);border:1px solid var(--border);color:var(--fg-2);
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14.5px;
+}
+.tech-note a{color:var(--accent);font-weight:600;border-bottom:1px dashed rgba(255,36,66,.45)}
+.tech-note a:hover{color:var(--accent-hover);border-bottom-style:solid}
+
+/* ==========================================================
+   9. FAQ
+   ========================================================== */
+.faq-list{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:var(--s-2)}
+.faq-item{border-radius:var(--r-md);background:var(--surface);border:1px solid var(--border-soft);overflow:hidden;
+  transition:box-shadow .25s var(--ease),border-color .25s var(--ease)}
+.faq-item.is-open{border-color:var(--border);box-shadow:var(--elev-raised)}
+.faq-q{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);
+  padding:var(--s-3);background:none;border:0;cursor:pointer;text-align:left;
+  font-family:inherit;font-size:16px;font-weight:700;color:var(--fg);line-height:1.6;
+}
+.faq-q:hover{color:var(--accent)}
+.faq-sign{position:relative;width:26px;height:26px;border-radius:50%;flex:none;background:var(--accent-soft);border:1px solid rgba(255,36,66,.18);transition:transform .3s var(--ease),background-color .3s var(--ease)}
+.faq-sign::before,.faq-sign::after{content:"";position:absolute;left:50%;top:50%;background:var(--accent);border-radius:2px;transform:translate(-50%,-50%)}
+.faq-sign::before{width:12px;height:2px}
+.faq-sign::after{width:2px;height:12px;transition:opacity .3s var(--ease)}
+.faq-item.is-open .faq-sign{transform:rotate(180deg);background:var(--accent)}
+.faq-item.is-open .faq-sign::before,.faq-item.is-open .faq-sign::after{background:var(--accent-on)}
+.faq-item.is-open .faq-sign::after{opacity:0}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .38s var(--ease)}
+.faq-a p{padding:0 var(--s-3) var(--s-3);font-size:14.8px;line-height:1.85;color:var(--fg-2)}
+.faq-a p::before{content:"";display:block;width:40px;height:2px;border-radius:2px;background:var(--accent);margin-bottom:14px}
+
+/* ==========================================================
+   10. CTA（设计稿为全浅色系统，此处取消深色块）
+   ========================================================== */
+.cta{
+  position:relative;overflow:hidden;isolation:isolate;padding:var(--s-8) 0;text-align:center;color:var(--fg-2);
+  background:var(--surface-warm);border-top:1px solid var(--border);
+}
+.cta::before{content:"";position:absolute;inset:0;z-index:-1;background-image:radial-gradient(rgba(0,0,0,.06) 1px,transparent 1px);background-size:26px 26px;opacity:.6}
+.cta h2{font-size:clamp(26px,3.6vw,40px);font-weight:800;letter-spacing:-.02em;color:var(--fg);line-height:1.3}
+.cta p{margin-top:var(--s-2);font-size:16px;color:var(--fg-2)}
+.cta-actions{display:flex;flex-wrap:wrap;gap:var(--s-2);justify-content:center;margin-top:var(--s-5)}
+.cta .btn-secondary{background:var(--fill-2);color:var(--fg);border-color:transparent}
+.cta .btn-secondary:hover{background:var(--fill-3)}
+
+/* ==========================================================
+   11. 页脚
+   ========================================================== */
+.footer{background:var(--surface);color:var(--fg-2);padding:var(--s-7) 0 var(--s-4);border-top:1px solid var(--border)}
+.footer-grid{display:grid;grid-template-columns:1.6fr repeat(3,1fr);gap:var(--s-5);padding-bottom:var(--s-6)}
+.footer-brand{display:flex;align-items:center;gap:10px;color:var(--fg);font-size:18px;font-weight:700}
+.footer-desc{margin-top:var(--s-2);font-size:14px;line-height:1.8;max-width:34ch}
+.footer h4{font-size:14px;font-weight:700;color:var(--fg);letter-spacing:.06em;margin-bottom:var(--s-2)}
+.footer-col ul{display:flex;flex-direction:column;gap:10px}
+.footer-col a{font-size:14px;color:var(--fg-2);transition:color .2s var(--ease),transform .2s var(--ease);display:inline-block}
+.footer-col a:hover{color:var(--accent);transform:translateX(3px)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:var(--s-3);
+  display:flex;flex-wrap:wrap;gap:var(--s-2);justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+.footer-bottom a{color:var(--fg-2)}
+.footer-bottom a:hover{color:var(--accent)}
+
+/* ============ 滚动入场 ============ */
+.js .reveal{opacity:0;transform:translateY(26px)}
+.reveal{transition:opacity .7s var(--ease),transform .7s var(--ease)}
+.reveal.in{opacity:1;transform:none}
+
+/* ==========================================================
+   响应式：1080 / 992 / 768 / 560
+   ========================================================== */
+@media (max-width:1080px){
+  .grid-price{grid-template-columns:repeat(2,1fr);gap:var(--s-3)}
+  .price--hot{transform:none}
+  .price--hot:hover{transform:translateY(-6px)}
+}
+@media (max-width:992px){
+  .nav-links{
+    position:absolute;top:100%;left:var(--s-2);right:var(--s-2);
+    flex-direction:column;align-items:stretch;gap:2px;padding:var(--s-2);
+    background:rgba(255,255,255,.98);backdrop-filter:blur(14px);border:1px solid var(--border);
+    border-radius:var(--r-md);box-shadow:var(--elev-raised);display:none;
+  }
+  .nav-links.is-open{display:flex;animation:slideIn .25s var(--ease)}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+  .nav-link::after{display:none}
+  .nav-toggle{display:block}
+  .nav-actions .btn-text{display:none}
+  .hero-grid{grid-template-columns:1fr;gap:var(--s-6)}
+  .hero-visual{order:-1;max-width:620px}
+  .mock{transform:none}
+  .demo-card{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:var(--s-4)}
+  .section{padding:var(--s-8) 0}
+}
+@media (max-width:768px){
+  .container{padding:0 var(--s-2)}
+  .section{padding:var(--s-7) 0}
+  .hero{padding:var(--s-7) 0 var(--s-6)}
+  .hero-stats{grid-template-columns:repeat(2,1fr);gap:var(--s-3) var(--s-2);padding:var(--s-3) var(--s-2)}
+  .hero-actions .btn{flex:1;min-width:160px}
+  .compare{border-radius:var(--r-lg)}
+  .compare-row{grid-template-columns:1fr;border-bottom:1px solid var(--border)}
+  .compare-cell{padding:14px var(--s-3);gap:6px}
+  .compare-cell--label{background:var(--surface-warm);border-right:0;border-bottom:1px solid var(--border)}
+  .compare-cell--old::before,.compare-cell--new::before{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--fg-2)}
+  .compare-cell--old::before{content:"传统舆情工具"}
+  .compare-cell--new::before{content:"盘古舆情";color:var(--accent)}
+  .compare-cell--new{border-top:1px solid rgba(255,36,66,.28)}
+  .compare-row--head{display:none}
+  .mock-body{grid-template-columns:1fr}
+  .mock-side{flex-direction:row;border-right:0;border-bottom:1px solid var(--border);overflow:hidden}
+  .mock-float{right:8px;bottom:-16px}
+  .price-note{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+  .footer-bottom{flex-direction:column;text-align:center}
+  .demo-info{padding:var(--s-4) var(--s-3)}
+}
+@media (max-width:560px){
+  .grid-price{grid-template-columns:1fr}
+  .grid-features,.adv-grid,.grid-tech{grid-template-columns:1fr}
+  .hero-title{font-size:32px}
+  .btn{padding:13px 20px;font-size:14.5px}
+  .stat-value{font-size:20px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  html{scroll-behavior:auto}
+  .js .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.add('js');</script>
+<a class="skip-link" href="#main">跳到主内容</a>
+
+<!-- ===================== 1. 头部导航 ===================== -->
+<header class="nav" id="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">舆</span>
+      <span>盘<span class="brand-accent">古</span>舆情</span>
+    </a>
+
+    <nav class="nav-links" id="navLinks" aria-label="主导航">
+      <a class="nav-link" href="#product">产品</a>
+      <a class="nav-link" href="#features">功能</a>
+      <a class="nav-link" href="#pricing">定价</a>
+      <a class="nav-link" href="#cases">案例</a>
+      <a class="nav-link" href="https://github.com/jetchanxxx-tech/yuqing" target="_blank" rel="noopener">开源</a>
+    </nav>
+
+    <div class="nav-actions">
+      <a class="btn-text" href="https://yuqing2.pangu-cloud.com/login">登录</a>
+      <a class="btn btn-primary btn-sm" href="https://yuqing2.pangu-cloud.com/register">免费试用</a>
+      <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="navLinks" aria-label="打开导航菜单">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ===================== 2. 主视觉区 ===================== -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-content">
+      <div class="hero-badge"><span class="badge-dot" aria-hidden="true"></span>AI 原生 · 多 Agent 辩论研判</div>
+
+      <h1 class="hero-title">用 AI 重新定义<br><span class="gradient-text">舆情监测与研判</span></h1>
+
+      <p class="hero-subtitle">
+        盘古舆情是面向中小企业与个人品牌的 AI 原生 SaaS 平台<br>
+        多 Agent 辩论协作，5 分钟生成专业研判报告，价格仅为传统工具的 1/20
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-hero" href="https://yuqing2.pangu-cloud.com/register">立即开始 · 免费试用 →</a>
+        <a class="btn btn-secondary" href="#demo">观看演示</a>
+      </div>
+
+      <!-- 关键指标条 -->
+      <div class="hero-stats">
+        <div class="stat-item"><div class="stat-value">5 分钟</div><div class="stat-label">生成首份报告</div></div>
+        <span class="stat-divider" aria-hidden="true"></span>
+        <div class="stat-item"><div class="stat-value">¥99/月</div><div class="stat-label">起步价格</div></div>
+        <span class="stat-divider" aria-hidden="true"></span>
+        <div class="stat-item"><div class="stat-value">10+ 平台</div><div class="stat-label">数据源覆盖</div></div>
+        <span class="stat-divider" aria-hidden="true"></span>
+        <div class="stat-item"><div class="stat-value">多模态</div><div class="stat-label">文本+视频+图片</div></div>
+      </div>
+    </div>
+
+    <!-- 产品截图卡：纯 CSS 界面模拟（可替换为真实截图） -->
+    <div class="hero-visual">
+      <div class="mock-frame">
+        <div class="mock" role="img" aria-label="盘古舆情数据看板界面示意">
+          <div class="mock-bar">
+            <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+            <span class="mock-name">yuqing · insight dashboard</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-side"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="mock-main">
+              <div class="mock-kpis">
+                <div class="mock-kpi"><b>12,840</b><span>总声量</span></div>
+                <div class="mock-kpi"><b>72%</b><span>正面占比</span></div>
+                <div class="mock-kpi"><b>5 维</b><span>研判维度</span></div>
+              </div>
+              <div class="mock-chart" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="mock-tags">
+                <span class="mock-tag">微博</span><span class="mock-tag alt">小红书</span>
+                <span class="mock-tag">抖音</span><span class="mock-tag alt">B站</span>
+                <span class="mock-tag">公众号</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mock-float">
+        <span class="ring" aria-hidden="true"></span>
+        <span><b>情感分布实时更新</b><span>正面 72% · 中性 16% · 负面 12%</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3. 对比传统工具 ===================== -->
+<section class="section section--light" id="cases">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Why Pangu</span>
+      <h2 class="section-title">为什么选择盘古舆情？</h2>
+      <p class="section-subtitle">AI 原生设计，全面碾压传统舆情工具</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="compare reveal">
+      <div class="compare-row compare-row--head" role="presentation">
+        <div class="compare-cell"></div>
+        <div class="compare-cell">传统舆情工具</div>
+        <div class="compare-cell compare-cell--new">盘古舆情</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell compare-cell--label"><span class="idx">01</span>价格</div>
+        <div class="compare-cell compare-cell--old">¥3-8 万/年<br><span class="muted">商务谈判</span></div>
+        <div class="compare-cell compare-cell--new"><strong>¥99-4999/月</strong><br><span class="accent">自助注册</span></div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell compare-cell--label"><span class="idx">02</span>分析能力</div>
+        <div class="compare-cell compare-cell--old">监测数据 → 人工总结</div>
+        <div class="compare-cell compare-cell--new"><strong>多 Agent 辩论 → AI 研判</strong></div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell compare-cell--label"><span class="idx">03</span>数据维度</div>
+        <div class="compare-cell compare-cell--old">文本为主</div>
+        <div class="compare-cell compare-cell--new"><strong>文本 + 视频 + 图片</strong></div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell compare-cell--label"><span class="idx">04</span>生成速度</div>
+        <div class="compare-cell compare-cell--old">模板固定，周期长</div>
+        <div class="compare-cell compare-cell--new"><strong>5 分钟出报告</strong></div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell compare-cell--label"><span class="idx">05</span>热榜监测</div>
+        <div class="compare-cell compare-cell--old">定制开发，额外收费</div>
+        <div class="compare-cell compare-cell--new"><strong>内置多平台热榜</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4. 核心功能 ===================== -->
+<section class="section section--mist" id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Core Features</span>
+      <h2 class="section-title">核心功能</h2>
+      <p class="section-subtitle">从数据采集到研判报告，全链路 AI 驱动</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="grid-features">
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">🤖</div>
+        <h3>多 Agent 辩论研判</h3>
+        <p>行业首创：多专家 Agent 辩论协作，从不同视角分析舆情，结论更可靠可解释。告别单一 AI 的片面判断。</p>
+        <span class="tag tag--soon">即将上线</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">📡</div>
+        <h3>10+ 平台数据采集</h3>
+        <p>微博、小红书、B站、抖音、公众号、新闻媒体全覆盖。Scrapling 自适应爬虫 + Bocha AI 搜索，真实数据秒级获取。</p>
+        <span class="tag tag--live">已上线</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">📹</div>
+        <h3>多模态理解</h3>
+        <p>不止文本！视频、图片、评论多模态分析。覆盖抖音、小红书视频内容，传统工具的盲区。</p>
+        <span class="tag tag--wip">开发中</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">📊</div>
+        <h3>实时数据看板</h3>
+        <p>声量趋势、情感分布、平台分布、热词云、Top 内容，一屏掌握全局。支持自定义时间范围和数据源过滤。</p>
+        <span class="tag tag--live">已上线</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">📝</div>
+        <h3>一键报告生成</h3>
+        <p>HTML/MD/PDF/DOCX 多格式导出。LLM 驱动生成，包含五维研判（情感/话题/趋势/风险/建议），专业可归档。</p>
+        <span class="tag tag--live">已上线</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="icon-tile" aria-hidden="true">🔥</div>
+        <h3>多平台热榜聚合</h3>
+        <p>微博热搜、B站热门、知乎热榜实时快照。一键预填关键词，快速创建分析。RSSHub 驱动，开箱即用。</p>
+        <span class="tag tag--live">已上线</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 5. 产品优势 ===================== -->
+<section class="section section--tint" id="product">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Advantages</span>
+      <h2 class="section-title">我们的差异化优势</h2>
+      <p class="section-subtitle">AI 原生设计，重新定义舆情监测</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="adv-grid">
+      <article class="adv reveal"><span class="adv-no" aria-hidden="true">01</span><div><h3>价格碾压</h3><p>传统工具 ¥3-8 万/年 → 我们 ¥99-4999/月，价格降低 90%。中小企业也能用得起专业舆情工具。</p></div></article>
+      <article class="adv reveal"><span class="adv-no" aria-hidden="true">02</span><div><h3>多 Agent 辩论研判</h3><p>行业首创！多专家 Agent 辩论协作，从不同视角分析舆情。结论更可靠、更可解释，告别单一 AI 的片面判断。</p></div></article>
+      <article class="adv reveal"><span class="adv-no" aria-hidden="true">03</span><div><h3>多模态覆盖</h3><p>文本 + 视频 + 图片三位一体。覆盖抖音、小红书视频内容，这是传统工具的盲区。</p></div></article>
+      <article class="adv reveal"><span class="adv-no" aria-hidden="true">04</span><div><h3>5 分钟出报告</h3><p>LLM 驱动，注册后 5 分钟生成首份报告。传统工具需要商务对接 + 定制开发，周期数天甚至数周。</p></div></article>
+      <article class="adv reveal"><span class="adv-no" aria-hidden="true">05</span><div><h3>开放生态</h3><p>多模型可切换（DeepSeek/Kimi/Moonshot），开源基因，完整 API 支持。可嵌入客户自有系统（CRM/BI）。</p></div></article>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 6. 定价 ===================== -->
+<section class="section section--light" id="pricing">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Pricing</span>
+      <h2 class="section-title">透明定价</h2>
+      <p class="section-subtitle">按需选择，灵活付费，无隐藏费用</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="grid-price">
+      <article class="price reveal">
+        <h3 class="price-name">体验版</h3>
+        <div class="price-amount">¥0</div>
+        <div class="price-period">永久免费</div>
+        <ul class="price-list">
+          <li><span class="mark check" aria-hidden="true">✓</span><span>1 次分析试用</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>速览模式（3 维分析）</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>HTML 报告导出</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>基础数据源</span></li>
+          <li><span class="mark cross" aria-hidden="true">✗</span><span>多 Agent 辩论</span></li>
+          <li><span class="mark cross" aria-hidden="true">✗</span><span>多格式导出</span></li>
+        </ul>
+        <a class="btn btn-outline" href="https://yuqing2.pangu-cloud.com/register">免费注册</a>
+      </article>
+
+      <article class="price reveal">
+        <h3 class="price-name">速览版 Lite</h3>
+        <div class="price-amount">¥99</div>
+        <div class="price-period">每月</div>
+        <ul class="price-list">
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>4 次</strong>分析/月</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>速览模式（3 维分析）</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>HTML + MD 导出</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>全部数据源</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>30 天数据保留</span></li>
+          <li><span class="mark cross" aria-hidden="true">✗</span><span>多 Agent 辩论</span></li>
+        </ul>
+        <a class="btn btn-outline" href="https://yuqing2.pangu-cloud.com/register">立即购买</a>
+      </article>
+
+      <article class="price price--hot reveal">
+        <span class="price-badge">推荐</span>
+        <h3 class="price-name">研判版 Pro</h3>
+        <div class="price-amount">¥999</div>
+        <div class="price-period">每月</div>
+        <ul class="price-list">
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>10 次</strong>分析/月</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>完整模式</strong>（5 维研判）</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>HTML/MD/PDF/<strong>DOCX</strong> 全格式导出</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>全部数据源 + 优先采集</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>90 天数据保留</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>多 Agent 辩论（即将上线）</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>API 只读访问</span></li>
+        </ul>
+        <a class="btn btn-primary" href="https://yuqing2.pangu-cloud.com/register">立即购买</a>
+      </article>
+
+      <article class="price reveal">
+        <h3 class="price-name">旗舰版 Enterprise</h3>
+        <div class="price-amount">¥4999</div>
+        <div class="price-period">每月</div>
+        <ul class="price-list">
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>50 次</strong>分析/月</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>完整模式</strong> + 优先队列</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>全格式 + PPTX 导出</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>全部数据源 + 自定义源</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>1 年数据保留</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>多 Agent 辩论 + 自定义 Agent</span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span><strong>API 完整访问</strong></span></li>
+          <li><span class="mark check" aria-hidden="true">✓</span><span>专属客户成功经理</span></li>
+        </ul>
+        <a class="btn btn-outline" href="https://yuqing2.pangu-cloud.com/register">联系销售</a>
+      </article>
+    </div>
+
+    <div class="price-note reveal">
+      <div class="note-card"><span class="note-ico" aria-hidden="true">💡</span><p><strong>单次加购</strong>：任意套餐可单次加购分析，¥69/次（无需升级套餐）</p></div>
+      <div class="note-card"><span class="note-ico" aria-hidden="true">🔒</span><p><strong>Beta 公测</strong>：当前处于公测期，额度永不过期，支持支付宝/微信/银联支付</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 7. 产品演示 ===================== -->
+<section class="section section--mist" id="demo">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Live Demo</span>
+      <h2 class="section-title">产品演示</h2>
+      <p class="section-subtitle">真实案例："雅阁后排"舆情事件全流程分析</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="demo-card reveal">
+      <div class="demo-visual">
+        <div>
+          <button class="play-btn" type="button" aria-label="播放演示">▶</button>
+          <p>点击体验完整演示</p>
+        </div>
+      </div>
+      <div class="demo-info">
+        <h3>完整流程演示</h3>
+        <ul class="demo-steps">
+          <li>新建分析任务（关键词 + 数据源选择）</li>
+          <li>实时进度监控（状态机流转）</li>
+          <li>数据看板（声量/情感/话题）</li>
+          <li>五维研判报告</li>
+          <li>多格式导出</li>
+        </ul>
+        <a class="btn btn-primary" href="../demo/index.html" target="_blank" rel="noopener">查看完整演示 →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 8. 技术架构 ===================== -->
+<section class="section section--light">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Architecture</span>
+      <h2 class="section-title">技术架构</h2>
+      <p class="section-subtitle">AI 原生设计，开源生态，可扩展架构</p>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="grid-tech">
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🔧</div><h4>平台层</h4><p>Go 1.25 + PostgreSQL 15<br>高并发、低延迟、强一致性</p></article>
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🤖</div><h4>AI 引擎</h4><p>Python 3.11 + FastAPI × 5<br>query/media/insight/report/forum</p></article>
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🎨</div><h4>前端</h4><p>React 19 + TypeScript + Ant Design<br>现代化交互体验</p></article>
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🌐</div><h4>数据采集</h4><p>Scrapling 爬虫 + Bocha AI 搜索<br>自适应反爬、秒级响应</p></article>
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🔐</div><h4>多租户隔离</h4><p>Database-per-tenant<br>物理隔离、合规友好</p></article>
+      <article class="tech reveal"><div class="tech-ico" aria-hidden="true">🚀</div><h4>部署</h4><p>Go 交叉编译 + systemd<br>单服务器即可，可横向扩展</p></article>
+    </div>
+
+    <div class="tech-note reveal">
+      <span aria-hidden="true">💻</span>
+      <p><strong>开源项目</strong>：核心代码已在 GitHub 开源，欢迎 Star / Fork → <a href="https://github.com/jetchanxxx-tech/yuqing" target="_blank" rel="noopener">github.com/jetchanxxx-tech/yuqing</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 9. FAQ ===================== -->
+<section class="section section--mist" id="faq">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow">FAQ</span>
+      <h2 class="section-title">常见问题</h2>
+      <div class="title-rule" aria-hidden="true"></div>
+    </div>
+
+    <div class="faq-list" id="faqList">
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="true">Q: 为什么比传统舆情工具便宜这么多？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 我们是 AI 原生平台，无需人工介入。传统工具依赖人工分析师团队，成本高昂。我们用多 Agent AI 辩论替代人工研判，成本降低 90% 的同时，分析速度提升 100 倍。</p></div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="false">Q: 多 Agent 辩论是什么？什么时候上线？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 行业首创功能！多个专家 Agent（市场专家/公关专家/危机管理专家等）从不同视角分析舆情，通过辩论达成共识。结论更可靠、更可解释。预计 v0.2.0 版本上线（1-2 个月内）。</p></div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="false">Q: 支持哪些数据源？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 当前支持微博、小红书、B站、抖音、公众号、新闻媒体等 10+ 平台。多模态分析（视频/图片）开发中，将覆盖抖音、小红书短视频内容。</p></div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="false">Q: 数据准确性如何？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 采用 Scrapling 自适应爬虫 + Bocha AI 搜索，真实数据采集（非模拟数据）。自动去重、时间戳校验、引用保真机制，确保数据准确性。</p></div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="false">Q: 支持私有化部署吗？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 支持！政企大客户可选择私有化部署（独立服务器/云主机）。联系我们获取报价和部署方案。</p></div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" type="button" aria-expanded="false">Q: 如何计费？会不会超额？<span class="faq-sign" aria-hidden="true"></span></button>
+        <div class="faq-a"><p>A: 按月订阅 + 额度包模式。每次分析消耗 1 次额度，失败自动回补。额度不足时会提示（HTTP 402），不会超额扣费。支持单次加购（¥69/次）。</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ===================== 10. CTA ===================== -->
+<section class="cta">
+  <div class="container">
+    <h2>立即开始，5 分钟生成首份报告</h2>
+    <p>注册即送 1 次免费分析，无需信用卡</p>
+    <div class="cta-actions">
+      <a class="btn btn-hero" href="https://yuqing2.pangu-cloud.com/register">免费试用 →</a>
+      <a class="btn btn-secondary" href="mailto:support@pangu-cloud.com">联系销售</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 11. 页脚 ===================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <div class="footer-brand">
+          <span class="brand-mark" aria-hidden="true">舆</span>
+          <span>盘古舆情</span>
+        </div>
+        <p class="footer-desc">AI 原生 SaaS 舆情监测平台<br>用多 Agent 辩论协作，把监测升级为研判</p>
+      </div>
+      <div class="footer-col">
+        <h4>产品</h4>
+        <ul>
+          <li><a href="#features">功能介绍</a></li>
+          <li><a href="#pricing">定价</a></li>
+          <li><a href="#demo">产品演示</a></li>
+          <li><a href="https://github.com/jetchanxxx-tech/yuqing" target="_blank" rel="noopener">开源项目</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://yuqing2.pangu-cloud.com/docs" target="_blank" rel="noopener">API 文档</a></li>
+          <li><a href="https://github.com/jetchanxxx-tech/yuqing" target="_blank" rel="noopener">开发指南</a></li>
+          <li><a href="#faq">常见问题</a></li>
+          <li><a href="mailto:support@pangu-cloud.com">技术支持</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>公司</h4>
+        <ul>
+          <li><a href="https://www.pangu-cloud.com" target="_blank" rel="noopener">盘古云官网</a></li>
+          <li><a href="mailto:bd@pangu-cloud.com">商务合作</a></li>
+          <li><a href="mailto:hr@pangu-cloud.com">加入我们</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 盘古云计算科技有限公司 · 保留所有权利</p>
+      <p>
+        <a href="https://yuqing2.pangu-cloud.com" target="_blank" rel="noopener">产品登录</a> ·
+        <a href="mailto:support@pangu-cloud.com">联系我们</a> ·
+        <a href="https://github.com/jetchanxxx-tech/yuqing" target="_blank" rel="noopener">GitHub</a>
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- ===== 交互：移动端菜单 / FAQ 手风琴 / 滚动入场 / 导航态 ===== -->
+<script>
+(function () {
+  'use strict';
+
+  /* 1. 移动端菜单 */
+  var toggle = document.getElementById('navToggle');
+  var links = document.getElementById('navLinks');
+  toggle.addEventListener('click', function () {
+    var open = links.classList.toggle('is-open');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? '关闭导航菜单' : '打开导航菜单');
+  });
+  links.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A') {
+      links.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  /* 2. 导航滚动态 */
+  var nav = document.getElementById('nav');
+  var onScroll = function () {
+    nav.classList.toggle('is-scrolled', window.pageYOffset > 24);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* 3. FAQ 手风琴（单开模式） */
+  var items = document.querySelectorAll('.faq-item');
+  Array.prototype.forEach.call(items, function (item) {
+    var q = item.querySelector('.faq-q');
+    var a = item.querySelector('.faq-a');
+    var setOpen = function (open) {
+      item.classList.toggle('is-open', open);
+      q.setAttribute('aria-expanded', open ? 'true' : 'false');
+      a.style.maxHeight = open ? a.scrollHeight + 40 + 'px' : '0px';
+    };
+    setOpen(q.getAttribute('aria-expanded') === 'true');
+    q.addEventListener('click', function () {
+      var willOpen = !item.classList.contains('is-open');
+      Array.prototype.forEach.call(items, function (other) {
+        if (other === item) return;
+        other.classList.remove('is-open');
+        other.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+        other.querySelector('.faq-a').style.maxHeight = '0px';
+      });
+      setOpen(willOpen);
+    });
+  });
+  window.addEventListener('resize', function () {
+    Array.prototype.forEach.call(items, function (item) {
+      if (item.classList.contains('is-open')) {
+        var a = item.querySelector('.faq-a');
+        a.style.maxHeight = a.scrollHeight + 40 + 'px';
+      }
+    });
+  });
+
+  /* 4. 滚动入场 */
+  var targets = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
+    Array.prototype.forEach.call(targets, function (el, i) {
+      el.style.transitionDelay = (i % 4) * 70 + 'ms';
+      io.observe(el);
+    });
+  } else {
+    Array.prototype.forEach.call(targets, function (el) { el.classList.add('in'); });
+  }
+})();
+</script>
+</body>
+</html>
