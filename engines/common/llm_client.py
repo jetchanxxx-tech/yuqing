@@ -5,11 +5,29 @@
   ② 环境变量 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL（engines.env）
   ③ 代码默认值（智谱 GLM）
 """
+import asyncio
 import json
+import logging
 import os
 import re
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
+
+# 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
+# 只对快速失败的瞬时错误重试一次；504/524/读超时已耗掉大段预算，不重试。
+_TRANSIENT_STATUS = {429, 500, 502, 503}
+RETRY_DELAY_SECONDS = 2
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, httpx.TimeoutException):
+        return False
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _TRANSIENT_STATUS
+    return isinstance(exc, httpx.TransportError)
 
 
 class LLMClient:
@@ -25,15 +43,27 @@ class LLMClient:
         self._transport = transport
 
     async def chat(self, model: str, messages: list[dict], **kwargs) -> dict:
-        """Send a chat completion request. Returns the raw JSON response."""
+        """流式请求（持续出字节，避免 Cloudflare 中转 125s 读超时报 524），返回非流式结构。"""
+        try:
+            return await self._chat_once(model, messages, **kwargs)
+        except Exception as exc:
+            if not _is_transient(exc):
+                raise
+            logger.warning("LLM 调用瞬时失败，%ss 后重试一次: %s", RETRY_DELAY_SECONDS, exc)
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+            return await self._chat_once(model, messages, **kwargs)
+
+    async def _chat_once(self, model: str, messages: list[dict], **kwargs) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "messages": messages, **kwargs},
+                json={"model": model, "messages": messages, "stream": True, **kwargs},
             )
             resp.raise_for_status()
-            return resp.json()
+            if "text/event-stream" not in resp.headers.get("content-type", ""):
+                return resp.json()
+            return _parse_sse(resp.content.decode("utf-8"))
 
     async def chat_json(self, model: str, messages: list[dict], **kwargs) -> dict:
         """Chat with JSON output mode; returns the parsed content as a dict.
@@ -50,6 +80,31 @@ class LLMClient:
             raise ValueError(
                 "LLM 输出被截断（思考内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
         return _parse_json_content(content)
+
+
+def _parse_sse(body: str) -> dict:
+    """把 SSE 分片拼回 {"choices":[{"message":{"content"},"finish_reason"}],"usage"}。"""
+    content: list[str] = []
+    finish_reason = None
+    usage = None
+    for line in body.splitlines():
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+        chunk = json.loads(data)
+        if chunk.get("error"):
+            err = chunk["error"]
+            raise RuntimeError(f"LLM 流式返回错误: {err.get('message', err) if isinstance(err, dict) else err}")
+        usage = chunk.get("usage") or usage
+        for choice in chunk.get("choices") or []:
+            content.append((choice.get("delta") or {}).get("content") or "")
+            finish_reason = choice.get("finish_reason") or finish_reason
+    return {
+        "choices": [{"message": {"content": "".join(content)}, "finish_reason": finish_reason}],
+        "usage": usage,
+    }
 
 
 def _parse_json_content(content: str) -> dict:
