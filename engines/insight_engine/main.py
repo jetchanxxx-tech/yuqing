@@ -448,7 +448,7 @@ async def _analyze_one_dimension(
         ],
         mode=mode,
         temperature=0.6,
-        max_tokens=6144,  # 平衡质量与速度（原8192，现6144）
+        max_tokens=8192,
     )
     if not isinstance(data, dict):
         raise ValueError(f"dimension {spec.id} returned non-object")
@@ -532,8 +532,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": ""}
 
     key = _require_key(req.api_key)
-    # 首次尝试使用180秒超时（平衡质量与CF限制）
-    llm = build_client(key, req.llm_base_url, timeout=180)
+    llm = build_client(key, req.llm_base_url, timeout=300)
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
@@ -634,8 +633,7 @@ async def sentiment(req: SentimentRequest) -> dict:
         return {"results": []}
 
     key = _require_key(req.api_key)
-    # 首次尝试使用180秒超时（平衡质量与CF限制）
-    llm = build_client(key, req.llm_base_url, timeout=180)
+    llm = build_client(key, req.llm_base_url, timeout=300)
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(

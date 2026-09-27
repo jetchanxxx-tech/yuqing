@@ -250,8 +250,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
     key = req.api_key or LLM_API_KEY
     if not key:
         return None
-    # 首次尝试使用180秒超时（平衡质量与CF限制）
-    llm = build_client(key, req.llm_base_url, timeout=180)
+    llm = build_client(key, req.llm_base_url, timeout=300)
     try:
         data = await llm.chat_json(
             req.llm_model or LLM_MODEL,
