@@ -2,7 +2,7 @@
 
 ## 前置条件
 - 本地已有 `HOTFIX_0008_created_by.sql` 文件
-- SSH密码：asdf1234
+- SSH密码：见 credentials.local.md（勿写入仓库）
 
 ## 执行步骤（复制粘贴到PowerShell）
 
@@ -10,13 +10,13 @@
 ```powershell
 scp -P 22352 HOTFIX_0008_created_by.sql jet@101.96.209.90:/tmp/
 ```
-输入密码：`asdf1234`
+输入密码：`<见 credentials.local.md>`
 
 ### 步骤2: SSH登录服务器
 ```powershell
 ssh -p 22352 jet@101.96.209.90
 ```
-输入密码：`asdf1234`
+输入密码：`<见 credentials.local.md>`
 
 ### 步骤3: 在服务器上执行（登录后复制粘贴）
 
