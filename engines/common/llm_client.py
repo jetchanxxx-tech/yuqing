@@ -25,15 +25,17 @@ class LLMClient:
         self._transport = transport
 
     async def chat(self, model: str, messages: list[dict], **kwargs) -> dict:
-        """Send a chat completion request. Returns the raw JSON response."""
+        """流式请求（持续出字节，避免 Cloudflare 中转 125s 读超时报 524），返回非流式结构。"""
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "messages": messages, **kwargs},
+                json={"model": model, "messages": messages, "stream": True, **kwargs},
             )
             resp.raise_for_status()
-            return resp.json()
+            if "text/event-stream" not in resp.headers.get("content-type", ""):
+                return resp.json()
+            return _parse_sse(resp.content.decode("utf-8"))
 
     async def chat_json(self, model: str, messages: list[dict], **kwargs) -> dict:
         """Chat with JSON output mode; returns the parsed content as a dict.
@@ -50,6 +52,31 @@ class LLMClient:
             raise ValueError(
                 "LLM 输出被截断（思考内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
         return _parse_json_content(content)
+
+
+def _parse_sse(body: str) -> dict:
+    """把 SSE 分片拼回 {"choices":[{"message":{"content"},"finish_reason"}],"usage"}。"""
+    content: list[str] = []
+    finish_reason = None
+    usage = None
+    for line in body.splitlines():
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+        chunk = json.loads(data)
+        if chunk.get("error"):
+            err = chunk["error"]
+            raise RuntimeError(f"LLM 流式返回错误: {err.get('message', err) if isinstance(err, dict) else err}")
+        usage = chunk.get("usage") or usage
+        for choice in chunk.get("choices") or []:
+            content.append((choice.get("delta") or {}).get("content") or "")
+            finish_reason = choice.get("finish_reason") or finish_reason
+    return {
+        "choices": [{"message": {"content": "".join(content)}, "finish_reason": finish_reason}],
+        "usage": usage,
+    }
 
 
 def _parse_json_content(content: str) -> dict:
