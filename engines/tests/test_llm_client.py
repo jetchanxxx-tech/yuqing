@@ -7,7 +7,13 @@ import json
 import httpx
 import pytest
 
+from engines.common import llm_client
 from engines.common.llm_client import LLMClient
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_delay(monkeypatch):
+    monkeypatch.setattr(llm_client, "RETRY_DELAY_SECONDS", 0)
 
 
 def make_client(handler) -> LLMClient:
@@ -157,3 +163,33 @@ async def test_chat_stream_error_event_raises():
 
     with pytest.raises(RuntimeError, match="quota exceeded"):
         await make_client(handler).chat("deepseek-chat", [])
+
+
+@pytest.mark.asyncio
+async def test_chat_retries_once_on_transient_error():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    resp = await make_client(handler).chat("deepseek-chat", [])
+
+    assert resp["choices"][0]["message"]["content"] == "ok"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 504, 524])
+async def test_chat_does_not_retry_client_errors_or_slow_timeouts(status):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(status, text="err")
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await make_client(handler).chat("deepseek-chat", [])
+    assert len(calls) == 1
