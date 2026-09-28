@@ -120,25 +120,28 @@ type ReportGenerateResp struct {
 
 // ForumRunReq requests a multi-agent forum debate.
 type ForumRunReq struct {
-	Topic       string     `json:"topic"`
-	Documents   []Document `json:"documents"`
-	AnalysisID  string     `json:"analysis_id"`
-	MaxRounds   int        `json:"max_rounds"`
+	Topic      string     `json:"topic"`
+	Documents  []Document `json:"documents"`
+	AnalysisID string     `json:"analysis_id"`
+	MaxRounds  int        `json:"max_rounds"`
 }
 
 // ForumRunResp is the forum debate response.
 type ForumRunResp struct {
-	Rounds   []ForumRound `json:"rounds"`
-	Verdict  string       `json:"verdict"`
-	Confidence float64    `json:"confidence"`
+	Rounds     []ForumRound `json:"rounds"`
+	Verdict    string       `json:"verdict"`
+	Confidence float64      `json:"confidence"`
 }
 
 // CrawlReq schedules a platform-managed crawl.
 type CrawlReq struct {
-	Sources    []string `json:"sources"`
-	Keywords   []string `json:"keywords"`
-	AnalysisID string   `json:"analysis_id"`
-	MaxDepth   int      `json:"max_depth"`
+	Sources      []string `json:"sources"`
+	Keywords     []string `json:"keywords"`
+	AnalysisID   string   `json:"analysis_id"`
+	MaxDepth     int      `json:"max_depth"`
+	DateFrom     string   `json:"date_from,omitempty"`
+	DateTo       string   `json:"date_to,omitempty"`
+	ExcludeWords []string `json:"exclude_words,omitempty"`
 }
 
 // Shared types used across engine contracts.
@@ -157,22 +160,22 @@ type Document struct {
 }
 
 type MediaResult struct {
-	DocumentID   string `json:"document_id"`
-	Transcript   string `json:"transcript,omitempty"`
-	OCRText      string `json:"ocr_text,omitempty"`
-	Objects      []string `json:"objects,omitempty"`
-	Faces        int    `json:"faces,omitempty"`
+	DocumentID string   `json:"document_id"`
+	Transcript string   `json:"transcript,omitempty"`
+	OCRText    string   `json:"ocr_text,omitempty"`
+	Objects    []string `json:"objects,omitempty"`
+	Faces      int      `json:"faces,omitempty"`
 }
 
 type SentimentResult struct {
-	DocumentID   string             `json:"document_id"`
-	Sentiment    string             `json:"sentiment"` // positive, negative, neutral
-	Level        string             `json:"level,omitempty"`     // 非常正面|正面|中性|负面|非常负面
-	Confidence   float64            `json:"confidence,omitempty"` // 0-1 置信度
-	Score        float64            `json:"score"`
-	Emotions     map[string]float64 `json:"emotions,omitempty"`
-	Aspects      []AspectResult     `json:"aspects,omitempty"`
-	Model        string             `json:"model"`
+	DocumentID string             `json:"document_id"`
+	Sentiment  string             `json:"sentiment"`            // positive, negative, neutral
+	Level      string             `json:"level,omitempty"`      // 非常正面|正面|中性|负面|非常负面
+	Confidence float64            `json:"confidence,omitempty"` // 0-1 置信度
+	Score      float64            `json:"score"`
+	Emotions   map[string]float64 `json:"emotions,omitempty"`
+	Aspects    []AspectResult     `json:"aspects,omitempty"`
+	Model      string             `json:"model"`
 }
 
 type AspectResult struct {
@@ -182,24 +185,24 @@ type AspectResult struct {
 }
 
 type TopicResult struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Keywords  []string `json:"keywords"`
-	DocCount  int      `json:"doc_count"`
-	Trend     string   `json:"trend"` // rising, stable, falling
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Keywords []string `json:"keywords"`
+	DocCount int      `json:"doc_count"`
+	Trend    string   `json:"trend"` // rising, stable, falling
 }
 
 type ForumRound struct {
-	Round     int              `json:"round"`
-	Agent     string           `json:"agent"`
-	Statement string           `json:"statement"`
-	Evidence  []string         `json:"evidence,omitempty"`
+	Round     int      `json:"round"`
+	Agent     string   `json:"agent"`
+	Statement string   `json:"statement"`
+	Evidence  []string `json:"evidence,omitempty"`
 }
 
 type SourceInfo struct {
-	Name      string `json:"name"`
-	DocCount  int    `json:"doc_count"`
-	Status    string `json:"status"` // ok, partial, error
+	Name     string `json:"name"`
+	DocCount int    `json:"doc_count"`
+	Status   string `json:"status"` // ok, partial, error
 }
 
 // Engine interfaces consumed by the business layer.

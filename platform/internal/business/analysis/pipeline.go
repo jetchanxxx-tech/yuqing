@@ -3,8 +3,10 @@ package analysis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -47,11 +49,23 @@ func looksLikeJSON(s string) bool {
 
 // FetchRequest 是一次采集请求。
 type FetchRequest struct {
-	TenantID   string
-	AnalysisID string
-	Keywords   []string
-	Sources    []string
-	MaxResults int
+	TenantID     string
+	AnalysisID   string
+	Keywords     []string
+	Sources      []string
+	ExcludeWords []string
+	DateFrom     string
+	DateTo       string
+	MaxResults   int
+}
+
+type FetchResult struct {
+	Documents []Document
+	Warning   string
+}
+
+type coverageFetcher interface {
+	FetchWithCoverage(ctx context.Context, req FetchRequest) (FetchResult, error)
 }
 
 // Fetcher 采集原始数据。生产实现经 HTTP 调用 Python query 引擎
@@ -77,9 +91,9 @@ const (
 type Pipeline struct {
 	svc       *Service
 	fetcher   Fetcher
-	analyzer  InsightAnalyzer  // nil = 未配置，跳过分析并记录 warning
-	generator ReportGenerator  // nil = 未配置，跳过报告并记录 warning
-	reportSvc reportSvc        // nil = 跳过报告记录创建（向后兼容）
+	analyzer  InsightAnalyzer // nil = 未配置，跳过分析并记录 warning
+	generator ReportGenerator // nil = 未配置，跳过报告并记录 warning
+	reportSvc reportSvc       // nil = 跳过报告记录创建（向后兼容）
 	timeout   time.Duration
 	log       *slog.Logger
 	// modeFor 按租户返回套餐裁剪模式（quick/full）；nil = 全部 full。
@@ -153,6 +167,11 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	// 幂等：任务已被取消或已完成后重复投递直接跳过
 	if IsTerminal(string(a.State)) {
+		if a.State == StateCompleted && a.ReportContent != "" {
+			if _, durable := p.reportSvc.(durableReportService); durable {
+				return p.ensureReportRecord(ctx, msg, a)
+			}
+		}
 		p.log.Info("pipeline: task already terminal, skip",
 			slog.String("analysis_id", msg.AnalysisID), slog.String("state", string(a.State)))
 		return nil
@@ -163,31 +182,52 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 
 	// ① 预算检查（MVP 未接 LLM 计量，仅推进状态）
 	if err := p.step(ctx, msg, StateAcquiringBudget, progressBudget); err != nil {
-		return p.fail(msg, "budget_error", err)
+		return p.fail(ctx, msg, "budget_error", err)
 	}
 
 	// ② 数据采集
 	if err := p.step(ctx, msg, StateFetching, progressFetching); err != nil {
-		return p.fail(msg, "pipeline_error", err)
+		return p.fail(ctx, msg, "pipeline_error", err)
 	}
-	docs, err := p.fetcher.Fetch(ctx, FetchRequest{
-		TenantID:   msg.TenantID,
-		AnalysisID: msg.AnalysisID,
-		Keywords:   a.Keywords,
-		Sources:    a.Sources,
-		MaxResults: 50,
-	})
+	fetchReq := FetchRequest{
+		TenantID:     msg.TenantID,
+		AnalysisID:   msg.AnalysisID,
+		Keywords:     a.Keywords,
+		Sources:      a.Sources,
+		ExcludeWords: a.ExcludeWords,
+		DateFrom:     a.DateFrom,
+		DateTo:       a.DateTo,
+		MaxResults:   50,
+	}
+	var docs []Document
+	var coverageWarning string
+	if fetcher, ok := p.fetcher.(coverageFetcher); ok {
+		result, fetchErr := fetcher.FetchWithCoverage(ctx, fetchReq)
+		docs, coverageWarning, err = result.Documents, result.Warning, fetchErr
+	} else {
+		docs, err = p.fetcher.Fetch(ctx, fetchReq)
+	}
 	if err != nil {
-		return p.fail(msg, "fetch_failed", err)
+		return p.fail(ctx, msg, "fetch_failed", err)
 	}
-	p.svc.AddDocuments(ctx, msg.TenantID, msg.AnalysisID, docs)
+	if coverageWarning != "" {
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, coverageWarning)
+	}
+	docs, missingDates := filterFetchedDocuments(docs, a)
+	if missingDates > 0 {
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID,
+			fmt.Sprintf("%d documents excluded: published_at missing or invalid; date coverage incomplete", missingDates))
+	}
+	if err := p.svc.SaveDocuments(ctx, msg.TenantID, msg.AnalysisID, docs); err != nil {
+		return p.fail(ctx, msg, "document_store_failed", err)
+	}
 	p.setDocCount(ctx, msg, len(docs))
 	p.log.Info("pipeline: fetched", slog.String("analysis_id", msg.AnalysisID), slog.Int("docs", len(docs)))
 
 	// ③ 分析（情感/话题/摘要）。失败**不致命**：任务仍完成，
 	// 但 warning 记录降级原因 —— 采集结果已落库，不能因分析失败丢弃。
 	if err := p.step(ctx, msg, StateAnalyzing, progressAnalyze); err != nil {
-		return p.fail(msg, "pipeline_error", err)
+		return p.fail(ctx, msg, "pipeline_error", err)
 	}
 	insight, warn := p.runInsight(ctx, msg, docs)
 	// 结果非空（哪怕只是部分维度成功）就要落库 —— warn 只描述降级程度，
@@ -204,20 +244,77 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 
 	// ④ 报告生成（同样非致命降级）
 	if err := p.step(ctx, msg, StateGeneratingReport, progressReport); err != nil {
-		return p.fail(msg, "pipeline_error", err)
+		return p.fail(ctx, msg, "pipeline_error", err)
 	}
 	// insightAvailable = 洞察「有产出」而非「零告警」：部分维度失败时
 	// 报告仍应基于已有结论撰写（并在报告内说明缺失），而不是整体降级。
-	if warn := p.runReport(ctx, msg, docs, insight, insightHasOutput(insight)); warn != "" {
+	if warn := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight)); warn != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
 	// ⑤ 完成
 	if err := p.step(ctx, msg, StateCompleted, progressDone); err != nil {
-		return p.fail(msg, "pipeline_error", err)
+		return p.fail(ctx, msg, "pipeline_error", err)
+	}
+	completed, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
+	if err != nil {
+		return err
+	}
+	if completed.ReportContent != "" {
+		if err := p.ensureReportRecord(ctx, msg, completed); err != nil {
+			return err
+		}
 	}
 	p.log.Info("pipeline: completed", slog.String("analysis_id", msg.AnalysisID))
 	return nil
+}
+
+// filterFetchedDocuments guards the persistence and analysis boundary even if
+// the upstream search provider returns results outside the requested scope.
+func filterFetchedDocuments(docs []Document, snapshot *AnalysisResult) ([]Document, int) {
+	filtered := make([]Document, 0, len(docs))
+	missingDates := 0
+	for _, doc := range docs {
+		if len(snapshot.Sources) > 0 {
+			allowed := false
+			for _, source := range snapshot.Sources {
+				if doc.SourceType == source {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+		excluded := false
+		content := strings.ToLower(doc.Title + " " + doc.Content)
+		for _, word := range snapshot.ExcludeWords {
+			if trimmed := strings.TrimSpace(word); trimmed != "" && strings.Contains(content, strings.ToLower(trimmed)) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+		if snapshot.DateFrom != "" || snapshot.DateTo != "" {
+			published, err := time.Parse(time.RFC3339Nano, doc.PublishedAt)
+			if err != nil {
+				published, err = time.Parse(time.DateOnly, doc.PublishedAt)
+			}
+			if err != nil {
+				missingDates++
+				continue
+			}
+			day := published.Format("2006-01-02")
+			if snapshot.DateFrom != "" && day < snapshot.DateFrom || snapshot.DateTo != "" && day > snapshot.DateTo {
+				continue
+			}
+		}
+		filtered = append(filtered, doc)
+	}
+	return filtered, missingDates
 }
 
 // step 推进状态并写进度。上下文超时统一归为 timeout。
@@ -261,13 +358,14 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
 // insightAvailable = 洞察步骤是否成功（失败时报告引擎不得渲染 0/0/0）。
-func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Document, insight InsightResult, insightAvailable bool) string {
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool) string {
 	if p.generator == nil {
 		return "report engine not configured"
 	}
 	res, err := p.generator.Generate(ctx, ReportRequest{
 		TenantID:         msg.TenantID,
 		AnalysisID:       msg.AnalysisID,
+		TemplateID:       templateID,
 		Title:            p.analysisName(ctx, msg) + " 舆情监测报告",
 		Documents:        docs,
 		Sentiments:       insight.Sentiments,
@@ -282,20 +380,27 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, docs []Docume
 	}
 	if err := p.svc.SetReport(ctx, msg.TenantID, msg.AnalysisID, res.ReportID, res.Content); err != nil {
 		p.log.Warn("pipeline: store report failed", slog.String("err", err.Error()))
-		return ""
-	}
-	// 同步写入 reports 表（报告中心闭环）。失败不致命：analyses 已写入，报告内容不丢。
-	if p.reportSvc != nil {
-		createdBy := p.createdBy(ctx, msg)
-		if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", createdBy); err != nil {
-			p.log.Warn("pipeline: create report record failed",
-				slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
-		} else {
-			p.log.Info("pipeline: report record created",
-				slog.String("analysis_id", msg.AnalysisID))
-		}
+		return "report storage failed: " + err.Error()
 	}
 	return ""
+}
+
+type durableReportService interface {
+	CreateFromAnalysisOnce(context.Context, string, string, string, string, string) (string, error)
+}
+
+func (p *Pipeline) ensureReportRecord(ctx context.Context, msg TaskMessage, a *AnalysisResult) error {
+	if p.reportSvc == nil {
+		return nil
+	}
+	if durable, ok := p.reportSvc.(durableReportService); ok {
+		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, a.StartedAt.UTC().Format(time.RFC3339Nano))
+		return err
+	}
+	if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy); err != nil {
+		p.log.Warn("pipeline: create report record failed", "analysis_id", msg.AnalysisID, "err", err)
+	}
+	return nil
 }
 
 // createdBy 从 analysis 对象提取 created_by UUID。
@@ -326,7 +431,13 @@ func (p *Pipeline) analysisName(ctx context.Context, msg TaskMessage) string {
 }
 
 // fail 把任务标记为失败并记录错误码。任务已是终态时不做改动（幂等）。
-func (p *Pipeline) fail(msg TaskMessage, code string, cause error) error {
+func (p *Pipeline) fail(taskCtx context.Context, msg TaskMessage, code string, cause error) error {
+	if errors.Is(taskCtx.Err(), context.Canceled) {
+		return taskCtx.Err()
+	}
+	if errors.Is(cause, context.Canceled) {
+		return cause
+	}
 	// 上下文超时单独归类，便于前端区分「采集失败」与「超时」
 	if cause == context.DeadlineExceeded {
 		code = "timeout"
@@ -348,6 +459,9 @@ func (p *Pipeline) fail(msg TaskMessage, code string, cause error) error {
 
 func (p *Pipeline) setDocCount(ctx context.Context, msg TaskMessage, n int) {
 	_ = p.svc.store.mutate(ctx, msg.TenantID, msg.AnalysisID, func(a *AnalysisResult) error {
+		if a.State == StateCanceled {
+			return fmt.Errorf("analysis: cannot update canceled task document count")
+		}
 		a.DocCount = n
 		return nil
 	})

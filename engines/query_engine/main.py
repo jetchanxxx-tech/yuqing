@@ -1,5 +1,5 @@
 """Query Engine — Bocha AI search + Scrapling content fetching."""
-import os
+from datetime import date, datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -36,6 +36,7 @@ class SearchResponse(BaseModel):
     documents: list[dict]
     total_count: int
     sources: list[dict]
+    coverage: dict
 
 
 # ── Routes ──────────────────────────────────────────────────
@@ -54,42 +55,119 @@ async def health():
 
 @app.post("/search")
 async def search(req: SearchRequest) -> SearchResponse:
-    """Bocha API 搜索 → Scrapling 抓取正文 → 去重 → 返回 Document 列表。
-
-    当 Bocha key 不可用时自动降级到预设 test URL。
-    """
-    scraper = get_scraper()
-    keyword = req.keywords[0] if req.keywords else ""
+    """抓取后按原文和可核验的发布日期筛选，再返回可入库的原文。"""
     bocha_key = req.bocha_api_key or DEFAULT_BOCHA_KEY
+    if not bocha_key:
+        raise HTTPException(status_code=503, detail="Bocha API key required; preset test URLs are not real sources")
 
+    keywords = list(dict.fromkeys(word.strip() for word in req.keywords if word.strip())) or [""]
+    if len(keywords) > 8 or req.max_results < 1:
+        raise HTTPException(status_code=422, detail="At most 8 keywords and a positive max_results are required")
+    result_limit = min(req.max_results, 100)
+
+    try:
+        date_from = date.fromisoformat(req.date_from) if req.date_from else None
+        date_to = date.fromisoformat(req.date_to) if req.date_to else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="date_from/date_to must be ISO dates") from exc
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from must not exceed date_to")
+
+    scraper = get_scraper()
+    sources = list(dict.fromkeys(req.sources))
+    per_source = (max(result_limit // max(len(sources), 1), 3) if len(keywords) == 1
+                  else min(20, max(1, (result_limit + len(keywords) - 1) // len(keywords))))
+    results: list[ScrapedDocument] = []
+    failed_keywords: list[str] = []
+    for keyword in keywords:
+        try:
+            results.extend(await scraper.search_and_fetch(
+                keyword=keyword,
+                sources=sources,
+                max_per_source=per_source,
+                bocha_key=bocha_key,
+            ))
+        except Exception:
+            failed_keywords.append(keyword)
+    if len(failed_keywords) == len(keywords):
+        raise HTTPException(status_code=502, detail={
+            "message": "All keyword searches failed; no results accepted",
+            "failed_keywords": failed_keywords,
+        })
+
+    exclude_words = [word.strip().casefold() for word in req.exclude_words if word.strip()]
     docs: list[ScrapedDocument] = []
-    source_stats: dict[str, int] = {}
-
-    per_source = max(req.max_results // max(len(req.sources), 1), 3)
-    results = await scraper.search_and_fetch(
-        keyword=keyword,
-        sources=req.sources,
-        max_per_source=per_source,
-        bocha_key=bocha_key,
-    )
-
-    # Count by source
+    unverifiable_date_count = 0
+    excluded_word_count = 0
+    duplicate_count = 0
+    seen_urls: set[tuple[str, str]] = set()
+    seen_ids: set[str] = set()
     for d in results:
-        source_stats[d.source_type] = source_stats.get(d.source_type, 0) + 1
-    docs = results
+        if d.source_type not in sources:
+            continue
+        if any(word in d.content.casefold() for word in exclude_words):
+            excluded_word_count += 1
+            continue
+        if date_from or date_to:
+            try:
+                published_date = datetime.fromisoformat(d.published_at).date()
+            except ValueError:
+                unverifiable_date_count += 1
+                continue
+            if (date_from and published_date < date_from) or (date_to and published_date > date_to):
+                continue
+        url_key = (d.source_type, d.url)
+        if (d.url and url_key in seen_urls) or (d.content_hash and d.content_hash in seen_ids):
+            duplicate_count += 1
+            continue
+        if d.url:
+            seen_urls.add(url_key)
+        if d.content_hash:
+            seen_ids.add(d.content_hash)
+        docs.append(d)
 
-    doc_dicts = [_doc_to_dict(d) for d in docs[:req.max_results]]
+    doc_dicts = [_doc_to_dict(d) for d in docs[:result_limit]]
+    source_stats: dict[str, int] = {}
+    for d in doc_dicts:
+        source_stats[d["source_type"]] = source_stats.get(d["source_type"], 0) + 1
 
     sources_info = [
         {"name": src, "doc_count": source_stats.get(src, 0),
          "status": "ok" if source_stats.get(src, 0) > 0 else "partial"}
-        for src in req.sources
+        for src in sources
     ]
 
     return SearchResponse(
         documents=doc_dicts,
         total_count=len(doc_dicts),
         sources=sources_info,
+        coverage={
+            "keywords_searched": keywords,
+            "failed_keywords": failed_keywords,
+            "keyword_search": "partial" if failed_keywords else "applied",
+            "requested_max_results": req.max_results,
+            "result_limit": result_limit,
+            "truncated_count": max(0, len(docs) - result_limit),
+            "duplicate_count": duplicate_count,
+            "date_filter": ("partial" if unverifiable_date_count else "applied")
+            if date_from or date_to else "not_requested",
+            "unverifiable_date_count": unverifiable_date_count,
+            "scanned_count": len(results),
+            "excluded_word_count": excluded_word_count,
+            "excluded_word_ratio": excluded_word_count / len(results) if results else 0.0,
+            "filter_limitations": (
+                "Post-fetch content filtering only: scraper may use a search snippet instead of "
+                "the full original text; candidate results are capped before filtering for each "
+                "keyword, so "
+                "matching documents may be missed. No platform-side filtering."
+            ) if exclude_words or date_from or date_to or len(keywords) > 1 else "",
+            "warning": "; ".join(message for message in [
+                "Documents with missing/unparseable published_at excluded; date coverage incomplete"
+                if unverifiable_date_count else "",
+                "Keyword searches failed: " + ", ".join(failed_keywords) if failed_keywords else "",
+                "Requested result limit capped at 100" if req.max_results > result_limit else "",
+            ] if message),
+        },
     )
 
 

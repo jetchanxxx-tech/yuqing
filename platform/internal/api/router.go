@@ -50,6 +50,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 		v1.RegisterSessionRoutes(session, deps)
 
 		v1.RegisterAnalysisRoutes(api, deps)
+		v1.RegisterMonitorPlanRoutes(api, deps)
 		v1.RegisterAPIKeyRoutes(api, deps)
 		v1.RegisterReportRoutes(api, deps)
 		v1.RegisterDashboardRoutes(api, deps)

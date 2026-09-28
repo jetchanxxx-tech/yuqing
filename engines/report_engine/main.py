@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from html import escape
 from string import Template
+from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -31,7 +32,7 @@ app = FastAPI(title="Report Engine", version="0.2.0")
 
 class GenerateRequest(BaseModel):
     title: str = ""
-    template_id: str = ""
+    template_id: Literal["", "daily", "weekly", "event"] = ""
     format: str = "html"
     documents: list[dict] = []
     sentiments: list[dict] = []
@@ -490,12 +491,17 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     stats = _sentiment_stats(req.sentiments)
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     title = _esc(req.title)
+    template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
 
     if not req.documents:
-        body = '<div class="empty">暂无数据</div>'
+        label = f"{template_names[req.template_id]} · 本次采集暂无数据" if req.template_id else "暂无数据"
+        body = f'<div class="empty">{label}</div>'
         return _TEMPLATE.substitute(title=title, generated_at=generated_at, body=body)
 
-    parts = [_overview_cards(req, stats)]
+    parts = []
+    if req.template_id:
+        parts.append(f'<div class="notice">{template_names[req.template_id]} · 仅基于本次采集内容，不代表完整监测周期</div>')
+    parts.append(_overview_cards(req, stats))
 
     if insight:
         # 事件定性 + 行动建议徽章（枚举与叙述分离）
@@ -541,12 +547,14 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
         )
 
     # 平台对比 + 情感演变轨迹（代码确定性聚合）
-    platform_sec = _platform_section(req.documents, req.sentiments)
-    if platform_sec:
-        parts.append(platform_sec)
-    timeline_sec = _timeline_section(req.documents, req.sentiments)
-    if timeline_sec:
-        parts.append(timeline_sec)
+    if req.template_id != "event":
+        platform_sec = _platform_section(req.documents, req.sentiments)
+        if platform_sec:
+            parts.append(platform_sec)
+    if req.template_id != "daily":
+        timeline_sec = _timeline_section(req.documents, req.sentiments)
+        if timeline_sec:
+            parts.append(timeline_sec)
 
     # 文档列表
     parts.append(
@@ -576,6 +584,10 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
     for run in meta.runs:
         run.font.size = Pt(10)
         run.font.color.rgb = RGBColor(107, 114, 128)
+
+    template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
+    if req.template_id:
+        doc.add_paragraph(f"{template_names[req.template_id]} · 仅基于本次采集内容，不代表完整监测周期")
 
     if not req.documents:
         doc.add_paragraph("暂无数据")
@@ -711,7 +723,7 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
 
     # 平台对比
     platform_rows = _platform_breakdown(req.documents, req.sentiments)
-    if platform_rows:
+    if platform_rows and req.template_id != "event":
         doc.add_heading("平台对比", level=2)
         platform_table = doc.add_table(rows=1, cols=5)
         platform_table.style = 'Light Grid Accent 1'
@@ -731,7 +743,7 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
 
     # 情感演变轨迹
     timeline_rows = _sentiment_timeline(req.documents, req.sentiments)
-    if timeline_rows:
+    if timeline_rows and req.template_id != "daily":
         doc.add_heading("情感演变轨迹", level=2)
         timeline_table = doc.add_table(rows=1, cols=5)
         timeline_table.style = 'Light Grid Accent 1'

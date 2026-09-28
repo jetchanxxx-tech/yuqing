@@ -20,6 +20,7 @@ import (
 	"github.com/yuqing/platform/internal/business/alert"
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/business/dashboard"
+	"github.com/yuqing/platform/internal/business/monitorplan"
 	"github.com/yuqing/platform/internal/business/report"
 	"github.com/yuqing/platform/internal/business/trends"
 	"github.com/yuqing/platform/internal/config"
@@ -40,12 +41,16 @@ import (
 // 选择：memory（测试/开发）或 postgres（生产持久化，重启不丢数据）。
 // logger 用于管线与适配器的运行日志；nil 时退回 slog.Default。
 func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
-	q := queue.NewMemory()
+	if err := checkQueueReadiness(cfg); err != nil {
+		panic(err.Error())
+	}
+	var q queue.Queue = queue.NewMemory()
 
 	var (
 		tenantStore      tenant.Store
 		authStore        auth.Store
 		analysisSvc      *analysis.Service
+		monitorStore     monitorplan.Store
 		reportStore      report.Store
 		alertStore       alert.Store
 		apiKeyStore      apikey.Store
@@ -62,10 +67,12 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		})
 		pool := dbManager.Platform(context.Background())
 		platformPool = pool
+		q = queue.NewPGQueue(pool, queue.PGQueueOptions{})
 
 		tenantStore = tenant.NewPGStore(pool)
 		authStore = auth.NewPGStore(pool)
 		analysisSvc = analysis.NewPGService(pool, q, 4)
+		monitorStore = monitorplan.NewPGStore(pool)
 		reportStore = report.NewPGStore(pool)
 		// 单库模式：告警经 ResolverStore 每次按 tenant_id 绑定（库内过滤）
 		alertStore = alert.NewResolverStore(func(ctx context.Context, tenantID string) (*pgxpool.Pool, error) {
@@ -93,6 +100,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		tenantStore = tenants
 		authStore = auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
 		analysisSvc = analysis.NewService(q, 4)
+		monitorStore = monitorplan.NewMemoryStore()
 		reportStore = report.NewMemoryStore()
 		alertStore = alert.NewMemoryStore()
 		apiKeyStore = apikey.NewMemoryStore()
@@ -111,6 +119,9 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 	// 报告额度闸门：Create/Rerun 各扣 1 次，管线失败/取消自动回补。
 	analysisSvc.SetCreditReserver(creditSvc)
+	if cfg.Store.Driver == "postgres" {
+		analysisSvc.SetBetaSkipCredits(true)
+	}
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 
@@ -218,8 +229,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
-		startPipeline(context.Background(), q, analysisSvc, crawler, insight, reportEngine,
-			reportSvc, pipelineBudget(cfg), logger, analysisModeFor(creditSvc))
+		if cfg.Store.Driver != "postgres" {
+			startPipeline(context.Background(), q, analysisSvc, crawler, insight, reportEngine,
+				reportSvc, pipelineBudget(cfg), logger, analysisModeFor(creditSvc))
+		}
 	}
 
 	// ── 收费体系（方案 B）────────────────────────────────────
@@ -252,6 +265,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	return &v1.Services{
 		Auth:            authSvc,
 		Analysis:        analysisSvc,
+		MonitorPlans:    monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
 		Dashboard:       dashboardSvc,
 		Report:          reportSvc,
 		Tenant:          tenantSvc,
@@ -265,5 +279,114 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		Trends:          trendsSvc,
 		ReportEngine:    reportEngine,
 		PGPool:          platformPool,
+	}
+}
+
+// checkQueueReadiness rejects modes which would silently lose or ACK analyses.
+// The beta PG mode atomically publishes tasks but deliberately bypasses credits.
+func checkQueueReadiness(cfg *config.Config) error {
+	if cfg.Store.Driver == "postgres" {
+		if cfg.Queue.Driver != "postgres" {
+			return fmt.Errorf("app: PostgreSQL store requires persistent PostgreSQL queue; refusing memory fallback (queue.driver=%q)", cfg.Queue.Driver)
+		}
+		if os.Getenv("YUQING_BETA_SKIP_CREDITS") != "true" {
+			return fmt.Errorf("app: PG credit transaction not wired; explicit YUQING_BETA_SKIP_CREDITS=true required for beta test mode")
+		}
+		return nil
+	}
+	switch cfg.Queue.Driver {
+	case "", "memory":
+		return nil
+	case "postgres":
+		return fmt.Errorf("app: PostgreSQL queue requires PostgreSQL store")
+	default:
+		return fmt.Errorf("app: unsupported queue driver %q; refusing memory fallback", cfg.Queue.Driver)
+	}
+}
+
+// RunPGWorker consumes durable analyses in a separate process. A session-level
+// advisory lock serializes all deliveries of the same tenant/task across workers.
+func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
+	if err := checkQueueReadiness(cfg); err != nil {
+		return err
+	}
+	if cfg.Store.Driver != "postgres" {
+		return fmt.Errorf("app: independent worker requires PostgreSQL store")
+	}
+	if cfg.Engines.Query.URL == "" {
+		return fmt.Errorf("app: worker requires engines.query.url")
+	}
+	if cfg.DB.Primary == "" {
+		return fmt.Errorf("app: worker requires db.primary")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	services := Build(cfg, logger)
+	pool := services.PGPool
+	q := queue.NewPGQueue(pool, queue.PGQueueOptions{})
+	defer q.Close()
+	keyFor := func(key string) func() string {
+		return func() string { value, _ := services.Settings.Get(context.Background(), key); return value }
+	}
+	crawler := engine.NewRealCrawlerEngine(cfg.Engines.Query.URL, "", keyFor("bocha_api_key"))
+	llmOpts := func() (string, string) {
+		baseURL, _ := services.Settings.Get(context.Background(), "llm_base_url")
+		model, _ := services.Settings.Get(context.Background(), "llm_model")
+		return baseURL, model
+	}
+	var insight *engine.RealInsightEngine
+	if cfg.Engines.Insight.URL != "" {
+		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+	}
+	var reportEngine *engine.RealReportEngine
+	if cfg.Engines.Report.URL != "" {
+		reportEngine = engine.NewRealReportEngine(cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+	}
+	pipeline := analysis.NewPipeline(services.Analysis, &engineFetcher{crawler: crawler}, pipelineBudget(cfg), logger).WithModeFor(analysisModeFor(services.Credits)).WithReportSvc(&pgReportSvcAdapter{reportSvcAdapter: &reportSvcAdapter{svc: services.Report}})
+	if insight != nil {
+		pipeline.WithAnalyzer(&engineInsightAdapter{ins: insight})
+	}
+	if reportEngine != nil {
+		pipeline.WithGenerator(&engineReportAdapter{rep: reportEngine})
+	}
+	handler := analysisTaskHandler(logger, func(ctx context.Context, task analysis.TaskMessage) error {
+		conn, err := pool.Acquire(ctx)
+		if err != nil {
+			return err
+		}
+		defer conn.Release()
+		var locked bool
+		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtext($1), hashtext($2))`, task.TenantID, task.AnalysisID).Scan(&locked); err != nil {
+			return err
+		}
+		if !locked {
+			return fmt.Errorf("app: analysis %s is already processing", task.AnalysisID)
+		}
+		defer func() {
+			unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			var released bool
+			if err := conn.QueryRow(unlockCtx, `SELECT pg_advisory_unlock(hashtext($1), hashtext($2))`, task.TenantID, task.AnalysisID).Scan(&released); err != nil || !released {
+				logger.Error("worker: advisory unlock failed", "analysis_id", task.AnalysisID, "err", err)
+				_ = conn.Conn().Close(unlockCtx)
+			}
+		}()
+		if err := services.Analysis.RecoverInterrupted(ctx, task.TenantID, task.AnalysisID); err != nil {
+			return err
+		}
+		return pipeline.Handle(ctx, task)
+	})
+	if err := q.Subscribe(ctx, analysis.TopicAnalysisTasks, handler); err != nil {
+		return err
+	}
+	logger.Info("worker: subscribed to durable analysis tasks")
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-q.Errors():
+			logger.Error("worker: delivery failed; retained for retry", "err", err)
+		}
 	}
 }

@@ -12,10 +12,20 @@ export interface AnalysisTypeMeta {
 }
 
 export const ANALYSIS_TYPES: AnalysisTypeMeta[] = [
-  { value: 'event', label: '舆情事件分析', desc: '追踪突发事件传播路径，快速掌握事件脉络与热度拐点' },
-  { value: 'brand', label: '品牌声誉监测', desc: '持续监测品牌口碑，识别声誉风险并评估应对效果' },
-  { value: 'competitor', label: '竞品动态追踪', desc: '跟踪竞品动作与市场反馈，第一时间发现竞争信号' },
-  { value: 'industry', label: '行业趋势洞察', desc: '聚合行业讨论声量，洞察话题演变与用户关注点迁移' },
+  { value: 'event', label: '舆情事件分析', desc: '研判本次采集的事件讨论；传播关系需要真实证据' },
+  { value: 'brand', label: '品牌声誉监测', desc: '研判本次采集的品牌口碑与声誉风险' },
+  { value: 'competitor', label: '竞品动态追踪', desc: '研判本次采集的竞品动作与市场反馈' },
+  { value: 'industry', label: '行业趋势洞察', desc: '研判本次采集的行业话题与关注点' },
+];
+
+/** Task 1 的场景目录仅供单次分析选择视角；当前创建接口不接受 template_id。 */
+export const ANALYSIS_TEMPLATES: { id: string; label: string; desc: string; defaultType: AnalysisType }[] = [
+  { id: 'brand_daily', label: '品牌日常口碑', desc: '品牌提及、评价及变化', defaultType: 'brand' },
+  { id: 'product_launch', label: '新品上市', desc: '新品讨论、反馈与风险', defaultType: 'event' },
+  { id: 'quality_complaint', label: '产品质量投诉', desc: '质量问题、投诉与重复诉求', defaultType: 'brand' },
+  { id: 'competitor_update', label: '竞品动态', desc: '竞品提及及主要变化', defaultType: 'competitor' },
+  { id: 'crisis', label: '突发危机', desc: '特定事件的扩散与风险变化', defaultType: 'event' },
+  { id: 'campaign_review', label: '营销活动复盘', desc: '活动讨论、反馈与传播结果', defaultType: 'event' },
 ];
 
 export type AnalysisState =

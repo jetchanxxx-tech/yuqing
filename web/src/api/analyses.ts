@@ -88,6 +88,43 @@ export interface AnalysisResult {
   report?: AnalysisReport | null;
 }
 
+export interface EventTimelineNode {
+  document_id: string;
+  kind: 'first_observed' | 'source_record';
+  basis: 'fact';
+  event_time: string;
+  title: string;
+  source_type: string;
+  source_name: string;
+  author: string;
+  evidence_document_ids: string[];
+  evidence_urls: string[];
+  limitations: string[];
+}
+
+export interface EventTimelineResponse {
+  nodes: EventTimelineNode[];
+  edges: [];
+  unlocated: { document_id: string; title: string; url?: string; source_name: string; reason: string }[];
+  coverage: {
+    scope: string;
+    source_count: number;
+    duplicate_count: number;
+    timed_count: number;
+    unlocated_count: number;
+    relation_reason: string;
+  };
+  warnings: string[];
+  next_cursor: string;
+}
+
+export async function getEventTimeline(id: string, cursor = ''): Promise<EventTimelineResponse> {
+  const { data } = await client.get<EventTimelineResponse>(`/analyses/${id}/timeline`, {
+    params: { limit: 50, ...(cursor ? { cursor } : {}) },
+  });
+  return data;
+}
+
 export interface Topic {
   name: string;
   doc_count: number;

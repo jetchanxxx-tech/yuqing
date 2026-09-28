@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 )
@@ -93,11 +94,23 @@ func (d *memoryDocumentStore) clear(_ context.Context, tenantID, analysisID stri
 
 // ── Service 上的公开方法 ─────────────────────────────────
 
-// AddDocuments 由管线写入采集结果。
-// 写入失败只记日志：任务此时已推进到下一步，且采集结果丢失属于可观测的
-// 降级（/result 少文档），不应让整条管线失败。
+// SaveDocuments reports storage failures to the pipeline instead of allowing a
+// completed task with missing collected evidence.
+func (s *Service) SaveDocuments(ctx context.Context, tenantID, analysisID string, docs []Document) error {
+	if pg, ok := s.store.(*pgStore); ok {
+		return pg.addDocumentsIfActive(ctx, tenantID, analysisID, docs)
+	}
+	a, err := s.store.get(ctx, tenantID, analysisID)
+	if err == nil && a.State == StateCanceled {
+		return fmt.Errorf("analysis: cannot write documents to canceled task")
+	}
+	// Preserve existing memory fixtures that seed standalone documents without a task.
+	return s.docs.add(ctx, tenantID, analysisID, docs)
+}
+
+// AddDocuments retains the compatibility API for callers that do not handle errors.
 func (s *Service) AddDocuments(ctx context.Context, tenantID, analysisID string, docs []Document) {
-	if err := s.docs.add(ctx, tenantID, analysisID, docs); err != nil {
+	if err := s.SaveDocuments(ctx, tenantID, analysisID, docs); err != nil {
 		slog.Default().Warn("analysis: 采集文档写入失败",
 			slog.String("tenant_id", tenantID),
 			slog.String("analysis_id", analysisID),

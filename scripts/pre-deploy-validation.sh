@@ -1,60 +1,33 @@
 #!/bin/bash
-# Pre-deployment validation: Verify database schema matches code expectations
+# Read-only beta release gate: no migrations, compilation, or service changes.
 set -euo pipefail
 
-echo "=== Pre-Deployment Schema Validation ==="
-echo ""
+fail() { printf 'BLOCKED: %s\n' "$*" >&2; exit 1; }
 
-# Configuration
-YUQING_CONFIG="${YUQING_CONFIG:-/opt/yuqing/config/config.yaml}"
-CLI_BIN="${CLI_BIN:-bin/yuqing-cli}"
-
-if [ ! -f "$CLI_BIN" ]; then
-    echo "ERROR: CLI binary not found at $CLI_BIN"
-    exit 1
+if [ "${1:-}" != '--beta-0.2.3' ] || [ "$#" -ne 1 ]; then
+  fail 'Specify --beta-0.2.3; CLI migrate --list/--status are unsupported and cannot validate schema.'
 fi
 
-if [ ! -f "$YUQING_CONFIG" ]; then
-    echo "ERROR: Config file not found at $YUQING_CONFIG"
-    exit 1
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+for name in server worker cli; do
+  [ -s "$REPO_ROOT/platform/bin/yuqing-$name" ] && [ -x "$REPO_ROOT/platform/bin/yuqing-$name" ] ||
+    fail "Missing prebuilt executable: platform/bin/yuqing-$name (build off-host)."
+done
+[ -s "$REPO_ROOT/web/dist/index.html" ] || fail 'Missing prebuilt web/dist/index.html (build off-host).'
+
+# Evidence paths are operator-supplied; their existence does not prove live acceptance.
+for variable in YUQING_BACKUP_EVIDENCE YUQING_RESTORE_EVIDENCE YUQING_MIGRATION_TEST_EVIDENCE YUQING_LIVE_SCHEMA_EVIDENCE YUQING_SYSTEMD_EVIDENCE YUQING_ROLLBACK_EVIDENCE YUQING_QUEUE_EVIDENCE YUQING_NOTIFICATION_EVIDENCE; do
+  path="${!variable:-}"
+  [ -n "$path" ] && [ -f "$path" ] && [ -s "$path" ] || fail "Missing $variable: provide a nonempty, reviewed evidence file."
+done
+
+# Current runtime is process-local; refuse even if evidence files are supplied.
+if grep -q 'q := queue.NewMemory()' "$REPO_ROOT/platform/internal/app/container.go" ||
+   grep -q 'falling back to memory' "$REPO_ROOT/platform/cmd/worker/main.go"; then
+  fail 'Persistent queue unavailable: restart/replay and multi-replica acceptance required.'
+fi
+if grep -q 'runtime:notifications.*未接通' "$REPO_ROOT/platform/internal/business/monitorplan/service.go"; then
+  fail 'Notification delivery unavailable: verify test-inbox delivery and audit records.'
 fi
 
-# Get expected migrations from CLI binary
-echo "[1/3] Checking CLI binary migrations..."
-EXPECTED_MIGRATIONS=$($CLI_BIN migrate --list 2>/dev/null | tail -1 | awk '{print $NF}')
-if [ -z "$EXPECTED_MIGRATIONS" ]; then
-    echo "ERROR: Could not determine expected migrations from CLI"
-    exit 1
-fi
-echo "Expected migrations in binary: 0001-$EXPECTED_MIGRATIONS"
-
-# Get applied migrations from database
-echo "[2/3] Checking database applied migrations..."
-APPLIED_COUNT=$(YUQING_CONFIG="$YUQING_CONFIG" $CLI_BIN migrate --status 2>/dev/null | grep -c "applied" || true)
-if [ -z "$APPLIED_COUNT" ]; then
-    echo "ERROR: Could not query database migration status"
-    exit 1
-fi
-echo "Applied migrations in database: $APPLIED_COUNT"
-
-# Compare
-echo "[3/3] Validating schema compatibility..."
-EXPECTED_COUNT=$(echo "$EXPECTED_MIGRATIONS" | sed 's/^0*//')
-if [ "$APPLIED_COUNT" -lt "$EXPECTED_COUNT" ]; then
-    echo ""
-    echo "❌ VALIDATION FAILED"
-    echo "Database schema is behind code expectations"
-    echo "  Expected: $EXPECTED_COUNT migrations"
-    echo "  Applied:  $APPLIED_COUNT migrations"
-    echo ""
-    echo "Action required:"
-    echo "  cd /opt/yuqing"
-    echo "  YUQING_CONFIG=$YUQING_CONFIG $CLI_BIN migrate platform"
-    echo ""
-    exit 1
-fi
-
-echo ""
-echo "✅ VALIDATION PASSED"
-echo "Schema is compatible with code (migrations: $APPLIED_COUNT/$EXPECTED_COUNT)"
-exit 0
+printf '%s\n' 'Local beta 0.2.3 artifacts and evidence present; NOT deployment or live acceptance.'

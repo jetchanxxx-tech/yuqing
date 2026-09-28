@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
-	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // pgTestEnv 指向已应用 0002 迁移的测试库。未设置时全部 pg 用例跳过 ——
@@ -38,6 +38,48 @@ func pgTestPool(t *testing.T) *pgxpool.Pool {
 // newTestTenant 返回本次用例独占的租户 ID（ULID 前缀），
 // 保证断言「list 只含本租户数据」不受库中历史数据影响。
 func newTestTenant() string { return "t-" + id.New() }
+
+func TestPGStore_filterSnapshotAndLegacyDefaults(t *testing.T) {
+	if os.Getenv(pgTestEnv) == "" {
+		t.Skip("YUQING_TEST_PG_URL 未配置：无法验证 PostgreSQL 迁移/快照合约；绝不连接生产库")
+	}
+	ctx := context.Background()
+	pool := pgTestPool(t)
+	store := newPGStore(pool)
+	tenant := newTestTenant()
+	defer cleanupAnalyses(t, pool, tenant)
+	a := sampleAnalysis()
+	if err := store.put(ctx, tenant, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.mutate(ctx, tenant, a.ID, func(value *AnalysisResult) error { value.Name = "updated"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.get(ctx, tenant, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Name = "updated"
+	assertAnalysisEqual(t, got, a)
+	listed, err := store.list(ctx, tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].DateFrom != a.DateFrom || listed[0].DateTo != a.DateTo || !reflect.DeepEqual(listed[0].ExcludeWords, a.ExcludeWords) {
+		t.Fatalf("list snapshot mismatch: %+v", listed)
+	}
+	legacy := sampleAnalysis()
+	if _, err := pool.Exec(ctx, `INSERT INTO analyses (id, tenant_id, name, created_by) VALUES ($1, $2, $3, $4)`, legacy.ID, tenant, "legacy", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	old, err := store.get(ctx, tenant, legacy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.DateFrom != "" || old.DateTo != "" || len(old.ExcludeWords) != 0 || old.ReportTemplateID != "" {
+		t.Fatalf("legacy defaults = %+v", old)
+	}
+}
 
 // cleanupAnalyses 删除某租户的全部分析记录（pg 用例收尾用）。
 func cleanupAnalyses(t *testing.T, pool *pgxpool.Pool, tenantID string) {
@@ -80,19 +122,21 @@ func analysisStoreImpls(t *testing.T) []analysisStoreImpl {
 func sampleAnalysis() *AnalysisResult {
 	created := time.Now().UTC().Truncate(time.Microsecond)
 	return &AnalysisResult{
-		ID:           id.New(),
-		CreatedBy:    "user-1",
-		Name:         "雅阁后排舆情",
-		AnalysisType: "brand",
-		State:        StateFetching,
-		Progress:     25,
-		StartedAt:    created.Add(-time.Minute),
-		CreatedAt:    created,
-		Keywords:     []string{"雅阁后排", "后备箱"},
-		Sources:      []string{"weibo", "news"},
-		DocCount:     19,
-		Summary:      "后排空间争议升温",
-		Warning:      "insight engine not configured",
+		DateFrom: "2026-09-01", DateTo: "2026-09-28", ExcludeWords: []string{"advert", "spam"},
+		ReportTemplateID: "weekly",
+		ID:               id.New(),
+		CreatedBy:        "user-1",
+		Name:             "雅阁后排舆情",
+		AnalysisType:     "brand",
+		State:            StateFetching,
+		Progress:         25,
+		StartedAt:        created.Add(-time.Minute),
+		CreatedAt:        created,
+		Keywords:         []string{"雅阁后排", "后备箱"},
+		Sources:          []string{"weibo", "news"},
+		DocCount:         19,
+		Summary:          "后排空间争议升温",
+		Warning:          "insight engine not configured",
 		Sentiments: []Sentiment{{
 			DocumentID: "doc-1", Sentiment: "negative", Level: "负面",
 			Confidence: 0.82, Score: -0.7,
@@ -120,6 +164,12 @@ func sampleAnalysis() *AnalysisResult {
 // assertAnalysisEqual 逐字段比对，时间用 Equal（跨驱动的时间表示不保证 DeepEqual）。
 func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 	t.Helper()
+	if got.ReportTemplateID != want.ReportTemplateID {
+		t.Errorf("ReportTemplateID = %q, want %q", got.ReportTemplateID, want.ReportTemplateID)
+	}
+	if got.DateFrom != want.DateFrom || got.DateTo != want.DateTo || !reflect.DeepEqual(got.ExcludeWords, want.ExcludeWords) {
+		t.Errorf("filter snapshot = %q/%q/%v, want %q/%q/%v", got.DateFrom, got.DateTo, got.ExcludeWords, want.DateFrom, want.DateTo, want.ExcludeWords)
+	}
 	if got.ID != want.ID {
 		t.Errorf("ID = %q, want %q", got.ID, want.ID)
 	}
@@ -171,6 +221,13 @@ func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 	}
 	if got.ReportContent != want.ReportContent {
 		t.Errorf("ReportContent = %d 字节, want %d 字节", len(got.ReportContent), len(want.ReportContent))
+	}
+}
+
+func TestAnalysisArgsPreservesReportTemplateSnapshot(t *testing.T) {
+	args := analysisArgs("tenant-1", &AnalysisResult{ReportTemplateID: "weekly"})
+	if len(args) != 25 || args[24] != "weekly" {
+		t.Fatalf("report template not included in PG args: count=%d last=%v", len(args), args[len(args)-1])
 	}
 }
 

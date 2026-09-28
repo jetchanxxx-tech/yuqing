@@ -20,6 +20,7 @@ import (
 	"github.com/yuqing/platform/internal/business/alert"
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/business/dashboard"
+	"github.com/yuqing/platform/internal/business/monitorplan"
 	"github.com/yuqing/platform/internal/business/report"
 	"github.com/yuqing/platform/internal/business/trends"
 	"github.com/yuqing/platform/internal/engine"
@@ -28,15 +29,16 @@ import (
 // Services bundles the service dependencies v1 handlers call. It is wired
 // once in internal/app/container.go (hand-rolled DI, see CLAUDE.md).
 type Services struct {
-	Auth      *auth.Service
-	Analysis  *analysis.Service
-	Dashboard *dashboard.Service
-	Report    *report.Service
-	Tenant    *tenant.Service
-	Alert     *alert.Service
-	Settings  settings.Store
-	APIKey    *apikey.Service
-	Usage     usage.PlatformMeter
+	Auth         *auth.Service
+	Analysis     *analysis.Service
+	MonitorPlans *monitorplan.Service
+	Dashboard    *dashboard.Service
+	Report       *report.Service
+	Tenant       *tenant.Service
+	Alert        *alert.Service
+	Settings     settings.Store
+	APIKey       *apikey.Service
+	Usage        usage.PlatformMeter
 
 	// 收费体系（方案 B）：额度与支付。
 	Credits         *credit.Service

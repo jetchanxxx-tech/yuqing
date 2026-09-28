@@ -11,7 +11,7 @@
 #   SKIP_SSL        任意值 = 跳过 certbot SSL 配置
 #
 # 幂等性承诺:
-#   - 已安装/已运行的组件自动检测跳过（nginx/postgresql/redis/go/node）
+#   - 已安装/已运行的组件自动检测跳过（nginx/postgresql/redis）
 #   - 已存在的配置文件绝不覆盖（config.yaml / nginx 站点 / 数据库）
 #   - 可反复执行，每次只补缺失的部分
 # ============================================================
@@ -23,6 +23,36 @@ LOG_FILE="$APP_ROOT/data/logs/deploy.log"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_PASSWORD="${YUQING_DB_PASSWORD:-yuqing}"
 JWT_SECRET="${YUQING_JWT_SECRET:-}"
+
+# Before any installation or service change, fail closed on beta 0.2.3.
+# This Ubuntu installer is not a release/acceptance tool for the CentOS production host.
+case "${YUQING_RELEASE_CHANNEL:-legacy}" in
+  beta-0.2.3)
+    bash "$REPO_ROOT/scripts/pre-deploy-validation.sh" --beta-0.2.3
+    echo 'BLOCKED: beta 0.2.3 needs a site-specific, reviewed migration/rollback procedure; deploy.sh cannot certify or execute it.' >&2
+    exit 1 ;;
+  legacy) ;;
+  *) echo 'BLOCKED: unknown YUQING_RELEASE_CHANNEL' >&2; exit 1 ;;
+esac
+
+for name in server worker cli; do
+  if [ ! -s "$APP_ROOT/bin/yuqing-$name" ] || [ ! -x "$APP_ROOT/bin/yuqing-$name" ]; then
+    [ -s "$REPO_ROOT/platform/bin/yuqing-$name" ] && [ -x "$REPO_ROOT/platform/bin/yuqing-$name" ] || {
+      echo "BLOCKED: missing prebuilt yuqing-$name; build off-host and stage platform/bin/yuqing-$name" >&2; exit 1;
+    }
+  fi
+done
+if [ ! -s "$APP_ROOT/web/dist/index.html" ]; then
+  [ -s "$REPO_ROOT/web/dist/index.html" ] || { echo 'BLOCKED: missing prebuilt web/dist/index.html; build off-host.' >&2; exit 1; }
+fi
+if [ ! -x "$APP_ROOT/engines/venv/bin/pip" ] || [ ! -x "$APP_ROOT/engines/venv/bin/python" ]; then
+  echo 'BLOCKED: missing ready-to-run engine venv; this script cannot build Python dependencies on the deployment host.' >&2
+  exit 1
+fi
+for variable in YUQING_BACKUP_EVIDENCE YUQING_MIGRATION_TEST_EVIDENCE; do
+  path="${!variable:-}"
+  [ -n "$path" ] && [ -s "$path" ] && [ -f "$path" ] || { echo "BLOCKED: missing $variable; review backup and disposable-PG migration evidence first." >&2; exit 1; }
+done
 
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; NC='\033[0m'
 
@@ -75,62 +105,9 @@ else
   log_info "Redis 已安装并启动"
 fi
 
-# --- Go 工具链（要求 ≥1.25，apt 自带 1.22 不够） ---
-need_go=1
-if command -v go &>/dev/null; then
-  GO_MINOR=$(go version | grep -oE 'go1\.[0-9]+' | cut -d. -f2)
-  [ "${GO_MINOR:-0}" -ge 25 ] && need_go=0
-fi
-if [ "$need_go" -eq 1 ]; then
-  if [ ! -x /usr/local/go/bin/go ]; then
-    GO_VER="1.25.5"
-    log_info "安装 Go ${GO_VER}（/usr/local/go）..."
-    curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -o /tmp/go.tgz
-    rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm -f /tmp/go.tgz
-  fi
-  export PATH="/usr/local/go/bin:$PATH"
-  log_skip "Go 工具链已就绪: $(go version)"
-else
-  log_skip "Go 已满足要求: $(go version)"
-fi
-export PATH="/usr/local/go/bin:$PATH"
+# Go/Node builds are forbidden on the deployment host; ship prebuilt artifacts.
 
-# 国内网络加速：proxy.golang.org 在境内不可达（实测 dial tcp i/o timeout）。
-# 用 YUQING_GOPROXY 覆盖，设为 "direct" 即关闭镜像。
-go env -w GOPROXY="${YUQING_GOPROXY:-https://goproxy.cn,direct}" \
-          GOSUMDB=sum.golang.google.cn \
-          GOTOOLCHAIN=local
-log_info "Go 代理已配置: $(go env GOPROXY)"
-
-# --- Node.js（要求 ≥20.19，apt 自带 18.19 不够） ---
-need_node=1
-if command -v node &>/dev/null; then
-  NODE_MAJOR=$(node -v | cut -d. -f1 | tr -d 'v')
-  [ "${NODE_MAJOR:-0}" -ge 20 ] && need_node=0
-fi
-if [ "$need_node" -eq 1 ]; then
-  log_info "安装 Node.js 22 LTS（NodeSource）..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
-  log_skip "Node.js 已就绪: $(node -v)"
-else
-  log_skip "Node.js 已满足要求: $(node -v)（npm $(npm -v 2>/dev/null || echo ?)）"
-fi
-
-# 国内网络加速：registry.npmjs.org 在境内常超时。用 YUQING_NPM_REGISTRY 覆盖。
-npm config set registry "${YUQING_NPM_REGISTRY:-https://registry.npmmirror.com}" 2>/dev/null || true
-log_info "npm 源已配置: $(npm config get registry 2>/dev/null || echo '(npm 未就绪)')"
-
-# --- Python 3 venv ---
-# 检测 ensurepip 而非 venv：基础 python3 自带 venv 模块，但 Ubuntu 把
-# ensurepip 拆到独立的 python3.x-venv 包。只测 `import venv` 会误判通过，
-# 直到真正创建 venv 时才以 "ensurepip is not available" 失败并中断部署。
-if python3 -c 'import ensurepip' 2>/dev/null; then
-  log_skip "Python3 venv 已就绪: $(python3 --version)"
-else
-  apt-get install -y python3-venv python3-pip
-  log_info "python3-venv 已安装"
-fi
+# 引擎依赖须预先就绪；不能在部署主机安装源码包或浏览器。
 
 # ============================================================
 # 2. 系统用户 + 平台数据库（已存在则跳过，不覆盖）
@@ -154,75 +131,36 @@ fi
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE yuqing_platform TO yuqing;" >/dev/null 2>&1 || true
 
 # ============================================================
-# 3. Go 二进制构建
+# 3. 安装预构建 Go 二进制（逐个保留已存在产物）
 # ============================================================
-if [ -x "$APP_ROOT/bin/yuqing-server" ] && [ -x "$APP_ROOT/bin/yuqing-worker" ] && [ -x "$APP_ROOT/bin/yuqing-cli" ]; then
-  log_skip "Go 二进制已存在，跳过构建（重编译请删掉后重跑或手动 make build）"
-else
-  log_info "交叉编译 Go 二进制（linux/amd64, CGO off）..."
-  cd "$REPO_ROOT/platform"
-  # 逐个显式命名：`-o dir/ ./cmd/...` 会按包目录名产出 cli/server/worker，
-  # 而 systemd unit 与下方检查都引用 yuqing-* 前缀（实测因此启动失败）。
-  for pkg in server worker cli; do
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
-      -o "$APP_ROOT/bin/yuqing-$pkg" "./cmd/$pkg"
-  done
-  log_info "Go 二进制构建完成: $(ls "$APP_ROOT/bin")"
-fi
+for pkg in server worker cli; do
+  if [ -s "$APP_ROOT/bin/yuqing-$pkg" ] && [ -x "$APP_ROOT/bin/yuqing-$pkg" ]; then
+    log_skip "yuqing-$pkg 已存在，跳过安装"
+  else
+    install -m 755 "$REPO_ROOT/platform/bin/yuqing-$pkg" "$APP_ROOT/bin/yuqing-$pkg"
+    log_info "预构建 yuqing-$pkg 已安装"
+  fi
+done
 
 # ============================================================
-# 4. 前端构建
+# 4. 安装预构建前端
 # ============================================================
 if [ -f "$APP_ROOT/web/dist/index.html" ]; then
-  log_skip "前端 dist/ 已存在，跳过构建（重构建请删掉 dist 后重跑）"
+  log_skip "前端 dist/ 已存在，跳过安装（更新请先审核预构建包与切换步骤）"
 else
-  log_info "前端构建中（npm ci && npm run build）..."
-  cd "$REPO_ROOT/web"
-  npm ci --no-audit --no-fund
-  npm run build
-  cp -r dist "$APP_ROOT/web/"
-  log_info "前端构建完成 → $APP_ROOT/web/dist"
+  mkdir -p "$APP_ROOT/web/dist"
+  cp -a "$REPO_ROOT/web/dist/." "$APP_ROOT/web/dist/"
+  log_info "预构建前端已安装 → $APP_ROOT/web/dist"
 fi
 
 # ============================================================
-# 5. Python 引擎 venv + Scrapling（真实数据采集）
+# 5. Python 引擎预置环境检查（不在主机上构建/安装）
 # ============================================================
 PYTHON_VENV="$APP_ROOT/engines/venv"
-# 以 bin/pip 判定 venv 是否完好：venv 创建中途失败（如缺 ensurepip）会留下
-# 含 bin/python 但无 pip 的残缺目录。只测 bin/python 会把残venv当完成品跳过，
-# 下一步调用 pip 时报 "No such file or directory"（实测）。残缺则删掉重建。
-if [ -x "$PYTHON_VENV/bin/pip" ]; then
-  log_skip "Python 引擎 venv 已存在"
-else
-  [ -d "$PYTHON_VENV" ] && { log_warn "检测到残缺 venv，删除重建"; rm -rf "$PYTHON_VENV"; }
-  python3 -m venv "$PYTHON_VENV"
-  log_info "Python venv 已创建"
-fi
-# PyPI 官方源境内同样慢：默认走清华镜像，用 YUQING_PIP_INDEX 覆盖。
-"$PYTHON_VENV/bin/pip" install -q \
-  -i "${YUQING_PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" \
-  -r "$REPO_ROOT/engines/requirements.txt"
-log_info "Python 依赖已安装"
-
-# Scrapling 浏览器二进制（首次安装 ~150MB，后续跳过）
-if "$PYTHON_VENV/bin/python" -c "from scrapling.fetchers import Fetcher" 2>/dev/null; then
-  # 以 Playwright 浏览器缓存目录判定，避免依赖 scrapling 的 CLI 子命令名。
-  PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-  if [ -d "$PW_CACHE" ] && [ -n "$(ls -A "$PW_CACHE" 2>/dev/null)" ]; then
-    log_skip "Scrapling 浏览器已安装 ($PW_CACHE)"
-  else
-    log_info "安装 Scrapling 浏览器（首次 ~150MB）..."
-    # 不加 --chromium：scrapling install 不接受该参数，误传会直接失败。
-    # 不吞 stderr：失败原因必须可见，否则只能看到一句无信息的 WARN。
-    if "$PYTHON_VENV/bin/scrapling" install 2>&1 | tail -5; then
-      log_info "Scrapling 浏览器安装完成"
-    else
-      log_warn "Scrapling 浏览器安装失败（非阻塞，可稍后手动执行: $PYTHON_VENV/bin/scrapling install）"
-    fi
-  fi
-else
-  log_warn "Scrapling 未安装，数据采集不可用（检查 requirements.txt）"
-fi
+"$PYTHON_VENV/bin/python" -c 'from scrapling.fetchers import Fetcher' || {
+  log_error '预置 Python 环境缺少 Scrapling，不能继续'; exit 1;
+}
+log_skip 'Python 环境已预置；浏览器可用性须在验收时另行验证'
 
 # ============================================================
 # 6. 配置文件（已存在绝不覆盖）
@@ -247,11 +185,11 @@ fi
 # 7. 数据库迁移
 # ============================================================
 log_info "运行平台迁移..."
-if "$APP_ROOT/bin/yuqing-cli" migrate platform; then
+if YUQING_CONFIG="$APP_ROOT/config/config.yaml" "$APP_ROOT/bin/yuqing-cli" migrate platform; then
   log_info "迁移完成"
 else
-  log_warn "迁移 CLI 当前为占位实现；请手工执行 SQL:"
-  log_warn "  sudo -u postgres psql -d yuqing_platform -f $REPO_ROOT/platform/migrations/platform/0001_init.sql"
+  log_error '迁移失败：保持服务停止并核对备份、schema 与 CLI；不得继续启动新版本'
+  exit 1
 fi
 
 # ============================================================
@@ -460,11 +398,12 @@ if curl -sf http://127.0.0.1:8080/api/v1/health >/dev/null; then
   log_info "健康检查通过: http://127.0.0.1:8080/api/v1/health → $(curl -s http://127.0.0.1:8080/api/v1/health)"
 else
   log_error "健康检查失败！排查: journalctl -u yuqing-server -n 50"
+  exit 1
 fi
 
 echo ""
 echo "============================================================"
-echo " ✅ 部署完成"
+echo " ⚠ Ubuntu legacy 安装路径执行完毕；不代表 beta 0.2.3 已发布或完成验收"
 echo "   服务:  yuqing-server / yuqing-worker (systemd)"
 echo "   站点:  ${DOMAIN:-http://服务器IP}（前端静态 + /api 反代）"
 echo "   目录:  $APP_ROOT"

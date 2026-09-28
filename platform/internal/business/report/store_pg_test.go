@@ -3,13 +3,14 @@ package report
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
-	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // pgTestEnv 指向已应用 0002 迁移的测试库；未设置时跳过全部 pg 用例。
@@ -19,8 +20,10 @@ const pgTestEnv = "YUQING_TEST_PG_URL"
 func pgTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := pgtest.Pool(t, "report", pgtest.PlatformMigrations)
-	if _, err := pool.Exec(context.Background(), `INSERT INTO users (id, email, password_hash) VALUES ('user-1', 'report-test@example.com', 'test')`); err != nil {
-		t.Fatalf("create report test user: %v", err)
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users (id, email, password_hash) VALUES
+		('user-1', 'report-test@example.com', 'test'),
+		('user-2', 'report-test-2@example.com', 'test')`); err != nil {
+		t.Fatalf("create report test users: %v", err)
 	}
 	return pool
 }
@@ -70,6 +73,61 @@ func sampleReport(analysisID, format string) Report {
 		Format:     format,
 		Status:     "completed",
 		FileKey:    "reports/" + id.New() + "." + format,
+	}
+}
+
+func TestPGReportStore_requiresExistingCreator(t *testing.T) {
+	pool := pgTestPool(t)
+	st := NewPGStore(pool)
+	ctx := context.Background()
+	tenant := newTestTenant()
+	defer cleanupReports(t, pool, tenant)
+
+	valid := sampleReport("analysis-1", "html")
+	if err := st.Create(ctx, tenant, "user-2", valid); err != nil {
+		t.Fatalf("second seeded creator must be valid: %v", err)
+	}
+	got, err := st.Get(ctx, tenant, valid.ID)
+	if err != nil || got.CreatedBy != "user-2" {
+		t.Fatalf("stored creator = %+v, error = %v", got, err)
+	}
+
+	invalid := sampleReport("analysis-1", "html")
+	if err := st.Create(ctx, tenant, "unknown-creator", invalid); err == nil {
+		t.Fatal("nonexistent creator must be rejected by the FK")
+	}
+	if _, err := st.Get(ctx, tenant, invalid.ID); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		t.Fatalf("invalid creator report persisted: %v", err)
+	}
+}
+
+func TestPGReportCreateOnceRedeliveryAndRerun(t *testing.T) {
+	if os.Getenv(pgTestEnv) == "" {
+		t.Skip("YUQING_TEST_PG_URL required: disposable PostgreSQL only")
+	}
+	parsed, err := pgxpool.ParseConfig(os.Getenv(pgTestEnv))
+	if err != nil || !strings.Contains(strings.ToLower(parsed.ConnConfig.Database), "test") {
+		t.Fatal("PG report contract requires disposable test database")
+	}
+	pool := pgTestPool(t)
+	svc := NewService(NewPGStore(pool), nil, nil)
+	ctx := context.Background()
+	tenant := newTestTenant()
+	first, err := svc.CreateFromAnalysisOnce(ctx, tenant, "analysis-1", "html", "user-1", "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := svc.CreateFromAnalysisOnce(ctx, tenant, "analysis-1", "html", "user-1", "run-1")
+	if err != nil || again.ID != first.ID {
+		t.Fatalf("duplicate report=%+v err=%v", again, err)
+	}
+	second, err := svc.CreateFromAnalysisOnce(ctx, tenant, "analysis-1", "html", "user-1", "run-2")
+	if err != nil || second.ReportVersion != 2 {
+		t.Fatalf("rerun report=%+v err=%v", second, err)
+	}
+	rows, err := svc.List(ctx, tenant)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("persisted reports=%+v err=%v", rows, err)
 	}
 }
 
@@ -159,7 +217,7 @@ func TestReportStore_listFiltersAndPaginates(t *testing.T) {
 			foreign := sampleReport("analysis-1", "html")
 			for _, tc := range []struct {
 				tenantID string
-				creator string
+				creator  string
 				r        Report
 			}{{tenant, "user-1", first}, {tenant, "user-1", second}, {other, "user-2", foreign}} {
 				if err := st.Create(ctx, tc.tenantID, tc.creator, tc.r); err != nil {

@@ -52,6 +52,27 @@ func TestServiceCreateFromAnalysis_allFormats(t *testing.T) {
 	}
 }
 
+func TestCreateFromAnalysisOnceReplaysSameRunWithoutDuplicates(t *testing.T) {
+	svc, _, _ := newTestReportService(t)
+	ctx := context.Background()
+	first, err := svc.CreateFromAnalysisOnce(ctx, "tenant-1", "analysis-1", "html", "user-1", "start-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.CreateFromAnalysisOnce(ctx, "tenant-1", "analysis-1", "html", "user-1", "start-1")
+	if err != nil || second.ID != first.ID {
+		t.Fatalf("redelivery created different report: %+v %v", second, err)
+	}
+	next, err := svc.CreateFromAnalysisOnce(ctx, "tenant-1", "analysis-1", "html", "user-1", "start-2")
+	if err != nil || next.ID == first.ID || next.ReportVersion != 2 {
+		t.Fatalf("rerun report: %+v %v", next, err)
+	}
+	list, err := svc.List(ctx, "tenant-1")
+	if err != nil || len(list) != 2 {
+		t.Fatalf("reports=%+v err=%v", list, err)
+	}
+}
+
 func TestServiceCreateFromAnalysis_unsupportedFormat(t *testing.T) {
 	svc, st, _ := newTestReportService(t)
 

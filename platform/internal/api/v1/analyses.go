@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,9 +22,57 @@ func RegisterAnalysisRoutes(r *gin.RouterGroup, svcs *Services) {
 	analyses.GET("", middleware.RequirePermission("analyses:list"), svcs.handleListAnalyses)
 	analyses.GET("/:id", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysis)
 	analyses.GET("/:id/result", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysisResult)
+	analyses.GET("/:id/timeline", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysisTimeline)
 	analyses.POST("/:id/cancel", middleware.RequirePermission("analyses:cancel"), svcs.handleCancelAnalysis)
 	analyses.POST("/:id/rerun", middleware.RequirePermission("analyses:rerun"), svcs.handleRerunAnalysis)
 	analyses.GET("/:id/events", middleware.RequirePermission("analyses:read"), svcs.handleAnalysisEvents)
+}
+
+func (s *Services) handleGetAnalysisTimeline(c *gin.Context) {
+	p := middleware.GetPrincipal(c)
+	if p == nil {
+		unauthorized(c)
+		return
+	}
+	limit, offset := 50, 0
+	if raw, present := c.GetQuery("limit"); present {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			badRequest(c, "limit must be between 1 and 100")
+			return
+		}
+		limit = parsed
+	}
+	if raw, present := c.GetQuery("cursor"); present {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			badRequest(c, "invalid timeline cursor")
+			return
+		}
+		offset = parsed
+	}
+	ctx := c.Request.Context()
+	a, err := s.Analysis.Get(ctx, p.TenantID, c.Param("id"))
+	if err != nil {
+		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+			notFound(c, "analysis not found")
+			return
+		}
+		respondError(c, err)
+		return
+	}
+	// Documents currently materializes all source rows; reject large analyses
+	// until a bounded database read is introduced instead of silently truncating.
+	if s.Analysis.DocumentCount(ctx, p.TenantID, a.ID) > 2000 {
+		badRequest(c, "timeline supports at most 2000 source documents")
+		return
+	}
+	docs := s.Analysis.Documents(ctx, p.TenantID, a.ID)
+	if len(docs) > 2000 {
+		badRequest(c, "timeline supports at most 2000 source documents")
+		return
+	}
+	c.JSON(http.StatusOK, analysis.BuildTimeline(docs, offset, limit))
 }
 
 // handleCreateAnalysis creates a queued analysis and publishes its task.

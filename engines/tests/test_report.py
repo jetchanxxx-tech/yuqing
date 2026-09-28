@@ -91,6 +91,33 @@ def test_generate_returns_html_report_with_llm_content(fake_llm):
     assert "后排空间" in content  # 话题分析
 
 
+@pytest.mark.parametrize("template_id, label", [
+    ("daily", "日报模板"),
+    ("weekly", "周报模板"),
+    ("event", "事件分析模板"),
+])
+def test_report_template_changes_rendered_structure(fake_llm, template_id, label):
+    response = client.post("/generate", json={**REQ, "template_id": template_id, "api_key": "sk-x"})
+    assert response.status_code == 200
+    content = response.json()["content"]
+    assert label in content
+    assert "本次采集" in content
+    assert ("情感演变轨迹" in content) == (template_id in {"weekly", "event"})
+
+
+def test_report_rejects_unknown_template_without_calling_llm(fake_llm):
+    response = client.post("/generate", json={**REQ, "template_id": "unknown", "api_key": "sk-x"})
+    assert response.status_code == 422
+    assert fake_llm.calls == []
+
+
+def test_selected_template_without_documents_discloses_empty_scope(fake_llm):
+    response = client.post("/generate", json={**REQ, "template_id": "weekly", "documents": [], "api_key": "sk-x"})
+    assert response.status_code == 200
+    assert "周报模板" in response.json()["content"]
+    assert "暂无数据" in response.json()["content"]
+
+
 def test_generate_llm_failure_falls_back_to_data_only_report(fake_llm):
     fake_llm.fail = True
     resp = client.post("/generate", json={**REQ, "api_key": "sk-x"})

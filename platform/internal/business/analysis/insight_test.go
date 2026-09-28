@@ -207,6 +207,24 @@ func TestPipeline_analyzeAndReportPopulateResults(t *testing.T) {
 	}
 }
 
+func TestPipelineForwardsSelectedReportTemplate(t *testing.T) {
+	generator := &fakeGenerator{res: ReportResult{ReportID: "r1", Content: "<html></html>"}}
+	pipeline, svc := newTestPipeline(t, &fakeFetcher{}, 5e9)
+	pipeline.WithGenerator(generator)
+	created, err := svc.Create(context.Background(), CreateAnalysisRequest{
+		TenantID: "t1", Name: "analysis", ReportTemplateID: "weekly",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pipeline.Handle(context.Background(), TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if generator.gotReq.TemplateID != "weekly" {
+		t.Fatalf("report template not forwarded: %+v", generator.gotReq)
+	}
+}
+
 // 部分维度失败（引擎返回非空结果 + warning）不致命：
 // 洞察结果必须照常写入，warning 记录降级原因 —— 而不是丢弃整份洞察。
 // 这是 P0 修复的回归锚点：此前实现里 warn 非空会跳过 SetInsight，

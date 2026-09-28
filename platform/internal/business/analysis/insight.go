@@ -2,14 +2,15 @@ package analysis
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
 // Sentiment is one document's sentiment classification result.
 type Sentiment struct {
 	DocumentID string  `json:"document_id"`
-	Sentiment  string  `json:"sentiment"` // positive, negative, neutral
-	Level      string  `json:"level,omitempty"`     // 非常正面|正面|中性|负面|非常负面（5 级）
+	Sentiment  string  `json:"sentiment"`            // positive, negative, neutral
+	Level      string  `json:"level,omitempty"`      // 非常正面|正面|中性|负面|非常负面（5 级）
 	Confidence float64 `json:"confidence,omitempty"` // 0-1 置信度
 	Score      float64 `json:"score"`
 }
@@ -78,6 +79,7 @@ type InsightAnalyzer interface {
 type ReportRequest struct {
 	TenantID   string
 	AnalysisID string
+	TemplateID string
 	Title      string
 	Documents  []Document
 	Sentiments []Sentiment
@@ -105,6 +107,9 @@ type ReportGenerator interface {
 // SetInsight 写入洞察结果（摘要/情感/话题/五维度），管线 analyzing 步骤调用。
 func (s *Service) SetInsight(ctx context.Context, tenantID, analysisID string, r InsightResult) error {
 	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+		if a.State == StateCanceled {
+			return fmt.Errorf("analysis: cannot write insight to canceled task")
+		}
 		a.Summary = r.Summary
 		a.Sentiments = r.Sentiments
 		a.Topics = r.Topics
@@ -116,6 +121,9 @@ func (s *Service) SetInsight(ctx context.Context, tenantID, analysisID string, r
 // SetReport 写入生成的报告内容，管线 generating_report 步骤调用。
 func (s *Service) SetReport(ctx context.Context, tenantID, analysisID, reportID, content string) error {
 	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+		if a.State == StateCanceled {
+			return fmt.Errorf("analysis: cannot write report to canceled task")
+		}
 		a.ReportID = reportID
 		a.ReportContent = content
 		return nil
@@ -127,6 +135,9 @@ func (s *Service) SetReport(ctx context.Context, tenantID, analysisID, reportID,
 // 降级原因都不应被后写的覆盖。
 func (s *Service) SetWarning(ctx context.Context, tenantID, analysisID, warning string) error {
 	return s.store.mutate(ctx, tenantID, analysisID, func(a *AnalysisResult) error {
+		if a.State == StateCanceled {
+			return fmt.Errorf("analysis: cannot write warning to canceled task")
+		}
 		if warning == "" {
 			return nil
 		}
