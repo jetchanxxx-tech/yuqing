@@ -31,7 +31,7 @@ export function MainLayout() {
             fontSize: 11, fontWeight: 500, color: '#fff', background: 'rgba(255,36,66,0.85)',
             borderRadius: 4, padding: '1px 6px', letterSpacing: 1,
           }}>
-            BETA
+            BETA 0.2.2
           </span>
         </div>
         <Menu

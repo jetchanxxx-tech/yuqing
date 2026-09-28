@@ -172,8 +172,8 @@ func TestIntegration_analysisLifecycleFullChain(t *testing.T) {
 			t.Fatalf("Sources err = %v", err)
 		}
 		topics, err := dash.Topics(context.Background(), tid)
-		if err != nil || len(topics) != 4 {
-			t.Fatalf("Topics err = %v, count = %d, want 4", err, len(topics))
+		if err != nil || len(topics) != 0 {
+			t.Fatalf("Topics err = %v, count = %d, want 0 without generated topics", err, len(topics))
 		}
 	})
 }

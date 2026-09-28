@@ -162,7 +162,7 @@ func (s *Service) Topics(ctx context.Context, tenantID string) ([]Topic, error) 
 	}
 
 	// Convert to slice and sort by doc count (descending)
-	var topics []Topic
+	topics := make([]Topic, 0, len(topicCounts))
 	for name, count := range topicCounts {
 		topics = append(topics, Topic{
 			Name:     name,

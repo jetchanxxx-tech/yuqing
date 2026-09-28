@@ -7,7 +7,13 @@ import json
 import httpx
 import pytest
 
+from engines.common import llm_client
 from engines.common.llm_client import LLMClient
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_delay(monkeypatch):
+    monkeypatch.setattr(llm_client, "RETRY_DELAY_SECONDS", 0)
 
 
 def make_client(handler) -> LLMClient:
@@ -83,3 +89,107 @@ async def test_chat_http_error_propagates():
     client = make_client(handler)
     with pytest.raises(httpx.HTTPStatusError):
         await client.chat("deepseek-chat", [])
+
+
+def _data(obj) -> str:
+    return "data: " + json.dumps(obj, ensure_ascii=False)
+
+
+def sse_response(*lines: str) -> httpx.Response:
+    body = "".join(f"{line}\n\n" for line in lines)
+    return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body.encode())
+
+
+@pytest.mark.asyncio
+async def test_chat_requests_streaming():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    await make_client(handler).chat("deepseek-chat", [])
+
+    assert seen["body"]["stream"] is True
+
+
+@pytest.mark.asyncio
+async def test_chat_reassembles_sse_chunks():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return sse_response(
+            ": keep-alive",
+            _data({"choices": [{"delta": {"reasoning_content": "先想想"}}]}),
+            _data({"choices": [{"delta": {"content": '{"a":'}}]}),
+            _data({"choices": [{"delta": {"content": " 1}"}, "finish_reason": "stop"}]}),
+            "data: [DONE]",
+        )
+
+    resp = await make_client(handler).chat("deepseek-chat", [])
+
+    choice = resp["choices"][0]
+    assert choice["message"]["content"] == '{"a": 1}'
+    assert choice["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_chat_json_parses_streamed_content():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return sse_response(
+            _data({"choices": [{"delta": {"content": '{"topics": '}}]}),
+            _data({"choices": [{"delta": {"content": "[1, 2]}"}, "finish_reason": "stop"}]}),
+            "data: [DONE]",
+        )
+
+    assert await make_client(handler).chat_json("deepseek-chat", []) == {"topics": [1, 2]}
+
+
+@pytest.mark.asyncio
+async def test_chat_json_streamed_truncation_reports_length():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return sse_response(
+            _data({"choices": [{"delta": {"reasoning_content": "想了很久"}}]}),
+            _data({"choices": [{"delta": {}, "finish_reason": "length"}]}),
+            "data: [DONE]",
+        )
+
+    with pytest.raises(ValueError, match="截断"):
+        await make_client(handler).chat_json("deepseek-chat", [])
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_error_event_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return sse_response(_data({"error": {"message": "quota exceeded"}}))
+
+    with pytest.raises(RuntimeError, match="quota exceeded"):
+        await make_client(handler).chat("deepseek-chat", [])
+
+
+@pytest.mark.asyncio
+async def test_chat_retries_once_on_transient_error():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    resp = await make_client(handler).chat("deepseek-chat", [])
+
+    assert resp["choices"][0]["message"]["content"] == "ok"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 504, 524])
+async def test_chat_does_not_retry_client_errors_or_slow_timeouts(status):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(status, text="err")
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await make_client(handler).chat("deepseek-chat", [])
+    assert len(calls) == 1

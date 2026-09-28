@@ -73,7 +73,7 @@ func TestIntegration_reportPlanGating(t *testing.T) {
 		}
 	})
 
-	t.Run("pro plan unlocks markdown and pdf but blocks docx", func(t *testing.T) {
+	t.Run("pro plan unlocks markdown pdf and docx", func(t *testing.T) {
 		md := createFor(t, "t-pro", "markdown")
 		if _, err := download(t, "t-pro", md.ID, "markdown"); err != nil {
 			t.Fatalf("pro markdown download failed: %v", err)
@@ -83,9 +83,8 @@ func TestIntegration_reportPlanGating(t *testing.T) {
 			t.Fatalf("pro pdf download failed: %v（方案 B Pro 含 PDF）", err)
 		}
 		docx := createFor(t, "t-pro", "docx")
-		_, err := download(t, "t-pro", docx.ID, "docx")
-		if !pkgerrors.Is(err, pkgerrors.ErrForbidden) {
-			t.Fatalf("pro docx download err = %v, want ErrForbidden", err)
+		if _, err := download(t, "t-pro", docx.ID, "docx"); err != nil {
+			t.Fatalf("pro docx download failed: %v", err)
 		}
 	})
 

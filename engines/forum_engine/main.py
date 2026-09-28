@@ -1,12 +1,9 @@
-“””Forum Engine — Multi-agent debate coordinator (盘古舆情核心差异化功能).
+"""Forum Engine — Multi-agent debate coordinator (盘古舆情核心差异化功能).
 
 Host LLM moderates N specialist agents over R rounds.
 Real multi-agent LLM implementation with fallback to mock data.
 
-注意：本文件内的中文文本一律使用全角引号「」与””，绝不使用 ASCII 双引号 ——
-ASCII 引号会提前终止 Python 字符串字面量，导致 SyntaxError（曾因此导致
-yuqing-forum 服务启动失败）。
-“””
+"""
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
@@ -17,12 +14,12 @@ from typing import Optional
 try:
     from .llm_client import LLMClient
     from .orchestrator import DebateOrchestrator
-    LLM_AVAILABLE = bool(os.getenv(“ZHIPU_API_KEY”))
+    LLM_AVAILABLE = bool(os.getenv("ZHIPU_API_KEY"))
 except Exception as e:
     LLM_AVAILABLE = False
-    print(f”[WARN] LLM client not available: {e}”)
+    print(f"[WARN] LLM client not available: {e}")
 
-app = FastAPI(title=”Forum Engine”, version=”0.3.0”)
+app = FastAPI(title="Forum Engine", version="0.3.0")
 
 
 # ── Models ──────────────────────────────────────────────
@@ -129,7 +126,7 @@ MOCK_VERDICT = (
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "forum", "version": "0.2.1"}
+    return {"status": "ok", "engine": "forum", "version": "0.3.0"}
 
 
 @app.post("/run_forum", response_model=ForumResponse)

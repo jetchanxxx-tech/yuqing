@@ -378,4 +378,14 @@ sudo chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑�
 | ② | PL/pgSQL `$$` 块必须加 StatementBegin/End 标记 | goose 默认按分号切割语句，`DO $$ ... $$` / 函数体内的分号会被腰斩，报 `42601 syntax error`。**psql 直接执行能过但 goose 失败**——两种执行器对「语句边界」的语义不同。`$$` 块前后必须加 `-- +goose StatementBegin` / `-- +goose StatementEnd` |
 | ③ | yuqing-cli 必须带 YUQING_CONFIG | unit 的 WorkingDirectory=/opt/yuqing 但 config.yaml 在 `config/` 子目录，裸跑 `bin/yuqing-cli` 找不到配置。统一写法：`cd /opt/yuqing && YUQING_CONFIG=/opt/yuqing/config/config.yaml bin/yuqing-cli migrate platform` |
 
+## 10. Beta 0.2.2：0008 热修结构收敛
+
+2026-09-28 对 `yuqing_platform` 的只读盘点：goose 最新为 7，`analyses.created_by` 有 9 条空字符串（17 条总量），`reports` 无记录，`reports.report_version` 为 `TEXT DEFAULT 'v1'`；两个创建人列均无外键和索引。这些数量仅是盘点时快照，迁移前必须重新查询。
+
+- 不得对该库运行旧版 `0008_report_center.sql` 或手工写入 `goose_db_version=8`。Beta 0.2.2 中的 `0008` 同时覆盖干净 v7 和已经补列的 v7，先在 PostgreSQL 测试库分别运行 `TestReportCenterMigration`，再用本地构建的新版 CLI 正式迁移。
+- 先做 PostgreSQL 可恢复备份并核验备份文件；先核对空字符串所属租户存在成员、现有非空创建人属于对应租户、`reports.report_version` 可以转成整数。测试环境已验证两种路径，不能代替生产前的实时检查。
+- 停止写入分析/报告后执行 `YUQING_CONFIG=/opt/yuqing/config/config.yaml /opt/yuqing/bin/yuqing-cli migrate platform`；查询 goose 版本 8、列类型、外键、索引及剩余空创建人，再恢复服务与流量。CLI 通过 `go:embed` 固化 SQL，上传磁盘上的 SQL 文件不会改变 CLI 执行内容。
+- `0008` 的 Down 会删除热修前已有的创建人列，不能用 `goose down` 回滚；失败时保持服务停止，并按迁移前数据库备份恢复。所有 Go、前端构建都在本地完成，服务器仅安装产物与迁移。
+- 固定 GitHub 提交 SHA 和本地构建产物哈希，分别核对线上二进制、前端及引擎源码；`/health` 返回 200 只表示服务可用，不等于分析/导出端到端验收通过。
+
 **部署后复核（2026-09-22 全通过）**：8 服务全 active；goose_db_version=7（0001-0007 全 applied）；users 六新列 + 三新表在位；/api/v1/health 200；`PUT /auth/password`、`GET /user/profile` 未带 token → 401；`GET /auth/verify-email` 缺 token → 400（非 404）；server 近 1 小时日志零 error/panic。二进制 md5（与本地构建产物一致）：server `fc710f0b7b4a3c2ab6ce891097322b46`、worker `32780f6387227f7875b9422196b45183`、cli `e3cc2a846fe4701504f4f3cbed4da12a`。

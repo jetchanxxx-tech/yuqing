@@ -120,11 +120,12 @@ def test_analyze_without_api_key_returns_503(fake_llm, monkeypatch):
     assert resp.status_code == 503
 
 
-def test_analyze_llm_failure_returns_502(fake_llm):
+def test_analyze_llm_failure_returns_warning(fake_llm):
     fake_llm.fail = True
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
 
-    assert resp.status_code == 502
+    assert resp.status_code == 200
+    assert resp.json()["warning"]
 
 
 def test_sentiment_batches_documents(fake_llm):

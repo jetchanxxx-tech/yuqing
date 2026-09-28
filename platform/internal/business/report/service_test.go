@@ -159,7 +159,7 @@ func TestServiceDownloadURL_planGating(t *testing.T) {
 		{"lite can download markdown", "lite", "markdown", false},
 		{"lite cannot download pdf", "lite", "pdf", true},
 		{"pro can download pdf", "pro", "pdf", false},
-		{"pro cannot download docx", "pro", "docx", true},
+		{"pro can download docx", "pro", "docx", false},
 		{"enterprise can download everything", "enterprise", "docx", false},
 	}
 	for _, tt := range tests {
