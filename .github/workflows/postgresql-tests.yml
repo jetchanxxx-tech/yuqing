@@ -51,8 +51,8 @@ jobs:
         env:
           YUQING_TEST_PG_URL: postgres://postgres:testpass@localhost:5432/yuqing_test?sslmode=disable
         run: |
-          OUTPUT=$(go test ./internal/business/analysis -v 2>&1)
-          if ! echo "$OUTPUT" | grep -q "pgStore\|pgPool\|PostgreSQL"; then
+          OUTPUT=$(go test ./internal/business/analysis -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*" 2>&1)
+          if ! echo "$OUTPUT" | grep -q "=== RUN   Test.*PG\|=== RUN   Test.*Pg\|=== RUN   Test.*pg"; then
             echo "ERROR: PostgreSQL tests did not execute"
             echo "Test output:"
             echo "$OUTPUT"
