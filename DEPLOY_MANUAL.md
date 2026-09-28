@@ -1,8 +1,10 @@
 # 手动部署指南 - created_by列修复
 
+> 归档：此手册的数据库名和补列脚本与当前生产结构不一致，不得直接执行。请先按 `docs/ops/DEPLOYMENT_RUNBOOK.md` 核对当前数据库和迁移状态。
+
 ## 前置条件
 - 本地已有 `HOTFIX_0008_created_by.sql` 文件
-- SSH密码：asdf1234
+- SSH密码：见 credentials.local.md（勿写入仓库）
 
 ## 执行步骤（复制粘贴到PowerShell）
 
@@ -10,13 +12,13 @@
 ```powershell
 scp -P 22352 HOTFIX_0008_created_by.sql jet@101.96.209.90:/tmp/
 ```
-输入密码：`asdf1234`
+输入密码：`<见 credentials.local.md>`
 
 ### 步骤2: SSH登录服务器
 ```powershell
 ssh -p 22352 jet@101.96.209.90
 ```
-输入密码：`asdf1234`
+输入密码：`<见 credentials.local.md>`
 
 ### 步骤3: 在服务器上执行（登录后复制粘贴）
 

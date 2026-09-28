@@ -163,6 +163,9 @@ func TestContract_health_returnsOKStatus(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf(`body["status"] = %v, want "ok"`, body["status"])
 	}
+	if body["version"] != "0.2.2-beta" {
+		t.Errorf(`body["version"] = %v, want "0.2.2-beta"`, body["version"])
+	}
 }
 
 // --- 2. Auth endpoints (register/login/refresh/me/logout) --------------------
@@ -858,7 +861,7 @@ func TestContract_analyses_events_clientDisconnect(t *testing.T) {
 	}()
 
 	waitFor(t, rec, "event: progress") // stream is live
-	cancel()                            // client disconnects
+	cancel()                           // client disconnects
 
 	select {
 	case <-done:
@@ -952,9 +955,9 @@ func TestContract_dashboard_endpoints_real(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		topics, _ := decodeBody(t, w)["topics"].([]any)
-		if len(topics) == 0 {
-			t.Fatal("topics empty")
+		topics, ok := decodeBody(t, w)["topics"].([]any)
+		if !ok {
+			t.Fatal("topics is not an array")
 		}
 		for _, tp := range topics {
 			m := tp.(map[string]any)

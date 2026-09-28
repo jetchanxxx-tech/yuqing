@@ -10,7 +10,8 @@
 -- ─────────────────────────────────────────────────────────
 -- 1. analyses 表新增 created_by
 -- ─────────────────────────────────────────────────────────
-ALTER TABLE analyses ADD COLUMN created_by TEXT;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE analyses ALTER COLUMN created_by DROP DEFAULT;
 
 -- 回填：取 tenant_members 表该租户第一个成员（按 user_id 字典序，确定性）
 WITH first_member AS (
@@ -23,7 +24,7 @@ SET created_by = fm.user_id
 FROM first_member fm
 WHERE a.tenant_id = fm.tenant_id
   AND fm.rn = 1
-  AND a.created_by IS NULL;
+  AND (a.created_by IS NULL OR a.created_by = '');
 
 -- 回填后设非空约束（历史数据已回填完毕）
 ALTER TABLE analyses ALTER COLUMN created_by SET NOT NULL;
@@ -36,15 +37,20 @@ CREATE INDEX idx_analyses_created_by ON analyses(created_by);
 -- ─────────────────────────────────────────────────────────
 -- 2. reports 表新增 created_by + report_version
 -- ─────────────────────────────────────────────────────────
-ALTER TABLE reports ADD COLUMN created_by TEXT;
-ALTER TABLE reports ADD COLUMN report_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE reports ALTER COLUMN created_by DROP DEFAULT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS report_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE reports ALTER COLUMN report_version DROP DEFAULT;
+ALTER TABLE reports ALTER COLUMN report_version TYPE INTEGER
+    USING trim(leading 'v' from report_version::text)::integer;
+ALTER TABLE reports ALTER COLUMN report_version SET DEFAULT 1;
 
 -- 回填：created_by 从 analyses.created_by 继承
 UPDATE reports r
 SET created_by = a.created_by
 FROM analyses a
 WHERE r.analysis_id = a.id
-  AND r.created_by IS NULL;
+  AND (r.created_by IS NULL OR r.created_by = '');
 
 -- 回填后设非空约束
 ALTER TABLE reports ALTER COLUMN created_by SET NOT NULL;

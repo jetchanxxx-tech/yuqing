@@ -190,36 +190,22 @@ func TestSources_aggregatesRealDocuments(t *testing.T) {
 	}
 }
 
-
-func TestTopics_predefinedFour(t *testing.T) {
+func TestTopics_emptyTenantHasNoFabricatedTopics(t *testing.T) {
 	svc, _ := newTestDashboard(t)
 
 	got, err := svc.Topics(context.Background(), "tenant-1")
 	if err != nil {
 		t.Fatalf("Topics failed: %v", err)
 	}
-	if len(got) != 4 {
-		t.Fatalf("len(Topics) = %d, want 4 predefined topics", len(got))
-	}
-	for _, tp := range got {
-		if tp.Name == "" {
-			t.Error("topic with empty name")
-		}
-		if tp.DocCount < 0 {
-			t.Errorf("topic %s has negative doc count", tp.Name)
-		}
-		switch tp.Trend {
-		case "rising", "stable", "falling":
-		default:
-			t.Errorf("topic %s has invalid trend %q", tp.Name, tp.Trend)
-		}
+	if len(got) != 0 {
+		t.Fatalf("len(Topics) = %d, want 0 for empty tenant", len(got))
 	}
 
 	other, err := svc.Topics(context.Background(), "tenant-2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other[0].Name != got[0].Name || other[1].Name != got[1].Name {
-		t.Errorf("topics differ across tenants: %+v vs %+v", got, other)
+	if len(other) != 0 {
+		t.Errorf("other empty tenant has topics: %+v", other)
 	}
 }

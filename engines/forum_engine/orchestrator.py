@@ -77,180 +77,180 @@ class DebateOrchestrator:
             total_tokens += moderator_agenda["tokens"]["total_tokens"]
             self.logger.log_llm_call("主持人", 1, moderator_agenda["tokens"]["total_tokens"], 0)
 
-        # 1.2 4个专家并发初步陈述
-        agent_r1_prompts = []
-        for agent in AGENTS:
-            prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r1"]
-            prompt = format_prompt(
-                prompt_template,
-                moderator_agenda=moderator_agenda["content"],
-                data_summary=self._format_data_summary(data_summary)
-            )
-            agent_r1_prompts.append((prompt, agent.temperature))
+            # 1.2 4个专家并发初步陈述
+            agent_r1_prompts = []
+            for agent in AGENTS:
+                prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r1"]
+                prompt = format_prompt(
+                    prompt_template,
+                    moderator_agenda=moderator_agenda["content"],
+                    data_summary=self._format_data_summary(data_summary)
+                )
+                agent_r1_prompts.append((prompt, agent.temperature))
 
-        agent_r1_results = await self.llm_client.call_batch(agent_r1_prompts)
+            agent_r1_results = await self.llm_client.call_batch(agent_r1_prompts)
 
-        # 检查错误
-        for i, result in enumerate(agent_r1_results):
-            if isinstance(result, Exception):
-                raise RuntimeError(f"Agent {AGENTS[i].name} Round 1 failed: {result}")
+            # 检查错误
+            for i, result in enumerate(agent_r1_results):
+                if isinstance(result, Exception):
+                    raise RuntimeError(f"Agent {AGENTS[i].name} Round 1 failed: {result}")
 
-        # 记录Round 1专家发言
-        agent_r1_views = {}
-        for i, agent in enumerate(AGENTS):
-            content = agent_r1_results[i]["content"]
-            agent_r1_views[agent.name] = content
-            rounds.append({
-                "round": 1,
-                "agent": agent.name,
-                "role": agent.role,
-                "statement": content,
-                "timestamp": time.time()
-            })
-            total_tokens += agent_r1_results[i]["tokens"]["total_tokens"]
+            # 记录Round 1专家发言
+            agent_r1_views = {}
+            for i, agent in enumerate(AGENTS):
+                content = agent_r1_results[i]["content"]
+                agent_r1_views[agent.name] = content
+                rounds.append({
+                    "round": 1,
+                    "agent": agent.name,
+                    "role": agent.role,
+                    "statement": content,
+                    "timestamp": time.time()
+                })
+                total_tokens += agent_r1_results[i]["tokens"]["total_tokens"]
 
-        # ══════════════════════════════════════════════════════════
-        # Round 2: 交叉质询
-        # ══════════════════════════════════════════════════════════
+            # ══════════════════════════════════════════════════════════
+            # Round 2: 交叉质询
+            # ══════════════════════════════════════════════════════════
 
-        # 2.1 主持人质询
-        moderator_challenge = await self._call_moderator_round2(agent_r1_views)
-        rounds.append({
-            "round": 2,
-            "agent": "主持人",
-            "role": "交叉质询",
-            "statement": moderator_challenge["content"],
-            "timestamp": time.time()
-        })
-        total_tokens += moderator_challenge["tokens"]["total_tokens"]
-
-        # 2.2 4个专家并发回应质询
-        agent_r2_prompts = []
-        for agent in AGENTS:
-            prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r2"]
-
-            # 构建"其他专家观点"
-            other_views = {
-                k: v for k, v in agent_r1_views.items() if k != agent.name
-            }
-
-            prompt = format_prompt(
-                prompt_template,
-                moderator_challenge=moderator_challenge["content"],
-                **{f"{self._agent_name_to_key(k)}_view": v for k, v in other_views.items()}
-            )
-            agent_r2_prompts.append((prompt, agent.temperature))
-
-        agent_r2_results = await self.llm_client.call_batch(agent_r2_prompts)
-
-        # 检查错误
-        for i, result in enumerate(agent_r2_results):
-            if isinstance(result, Exception):
-                raise RuntimeError(f"Agent {AGENTS[i].name} Round 2 failed: {result}")
-
-        # 记录Round 2专家发言
-        agent_r2_views = {}
-        for i, agent in enumerate(AGENTS):
-            content = agent_r2_results[i]["content"]
-            agent_r2_views[agent.name] = content
+            # 2.1 主持人质询
+            moderator_challenge = await self._call_moderator_round2(agent_r1_views)
             rounds.append({
                 "round": 2,
-                "agent": agent.name,
-                "role": agent.role,
-                "statement": content,
+                "agent": "主持人",
+                "role": "交叉质询",
+                "statement": moderator_challenge["content"],
                 "timestamp": time.time()
             })
-            total_tokens += agent_r2_results[i]["tokens"]["total_tokens"]
+            total_tokens += moderator_challenge["tokens"]["total_tokens"]
 
-        # ══════════════════════════════════════════════════════════
-        # Round 3: 综合研判
-        # ══════════════════════════════════════════════════════════
+            # 2.2 4个专家并发回应质询
+            agent_r2_prompts = []
+            for agent in AGENTS:
+                prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r2"]
 
-        # 3.1 主持人综合研判
-        moderator_synthesis = await self._call_moderator_round3(agent_r1_views, agent_r2_views)
-        rounds.append({
-            "round": 3,
-            "agent": "主持人",
-            "role": "综合研判",
-            "statement": moderator_synthesis["content"],
-            "timestamp": time.time()
-        })
-        total_tokens += moderator_synthesis["tokens"]["total_tokens"]
+                # 构建"其他专家观点"
+                other_views = {
+                    k: v for k, v in agent_r1_views.items() if k != agent.name
+                }
 
-        # 3.2 4个专家串行最终确认（不需要并发）
-        for agent in AGENTS:
-            prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r3"]
-            prompt = format_prompt(
-                prompt_template,
-                moderator_synthesis=moderator_synthesis["content"]
-            )
+                prompt = format_prompt(
+                    prompt_template,
+                    moderator_challenge=moderator_challenge["content"],
+                    **{f"{self._agent_name_to_key(k)}_view": v for k, v in other_views.items()}
+                )
+                agent_r2_prompts.append((prompt, agent.temperature))
 
-            result = await self.llm_client.call(prompt, agent.temperature)
+            agent_r2_results = await self.llm_client.call_batch(agent_r2_prompts)
 
+            # 检查错误
+            for i, result in enumerate(agent_r2_results):
+                if isinstance(result, Exception):
+                    raise RuntimeError(f"Agent {AGENTS[i].name} Round 2 failed: {result}")
+
+            # 记录Round 2专家发言
+            agent_r2_views = {}
+            for i, agent in enumerate(AGENTS):
+                content = agent_r2_results[i]["content"]
+                agent_r2_views[agent.name] = content
+                rounds.append({
+                    "round": 2,
+                    "agent": agent.name,
+                    "role": agent.role,
+                    "statement": content,
+                    "timestamp": time.time()
+                })
+                total_tokens += agent_r2_results[i]["tokens"]["total_tokens"]
+
+            # ══════════════════════════════════════════════════════════
+            # Round 3: 综合研判
+            # ══════════════════════════════════════════════════════════
+
+            # 3.1 主持人综合研判
+            moderator_synthesis = await self._call_moderator_round3(agent_r1_views, agent_r2_views)
             rounds.append({
                 "round": 3,
-                "agent": agent.name,
-                "role": agent.role,
-                "statement": result["content"],
+                "agent": "主持人",
+                "role": "综合研判",
+                "statement": moderator_synthesis["content"],
                 "timestamp": time.time()
             })
-            total_tokens += result["tokens"]["total_tokens"]
+            total_tokens += moderator_synthesis["tokens"]["total_tokens"]
 
-        # ══════════════════════════════════════════════════════════
-        # 计算元数据
-        # ══════════════════════════════════════════════════════════
+            # 3.2 4个专家串行最终确认（不需要并发）
+            for agent in AGENTS:
+                prompt_template = self.prompts[f"{self._agent_name_to_key(agent.name)}_r3"]
+                prompt = format_prompt(
+                    prompt_template,
+                    moderator_synthesis=moderator_synthesis["content"]
+                )
 
-        duration_ms = int((time.time() - start_time) * 1000)
-        cost_cny = calculate_cost_cny(total_tokens)
+                result = await self.llm_client.call(prompt, agent.temperature)
 
-        # 计算观点相似度
-        similarity_scores = self._calculate_similarity(agent_r1_views)
+                rounds.append({
+                    "round": 3,
+                    "agent": agent.name,
+                    "role": agent.role,
+                    "statement": result["content"],
+                    "timestamp": time.time()
+                })
+                total_tokens += result["tokens"]["total_tokens"]
 
-        # 记录相似度检查
-        passed = similarity_scores["avg"] < 0.6
-        self.logger.log_similarity_check(
-            similarity_scores["pairs"],
-            similarity_scores["avg"],
-            passed
-        )
+            # ══════════════════════════════════════════════════════════
+            # 计算元数据
+            # ══════════════════════════════════════════════════════════
 
-        # 记录辩论完成
-        duration_ms = int((time.time() - start_time) * 1000)
-        cost_cny = calculate_cost_cny(total_tokens)
+            duration_ms = int((time.time() - start_time) * 1000)
+            cost_cny = calculate_cost_cny(total_tokens)
 
-        self.logger.log_debate_complete(
-            self.analysis_id,
-            total_tokens,
-            cost_cny,
-            duration_ms,
-            similarity_scores["avg"]
-        )
+            # 计算观点相似度
+            similarity_scores = self._calculate_similarity(agent_r1_views)
 
-        # 更新性能监控
-        self.monitor.record_debate(
-            total_tokens,
-            cost_cny,
-            duration_ms,
-            similarity_scores["avg"],
-            error=False
-        )
+            # 记录相似度检查
+            passed = similarity_scores["avg"] < 0.6
+            self.logger.log_similarity_check(
+                similarity_scores["pairs"],
+                similarity_scores["avg"],
+                passed
+            )
 
-        result = {
-            "rounds": rounds,
-            "verdict": moderator_synthesis["content"],
-            "confidence": 0.85,  # TODO: 从主持人综合研判中提取
-            "metadata": {
-                "total_tokens": total_tokens,
-                "cost_cny": cost_cny,
-                "duration_ms": duration_ms,
-                "similarity_scores": similarity_scores
+            # 记录辩论完成
+            duration_ms = int((time.time() - start_time) * 1000)
+            cost_cny = calculate_cost_cny(total_tokens)
+
+            self.logger.log_debate_complete(
+                self.analysis_id,
+                total_tokens,
+                cost_cny,
+                duration_ms,
+                similarity_scores["avg"]
+            )
+
+            # 更新性能监控
+            self.monitor.record_debate(
+                total_tokens,
+                cost_cny,
+                duration_ms,
+                similarity_scores["avg"],
+                error=False
+            )
+
+            result = {
+                "rounds": rounds,
+                "verdict": moderator_synthesis["content"],
+                "confidence": 0.85,  # TODO: 从主持人综合研判中提取
+                "metadata": {
+                    "total_tokens": total_tokens,
+                    "cost_cny": cost_cny,
+                    "duration_ms": duration_ms,
+                    "similarity_scores": similarity_scores
+                }
             }
-        }
 
-        # 保存完整辩论结果到JSON（审计用）
-        self.logger.save_debate_json(self.analysis_id, result)
+            # 保存完整辩论结果到JSON（审计用）
+            self.logger.save_debate_json(self.analysis_id, result)
 
-        return result
+            return result
 
         except Exception as e:
             # 记录错误

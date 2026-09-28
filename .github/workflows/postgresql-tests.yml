@@ -41,6 +41,7 @@ jobs:
         env:
           YUQING_TEST_PG_URL: postgres://postgres:testpass@localhost:5432/yuqing_test?sslmode=disable
         run: |
+          go test ./migrations -v -count=1 -run TestReportCenterMigration
           go test ./internal/business/analysis -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
           go test ./internal/business/report -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
           go test ./internal/business/alert -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
