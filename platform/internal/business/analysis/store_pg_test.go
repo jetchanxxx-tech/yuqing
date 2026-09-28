@@ -28,7 +28,11 @@ const pgTestEnv = "YUQING_TEST_PG_URL"
 // 与 platform 侧 store 测试共用同一套夹具；环境变量缺失即跳过当前用例。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	return pgtest.Pool(t, "analysis", pgtest.PlatformMigrations)
+	pool := pgtest.Pool(t, "analysis", pgtest.PlatformMigrations)
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users (id, email, password_hash) VALUES ('user-1', 'analysis-test@example.com', 'test')`); err != nil {
+		t.Fatalf("create analysis test user: %v", err)
+	}
+	return pool
 }
 
 // newTestTenant 返回本次用例独占的租户 ID（ULID 前缀），
@@ -77,6 +81,7 @@ func sampleAnalysis() *AnalysisResult {
 	created := time.Now().UTC().Truncate(time.Microsecond)
 	return &AnalysisResult{
 		ID:           id.New(),
+		CreatedBy:    "user-1",
 		Name:         "雅阁后排舆情",
 		AnalysisType: "brand",
 		State:        StateFetching,
