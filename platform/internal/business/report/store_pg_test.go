@@ -18,7 +18,11 @@ const pgTestEnv = "YUQING_TEST_PG_URL"
 // pgTestPool 用 pgtest.Pool 提供 schema 隔离 + 迁移执行（platform 全量迁移）。
 func pgTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	return pgtest.Pool(t, "report", pgtest.PlatformMigrations)
+	pool := pgtest.Pool(t, "report", pgtest.PlatformMigrations)
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users (id, email, password_hash) VALUES ('user-1', 'report-test@example.com', 'test')`); err != nil {
+		t.Fatalf("create report test user: %v", err)
+	}
+	return pool
 }
 
 // newTestTenant 返回本次用例独占的租户 ID，隔离库中历史数据。
