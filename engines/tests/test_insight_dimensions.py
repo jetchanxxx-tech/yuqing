@@ -563,3 +563,21 @@ def test_provider_read_timeout_has_visible_reason(monkeypatch):
     body = resp.json()
     assert len(body['dimensions']) == 5
     assert '情感和话题分析失败：超时' in body['warning']
+
+
+def test_summary_passes_explicit_output_budget(monkeypatch):
+    class CaptureLLM(DimensionFakeLLM):
+        def __init__(self):
+            super().__init__()
+            self.summary_max_tokens = []
+
+        async def chat_json(self, model, messages, **kwargs):
+            if "批判" in json.dumps(messages, ensure_ascii=False):
+                self.summary_max_tokens.append(kwargs.get("max_tokens"))
+            return await super().chat_json(model, messages, **kwargs)
+
+    fake = CaptureLLM()
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
+    resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
+    assert resp.status_code == 200
+    assert fake.summary_max_tokens == [8192]

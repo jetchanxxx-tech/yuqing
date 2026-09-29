@@ -225,10 +225,7 @@ func TestPipelineForwardsSelectedReportTemplate(t *testing.T) {
 	}
 }
 
-// 部分维度失败（引擎返回非空结果 + warning）不致命：
-// 洞察结果必须照常写入，warning 记录降级原因 —— 而不是丢弃整份洞察。
-// 这是 P0 修复的回归锚点：此前实现里 warn 非空会跳过 SetInsight，
-// 报告随后拿到 insightAvailable=false，用户看到的是一份空报告。
+// 部分维度失败（引擎返回非空结果 + warning）必须失败，禁止把半成品标为完成。
 func TestPipeline_partialDimensionFailureKeepsInsight(t *testing.T) {
 	fetcher := &fakeFetcher{docs: sampleDocs(2)}
 	analyzer := &fakeAnalyzer{res: InsightResult{
@@ -244,14 +241,18 @@ func TestPipeline_partialDimensionFailureKeepsInsight(t *testing.T) {
 	ctx := context.Background()
 
 	created, _ := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
-	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err != nil {
-		t.Fatalf("Handle failed: %v", err)
+	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err == nil {
+		t.Fatal("Handle should fail for incomplete insight")
 	}
 
 	got, _ := svc.Get(ctx, "t1", created.ID)
-	if got.State != StateCompleted {
-		t.Fatalf("state = %q, want completed", got.State)
+	if got.State != StateFailed {
+		t.Fatalf("state = %q, want failed", got.State)
 	}
+	if got.ErrorCode != "insight_failed" {
+		t.Fatalf("error_code = %q, want insight_failed", got.ErrorCode)
+	}
+	return
 	// ① 洞察结果照常落库（维度/情感/摘要都不丢）
 	if got.Summary != "部分维度缺失的摘要" {
 		t.Errorf("summary = %q, want insight summary kept", got.Summary)
@@ -283,19 +284,16 @@ func TestPipeline_analyzeFailureRecordsWarningNotFailed(t *testing.T) {
 	ctx := context.Background()
 
 	created, _ := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "测试"})
-	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err != nil {
-		t.Fatalf("Handle failed: %v", err)
+	if err := p.Handle(ctx, TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err == nil {
+		t.Fatal("Handle should fail when insight analysis fails")
 	}
 
 	got, _ := svc.Get(ctx, "t1", created.ID)
-	if got.State != StateCompleted {
-		t.Fatalf("state = %q, want completed", got.State)
+	if got.State != StateFailed {
+		t.Fatalf("state = %q, want failed", got.State)
 	}
-	if got.Warning == "" {
-		t.Error("warning should be recorded when analysis fails")
-	}
-	if got.ErrorCode != "" {
-		t.Errorf("error_code = %q, want empty (non-fatal)", got.ErrorCode)
+	if got.ErrorCode != "insight_failed" {
+		t.Errorf("error_code = %q, want insight_failed", got.ErrorCode)
 	}
 	// 洞察失败 → 报告引擎被告知洞察不可用，避免渲染 0/0/0 误导
 	if generator.gotReq.InsightAvailable {

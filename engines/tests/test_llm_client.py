@@ -193,3 +193,15 @@ async def test_chat_does_not_retry_client_errors_or_slow_timeouts(status):
     with pytest.raises(httpx.HTTPStatusError):
         await make_client(handler).chat("deepseek-chat", [])
     assert len(calls) == 1
+
+@pytest.mark.asyncio
+async def test_chat_json_partial_output_with_length_reports_truncation():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return sse_response(
+            _data({"choices": [{"delta": {"content": '{"critique": "初稿'}}]}),
+            _data({"choices": [{"delta": {}, "finish_reason": "length"}]}),
+            "data: [DONE]",
+        )
+
+    with pytest.raises(ValueError, match="截断"):
+        await make_client(handler).chat_json("deepseek-chat", [])

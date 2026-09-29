@@ -466,8 +466,8 @@ async def _analyze_one_dimension(
 # 维度并发闸门：5 路同时打满会触发供应商限流（429），闸到 3 并发 +
 # 单次重试。串行则多花 1-2 分钟 —— 3 是延迟与稳定性的折中。
 _DIMENSION_CONCURRENCY = 3
-_ANALYZE_BUDGET_SECONDS = 390  # Go transport waits 420s; leave time to return the response.
-_SUMMARY_RESERVE_SECONDS = 45
+_ANALYZE_BUDGET_SECONDS = 1200  # Full insight may exceed the UI 5-10 minute estimate.
+_SUMMARY_RESERVE_SECONDS = 120
 
 # 重试前的恒定退避秒数（测试 monkeypatch 为 0 加速）。闸门已把并发压到 3，
 # 重试风暴风险有限；持锁退避避免绕过并发闸门。
@@ -555,7 +555,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": ""}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url, timeout=300)
+    llm = build_client(key, req.llm_base_url, timeout=900)
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
@@ -634,10 +634,16 @@ async def analyze(req: AnalyzeRequest) -> dict:
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     summary = ""
     try:
-        summary_resp = await asyncio.wait_for(
-            _chat_json_smart(
-                llm,
-                model,
+        summary_kwargs = dict(
+            mode=req.mode,
+            temperature=0.4,
+            max_tokens=8192,
+        )
+        try:
+            summary_resp = await asyncio.wait_for(
+                _chat_json_smart(
+                    llm,
+                    model,
                 [
                     {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                     {
@@ -656,16 +662,41 @@ async def analyze(req: AnalyzeRequest) -> dict:
                         ),
                     },
                 ],
-                mode=req.mode,
-                temperature=0.4,
-            ),
-            timeout=max(0, deadline - asyncio.get_running_loop().time()),
-        )
+                    **summary_kwargs,
+                ),
+                timeout=max(0, deadline - asyncio.get_running_loop().time()),
+            )
+        except ValueError:
+            # A truncated or malformed JSON response gets one larger-budget retry.
+            summary_resp = await asyncio.wait_for(
+                _chat_json_smart(
+                    llm,
+                    model,
+                    [
+                        {"role": "system", "content": "只输出合法 JSON，不要 Markdown，不要解释。"},
+                        {"role": "user", "content": _SUMMARY_PROMPT.format(
+                            context=context,
+                            dimensions=json.dumps(
+                                [{k: v for k, v in d.items() if k in ("name", "findings", "trend")} for d in dimensions],
+                                ensure_ascii=False,
+                            ),
+                            sentiments=json.dumps(sentiments, ensure_ascii=False),
+                            topics=json.dumps(topics, ensure_ascii=False),
+                        )},
+                    ],
+                    mode=req.mode,
+                    temperature=0.2,
+                    max_tokens=12288,
+                ),
+                timeout=max(0, deadline - asyncio.get_running_loop().time()),
+            )
         summary = (
             summary_resp.get("revised_summary", summary_resp.get("summary", ""))
             if isinstance(summary_resp, dict)
             else ""
         )
+        if not isinstance(summary, str) or not summary.strip():
+            raise ValueError("摘要结果为空")
     except HTTPException:
         raise
     except Exception as exc:
@@ -691,7 +722,7 @@ async def sentiment(req: SentimentRequest) -> dict:
         return {"results": []}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url, timeout=300)
+    llm = build_client(key, req.llm_base_url, timeout=900)
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(

@@ -48,3 +48,11 @@
 - 新任务采集 37 篇文档，约 551 秒后状态为 `completed`，结果接口 HTTP 200，有报告；`warning` 不再包含 `Client.Timeout exceeded`。这证实本次复测中 Go 等待 8002 的原报错未再发生。
 - 洞察只有 1 个维度，摘要为空；`warning` 标记部分维度失败及摘要超时。因此不能将 `completed` 等同于完整研判验收通过。诊断任务作为明确标记的生产测试记录保留，未删除。
 - 提交前重新运行 Python 引擎测试 `110 passed` 和 Go 全套 `go.exe test ./... -count=1`（退出码 0）；PostgreSQL 合同测试若缺少专用 `YUQING_TEST_PG_URL` 会跳过，不能据此宣称数据库集成全测。
+
+## 2026-09-30 严格完整洞察策略
+
+- 按用户确认，取消 insight 的非致命降级语义：摘要为空、维度不完整、引擎 warning、JSON 截断或摘要生成失败都会使任务进入 `failed(insight_failed)`；不再把部分洞察或空摘要标记为 `completed`，采集到的原文保留供重跑。
+- 摘要请求显式使用 `max_tokens=8192`；`finish_reason=length` 的半截 JSON 统一识别为截断，并在剩余预算内重试一次，重试使用 `max_tokens=12288`。解析失败不再伪装成完整摘要。
+- 长时限配置已部署：query `180s`、insight `1200s`、report `420s`；Go insight HTTP 客户端上限为 `1320s`，Python insight 单次 LLM HTTP 上限为 `900s`，总 insight 预算为 `1200s`。整条 pipeline 总预算为 1800 秒。
+- 本地验证：Python 引擎测试 **112 passed**；Go 全套 `go.exe test ./... -count=1` 通过。生产 `py_compile`、server/worker/insight active、8002 和 API health 均通过。生产运行文件哈希与本次构建版本已核对。
+- 这次部署的验收标准变为：只有完整摘要和无 warning 的完整洞察才会 `completed`；若仍有上游模型错误或输出不完整，任务会明确失败，而不会产生“看似完成”的降级结果。
