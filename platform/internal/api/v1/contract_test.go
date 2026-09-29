@@ -163,8 +163,8 @@ func TestContract_health_returnsOKStatus(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf(`body["status"] = %v, want "ok"`, body["status"])
 	}
-	if body["version"] != "0.2.2-beta" {
-		t.Errorf(`body["version"] = %v, want "0.2.2-beta"`, body["version"])
+	if body["version"] != "0.2.3-beta" {
+		t.Errorf(`body["version"] = %v, want "0.2.3-beta"`, body["version"])
 	}
 }
 
