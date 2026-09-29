@@ -15,8 +15,10 @@
 
 以下测试当前应全部失败。
 """
+import asyncio
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -463,3 +465,101 @@ def test_persistent_dimension_failure_after_retry_lands_in_failed(monkeypatch):
     assert len(ids) == 4
     assert fake.dim_calls.get('heat') == 2, f'heat 应重试过一次（共 2 次调用），实际 {fake.dim_calls}'
     assert '热度与传播路径' in body['warning'], '重试失败原因必须进入 warning'
+
+
+def test_sentiment_overlaps_dimensions_without_exceeding_provider_limit(monkeypatch):
+    """Independent LLM work must overlap without creating a fourth concurrent call."""
+    class BoundedConcurrentLLM(DimensionFakeLLM):
+        def __init__(self):
+            super().__init__()
+            self.dimension_started = asyncio.Event()
+            self.active_calls = 0
+            self.peak_calls = 0
+
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            if '批判' in prompt:
+                return await super().chat_json(model, messages, **kwargs)
+            self.active_calls += 1
+            self.peak_calls = max(self.peak_calls, self.active_calls)
+            try:
+                if '【分析维度】' in prompt:
+                    self.dimension_started.set()
+                    await asyncio.sleep(0.03)
+                else:
+                    await asyncio.wait_for(self.dimension_started.wait(), timeout=0.2)
+                return await super().chat_json(model, messages, **kwargs)
+            finally:
+                self.active_calls -= 1
+
+    fake = BoundedConcurrentLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['sentiments'], '情感和维度独立请求应同时进行，避免串行耗尽 Go 超时预算'
+    assert len(body['dimensions']) == 5
+    assert body['warning'] == ''
+    assert fake.peak_calls <= 3, '与维度共享并发闸门，不能增加供应商限流风险'
+
+
+def test_slow_dimension_returns_partial_result_before_transport_timeout(monkeypatch):
+    class SlowDimensionLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            if '【分析维度】' in prompt and 'id=background' not in prompt:
+                await asyncio.sleep(0.3)
+            return await super().chat_json(model, messages, **kwargs)
+
+    monkeypatch.setattr(insight_engine, '_ANALYZE_BUDGET_SECONDS', 0.12, raising=False)
+    monkeypatch.setattr(insight_engine, '_SUMMARY_RESERVE_SECONDS', 0.04, raising=False)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: SlowDimensionLLM())
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [d['id'] for d in body['dimensions']] == ['background']
+    assert '超时' in body['warning']
+    assert body['summary'], '已完成的维度应继续用于摘要'
+
+
+def test_slow_summary_returns_dimensions_with_warning(monkeypatch):
+    class SlowSummaryLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            if '批判' in json.dumps(messages, ensure_ascii=False):
+                await asyncio.sleep(0.3)
+            return await super().chat_json(model, messages, **kwargs)
+
+    monkeypatch.setattr(insight_engine, '_ANALYZE_BUDGET_SECONDS', 0.08, raising=False)
+    monkeypatch.setattr(insight_engine, '_SUMMARY_RESERVE_SECONDS', 0.04, raising=False)
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: SlowSummaryLLM())
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body['dimensions']) == 5
+    assert body['summary'] == ''
+    assert '摘要生成失败' in body['warning']
+    assert '超时' in body['warning']
+
+
+def test_provider_read_timeout_has_visible_reason(monkeypatch):
+    class ReadTimeoutLLM(DimensionFakeLLM):
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            if '【分析维度】' not in prompt and '批判' not in prompt:
+                raise httpx.ReadTimeout('')
+            return await super().chat_json(model, messages, **kwargs)
+
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: ReadTimeoutLLM())
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body['dimensions']) == 5
+    assert '情感和话题分析失败：超时' in body['warning']
