@@ -44,7 +44,7 @@ class FakeLLM:
             return {
                 "findings": "核心发现：后排空间争议集中在实测数据。",
                 "data_points": ["2 篇文档中 1 篇负面"],
-                "quotes": [{"text": "腿都伸不直", "source": "微博"}],
+                "quotes": [{"text": "后排腿部空间局促", "source": "news"}],
                 "deep_read": "深入解读：产品定位与用户预期错位。",
                 "trend": "趋势：争议仍在扩散。",
             }
