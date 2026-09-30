@@ -108,3 +108,55 @@ class TestDomainClassification:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+class TestBochaSourceScope:
+    def test_platform_classification(self):
+        assert _classify_by_domain("https://www.toutiao.com/article/123") == "toutiao"
+        assert _classify_by_domain("https://www.ixigua.com/123") == "xigua"
+        assert _classify_by_domain("https://mp.weixin.qq.com/s/abc") == "wechat"
+        assert _classify_by_domain("https://fakeweibo.com/123") == "custom_web"
+
+    @pytest.mark.asyncio
+    async def test_provider_summary_without_page_fetch(self, monkeypatch):
+        scraper = PageScraper()
+        calls = []
+
+        async def search(keyword, api_key, include=""):
+            calls.append(include)
+            return [
+                {"url": "https://www.toutiao.com/article/123", "title": "title", "summary": "provider summary", "snippet": "short",
+                 "site_name": "Toutiao", "published_at": "2026-09-30T10:00:00+08:00"},
+                {"url": "https://www.bilibili.com/video/123", "title": "other", "summary": "not selected"},
+            ]
+
+        monkeypatch.setattr(scraper, "_bocha_search", search)
+        monkeypatch.setattr(scraper, "fetch", lambda *args, **kwargs: pytest.fail("must not crawl provider result"))
+        docs = await scraper.search_and_fetch("test", ["toutiao"], bocha_key="fixture-key")
+        assert calls == ["toutiao.com"]
+        assert len(docs) == 1
+        assert (docs[0].source_type, docs[0].content, docs[0].published_at) == (
+            "toutiao", "provider summary", "2026-09-30T10:00:00+08:00")
+
+    @pytest.mark.asyncio
+    async def test_request_uses_documented_include_and_summary(self, monkeypatch):
+        import httpx
+        from engines.common import scraper as scraper_module
+
+        def handler(request):
+            body = __import__("json").loads(request.content)
+            assert body["include"] == "weibo.com|mp.weixin.qq.com"
+            assert body["summary"] is True
+            assert body["count"] <= 50
+            return httpx.Response(200, json={"data": {"webPages": {"value": [{
+                "url": "https://weibo.com/123", "name": "title", "summary": "summary",
+                "siteName": "Weibo", "datePublished": "2026-09-30T10:00:00+08:00",
+            }]}}})
+
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(scraper_module.httpx, "AsyncClient", lambda **kwargs: real_client(
+            transport=httpx.MockTransport(handler), **kwargs))
+        scraper = PageScraper()
+        docs = await scraper.search_and_fetch("test", ["weibo", "wechat"], bocha_key="fixture-key")
+        assert len(docs) == 1
+        assert (docs[0].content, docs[0].published_at) == (
+            "summary", "2026-09-30T10:00:00+08:00")

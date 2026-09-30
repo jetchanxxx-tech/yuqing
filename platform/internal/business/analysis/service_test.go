@@ -470,3 +470,15 @@ func TestServiceRerun_activeAnalysisReturnsConflict(t *testing.T) {
 		t.Errorf("error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestCreateRejectsUnavailableSourcesBeforeCharging(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	for _, source := range []string{"xiaohongshu", "bilibili", "unknown"} {
+		_, err := svc.Create(context.Background(), CreateAnalysisRequest{
+			TenantID: "tenant-1", Name: "source check", Keywords: []string{"topic"}, Sources: []string{source},
+		})
+		if err == nil {
+			t.Fatalf("source %s should be rejected", source)
+		}
+	}
+}

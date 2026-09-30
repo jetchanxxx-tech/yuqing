@@ -186,6 +186,9 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 	if req.DateFrom != "" && req.DateTo != "" && req.DateFrom > req.DateTo {
 		return nil, fmt.Errorf("analysis: date_from must not exceed date_to")
 	}
+	if err := ValidateSources(req.Sources); err != nil {
+		return nil, err
+	}
 	if req.ReportTemplateID != "" && req.ReportTemplateID != "daily" && req.ReportTemplateID != "weekly" && req.ReportTemplateID != "event" {
 		return nil, fmt.Errorf("analysis: unsupported report_template_id %q", req.ReportTemplateID)
 	}
@@ -419,4 +422,17 @@ func (s *Service) markFailed(ctx context.Context, tenantID, analysisID, code str
 		s.refundCredit(ctx, tenantID, analysisID)
 	}
 	return err
+}
+
+// ValidateSources checks the selectable provider sources. news remains accepted for
+// existing analyses and monitor plans, but is no longer offered by the new form.
+func ValidateSources(sources []string) error {
+	for _, source := range sources {
+		switch source {
+		case "douyin", "toutiao", "xigua", "weibo", "wechat", "news":
+		default:
+			return fmt.Errorf("analysis: source %q is unavailable", source)
+		}
+	}
+	return nil
 }

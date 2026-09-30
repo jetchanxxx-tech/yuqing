@@ -115,3 +115,30 @@ test('unfinished plan configuration is not enabled or scheduled', async ({ page 
   }
   await expect(page.getByText(/周期监测尚未上线/)).toBeVisible();
 });
+
+
+test('source picker disables unavailable platforms and submits enabled choices', async ({ page }) => {
+  await openForm(page);
+  await page.getByRole('button', { name: '手动选择视角' }).click();
+  await page.getByPlaceholder('例如：新品发布会舆情监测').fill('来源选择验证');
+  await page.getByRole('button', { name: '下一步' }).click();
+  await page.locator('.ant-select-selection-search-input').fill('品牌');
+  await page.locator('.ant-select-selection-search-input').press('Enter');
+  await page.getByRole('button', { name: '下一步' }).click();
+  for (const label of ['抖音', '今日头条', '西瓜视频', '微博', '公众号']) {
+    await expect(page.getByRole('checkbox', { name: label })).toBeEnabled();
+  }
+  for (const label of ['小红书', 'B站']) {
+    await expect(page.getByRole('checkbox', { name: label })).toBeDisabled();
+  }
+  await expect(page.getByText('评论数据以实际接口返回为准')).toBeVisible();
+  await page.getByRole('checkbox', { name: '今日头条' }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
+  let body: Record<string, unknown> | undefined;
+  await page.route('**/api/v1/analyses', async (route) => {
+    body = route.request().postDataJSON();
+    await route.fulfill({ json: { id: 'created-id', state: 'queued' } });
+  });
+  await page.getByRole('button', { name: '提交分析' }).click();
+  expect(body?.sources).toEqual(['toutiao']);
+});

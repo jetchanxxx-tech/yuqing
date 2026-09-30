@@ -313,3 +313,14 @@ async def test_unrequested_source_does_not_hide_requested_same_original_id(monke
     ))
     assert response.total_count == 1
     assert response.documents[0]["source_type"] == "news"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["xiaohongshu", "bilibili", "unknown"])
+async def test_unavailable_source_rejected_before_provider_call(monkeypatch, source):
+    scraper = KeywordScraper({})
+    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
+        response = await client.post("/search", json={"sources": [source], "bocha_api_key": "fixture-key"})
+    assert response.status_code == 422
+    assert scraper.calls == []
