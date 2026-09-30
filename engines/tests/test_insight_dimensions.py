@@ -581,3 +581,34 @@ def test_summary_passes_explicit_output_budget(monkeypatch):
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
     assert resp.status_code == 200
     assert fake.summary_max_tokens == [8192]
+
+
+def test_summary_retry_uses_single_field_contract_after_malformed_json(monkeypatch):
+    class MalformedThenValidSummaryLLM(DimensionFakeLLM):
+        def __init__(self):
+            super().__init__()
+            self.summary_calls = []
+
+        async def chat_json(self, model, messages, **kwargs):
+            system = messages[0]["content"] if messages else ""
+            user = messages[-1]["content"] if messages else ""
+            if "revised_summary" in user or "摘要" in user:
+                self.summary_calls.append({"system": system, "user": user, "max_tokens": kwargs.get("max_tokens")})
+                if len(self.summary_calls) == 1:
+                    raise ValueError('LLM returned invalid JSON: {"critique":"draft with "quoted" phrase')
+                return {"revised_summary": "基于来源数据的完整摘要，明确列出3个数字和观点差异。"}
+            return await super().chat_json(model, messages, **kwargs)
+
+    fake = MalformedThenValidSummaryLLM()
+    monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
+
+    resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["summary"].startswith("基于来源数据")
+    assert body["warning"] == ""
+    assert len(fake.summary_calls) == 2
+    assert all('"critique"' not in call["user"] for call in fake.summary_calls)
+    assert fake.summary_calls[0]["max_tokens"] == 8192
+    assert fake.summary_calls[1]["max_tokens"] == 12288
