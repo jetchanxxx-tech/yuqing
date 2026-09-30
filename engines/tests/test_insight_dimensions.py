@@ -612,3 +612,41 @@ def test_summary_retry_uses_single_field_contract_after_malformed_json(monkeypat
     assert all('"critique"' not in call["user"] for call in fake.summary_calls)
     assert fake.summary_calls[0]["max_tokens"] == 8192
     assert fake.summary_calls[1]["max_tokens"] == 12288
+
+
+def test_unverified_quote_retries_only_affected_dimension(monkeypatch):
+    class QuoteRetryLLM(DimensionFakeLLM):
+        def __init__(self):
+            super().__init__()
+            self.heat_calls = 0
+            self.retry_prompts = []
+
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.dumps(messages, ensure_ascii=False)
+            if '【分析维度】' in prompt and 'id=heat' in prompt:
+                self.heat_calls += 1
+                if self.heat_calls == 1:
+                    return dict(DIMENSION_PAYLOAD) | {
+                        'quotes': [{'text': '票房双丰收，网友好评如潮', 'source': '影评'}]
+                    }
+                self.retry_prompts.append(prompt)
+                return dict(DIMENSION_PAYLOAD) | {
+                    'quotes': [{'text': '后排腿部空间局促', 'source': '汽车之家'}, {'text': '腿都伸不直', 'source': '微博'}]
+                }
+            if 'revised_summary' in prompt:
+                return {'revised_summary': '完整摘要：4篇文档、2条负面观点，包含3个核实数字。'}
+            return await super().chat_json(model, messages, **kwargs)
+
+    fake = QuoteRetryLLM()
+    monkeypatch.setattr(insight_engine, 'build_client', lambda api_key='', base_url='', timeout=120.0: fake)
+
+    resp = client.post('/analyze', json={'documents': DOCS, 'api_key': 'sk-x'})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    heat = next(d for d in body['dimensions'] if d['id'] == 'heat')
+    assert fake.heat_calls == 2
+    assert len(fake.retry_prompts) == 1
+    assert '逐字' in fake.retry_prompts[0]
+    assert [q['text'] for q in heat['quotes']] == ['后排腿部空间局促', '腿都伸不直']
+    assert body['warning'] == ''
