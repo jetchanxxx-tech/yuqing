@@ -48,7 +48,7 @@ func displayName(src string) string {
 	switch src {
 	case "weibo":
 		return "微博"
-	case "weixin":
+	case "weixin", "wechat":
 		return "公众号"
 	case "news":
 		return "新闻"
@@ -58,6 +58,10 @@ func displayName(src string) string {
 		return "B站"
 	case "douyin":
 		return "抖音"
+	case "toutiao":
+		return "今日头条"
+	case "xigua":
+		return "西瓜视频"
 	case "zhihu":
 		return "知乎"
 	case "kuaishou":
@@ -78,7 +82,7 @@ var fixedTopics = []Topic{
 // Service aggregates dashboard data from the analysis and report services.
 type Service struct {
 	analysisSvc *analysis.Service
-	reportSvc  *report.Service
+	reportSvc   *report.Service
 }
 
 // NewService wires the dashboard to live services.

@@ -89,18 +89,21 @@ export const ANALYSIS_STATE_TAG_COLORS: Record<AnalysisState, string> = {
   canceled: 'warning',
 };
 
-export type SourceKey = 'weibo' | 'wechat' | 'news' | 'xiaohongshu' | 'bilibili' | 'douyin';
+export type SourceKey = 'douyin' | 'toutiao' | 'xigua' | 'weibo' | 'wechat' | 'xiaohongshu' | 'bilibili' | 'news';
 
 export const SOURCE_LABELS: Record<SourceKey, string> = {
+  douyin: '抖音',
+  toutiao: '今日头条',
+  xigua: '西瓜视频',
   weibo: '微博',
   wechat: '公众号',
-  news: '新闻',
   xiaohongshu: '小红书',
   bilibili: 'B站',
-  douyin: '抖音',
+  news: '新闻', // Historical analyses may still contain this source.
 };
 
-export const SOURCES: SourceKey[] = ['weibo', 'wechat', 'news', 'xiaohongshu', 'bilibili', 'douyin'];
+export const SOURCES: SourceKey[] = ['douyin', 'toutiao', 'xigua', 'weibo', 'wechat', 'xiaohongshu', 'bilibili'];
+export const SELECTABLE_SOURCES: SourceKey[] = ['douyin', 'toutiao', 'xigua', 'weibo', 'wechat'];
 
 export function sourceLabel(key: string): string {
   return SOURCE_LABELS[key as SourceKey] ?? key;

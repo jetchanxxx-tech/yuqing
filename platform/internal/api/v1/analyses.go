@@ -88,6 +88,10 @@ func (s *Services) handleCreateAnalysis(c *gin.Context) {
 		badRequest(c, "invalid JSON body: "+err.Error())
 		return
 	}
+	if err := analysis.ValidateSources(req.Sources); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
 	req.TenantID = p.TenantID
 	req.UserID = p.UserID
 	if strings.TrimSpace(req.Name) == "" {

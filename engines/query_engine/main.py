@@ -75,6 +75,9 @@ async def search(req: SearchRequest) -> SearchResponse:
 
     scraper = get_scraper()
     sources = list(dict.fromkeys(req.sources))
+    allowed = {"douyin", "toutiao", "xigua", "weibo", "wechat", "news"}
+    if not sources or any(source not in allowed for source in sources):
+        raise HTTPException(status_code=422, detail="Requested source is unavailable")
     per_source = (max(result_limit // max(len(sources), 1), 3) if len(keywords) == 1
                   else min(20, max(1, (result_limit + len(keywords) - 1) // len(keywords))))
     results: list[ScrapedDocument] = []
@@ -156,10 +159,9 @@ async def search(req: SearchRequest) -> SearchResponse:
             "excluded_word_count": excluded_word_count,
             "excluded_word_ratio": excluded_word_count / len(results) if results else 0.0,
             "filter_limitations": (
-                "Post-fetch content filtering only: scraper may use a search snippet instead of "
-                "the full original text; candidate results are capped before filtering for each "
-                "keyword, so "
-                "matching documents may be missed. No platform-side filtering."
+                "Filtering uses Bocha summary/snippet excerpts, not full original text or comments; "
+                "candidate results are capped before filtering for each keyword, so "
+                "matching documents may be missed. Platform scope is limited by domain."
             ) if exclude_words or date_from or date_to or len(keywords) > 1 else "",
             "warning": "; ".join(message for message in [
                 "Documents with missing/unparseable published_at excluded; date coverage incomplete"

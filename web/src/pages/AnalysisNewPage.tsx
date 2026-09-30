@@ -5,6 +5,7 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Col,
   Descriptions,
   Input,
@@ -29,6 +30,7 @@ import {
   ANALYSIS_TYPES,
   ANALYSIS_TEMPLATES,
   SOURCES,
+  SELECTABLE_SOURCES,
   SOURCE_LABELS,
   type AnalysisType,
   type SourceKey,
@@ -85,7 +87,7 @@ export default function AnalysisNewPage() {
         name: name.trim(),
         analysis_type: type as AnalysisType,
         keywords: [...keywords],
-        sources,
+        sources: sources.filter((source) => SELECTABLE_SOURCES.includes(source)),
       }),
     onSuccess: (res) => {
       message.success('分析任务已创建，正在排队执行');
@@ -114,6 +116,7 @@ export default function AnalysisNewPage() {
   };
 
   const toggleSource = (s: SourceKey, checked: boolean) => {
+    if (!SELECTABLE_SOURCES.includes(s)) return;
     setSources((prev) => (checked ? [...prev, s] : prev.filter((x) => x !== s)));
   };
 
@@ -268,27 +271,22 @@ export default function AnalysisNewPage() {
             </Typography.Paragraph>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {SOURCES.map((s) => {
-                const checked = sources.includes(s);
+                const enabled = SELECTABLE_SOURCES.includes(s);
                 return (
-                  <Tag.CheckableTag
-                    key={s}
-                    checked={checked}
-                    onChange={(c) => toggleSource(s, c)}
-                    style={{
-                      fontSize: 14,
-                      padding: '8px 22px',
-                      borderRadius: 9999,
-                      border: `1px solid ${checked ? '#FF2442' : 'rgba(0,0,0,0.12)'}`,
-                      background: checked ? 'rgba(255,36,66,0.06)' : '#fff',
-                      color: checked ? '#FF2442' : 'rgba(0,0,0,0.8)',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {SOURCE_LABELS[s]}
-                  </Tag.CheckableTag>
+                  <div key={s} style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: 8, opacity: enabled ? 1 : 0.45 }}>
+                    <Checkbox checked={sources.includes(s)} disabled={!enabled} onChange={(e) => toggleSource(s, e.target.checked)}>
+                      {SOURCE_LABELS[s]}
+                    </Checkbox>
+                    <Tag color={enabled ? 'blue' : 'default'} style={{ marginLeft: 8 }}>
+                      {enabled ? '已支持评论' : '暂未接入'}
+                    </Tag>
+                  </div>
                 );
               })}
             </div>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
+              评论数据以实际接口返回为准；当前博查 Web Search 不提供结构化评论，不能保证获得评论内容。
+            </Typography.Paragraph>
           </div>
         )}
         {/* ④ 确认 */}

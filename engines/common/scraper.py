@@ -9,6 +9,7 @@ import logging
 import os
 import re
 from typing import Optional
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 
 import httpx
@@ -20,6 +21,16 @@ logger = logging.getLogger(__name__)
 # 接口返回 404（实测），导致搜索结果恒为空、任务「秒完成但 0 文档」。
 BOCHA_API_URL = "https://api.bochaai.com/v1/web-search"
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "")
+
+# Web Search API `include` accepts domains, not product source names.
+SOURCE_DOMAINS = {
+    "douyin": ("douyin.com", "iesdouyin.com"),
+    "toutiao": ("toutiao.com",),
+    "xigua": ("ixigua.com",),
+    "weibo": ("weibo.com",),
+    "wechat": ("mp.weixin.qq.com",),
+}
+
 
 # Lazy import — Scrapling may not be installed in dev.
 _scrapling_available = False
@@ -102,7 +113,10 @@ class PageScraper:
         if key:
             # 有 key 时 Bocha 失败必须抛错 —— 绝不静默降级为空/假数据
             #（生产上 key 失效若静默，会产出「看起来成功」的假报告）
-            found = await self._bocha_search(keyword, key)
+            include = "|".join(dict.fromkeys(
+                domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
+            ))
+            found = await self._bocha_search(keyword, key, include=include)
             # Bocha 返回通用网页结果，按 URL 域名分类（P0 修复）
             for item in found:
                 url = item.get("url", "")
@@ -119,44 +133,25 @@ class PageScraper:
                     for u in self._preset_search_urls(keyword, source)
                 ]
 
-        # 2. 抓取正文 + 去重
-        # 配额截断修复（P0 bug）：先收集所有候选 URL，再按用户勾选的来源过滤，
-        # 最后截取全局 max_per_source（而非每个 source 单独截断 → 勾越多结果越多）。
-        all_urls: list[tuple[str, dict]] = []  # (source_type, candidate)
+        # Bocha summary/snippet is a search excerpt, not a full article or comment.
+        # Do not crawl platform pages or present excerpts as original comments.
         for stype, candidates in all_candidates.items():
+            if stype not in sources:
+                continue
             for cand in candidates:
-                all_urls.append((stype, cand))
-
-        for stype, cand in all_urls:
-            url = cand.get("url", "")
-            if not url:
-                continue
-            mode = self._source_mode(stype)
-            doc = self.fetch(url, source_type=stype, mode=mode)
-
-            # 抓取失败或正文为空时，退回 Bocha 摘要 —— 摘要虽短，
-            # 但保证搜索结果不因目标站反爬而全部丢失
-            if doc.error or not doc.content:
-                snippet = cand.get("snippet", "")
-                if not snippet:
+                content = cand.get("summary") or cand.get("snippet") or ""
+                url = cand.get("url") or ""
+                if not url or not content:
                     continue
-                doc = ScrapedDocument(
-                    title=cand.get("title", ""),
-                    url=url,
-                    content=snippet,
-                    source_type=stype,
-                    error="",  # 摘要兜底视为有效结果
-                )
-            if not doc.title:
-                doc.title = cand.get("title", "")
-
-            doc.content_hash = _hash_content(doc.content)
-            if doc.content_hash in seen_hashes:
-                continue
-            seen_hashes.add(doc.content_hash)
-            doc.source_type = stype
-            doc.source_name = _source_display_name(stype)
-            results.append(doc)
+                content_hash = _hash_content(content)
+                if content_hash in seen_hashes:
+                    continue
+                seen_hashes.add(content_hash)
+                results.append(ScrapedDocument(
+                    title=cand.get("title") or "", url=url, content=content,
+                    source_type=stype, source_name=cand.get("site_name") or _source_display_name(stype),
+                    published_at=cand.get("published_at") or "", content_hash=content_hash,
+                ))
 
         # 全局截断：无论选几个源，最多返回 max_per_source 条（P0 bug 修复）
         if len(results) > max_per_source:
@@ -164,7 +159,7 @@ class PageScraper:
 
         return results
 
-    async def _bocha_search(self, keyword: str, api_key: str) -> list[dict]:
+    async def _bocha_search(self, keyword: str, api_key: str, include: str = "") -> list[dict]:
         """调用 Bocha Web Search API，返回候选结果列表。
 
         实际响应结构（实测）：
@@ -180,7 +175,7 @@ class PageScraper:
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
-                    json={"query": keyword, "count": 20},
+                    json={"query": keyword, "count": 20, "summary": True, **({"include": include} if include else {})},
                 )
                 resp.raise_for_status()
                 body = resp.json()
@@ -199,7 +194,10 @@ class PageScraper:
                     out.append({
                         "url": url,
                         "title": it.get("name") or it.get("title") or "",
-                        "snippet": it.get("snippet") or it.get("summary") or "",
+                        "snippet": it.get("snippet") or "",
+                        "summary": it.get("summary") or "",
+                        "site_name": it.get("siteName") or "",
+                        "published_at": it.get("datePublished") or "",
                     })
                 logger.info(f"Bocha search '{keyword}': {len(out)} results")
                 return out
@@ -308,7 +306,8 @@ def _hash_content(content: str) -> str:
 
 def _source_display_name(source: str) -> str:
     names = {
-        "weibo": "微博", "news": "新闻", "xiaohongshu": "小红书",
+        "weibo": "微博", "news": "新闻", "wechat": "公众号",
+        "toutiao": "今日头条", "xigua": "西瓜视频", "xiaohongshu": "小红书",
         "bilibili": "B站", "douyin": "抖音", "kuaishou": "快手",
         "zhihu": "知乎", "rss": "RSS", "custom_web": "自定义",
     }
@@ -318,7 +317,9 @@ def _source_display_name(source: str) -> str:
 # URL 域名 → 数据源类型映射（P0 数据源标签修复）
 _DOMAIN_SOURCE_MAP = [
     (re.compile(r"weibo\.com|sina\.com\.cn", re.IGNORECASE), "weibo"),
-    (re.compile(r"mp\.weixin\.qq\.com", re.IGNORECASE), "weixin"),
+    (re.compile(r"mp\.weixin\.qq\.com", re.IGNORECASE), "wechat"),
+    (re.compile(r"toutiao\.com", re.IGNORECASE), "toutiao"),
+    (re.compile(r"ixigua\.com", re.IGNORECASE), "xigua"),
     (re.compile(r"xiaohongshu\.com|xhslink\.com", re.IGNORECASE), "xiaohongshu"),
     (re.compile(r"bilibili\.com|b23\.tv", re.IGNORECASE), "bilibili"),
     (re.compile(r"douyin\.com|iesdouyin\.com", re.IGNORECASE), "douyin"),
@@ -332,7 +333,11 @@ _DOMAIN_SOURCE_MAP = [
 
 def _classify_by_domain(url: str) -> str:
     """根据 URL 域名推断数据源类型（P0 修复：Bocha 结果不再强制归 sources[0]）。"""
+    host = (urlsplit(url).hostname or "").lower()
     for pattern, source in _DOMAIN_SOURCE_MAP:
-        if pattern.search(url):
+        match = pattern.search(host)
+        if match and (match.start() == 0 or host[match.start() - 1] == ".") and (
+            match.end() == len(host) or host[match.end()] == "."
+        ):
             return source
     return "custom_web"
