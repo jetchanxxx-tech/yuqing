@@ -42,6 +42,7 @@ import {
   getEventTimeline,
   rerunAnalysis,
   type AnalysisResult,
+  type RetrievalCoverage,
   type EventTimelineResponse,
   type DimensionResult,
   type SentimentItem,
@@ -199,6 +200,9 @@ export default function AnalysisDetailPage() {
                 style={{ maxWidth: 420, marginTop: 4 }}
               />
             )}
+            {failed && detail.error_code === 'insufficient_relevant_evidence' && (
+              <Alert type="warning" showIcon message="有效证据不足" description="检索结果中通过准入的材料不足两条，未生成完整研判或报告；请检查关键词和下方采集记录。" style={{ marginTop: 12 }} />
+            )}
             {failed && detail.error_message && (
               <Alert type="error" showIcon message={detail.error_message} style={{ marginTop: 12 }} />
             )}
@@ -241,6 +245,11 @@ export default function AnalysisDetailPage() {
         </Row>
       </Card>
 
+      {(completed || failed) && (
+        <Card title="本次采集准入" style={{ borderRadius: 16, marginBottom: 16 }}>
+          <RetrievalCoverageView coverage={detail.retrieval_coverage} storedCount={detail.doc_count} />
+        </Card>
+      )}
       <Row gutter={16} align="stretch">
         {/* —— 状态时间线 —— */}
         <Col xs={24} lg={9}>
@@ -383,6 +392,27 @@ function AnalysisTimeline({ state, errorMessage }: { state: AnalysisState; error
   }));
 
   return <Timeline items={items} style={{ paddingTop: 8 }} />;
+}
+
+function RetrievalCoverageView({ coverage, storedCount }: { coverage?: RetrievalCoverage | null; storedCount?: number }) {
+  if (!coverage?.admission_version) {
+    return <Typography.Text type="secondary">该历史任务没有准入审计数据，不能推断当时的有效样本比例。</Typography.Text>;
+  }
+  return (
+    <>
+      <Space wrap>
+        <Tag>搜索候选 {coverage.provider_candidates} 条</Tag>
+        <Tag>无效摘要 {coverage.unusable_count} 条</Tag>
+        <Tag>不相关 {coverage.irrelevant_count} 条</Tag>
+        <Tag>相关候选 {coverage.accepted_count} 条</Tag>
+        <Tag color="green">有效证据 {storedCount ?? coverage.accepted_count} 条</Tag>
+      </Space>
+      <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+        仅统计本次返回的候选，不代表平台内容覆盖率。材料为搜索摘要，并非视频正文或评论。
+        {coverage.candidate_truncated ? ' 有效候选达到本次请求上限，可能存在未检索到的相关内容。' : ''}
+      </Typography.Paragraph>
+    </>
+  );
 }
 
 /* ================== 完成态结果 Tabs ================== */

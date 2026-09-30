@@ -76,7 +76,7 @@ func TestPGStore_filterSnapshotAndLegacyDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if old.DateFrom != "" || old.DateTo != "" || len(old.ExcludeWords) != 0 || old.ReportTemplateID != "" {
+	if old.DateFrom != "" || old.DateTo != "" || len(old.ExcludeWords) != 0 || old.ReportTemplateID != "" || old.RetrievalCoverage != nil {
 		t.Fatalf("legacy defaults = %+v", old)
 	}
 }
@@ -123,20 +123,21 @@ func sampleAnalysis() *AnalysisResult {
 	created := time.Now().UTC().Truncate(time.Microsecond)
 	return &AnalysisResult{
 		DateFrom: "2026-09-01", DateTo: "2026-09-28", ExcludeWords: []string{"advert", "spam"},
-		ReportTemplateID: "weekly",
-		ID:               id.New(),
-		CreatedBy:        "user-1",
-		Name:             "雅阁后排舆情",
-		AnalysisType:     "brand",
-		State:            StateFetching,
-		Progress:         25,
-		StartedAt:        created.Add(-time.Minute),
-		CreatedAt:        created,
-		Keywords:         []string{"雅阁后排", "后备箱"},
-		Sources:          []string{"weibo", "news"},
-		DocCount:         19,
-		Summary:          "后排空间争议升温",
-		Warning:          "insight engine not configured",
+		ReportTemplateID:  "weekly",
+		ID:                id.New(),
+		CreatedBy:         "user-1",
+		Name:              "雅阁后排舆情",
+		AnalysisType:      "brand",
+		State:             StateFetching,
+		Progress:          25,
+		StartedAt:         created.Add(-time.Minute),
+		CreatedAt:         created,
+		Keywords:          []string{"雅阁后排", "后备箱"},
+		Sources:           []string{"weibo", "news"},
+		DocCount:          19,
+		RetrievalCoverage: &RetrievalCoverage{AdmissionVersion: "lexical-v1", ProviderCandidates: 20, AcceptedCount: 19},
+		Summary:           "后排空间争议升温",
+		Warning:           "insight engine not configured",
 		Sentiments: []Sentiment{{
 			DocumentID: "doc-1", Sentiment: "negative", Level: "负面",
 			Confidence: 0.82, Score: -0.7,
@@ -164,6 +165,9 @@ func sampleAnalysis() *AnalysisResult {
 // assertAnalysisEqual 逐字段比对，时间用 Equal（跨驱动的时间表示不保证 DeepEqual）。
 func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 	t.Helper()
+	if !reflect.DeepEqual(got.RetrievalCoverage, want.RetrievalCoverage) {
+		t.Errorf("coverage=%+v want %+v", got.RetrievalCoverage, want.RetrievalCoverage)
+	}
 	if got.ReportTemplateID != want.ReportTemplateID {
 		t.Errorf("ReportTemplateID = %q, want %q", got.ReportTemplateID, want.ReportTemplateID)
 	}
@@ -226,7 +230,7 @@ func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 
 func TestAnalysisArgsPreservesReportTemplateSnapshot(t *testing.T) {
 	args := analysisArgs("tenant-1", &AnalysisResult{ReportTemplateID: "weekly"})
-	if len(args) != 25 || args[24] != "weekly" {
+	if len(args) != 26 || args[24] != "weekly" {
 		t.Fatalf("report template not included in PG args: count=%d last=%v", len(args), args[len(args)-1])
 	}
 }
@@ -591,5 +595,17 @@ func TestPGStore_listOmitsReportContent(t *testing.T) {
 	// 其余字段照常返回，否则列表页会缺数据。
 	if list[0].Name != a.Name || list[0].DocCount != a.DocCount || !reflect.DeepEqual(list[0].Keywords, a.Keywords) {
 		t.Errorf("list 行数据不完整: %+v", list[0])
+	}
+}
+
+func TestAnalysisArgsPreservesRetrievalCoverage(t *testing.T) {
+	coverage := &RetrievalCoverage{AdmissionVersion: "lexical-v1", ProviderCandidates: 20, AcceptedCount: 1}
+	args := analysisArgs("tenant-1", &AnalysisResult{RetrievalCoverage: coverage})
+	if len(args) != 26 {
+		t.Fatalf("args len=%d want 26", len(args))
+	}
+	data, ok := args[25].([]byte)
+	if !ok || !strings.Contains(string(data), `"provider_candidates":20`) {
+		t.Fatalf("coverage arg=%v", args[25])
 	}
 }

@@ -50,9 +50,17 @@ type searchReq struct {
 }
 
 type SearchCoverage struct {
-	Warning               string `json:"warning"`
-	FilterLimitations     string `json:"filter_limitations"`
-	UnverifiableDateCount int    `json:"unverifiable_date_count"`
+	AdmissionVersion      string           `json:"admission_version"`
+	ProviderCandidates    int              `json:"provider_candidates"`
+	UnusableCount         int              `json:"unusable_count"`
+	IrrelevantCount       int              `json:"irrelevant_count"`
+	SourceMismatchCount   int              `json:"source_mismatch_count"`
+	AcceptedCount         int              `json:"accepted_count"`
+	CandidateTruncated    bool             `json:"candidate_truncated"`
+	PerKeyword            []map[string]any `json:"per_keyword"`
+	Warning               string           `json:"warning"`
+	FilterLimitations     string           `json:"filter_limitations"`
+	UnverifiableDateCount int              `json:"unverifiable_date_count"`
 }
 
 type SearchResult struct {
@@ -109,6 +117,12 @@ func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlRe
 	var result SearchResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return SearchResult{}, fmt.Errorf("crawler: decode response: %w", err)
+	}
+	if result.Coverage.AdmissionVersion != "lexical-v1" {
+		return SearchResult{}, fmt.Errorf("crawler: unsupported or missing admission protocol %q", result.Coverage.AdmissionVersion)
+	}
+	if result.Documents == nil || result.Coverage.AcceptedCount != len(result.Documents) || result.TotalCount != len(result.Documents) {
+		return SearchResult{}, fmt.Errorf("crawler: inconsistent admitted document count")
 	}
 	return result, nil
 }

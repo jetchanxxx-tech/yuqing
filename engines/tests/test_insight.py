@@ -65,8 +65,8 @@ class FakeLLM:
                 },
             ],
             "topics": [
-                {"id": "t1", "name": "后排空间", "keywords": ["后排", "腿部"], "doc_count": 1, "trend": "rising"},
-                {"id": "t2", "name": "油耗表现", "keywords": ["混动", "油耗"], "doc_count": 1, "trend": "stable"},
+                {"id": "t1", "name": "后排空间", "keywords": ["后排", "腿部"], "doc_count": 1, "doc_ids": ["d1"], "trend": "rising"},
+                {"id": "t2", "name": "油耗表现", "keywords": ["混动", "油耗"], "doc_count": 1, "doc_ids": ["d2"], "trend": "stable"},
             ],
         }
 

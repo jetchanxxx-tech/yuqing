@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 
 import httpx
+from engines.common.relevance import admit
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,8 @@ class PageScraper:
             return ScrapedDocument(url=url, source_type=source_type, error=str(e))
 
     async def search_and_fetch(self, keyword: str, sources: list[str],
-                                max_per_source: int = 5, bocha_key: str = "") -> list[ScrapedDocument]:
+                                max_per_source: int = 5, bocha_key: str = "",
+                                coverage: dict | None = None) -> list[ScrapedDocument]:
         """Search via Bocha API → fetch each URL via Scrapling → dedup.
 
         Falls back to preset test URLs if Bocha key is not available.
@@ -116,7 +118,14 @@ class PageScraper:
             include = "|".join(dict.fromkeys(
                 domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
             ))
-            found = await self._bocha_search(keyword, key, include=include)
+            found = await self._bocha_search(
+                keyword, key, include=include, count=min(50, max(20, max_per_source * 2))
+            )
+            if coverage is not None:
+                coverage["provider_candidates"] = len(found)
+                coverage["unusable_count"] = 0
+                coverage["irrelevant_count"] = 0
+                coverage["source_mismatch_count"] = 0
             # Bocha 返回通用网页结果，按 URL 域名分类（P0 修复）
             for item in found:
                 url = item.get("url", "")
@@ -137,11 +146,19 @@ class PageScraper:
         # Do not crawl platform pages or present excerpts as original comments.
         for stype, candidates in all_candidates.items():
             if stype not in sources:
+                if coverage is not None:
+                    coverage["source_mismatch_count"] += len(candidates)
                 continue
             for cand in candidates:
                 content = cand.get("summary") or cand.get("snippet") or ""
                 url = cand.get("url") or ""
-                if not url or not content:
+                if not url:
+                    continue
+                decision = admit(keyword, cand.get("title") or "", content)
+                if not decision.accepted:
+                    if coverage is not None:
+                        field = "unusable_count" if decision.reason == "unusable_excerpt" else "irrelevant_count"
+                        coverage[field] += 1
                     continue
                 content_hash = _hash_content(content)
                 if content_hash in seen_hashes:
@@ -154,12 +171,15 @@ class PageScraper:
                 ))
 
         # 全局截断：无论选几个源，最多返回 max_per_source 条（P0 bug 修复）
+        if coverage is not None:
+            coverage["accepted_before_limit"] = len(results)
+            coverage["candidate_truncated"] = len(results) > max_per_source
         if len(results) > max_per_source:
             results = results[:max_per_source]
 
         return results
 
-    async def _bocha_search(self, keyword: str, api_key: str, include: str = "") -> list[dict]:
+    async def _bocha_search(self, keyword: str, api_key: str, include: str = "", count: int = 20) -> list[dict]:
         """调用 Bocha Web Search API，返回候选结果列表。
 
         实际响应结构（实测）：
@@ -175,7 +195,7 @@ class PageScraper:
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
-                    json={"query": keyword, "count": 20, "summary": True, **({"include": include} if include else {})},
+                    json={"query": keyword, "count": count, "summary": True, **({"include": include} if include else {})},
                 )
                 resp.raise_for_status()
                 body = resp.json()
@@ -183,8 +203,10 @@ class PageScraper:
                 # 兼容两种形态：标准 {"data":{"webPages":{"value":[...]}}}
                 # 以及部分网关直接透传 {"webPages":{"value":[...]}}
                 payload = body.get("data", body) if isinstance(body, dict) else {}
-                web_pages = payload.get("webPages") or payload.get("webpages") or {}
-                items = web_pages.get("value", []) if isinstance(web_pages, dict) else []
+                web_pages = payload.get("webPages") or payload.get("webpages")
+                if not isinstance(web_pages, dict) or not isinstance(web_pages.get("value"), list):
+                    raise ValueError("invalid search response: missing webPages.value")
+                items = web_pages["value"]
 
                 out: list[dict] = []
                 for it in items:

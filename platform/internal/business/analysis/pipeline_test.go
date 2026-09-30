@@ -474,3 +474,59 @@ func TestCreate_publishesMessageWithTenantID(t *testing.T) {
 		t.Errorf("payload should be JSON, got %q", body)
 	}
 }
+
+type admissionFetcher struct {
+	documents []Document
+	coverage  RetrievalCoverage
+}
+
+func (f *admissionFetcher) Fetch(_ context.Context, _ FetchRequest) ([]Document, error) {
+	return f.documents, nil
+}
+func (f *admissionFetcher) FetchWithCoverage(_ context.Context, _ FetchRequest) (FetchResult, error) {
+	return FetchResult{Documents: f.documents, Coverage: &f.coverage}, nil
+}
+func TestPipelineInsufficientEvidenceRetainsCoverageWithoutAnalysis(t *testing.T) {
+	for _, count := range []int{0, 1} {
+		coverage := RetrievalCoverage{AdmissionVersion: "lexical-v1", ProviderCandidates: 20, UnusableCount: 17, IrrelevantCount: 2, AcceptedCount: count}
+		docs := sampleDocs(count)
+		for i := range docs {
+			docs[i].SourceType = "douyin"
+		}
+		fetcher := &admissionFetcher{documents: docs, coverage: coverage}
+		p, svc := newTestPipeline(t, fetcher, 5*time.Second)
+		created, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "t1", Name: "GS8", Keywords: []string{"gs8"}, Sources: []string{"douyin"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Handle(context.Background(), TaskMessage{TenantID: "t1", AnalysisID: created.ID}); err == nil {
+			t.Fatal("expected insufficient evidence failure")
+		}
+		got, err := svc.Get(context.Background(), "t1", created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.State != StateFailed || got.ErrorCode != "insufficient_relevant_evidence" || got.RetrievalCoverage == nil || got.RetrievalCoverage.ProviderCandidates != 20 {
+			t.Fatalf("state/coverage=%+v", got)
+		}
+		if len(got.Topics) != 0 || got.ReportID != "" || len(svc.Documents(context.Background(), "t1", created.ID)) != count {
+			t.Fatal("insufficient evidence contaminated downstream or lost accepted documents")
+		}
+	}
+}
+
+func TestTopicsGroundedInAdmittedDocuments(t *testing.T) {
+	docs := []Document{{ID: "d1"}, {ID: "d2"}}
+	if !topicsGrounded([]Topic{{ID: "t1", DocCount: 1, DocIDs: []string{"d1"}}}, docs) {
+		t.Fatal("valid evidence rejected")
+	}
+	for _, topics := range [][]Topic{
+		{{ID: "t1", DocCount: 1, DocIDs: []string{"invented"}}},
+		{{ID: "t1", DocCount: 2, DocIDs: []string{"d1"}}},
+		{{ID: "t1", DocCount: 1, DocIDs: []string{"d1"}}, {ID: "t2", DocCount: 1, DocIDs: []string{"d1"}}},
+	} {
+		if topicsGrounded(topics, docs) {
+			t.Fatalf("invalid evidence accepted: %+v", topics)
+		}
+	}
+}

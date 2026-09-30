@@ -21,7 +21,7 @@ func TestEngineFetcher_forwardsFilterSnapshot(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
 			t.Error(err)
 		}
-		_, _ = w.Write([]byte(`{"documents":[],"total_count":0}`))
+		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"admission_version":"lexical-v1","accepted_count":0}}`))
 	}))
 	defer server.Close()
 	fetcher := &engineFetcher{crawler: engine.NewRealCrawlerEngine(server.URL, "", nil)}
@@ -39,7 +39,7 @@ func TestEngineFetcher_forwardsFilterSnapshot(t *testing.T) {
 
 func TestEngineFetcherExposesQueryCoverageLimitations(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"warning":"missing published dates","filter_limitations":"post-fetch only","unverifiable_date_count":2}}`))
+		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"admission_version":"lexical-v1","accepted_count":0,"warning":"missing published dates","filter_limitations":"post-fetch only","unverifiable_date_count":2}}`))
 	}))
 	defer server.Close()
 

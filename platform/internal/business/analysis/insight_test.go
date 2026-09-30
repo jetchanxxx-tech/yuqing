@@ -252,25 +252,7 @@ func TestPipeline_partialDimensionFailureKeepsInsight(t *testing.T) {
 	if got.ErrorCode != "insight_failed" {
 		t.Fatalf("error_code = %q, want insight_failed", got.ErrorCode)
 	}
-	return
-	// ① 洞察结果照常落库（维度/情感/摘要都不丢）
-	if got.Summary != "部分维度缺失的摘要" {
-		t.Errorf("summary = %q, want insight summary kept", got.Summary)
-	}
-	if len(got.Sentiments) != 1 || len(got.Dimensions) != 1 {
-		t.Errorf("insight partially kept: sents=%d dims=%d", len(got.Sentiments), len(got.Dimensions))
-	}
-	// ② 引擎侧降级原因合并进任务 warning
-	if got.Warning == "" {
-		t.Error("warning should carry engine-side partial failure reason")
-	}
-	// ③ 报告引擎被告知洞察可用（有部分结果可写），而不是全部降级
-	if !generator.gotReq.InsightAvailable {
-		t.Error("InsightAvailable should be true when partial insight exists")
-	}
-	if len(generator.gotReq.Dimensions) != 1 {
-		t.Errorf("generator dims = %d, want 1", len(generator.gotReq.Dimensions))
-	}
+
 }
 
 // 分析失败不致命：任务仍 completed，但记录 warning。

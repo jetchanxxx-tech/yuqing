@@ -75,7 +75,7 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":2}`)
+		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":2,"coverage":{"admission_version":"lexical-v1","accepted_count":2}}`)
 	}))
 	defer engine.Close()
 	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")

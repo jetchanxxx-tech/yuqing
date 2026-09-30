@@ -207,6 +207,7 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 		"id":        a.ID,
 		"state":     a.State,
 		"doc_count": len(docs),
+        "retrieval_coverage": a.RetrievalCoverage,
 		"documents": docs,
 		"summary":   a.Summary,
 		"warning":   a.Warning,

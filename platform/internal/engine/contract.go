@@ -189,6 +189,7 @@ type TopicResult struct {
 	Name     string   `json:"name"`
 	Keywords []string `json:"keywords"`
 	DocCount int      `json:"doc_count"`
+	DocIDs   []string `json:"doc_ids,omitempty"`
 	Trend    string   `json:"trend"` // rising, stable, falling
 }
 

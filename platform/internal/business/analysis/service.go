@@ -139,13 +139,14 @@ type AnalysisResult struct {
 
 	// 采集参数 —— 管线据此知道搜什么。
 	// 不持久化关键词则任务无法被处理（管线只拿到 ID，无从得知检索词）。
-	Keywords         []string `json:"keywords,omitempty"`
-	Sources          []string `json:"sources,omitempty"`
-	ExcludeWords     []string `json:"exclude_words,omitempty"`
-	DateFrom         string   `json:"date_from,omitempty"`
-	DateTo           string   `json:"date_to,omitempty"`
-	ReportTemplateID string   `json:"report_template_id,omitempty"`
-	DocCount         int      `json:"doc_count"`
+	Keywords          []string           `json:"keywords,omitempty"`
+	Sources           []string           `json:"sources,omitempty"`
+	ExcludeWords      []string           `json:"exclude_words,omitempty"`
+	DateFrom          string             `json:"date_from,omitempty"`
+	DateTo            string             `json:"date_to,omitempty"`
+	ReportTemplateID  string             `json:"report_template_id,omitempty"`
+	DocCount          int                `json:"doc_count"`
+	RetrievalCoverage *RetrievalCoverage `json:"retrieval_coverage,omitempty"`
 
 	// 洞察与报告 —— 管线 analyzing/generating_report 步骤写入。
 	Summary    string      `json:"summary,omitempty"`

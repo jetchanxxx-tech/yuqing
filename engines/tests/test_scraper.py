@@ -121,10 +121,10 @@ class TestBochaSourceScope:
         scraper = PageScraper()
         calls = []
 
-        async def search(keyword, api_key, include=""):
+        async def search(keyword, api_key, include="", count=20):
             calls.append(include)
             return [
-                {"url": "https://www.toutiao.com/article/123", "title": "title", "summary": "provider summary", "snippet": "short",
+                {"url": "https://www.toutiao.com/article/123", "title": "test title", "summary": "test provider summary", "snippet": "short",
                  "site_name": "Toutiao", "published_at": "2026-09-30T10:00:00+08:00"},
                 {"url": "https://www.bilibili.com/video/123", "title": "other", "summary": "not selected"},
             ]
@@ -135,7 +135,7 @@ class TestBochaSourceScope:
         assert calls == ["toutiao.com"]
         assert len(docs) == 1
         assert (docs[0].source_type, docs[0].content, docs[0].published_at) == (
-            "toutiao", "provider summary", "2026-09-30T10:00:00+08:00")
+            "toutiao", "test provider summary", "2026-09-30T10:00:00+08:00")
 
     @pytest.mark.asyncio
     async def test_request_uses_documented_include_and_summary(self, monkeypatch):
@@ -148,7 +148,7 @@ class TestBochaSourceScope:
             assert body["summary"] is True
             assert body["count"] <= 50
             return httpx.Response(200, json={"data": {"webPages": {"value": [{
-                "url": "https://weibo.com/123", "name": "title", "summary": "summary",
+                "url": "https://weibo.com/123", "name": "test title", "summary": "test summary",
                 "siteName": "Weibo", "datePublished": "2026-09-30T10:00:00+08:00",
             }]}}})
 
@@ -159,4 +159,58 @@ class TestBochaSourceScope:
         docs = await scraper.search_and_fetch("test", ["weibo", "wechat"], bocha_key="fixture-key")
         assert len(docs) == 1
         assert (docs[0].content, docs[0].published_at) == (
-            "summary", "2026-09-30T10:00:00+08:00")
+            "test summary", "2026-09-30T10:00:00+08:00")
+
+
+@pytest.mark.asyncio
+async def test_unrelated_and_spa_candidates_are_rejected_before_limit(monkeypatch):
+    scraper = PageScraper()
+    calls = []
+    async def search(keyword, key, include="", count=20):
+        calls.append(count)
+        return [
+            {"url": "https://www.douyin.com/video/1", "title": "DeepSeek FP8", "snippet": "FP8 technology"},
+            {"url": "https://www.douyin.com/video/2", "title": "GS8", "summary": "We're sorry but react app doesn't work properly without JavaScript enabled."},
+            {"url": "https://www.douyin.com/video/3", "title": "传祺GS8越野版", "summary": "传祺GS8试驾体验"},
+        ]
+    monkeypatch.setattr(scraper, "_bocha_search", search)
+    stats = {}
+    docs = await scraper.search_and_fetch("gs8", ["douyin"], max_per_source=1, bocha_key="fixture-key", coverage=stats)
+    assert [doc.title for doc in docs] == ["传祺GS8越野版"]
+    assert stats["provider_candidates"] == 3
+    assert stats["unusable_count"] == 1
+    assert stats["irrelevant_count"] == 1
+    assert calls == [20]
+
+
+@pytest.mark.asyncio
+async def test_bocha_http_success_without_search_payload_is_not_empty_success(monkeypatch):
+    import httpx
+    from engines.common import scraper as scraper_module
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(scraper_module.httpx,"AsyncClient",lambda **kwargs: real_client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200,json={"code":401,"message":"invalid key"})), **kwargs))
+    with pytest.raises(ValueError,match="invalid search response"):
+        await PageScraper()._bocha_search("gs8","fixture-key")
+
+
+@pytest.mark.asyncio
+async def test_gs8_twenty_candidate_regression_yields_one_usable_evidence(monkeypatch):
+    scraper = PageScraper()
+    spa = "We're sorry but react app doesn't work properly without JavaScript enabled."
+    candidates = [
+        {"url":f"https://jingxuan.douyin.com/m/video/{i}","title":f"高达模型第{i}期","summary":spa}
+        for i in range(17)
+    ] + [
+        {"url":"https://www.douyin.com/video/gl8","title":"别克GL8试驾","summary":"别克商务车评测"},
+        {"url":"https://www.douyin.com/video/fp8","title":"DeepSeek FP8 技术","summary":"FP8模型技术争议"},
+        {"url":"https://www.douyin.com/video/gs8","title":"传祺GS8越野版","summary":"传祺 GS8 改装体验"},
+    ]
+    async def search(keyword,key,include="",count=20):
+        assert count <= 50 and include == "douyin.com|iesdouyin.com"
+        return candidates
+    monkeypatch.setattr(scraper,"_bocha_search",search)
+    coverage = {}
+    docs = await scraper.search_and_fetch("gs8",["douyin"],max_per_source=20,bocha_key="fixture",coverage=coverage)
+    assert [d.title for d in docs] == ["传祺GS8越野版"]
+    assert (coverage["provider_candidates"],coverage["unusable_count"],coverage["irrelevant_count"]) == (20,17,2)

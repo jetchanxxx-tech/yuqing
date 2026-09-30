@@ -381,7 +381,7 @@
       <!-- 封面 -->
       <div class="cover">
         <h1>微舆舆情 · 用户手册</h1>
-        <p class="tagline">微舆舆情（Yuging）是一款面向中小企业与个人品牌的 <b>AI 舆情监测平台</b>：自动采集微博、公众号、新闻、小红书、B 站、抖音等平台的公开讨论，用 AI 完成情感研判、话题聚类与报告生成，把传统舆情工具每年数万元的门槛降到每月几十元。</p>
+        <p class="tagline">微舆舆情（Yuging）是一款面向中小企业与个人品牌的 <b>AI 舆情监测平台</b>：自动采集抖音、今日头条、西瓜视频、微博、公众号等来源的公开网页摘要，用 AI 完成情感研判、话题聚类与报告生成，把传统舆情工具每年数万元的门槛降到每月几十元。</p>
         <div class="meta-chips">
           <span class="chip red">适用版本：技术预览版（MVP · 2026-09）</span>
           <span class="chip green">读者对象：品牌市场人员 / 公关 / 运营 / 管理者</span>
@@ -441,7 +441,7 @@
             <li>点击左侧菜单「<b>新建分析</b>」，进入 4 步创建向导。</li>
             <li><b>第 1 步「分析类型」</b>：先给分析起名（至少 2 个字、最多 50 字），再在四种类型卡片中选择一种，例如「<b>品牌声誉监测</b>」，点击「下一步」。</li>
             <li><b>第 2 步「关键词设置」</b>：输入想监测的关键词后<b>按回车键确认</b>（可添加多个）。页面下方提供「舆情、口碑、投诉、召回、涨价、新品」等常用补充词，点击即可快速添加。至少添加 1 个后点击「下一步」。</li>
-            <li><b>第 3 步「数据源选择」</b>：勾选至少 1 个平台（微博、公众号、新闻、小红书、B 站、抖音均可多选），点击「下一步」。</li>
+            <li><b>第 3 步「数据源选择」</b>：勾选至少 1 个可用来源（抖音、今日头条、西瓜视频、微博、公众号；小红书和 B 站暂不可选），点击「下一步」。</li>
             <li><b>第 4 步「确认提交」</b>：核对名称、类型、关键词与数据源，页面会显示<b>成本预估</b>（预计消耗多少 Token、剩余额度多少）。点击「提交分析」。</li>
           </ol>
           <p style="font-size:13.5px;color:var(--fg-2);">提交后页面自动跳到该分析的详情页，任务状态显示为「<b>排队中</b>」。</p>
@@ -543,7 +543,7 @@
           <p>鼠标悬停到色块可查看具体占比。<b>当红色占比持续升高时，建议及时创建一次分析</b>，确认负面内容集中在哪些话题上。</p>
 
           <h4>2.2.4 来源分布图（横向条形）</h4>
-          <p>按内容条数展示每个平台（微博 / 公众号 / 新闻 / 小红书 / B 站 / 抖音）贡献的声量，帮助判断<b>舆论主战场在哪个平台</b>。例如：新闻源声量高说明事件被媒体跟进；小红书声量高说明以用户口碑讨论为主。</p>
+          <p>按内容条数展示每个平台（抖音 / 今日头条 / 西瓜视频 / 微博 / 公众号）贡献的声量，帮助判断<b>舆论主战场在哪个平台</b>。例如：新闻源声量高说明事件被媒体跟进；小红书声量高说明以用户口碑讨论为主。</p>
 
           <h4>2.2.5 热门话题榜</h4>
           <p>按讨论量排序的话题榜单。每条显示：排名（前 3 名高亮）、话题名、相关文档数（篇）、趋势标签：</p>
@@ -566,7 +566,7 @@
           <div class="wiz-grid">
             <div class="wiz-cell"><span class="wiz-no">1</span><div class="wiz-name">分析类型</div><div class="wiz-desc">起名 + 四种类型卡片任选其一</div></div>
             <div class="wiz-cell"><span class="wiz-no">2</span><div class="wiz-name">关键词设置</div><div class="wiz-desc">输入后回车确认，可加多个</div></div>
-            <div class="wiz-cell"><span class="wiz-no">3</span><div class="wiz-name">数据源选择</div><div class="wiz-desc">6 平台至少勾选 1 个</div></div>
+            <div class="wiz-cell"><span class="wiz-no">3</span><div class="wiz-name">数据源选择</div><div class="wiz-desc">5 个可选来源至少勾选 1 个</div></div>
             <div class="wiz-cell"><span class="wiz-no">4</span><div class="wiz-name">确认提交</div><div class="wiz-desc">核对配置 + Token 成本预估</div></div>
           </div>
 
@@ -587,10 +587,10 @@
           <h4>第 2 步：关键词设置</h4>
           <p>输入关键词后按<b>回车</b>确认，生成一个标签；点标签上的「×」可删除。规则与技巧：</p>
           <ul class="plain">
-            <li>至少 1 个，<b>最多 20 个</b>；建议 2–5 个组合使用；</li>
+            <li>至少 1 个，<b>最多 8 个</b>；建议 2–5 个组合使用；</li>
             <li>关键词越具体结果越精准。单一宽泛词（如「汽车」）会混入大量无关内容；</li>
             <li>推荐「<b>品牌词 + 产品词 / 场景词</b>」组合：如「雅阁 后排舒适性」比单独「雅阁」更聚焦；</li>
-            <li>系统提供「舆情、口碑、投诉、召回、涨价、新品」常用补充词，点击即加；</li>
+            <li>最多 8 个关键词；当前各关键词分别搜索（任一命中），不要把限定词当作必须同时满足的条件。</li>
             <li>想扩大覆盖面，可加入产品别名、拼音缩写等变体。</li>
           </ul>
 
@@ -601,14 +601,14 @@
               <tbody>
                 <tr><td class="strong">微博</td><td>实时热点与事件发酵主阵地，舆情爆发最先出现的地方</td></tr>
                 <tr><td class="strong">公众号</td><td>深度长文与行业观点</td></tr>
-                <tr><td class="strong">新闻</td><td>媒体报道与转载，权威性高</td></tr>
-                <tr><td class="strong">小红书</td><td>消费口碑与种草讨论，适合消费品牌</td></tr>
-                <tr><td class="strong">B 站</td><td>年轻用户深度讨论、测评向内容</td></tr>
-                <tr><td class="strong">抖音</td><td>短视频评论（数据采集能力即将推出，见<a href="#s7">第 7 章</a>）</td></tr>
+                <tr><td class="strong">今日头条</td><td>限定域名检索公开网页摘要，不等于文章正文或评论</td></tr>
+                <tr><td class="strong">西瓜视频</td><td>限定域名检索公开网页摘要，不等于视频正文或评论</td></tr>
+                <tr><td class="strong">抖音</td><td>限定域名检索公开网页摘要，不等于视频正文或评论</td></tr>
+                <tr><td class="strong">小红书 / B 站</td><td>显示但暂不可选</td></tr>
               </tbody>
             </table>
           </div>
-          <p>首次体验建议勾选 2–3 个与你最相关的平台，覆盖面与速度更均衡。</p>
+          <p>系统先判定搜索摘要是否有效、是否与关键词相关，再纳入研判。零条或仅一条有效证据时不生成完整报告，任务显示证据不足；页面统计仅代表本次检索候选，不能推断平台覆盖率。</p>
 
           <h4>第 4 步：确认提交（成本预估）</h4>
           <div class="callout info">
@@ -1149,7 +1149,7 @@
         <details class="faq">
           <summary><span class="qno">Q4</span>数据从哪来？是真实的吗？</summary>
           <div class="a-body">
-            <p>系统面向微博、公众号、新闻、小红书、B 站、抖音 6 个平台的<b>公开内容</b>做采集与分析。<b>当前技术预览阶段使用内置演示数据</b>（真实采集爬虫正在联调），预览环境的结果用于体验流程而非实际舆情；真实采集与真实 AI 研判上线后，分析结果将来自真实的公开讨论内容。见<a href="#s7">第 7 章</a>。</p>
+            <p>系统面向微博、公众号、新闻、小红书、B 站、抖音 5 个可选来源的<b>公开内容</b>做采集与分析。<b>当前技术预览阶段使用内置演示数据</b>（真实采集爬虫正在联调），预览环境的结果用于体验流程而非实际舆情；真实采集与真实 AI 研判上线后，分析结果将来自真实的公开讨论内容。见<a href="#s7">第 7 章</a>。</p>
           </div>
         </details>
 
@@ -1268,10 +1268,10 @@
           <div class="a-body"><p>AI 找出内容之间的共同主题并归类，告诉你大家主要在聊哪几件事、每件事有多少内容、趋势如何。</p><span class="term-where"><b>出现位置：</b>详情页「话题聚类」标签页、数据面板热门话题榜</span></div>
         </details>
         <details class="term"><summary><span class="term-name">数据源</span><span class="term-short">采集内容的平台</span></summary>
-          <div class="a-body"><p>目前 6 个：微博、公众号、新闻、小红书、B 站、抖音（抖音采集即将推出）。</p><span class="term-where"><b>出现位置：</b>新建分析第 3 步</span></div>
+          <div class="a-body"><p>可选 5 个：抖音、今日头条、西瓜视频、微博、公众号；小红书、B 站暂不可选。当前能力是检索公开网页摘要，不代表获取评论。</p><span class="term-where"><b>出现位置：</b>新建分析第 3 步</span></div>
         </details>
         <details class="term"><summary><span class="term-name">关键词</span><span class="term-short">你想追踪的词或词组</span></summary>
-          <div class="a-body"><p>内容命中关键词才会被采集。支持多个关键词（最多 20 个），建议 2–5 个组合。</p><span class="term-where"><b>出现位置：</b>新建分析第 2 步</span></div>
+          <div class="a-body"><p>内容命中关键词才会被采集。支持最多 8 个关键词，分别搜索后合并；限定词不能自动作为“同时满足”条件。</p><span class="term-where"><b>出现位置：</b>新建分析第 2 步</span></div>
         </details>
         <details class="term"><summary><span class="term-name">分析 / 监测任务</span><span class="term-short">一次完整的采集 → 研判 → 报告流程</span></summary>
           <div class="a-body"><p>在系统里叫「分析」或「任务」，每次提交都会生成一条任务记录并计入当月分析次数。</p><span class="term-where"><b>出现位置：</b>分析任务列表</span></div>

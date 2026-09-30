@@ -547,6 +547,27 @@ async def _run_dimensions(
     return dims, failed
 
 
+
+def _validate_topic_evidence(topics: list[dict], documents: list[dict]) -> tuple[list[dict], int]:
+    """Reject invented or overlapping topic evidence; counts follow verified IDs."""
+    allowed = {str(d.get("id")) for d in documents if isinstance(d, dict) and d.get("id")}
+    assigned: set[str] = set()
+    valid: list[dict] = []
+    invalid = 0
+    for topic in topics:
+        ids = topic.get("doc_ids") if isinstance(topic, dict) else None
+        if not isinstance(ids, list) or not ids or any(not isinstance(i, str) for i in ids):
+            invalid += 1
+            continue
+        if len(ids) != len(set(ids)) or any(i not in allowed or i in assigned for i in ids):
+            invalid += 1
+            continue
+        item = dict(topic)
+        item["doc_count"] = len(ids)
+        valid.append(item)
+        assigned.update(ids)
+    return valid, invalid
+
 # ── 接口 ────────────────────────────────────────────────────────
 
 
@@ -629,6 +650,10 @@ async def analyze(req: AnalyzeRequest) -> dict:
             if not task.done():
                 task.cancel()
         await asyncio.gather(sentiment_task, dimensions_task, return_exceptions=True)
+
+    topics, invalid_topics = _validate_topic_evidence(topics, req.documents)
+    if invalid_topics:
+        warnings.append(f"{invalid_topics} 个话题缺少可核验的文档关联，已丢弃")
 
     # ② 趋势由代码按发布时间计算，覆盖 LLM 的猜测
     trends = _compute_trends(topics, req.documents)

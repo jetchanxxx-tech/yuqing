@@ -59,9 +59,22 @@ type FetchRequest struct {
 	MaxResults   int
 }
 
+// RetrievalCoverage is the versioned, tenant-scoped audit of this run's search candidates.
+type RetrievalCoverage struct {
+	AdmissionVersion    string           `json:"admission_version"`
+	ProviderCandidates  int              `json:"provider_candidates"`
+	UnusableCount       int              `json:"unusable_count"`
+	IrrelevantCount     int              `json:"irrelevant_count"`
+	SourceMismatchCount int              `json:"source_mismatch_count"`
+	AcceptedCount       int              `json:"accepted_count"`
+	CandidateTruncated  bool             `json:"candidate_truncated"`
+	PerKeyword          []map[string]any `json:"per_keyword"`
+}
+
 type FetchResult struct {
 	Documents []Document
 	Warning   string
+	Coverage  *RetrievalCoverage
 }
 
 type coverageFetcher interface {
@@ -201,9 +214,10 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	var docs []Document
 	var coverageWarning string
+	var retrievalCoverage *RetrievalCoverage
 	if fetcher, ok := p.fetcher.(coverageFetcher); ok {
 		result, fetchErr := fetcher.FetchWithCoverage(ctx, fetchReq)
-		docs, coverageWarning, err = result.Documents, result.Warning, fetchErr
+		docs, coverageWarning, retrievalCoverage, err = result.Documents, result.Warning, result.Coverage, fetchErr
 	} else {
 		docs, err = p.fetcher.Fetch(ctx, fetchReq)
 	}
@@ -212,6 +226,17 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	if coverageWarning != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, coverageWarning)
+	}
+	if retrievalCoverage != nil {
+		if retrievalCoverage.AdmissionVersion != "lexical-v1" || retrievalCoverage.AcceptedCount != len(docs) {
+			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("inconsistent search admission contract"))
+		}
+		if err := p.svc.store.mutate(ctx, msg.TenantID, msg.AnalysisID, func(a *AnalysisResult) error {
+			a.RetrievalCoverage = retrievalCoverage
+			return nil
+		}); err != nil {
+			return p.fail(ctx, msg, "coverage_store_failed", err)
+		}
 	}
 	docs, missingDates := filterFetchedDocuments(docs, a)
 	if missingDates > 0 {
@@ -222,6 +247,9 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return p.fail(ctx, msg, "document_store_failed", err)
 	}
 	p.setDocCount(ctx, msg, len(docs))
+	if retrievalCoverage != nil && len(docs) <= 1 {
+		return p.fail(ctx, msg, "insufficient_relevant_evidence", fmt.Errorf("only %d relevant usable documents; full report requires at least 2", len(docs)))
+	}
 	p.log.Info("pipeline: fetched", slog.String("analysis_id", msg.AnalysisID), slog.Int("docs", len(docs)))
 
 	// ③ 分析（情感/话题/摘要）。只有完整洞察才允许进入 completed；
@@ -236,6 +264,9 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 			reason = "insight result incomplete"
 		}
 		return p.fail(ctx, msg, "insight_failed", errors.New(reason))
+	}
+	if retrievalCoverage != nil && !topicsGrounded(insight.Topics, docs) {
+		return p.fail(ctx, msg, "topic_evidence_invalid", fmt.Errorf("topic references are not grounded in admitted documents"))
 	}
 	if err := p.svc.SetInsight(ctx, msg.TenantID, msg.AnalysisID, insight); err != nil {
 		return p.fail(ctx, msg, "insight_store_failed", err)
@@ -266,6 +297,30 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	p.log.Info("pipeline: completed", slog.String("analysis_id", msg.AnalysisID))
 	return nil
+}
+
+// topicsGrounded prevents invented topic counts and unrelated document references.
+func topicsGrounded(topics []Topic, docs []Document) bool {
+	allowed := make(map[string]struct{}, len(docs))
+	for _, doc := range docs {
+		allowed[doc.ID] = struct{}{}
+	}
+	assigned := make(map[string]struct{})
+	for _, topic := range topics {
+		if len(topic.DocIDs) == 0 || topic.DocCount != len(topic.DocIDs) {
+			return false
+		}
+		for _, id := range topic.DocIDs {
+			if _, ok := allowed[id]; !ok {
+				return false
+			}
+			if _, ok := assigned[id]; ok {
+				return false
+			}
+			assigned[id] = struct{}{}
+		}
+	}
+	return true
 }
 
 // filterFetchedDocuments guards the persistence and analysis boundary even if

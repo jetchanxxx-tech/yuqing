@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from engines.common.scraper import PageScraper, ScrapedDocument, BOCHA_API_KEY as DEFAULT_BOCHA_KEY
+from engines.common.relevance import ADMISSION_VERSION
 
 app = FastAPI(title="Query Engine", version="0.3.0")
 
@@ -82,16 +83,23 @@ async def search(req: SearchRequest) -> SearchResponse:
                   else min(20, max(1, (result_limit + len(keywords) - 1) // len(keywords))))
     results: list[ScrapedDocument] = []
     failed_keywords: list[str] = []
+    per_keyword: list[dict] = []
     for keyword in keywords:
+        stats: dict = {}
         try:
-            results.extend(await scraper.search_and_fetch(
+            found = await scraper.search_and_fetch(
                 keyword=keyword,
                 sources=sources,
                 max_per_source=per_source,
                 bocha_key=bocha_key,
-            ))
+                coverage=stats,
+            )
+            results.extend(found)
+            per_keyword.append({"keyword": keyword, "status": "ok", **stats,
+                                "returned_count": len(found)})
         except Exception:
             failed_keywords.append(keyword)
+            per_keyword.append({"keyword": keyword, "status": "failed", "returned_count": 0})
     if len(failed_keywords) == len(keywords):
         raise HTTPException(status_code=502, detail={
             "message": "All keyword searches failed; no results accepted",
@@ -145,6 +153,14 @@ async def search(req: SearchRequest) -> SearchResponse:
         total_count=len(doc_dicts),
         sources=sources_info,
         coverage={
+            "admission_version": ADMISSION_VERSION,
+            "provider_candidates": sum(row.get("provider_candidates", row.get("returned_count", 0)) for row in per_keyword),
+            "unusable_count": sum(row.get("unusable_count", 0) for row in per_keyword),
+            "irrelevant_count": sum(row.get("irrelevant_count", 0) for row in per_keyword),
+            "source_mismatch_count": sum(row.get("source_mismatch_count", 0) for row in per_keyword),
+            "candidate_truncated": any(row.get("candidate_truncated", False) for row in per_keyword),
+            "accepted_count": len(doc_dicts),
+            "per_keyword": per_keyword,
             "keywords_searched": keywords,
             "failed_keywords": failed_keywords,
             "keyword_search": "partial" if failed_keywords else "applied",

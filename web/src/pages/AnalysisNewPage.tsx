@@ -224,40 +224,19 @@ export default function AnalysisNewPage() {
               输入监测关键词
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-              输入后按回车确认，可添加多个关键词（建议 2–5 个，避免过于宽泛）
+              输入后按回车确认，最多 8 个关键词；当前按“任一关键词”分别检索，请勿把限定词当作必须同时满足的条件。
             </Typography.Paragraph>
             <Select
               mode="tags"
               size="large"
               value={keywords}
-              onChange={(v: string[]) => setKeywords(Array.from(new Set(v.map((k) => k.trim()).filter(Boolean))).slice(0, 20))}
+              onChange={(v: string[]) => setKeywords(Array.from(new Set(v.map((k) => k.trim()).filter(Boolean))).slice(0, 8))}
               placeholder="输入关键词后按回车，如：雅阁 后排舒适性"
               open={false}
               suffixIcon={null}
               style={{ width: '100%' }}
             />
-            <div style={{ marginTop: 16 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                常用补充：
-              </Typography.Text>
-              <Space size={8} style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap' }}>
-                {['舆情', '口碑', '投诉', '召回', '涨价', '新品'].map((k) => (
-                  <Tag.CheckableTag
-                    key={k}
-                    checked={keywords.includes(k)}
-                    onChange={(checked) =>
-                      setKeywords((prev) => {
-                        if (checked) return prev.length < 20 ? [...prev, k] : prev;
-                        return prev.filter((x) => x !== k);
-                      })
-                    }
-                    style={{ fontSize: 13, padding: '4px 12px', borderRadius: 9999 }}
-                  >
-                    {k}
-                  </Tag.CheckableTag>
-                ))}
-              </Space>
-            </div>
+
           </div>
         )}
         {/* ③ 数据源 */}
@@ -278,14 +257,14 @@ export default function AnalysisNewPage() {
                       {SOURCE_LABELS[s]}
                     </Checkbox>
                     <Tag color={enabled ? 'blue' : 'default'} style={{ marginLeft: 8 }}>
-                      {enabled ? '已支持评论' : '暂未接入'}
+                      {enabled ? '可检索公开网页' : '暂未接入'}
                     </Tag>
                   </div>
                 );
               })}
             </div>
             <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-              评论数据以实际接口返回为准；当前博查 Web Search 不提供结构化评论，不能保证获得评论内容。
+              仅检索公开网页；搜索摘要不是视频正文或评论。
             </Typography.Paragraph>
           </div>
         )}

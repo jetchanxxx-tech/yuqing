@@ -24,6 +24,17 @@ export interface AnalysisListResponse {
   total: number;
 }
 
+export interface RetrievalCoverage {
+  admission_version: string;
+  provider_candidates: number;
+  unusable_count: number;
+  irrelevant_count: number;
+  source_mismatch_count: number;
+  accepted_count: number;
+  candidate_truncated?: boolean;
+  per_keyword?: { keyword: string; status: string; returned_count: number }[];
+}
+
 /** GET /analyses/:id（轮询时可能出现的扩展字段） */
 export interface AnalysisStateResponse {
   id: string;
@@ -32,6 +43,9 @@ export interface AnalysisStateResponse {
   progress: number;
   created_at?: string;
   error_message?: string;
+  error_code?: string;
+  doc_count?: number;
+  retrieval_coverage?: RetrievalCoverage | null;
 }
 
 export interface SentimentDoc {
@@ -79,6 +93,7 @@ export interface AnalysisResult {
   id: string;
   state: string;
   doc_count?: number;
+  retrieval_coverage?: RetrievalCoverage | null;
   documents: SentimentDoc[];
   summary?: string;
   warning?: string;

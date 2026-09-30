@@ -15,7 +15,7 @@ func TestRealCrawlerEngineSendsConfiguredFilters(t *testing.T) {
 			t.Errorf("decode search request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"documents":[],"total_count":0}`))
+		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"admission_version":"lexical-v1","accepted_count":0}}`))
 	}))
 	defer server.Close()
 
@@ -36,7 +36,7 @@ func TestRealCrawlerEngineSendsConfiguredFilters(t *testing.T) {
 func TestRealCrawlerEngineExposesCoverageWarning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"warning":"missing published dates","filter_limitations":"post-fetch only","unverifiable_date_count":2}}`))
+		_, _ = w.Write([]byte(`{"documents":[],"total_count":0,"coverage":{"admission_version":"lexical-v1","accepted_count":0,"warning":"missing published dates","filter_limitations":"post-fetch only","unverifiable_date_count":2}}`))
 	}))
 	defer server.Close()
 
@@ -47,5 +47,16 @@ func TestRealCrawlerEngineExposesCoverageWarning(t *testing.T) {
 	}
 	if result.Coverage.Warning != "missing published dates" || result.Coverage.UnverifiableDateCount != 2 {
 		t.Fatalf("coverage lost in transport: %+v", result.Coverage)
+	}
+}
+
+func TestRealCrawlerRejectsLegacyAdmissionProtocol(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"documents":[],"total_count":0}`))
+	}))
+	defer server.Close()
+	_, err := NewRealCrawlerEngine(server.URL, "", nil).SearchWithCoverage(context.Background(), &CrawlReq{})
+	if err == nil {
+		t.Fatal("missing admission protocol must not be treated as zero results")
 	}
 }

@@ -108,7 +108,16 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 			warnings = append(warnings, "query engine did not report filter coverage")
 		}
 	}
-	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; ")}, nil
+	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; "), Coverage: &analysis.RetrievalCoverage{
+		AdmissionVersion:    result.Coverage.AdmissionVersion,
+		ProviderCandidates:  result.Coverage.ProviderCandidates,
+		UnusableCount:       result.Coverage.UnusableCount,
+		IrrelevantCount:     result.Coverage.IrrelevantCount,
+		SourceMismatchCount: result.Coverage.SourceMismatchCount,
+		AcceptedCount:       result.Coverage.AcceptedCount,
+		CandidateTruncated:  result.Coverage.CandidateTruncated,
+		PerKeyword:          result.Coverage.PerKeyword,
+	}}, nil
 }
 
 // engineInsightAdapter 把引擎客户端适配为 analysis.InsightAnalyzer。
@@ -143,7 +152,7 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 	}
 	for _, t := range resp.Topics {
 		out.Topics = append(out.Topics, analysis.Topic{
-			ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, Trend: t.Trend,
+			ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, DocIDs: t.DocIDs, Trend: t.Trend,
 		})
 	}
 	for _, d := range resp.Dimensions {

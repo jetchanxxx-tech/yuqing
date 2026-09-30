@@ -190,3 +190,23 @@ func TestRerun_consumesCreditAgain(t *testing.T) {
 	}
 	_ = fmt.Sprint()
 }
+
+func TestInsufficientRelevantEvidenceRefundsOnce(t *testing.T) {
+	credits := newFakeCredits()
+	svc := newGatedService(t, queue.NewMemory(), credits)
+	credits.grant("t1", 1)
+	created, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "t1", Name: "GS8", Keywords: []string{"gs8"}, Sources: []string{"douyin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher := &admissionFetcher{documents: []Document{{ID: "d1", SourceType: "douyin", Content: "GS8"}}, coverage: RetrievalCoverage{AdmissionVersion: "lexical-v1", ProviderCandidates: 20, AcceptedCount: 1}}
+	pipeline := NewPipeline(svc, fetcher, 0, nil)
+	_ = pipeline.Handle(context.Background(), TaskMessage{TenantID: "t1", AnalysisID: created.ID})
+	if got := credits.balanceOf("t1"); got != 1 {
+		t.Fatalf("balance after insufficient evidence=%d want 1", got)
+	}
+	_ = pipeline.Handle(context.Background(), TaskMessage{TenantID: "t1", AnalysisID: created.ID})
+	if got := credits.balanceOf("t1"); got != 1 {
+		t.Fatalf("duplicate delivery changed balance: %d", got)
+	}
+}

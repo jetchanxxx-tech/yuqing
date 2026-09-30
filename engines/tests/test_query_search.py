@@ -324,3 +324,25 @@ async def test_unavailable_source_rejected_before_provider_call(monkeypatch, sou
         response = await client.post("/search", json={"sources": [source], "bocha_api_key": "fixture-key"})
     assert response.status_code == 422
     assert scraper.calls == []
+
+
+@pytest.mark.asyncio
+async def test_search_coverage_reports_version_and_per_keyword_admission(monkeypatch):
+    class AdmissionScraper:
+        async def search_and_fetch(self, **kwargs):
+            kwargs["coverage"].update({
+                "provider_candidates": 3, "unusable_count": 1,
+                "irrelevant_count": 1, "source_mismatch_count": 0,
+                "accepted_before_limit": 1, "candidate_truncated": False,
+            })
+            return [doc("GS8 model discussion", source_type="douyin")]
+    monkeypatch.setattr(main, "get_scraper", lambda: AdmissionScraper())
+    response = await main.search(main.SearchRequest(
+        keywords=["gs8"], sources=["douyin"], bocha_api_key="fixture-key",
+    ))
+    assert response.coverage["admission_version"] == "lexical-v1"
+    assert response.coverage["provider_candidates"] == 3
+    assert response.coverage["unusable_count"] == 1
+    assert response.coverage["irrelevant_count"] == 1
+    assert response.coverage["accepted_count"] == 1
+    assert response.coverage["per_keyword"][0]["keyword"] == "gs8"
