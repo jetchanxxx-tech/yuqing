@@ -216,17 +216,11 @@ _SENTIMENT_TOPIC_PROMPT = """请对以下舆情文档逐条做情感分析，并
 - doc_ids 必须真实来自上面的文档列表，且各话题的 doc_ids 不重叠。
 - trend 字段不要输出，趋势由平台按发布时间计算。"""
 
-_SUMMARY_PROMPT = """你是一名资深舆情分析师。请分两步完成研判摘要：
+_SUMMARY_PROMPT = """你是一名资深舆情分析师。请基于下列研判结论生成完整摘要。
 
-第一步【批判】：先写一段不超过 80 字的初稿，然后自评这四点：
-① 是否过于官方化、套路化？② 是否缺乏真实的民众声音和情感表达？
-③ 是否遗漏了重要的公众观点和争议焦点？④ 是否缺少具体的数字和案例？
-
-第二步【重写】：根据自评结果重写，输出最终摘要。
-要求：200-300 字；至少包含 3 个具体数字；必须体现不同维度结论之间的**张力**
-（例如情感上同情但平台上沉默、官方回应与民间感受背离）；
-避免"舆情""传播""倾向""展望"等官方术语，改用网民真实表达；
-若素材间存在数据或说法冲突，明确指出。{context}
+请在内部批判草稿并重写，检查结论是否具体、是否有真实公众观点、是否覆盖争议焦点和具体数字；不要输出中间草稿、自评或批判过程。
+要求：200-300 字；在素材支持时至少包含 3 个具体数字；体现不同维度结论之间的张力；避免空泛套话和官方术语；若素材间存在数据或说法冲突，明确指出。
+摘要正文不要使用英文 ASCII 双引号；引用请用中文引号「」。不要编造素材中没有的内容。{context}
 
 各维度分析结论（JSON）：
 {dimensions}
@@ -237,7 +231,15 @@ _SUMMARY_PROMPT = """你是一名资深舆情分析师。请分两步完成研�
 话题聚类（JSON）：
 {topics}
 
-输出 JSON 对象：{{"critique": "初稿及自评", "revised_summary": "重写后的最终摘要"}}"""
+只输出完整且合法的 JSON 对象，且仅包含一个字段：{{"revised_summary":"最终摘要正文"}}。不得输出其他字段、Markdown 或正文外文字。"""
+
+_SUMMARY_RETRY_PROMPT = """根据以下维度、情感和话题信息，直接写一段 200-300 字的完整舆情摘要。保留具体数字和观点分歧，不要草稿或自评，不要编造。正文不要包含英文 ASCII 双引号，引用用中文引号「」。{context}
+
+维度：{dimensions}
+情感：{sentiments}
+话题：{topics}
+
+严格只输出合法 JSON：{{"revised_summary":"摘要正文"}}。"""
 
 
 # ── 素材准备 ────────────────────────────────────────────────────
@@ -674,7 +676,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     model,
                     [
                         {"role": "system", "content": "只输出合法 JSON，不要 Markdown，不要解释。"},
-                        {"role": "user", "content": _SUMMARY_PROMPT.format(
+                        {"role": "user", "content": _SUMMARY_RETRY_PROMPT.format(
                             context=context,
                             dimensions=json.dumps(
                                 [{k: v for k, v in d.items() if k in ("name", "findings", "trend")} for d in dimensions],
@@ -700,7 +702,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        # 摘要失败不影响已产出的维度结论
+        # 摘要失败会使整次 insight 返回 warning；严格模式下 Go 管线标记任务失败。
         reason = _error_reason(exc)
         logger.warning("summary generation failed: %s", reason)
         warnings.append(f"摘要生成失败：{reason}")
