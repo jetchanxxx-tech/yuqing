@@ -365,9 +365,10 @@ func TestServiceWithPGStore_survivesServiceRebuild(t *testing.T) {
 	defer cleanupDocuments(t, pool, tenant)
 	ctx := context.Background()
 
-	q := queue.NewMemory()
+	q := queue.NewPGQueue(pool, queue.PGQueueOptions{})
 	defer func() { _ = q.Close() }()
-	svc := NewServiceWithStore(q, 4, newPGStore(pool), newPGDocumentStore(pool))
+	svc := NewPGService(pool, q, 4)
+	svc.SetBetaSkipCredits(true)
 
 	created, err := svc.Create(ctx, CreateAnalysisRequest{
 		TenantID: tenant, UserID: "user-1", Name: "雅阁后排舆情",
@@ -383,7 +384,7 @@ func TestServiceWithPGStore_survivesServiceRebuild(t *testing.T) {
 	}
 
 	// 第二个实例：内存 store 在此会丢掉全部数据
-	svc2 := NewServiceWithStore(queue.NewMemory(), 4, newPGStore(pool), newPGDocumentStore(pool))
+	svc2 := NewPGService(pool, q, 4)
 	got, err := svc2.Get(ctx, tenant, created.ID)
 	if err != nil {
 		t.Fatalf("重建后 Get failed: %v", err)

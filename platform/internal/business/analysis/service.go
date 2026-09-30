@@ -37,12 +37,17 @@ type analysisStore interface {
 // Runs are persisted in the injected store keyed by tenant, then published
 // to the queue. The queue stays the only cross-process handoff point.
 type Service struct {
-	queue       queue.Queue
-	concurrency int
-	store       analysisStore
-	docs        documentStore
-	credits     CreditReserver
+	queue           queue.Queue
+	concurrency     int
+	store           analysisStore
+	docs            documentStore
+	credits         CreditReserver
+	betaSkipCredits bool
 }
+
+// SetBetaSkipCredits is an explicit, opt-in test-only credit bypass. Tenant
+// checks and the analysis state machine remain active.
+func (s *Service) SetBetaSkipCredits(enabled bool) { s.betaSkipCredits = enabled }
 
 // CreditReserver 是报告额度闸门（可选注入）。nil 时 Create/Rerun 不做额度
 // 检查（既有测试与开发模式零改动）；生产由组合根注入 credit.Service。
@@ -58,7 +63,7 @@ func (s *Service) SetCreditReserver(r CreditReserver) { s.credits = r }
 
 // consumeCredit 扣 1 次额度；未配置闸门时直接放行。
 func (s *Service) consumeCredit(ctx context.Context, tenantID, analysisID string) error {
-	if s.credits == nil {
+	if s.betaSkipCredits || s.credits == nil {
 		return nil
 	}
 	return s.credits.TryConsume(ctx, tenantID, analysisID)
@@ -67,7 +72,7 @@ func (s *Service) consumeCredit(ctx context.Context, tenantID, analysisID string
 // refundCredit 回补失败/取消任务的额度（尽力而为：回补失败只记日志，
 // 不能掩盖管线原始错误；流水留痕可由运营对账修正）。
 func (s *Service) refundCredit(ctx context.Context, tenantID, analysisID string) {
-	if s.credits == nil {
+	if s.betaSkipCredits || s.credits == nil {
 		return
 	}
 	if _, err := s.credits.RefundByAnalysis(ctx, tenantID, analysisID); err != nil {
@@ -97,19 +102,25 @@ func NewServiceWithStore(q queue.Queue, concurrency int, store analysisStore, do
 // NewPGService 装配 PostgreSQL 持久化的分析服务：任务与采集文档跨进程重启
 // 存活（组合根取池后调用，池来自 db.Manager.Platform(ctx) 或 pgxpool.New）。
 func NewPGService(pool *pgxpool.Pool, q queue.Queue, concurrency int) *Service {
+	pgQueue, ok := q.(*queue.PGQueue)
+	if !ok || !pgQueue.UsesPool(pool) {
+		panic("analysis: PG service requires PGQueue on the same pool")
+	}
 	return NewServiceWithStore(q, concurrency, newPGStore(pool), newPGDocumentStore(pool))
 }
 
 // CreateAnalysisRequest holds the parameters for a new analysis.
 type CreateAnalysisRequest struct {
-	TenantID     string   `json:"tenant_id"`
-	UserID       string   `json:"user_id"`
-	Name         string   `json:"name"`
-	AnalysisType string   `json:"analysis_type"`
-	Keywords     []string `json:"keywords"`
-	Sources      []string `json:"sources"`
-	DateFrom     string   `json:"date_from,omitempty"`
-	DateTo       string   `json:"date_to,omitempty"`
+	TenantID         string   `json:"tenant_id"`
+	UserID           string   `json:"user_id"`
+	Name             string   `json:"name"`
+	AnalysisType     string   `json:"analysis_type"`
+	Keywords         []string `json:"keywords"`
+	Sources          []string `json:"sources"`
+	ExcludeWords     []string `json:"exclude_words,omitempty"`
+	DateFrom         string   `json:"date_from,omitempty"`
+	DateTo           string   `json:"date_to,omitempty"`
+	ReportTemplateID string   `json:"report_template_id,omitempty"`
 }
 
 // AnalysisResult is the full result of a completed analysis.
@@ -128,9 +139,13 @@ type AnalysisResult struct {
 
 	// 采集参数 —— 管线据此知道搜什么。
 	// 不持久化关键词则任务无法被处理（管线只拿到 ID，无从得知检索词）。
-	Keywords []string `json:"keywords,omitempty"`
-	Sources  []string `json:"sources,omitempty"`
-	DocCount int      `json:"doc_count"`
+	Keywords         []string `json:"keywords,omitempty"`
+	Sources          []string `json:"sources,omitempty"`
+	ExcludeWords     []string `json:"exclude_words,omitempty"`
+	DateFrom         string   `json:"date_from,omitempty"`
+	DateTo           string   `json:"date_to,omitempty"`
+	ReportTemplateID string   `json:"report_template_id,omitempty"`
+	DocCount         int      `json:"doc_count"`
 
 	// 洞察与报告 —— 管线 analyzing/generating_report 步骤写入。
 	Summary    string      `json:"summary,omitempty"`
@@ -159,18 +174,54 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 	if req.TenantID == "" {
 		return nil, fmt.Errorf("analysis: tenant_id is required")
 	}
+	for _, day := range []string{req.DateFrom, req.DateTo} {
+		if day == "" {
+			continue
+		}
+		parsed, err := time.Parse("2006-01-02", day)
+		if err != nil || parsed.Format("2006-01-02") != day {
+			return nil, fmt.Errorf("analysis: date_from/date_to must be ISO dates")
+		}
+	}
+	if req.DateFrom != "" && req.DateTo != "" && req.DateFrom > req.DateTo {
+		return nil, fmt.Errorf("analysis: date_from must not exceed date_to")
+	}
+	if req.ReportTemplateID != "" && req.ReportTemplateID != "daily" && req.ReportTemplateID != "weekly" && req.ReportTemplateID != "event" {
+		return nil, fmt.Errorf("analysis: unsupported report_template_id %q", req.ReportTemplateID)
+	}
 
 	now := time.Now().UTC()
 	result := &AnalysisResult{
-		ID:           id.New(),
-		Name:         req.Name,
-		AnalysisType: req.AnalysisType,
-		State:        StateQueued,
-		Progress:     0,
-		CreatedAt:    now,
-		Keywords:     req.Keywords,
-		Sources:      req.Sources,
-		CreatedBy:    req.UserID,
+		ID:               id.New(),
+		Name:             req.Name,
+		AnalysisType:     req.AnalysisType,
+		State:            StateQueued,
+		Progress:         0,
+		CreatedAt:        now,
+		Keywords:         append([]string(nil), req.Keywords...),
+		Sources:          append([]string(nil), req.Sources...),
+		ExcludeWords:     append([]string(nil), req.ExcludeWords...),
+		DateFrom:         req.DateFrom,
+		DateTo:           req.DateTo,
+		ReportTemplateID: req.ReportTemplateID,
+		CreatedBy:        req.UserID,
+	}
+	if pg, ok := s.store.(*pgStore); ok {
+		if !s.betaSkipCredits {
+			return nil, fmt.Errorf("analysis: PG credits require atomic reservation; enable explicit beta test credit bypass")
+		}
+		payload, err := json.Marshal(TaskMessage{AnalysisID: result.ID, TenantID: req.TenantID})
+		if err != nil {
+			return nil, err
+		}
+		pgQueue, ok := s.queue.(*queue.PGQueue)
+		if !ok || !pgQueue.UsesPool(pg.pool) {
+			return nil, fmt.Errorf("analysis: PG queue must use analysis pool")
+		}
+		if err := pg.putAndPublish(ctx, req.TenantID, result, pgQueue, payload); err != nil {
+			return nil, err
+		}
+		return result, nil
 	}
 
 	// 额度闸门：先扣后做。扣减成功后的任何失败路径都必须回补。
@@ -199,6 +250,16 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 // Get returns one analysis scoped to the tenant.
 func (s *Service) Get(ctx context.Context, tenantID, analysisID string) (*AnalysisResult, error) {
 	return s.store.get(ctx, tenantID, analysisID)
+}
+
+// RecoverInterrupted resets an in-flight PG task for a leased redelivery.
+// The caller must hold the per-analysis advisory lock until handling finishes.
+func (s *Service) RecoverInterrupted(ctx context.Context, tenantID, analysisID string) error {
+	pg, ok := s.store.(*pgStore)
+	if !ok {
+		return fmt.Errorf("analysis: recovery requires PostgreSQL")
+	}
+	return pg.recoverInterrupted(ctx, tenantID, analysisID)
 }
 
 // List returns all analyses of a tenant in creation order.
@@ -252,6 +313,20 @@ func (s *Service) transition(ctx context.Context, tenantID, analysisID string, t
 // 旧洞察/报告挂在 queued 任务上也与状态自相矛盾。旧报告记录仍在
 // reports 列表（report.Service 独立存储），此处只解除 analyses 行上的关联。
 func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string) error {
+	if pg, ok := s.store.(*pgStore); ok {
+		if !s.betaSkipCredits {
+			return fmt.Errorf("analysis: PG credits require atomic reservation; enable explicit beta test credit bypass")
+		}
+		pgQueue, ok := s.queue.(*queue.PGQueue)
+		if !ok || !pgQueue.UsesPool(pg.pool) {
+			return fmt.Errorf("analysis: PG queue must use analysis pool")
+		}
+		payload, err := json.Marshal(TaskMessage{AnalysisID: analysisID, TenantID: tenantID})
+		if err != nil {
+			return err
+		}
+		return pg.rerunAndPublish(ctx, tenantID, analysisID, pgQueue, payload)
+	}
 	// 重跑同样消耗 1 次额度（每轮管线都是真实的 LLM 成本）。
 	// 上一轮如果是失败终态，其额度已在 markFailed 时回补。
 	if err := s.consumeCredit(ctx, tenantID, analysisID); err != nil {

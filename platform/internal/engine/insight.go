@@ -29,7 +29,7 @@ func NewRealInsightEngine(baseURL, authToken string, apiKeyFunc func() string) *
 		baseURL:    baseURL,
 		authToken:  authToken,
 		apiKeyFunc: apiKeyFunc,
-		httpClient: &http.Client{Timeout: 420 * time.Second}, // GLM 思考型五维并发实测 266s，180s 会截断（生产实测踩坑）
+		httpClient: &http.Client{Timeout: 1320 * time.Second}, // GLM 思考型五维并发实测 266s，180s 会截断（生产实测踩坑）
 	}
 }
 
@@ -39,7 +39,6 @@ func (e *RealInsightEngine) WithLLMOpts(f func() (string, string)) *RealInsightE
 	e.llmOptsFunc = f
 	return e
 }
-
 
 // Analyze requests sentiment + topics + summary for the given documents.
 func (e *RealInsightEngine) Analyze(ctx context.Context, req *InsightAnalyzeReq) (*InsightAnalyzeResp, error) {

@@ -16,6 +16,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+class LLMOutputTruncated(ValueError):
+    """The provider stopped before completing the requested JSON output."""
+
+
 # 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
 # 只对快速失败的瞬时错误重试一次；504/524/读超时已耗掉大段预算，不重试。
 _TRANSIENT_STATUS = {429, 500, 502, 503}
@@ -76,9 +81,9 @@ class LLMClient:
         resp = await self.chat(model, messages, **kwargs)
         choice = (resp.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content", "")
-        if choice.get("finish_reason") == "length" and not content.strip():
-            raise ValueError(
-                "LLM 输出被截断（思考内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
+        if choice.get("finish_reason") == "length":
+            raise LLMOutputTruncated(
+                "LLM 输出被截断（思考内容或 JSON 内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
         return _parse_json_content(content)
 
 

@@ -9,6 +9,7 @@ const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据面板' },
   { key: '/trends', icon: <FireOutlined />, label: '热榜' },
   { key: '/analyses/new', icon: <PlusOutlined />, label: '新建分析' },
+  { key: '/monitor-plans', icon: <FileTextOutlined />, label: '方案草稿（未启用）' },
   { key: '/analyses', icon: <BarChartOutlined />, label: '分析任务' },
   { key: '/reports', icon: <FileTextOutlined />, label: '报告中心' },
   { key: '/plans', icon: <CreditCardOutlined />, label: '套餐与额度' },

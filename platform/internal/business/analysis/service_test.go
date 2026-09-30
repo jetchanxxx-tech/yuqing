@@ -58,6 +58,66 @@ func createAnalysis(t *testing.T, svc *Service, tenantID string) *AnalysisResult
 	return got
 }
 
+func TestServiceCreate_keepsFetchSnapshot(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	ctx := context.Background()
+	created, err := svc.Create(ctx, CreateAnalysisRequest{TenantID: "tenant-1", UserID: "user-1", Name: "windowed", Keywords: []string{"topic"}, Sources: []string{"news"}, ExcludeWords: []string{"advert"}, DateFrom: "2026-09-01", DateTo: "2026-09-28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Get(ctx, "tenant-1", created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DateFrom != "2026-09-01" || got.DateTo != "2026-09-28" || len(got.ExcludeWords) != 1 || got.ExcludeWords[0] != "advert" {
+		t.Fatalf("snapshot lost: %+v", got)
+	}
+	if _, err := svc.Get(ctx, "tenant-2", created.ID); err == nil {
+		t.Fatal("cross-tenant read succeeded")
+	}
+}
+
+func TestServiceCreate_rejectsInvalidWindowBeforeEnqueue(t *testing.T) {
+	svc, q := newTestAnalysisService(t)
+	ch := subscribeTasks(t, q)
+	for _, window := range [][2]string{{"2026-09-29", "2026-09-28"}, {"2026-9-01", ""}, {"", "not-a-date"}} {
+		_, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "tenant-1", Name: "invalid", DateFrom: window[0], DateTo: window[1]})
+		if err == nil {
+			t.Errorf("accepted invalid window %q/%q", window[0], window[1])
+		}
+	}
+	select {
+	case task := <-ch:
+		t.Fatalf("invalid window enqueued task %s", task)
+	default:
+	}
+}
+
+func TestServiceRerun_keepsOriginalFilterSnapshot(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	ctx := context.Background()
+	request := CreateAnalysisRequest{TenantID: "tenant-1", Name: "original", Keywords: []string{"topic"}, Sources: []string{"news"}, ExcludeWords: []string{"advert"}, DateFrom: "2026-09-01", DateTo: "2026-09-28"}
+	a, err := svc.Create(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ExcludeWords[0] = "changed"
+	request.Keywords[0] = "changed"
+	if err := svc.Transition(ctx, "tenant-1", a.ID, string(StateFailed)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Rerun(ctx, "tenant-1", a.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Get(ctx, "tenant-1", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != StateQueued || got.DateFrom != "2026-09-01" || got.DateTo != "2026-09-28" || got.Keywords[0] != "topic" || got.ExcludeWords[0] != "advert" {
+		t.Fatalf("rerun changed original snapshot: %+v", got)
+	}
+}
+
 func advanceTo(t *testing.T, svc *Service, tenantID, id string, states ...string) {
 	t.Helper()
 	for _, to := range states {
@@ -75,6 +135,14 @@ func TestServiceCreate_validationErrors(t *testing.T) {
 	}
 	if _, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "", Name: "x"}); err == nil {
 		t.Error("Create with empty tenant_id: expected error")
+	}
+}
+
+func TestServiceCreateRejectsUnknownReportTemplate(t *testing.T) {
+	svc, _ := newTestAnalysisService(t)
+	_, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "t1", Name: "report", ReportTemplateID: "made-up"})
+	if err == nil {
+		t.Fatal("unknown report template should fail before task creation")
 	}
 }
 

@@ -18,7 +18,7 @@ test.describe('demo smoke', () => {
     await page.goto('/login');
 
     // 品牌标题（antd Typography.Title level=3 → h3）
-    await expect(page.getByRole('heading', { name: '微舆舆情' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '盘古舆情' })).toBeVisible();
 
     // 登录表单关键控件
     await expect(page.getByPlaceholder('you@example.com')).toBeVisible();
@@ -33,7 +33,7 @@ test.describe('demo smoke', () => {
     // 新 context 无 localStorage principal → RequireAuth 必须重定向
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
-    await expect(page.getByRole('heading', { name: '微舆舆情' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '盘古舆情' })).toBeVisible();
   });
 
   test('login form rejects nothing client-side and submits to the API stub', async ({ page }) => {

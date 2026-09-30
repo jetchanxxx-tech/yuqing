@@ -49,19 +49,33 @@ type searchReq struct {
 	BochaAPIKey  string   `json:"bocha_api_key,omitempty"`
 }
 
-// searchResp matches the Python engine's SearchResponse model.
-type searchResp struct {
-	Documents  []Document `json:"documents"`
-	TotalCount int        `json:"total_count"`
+type SearchCoverage struct {
+	Warning               string `json:"warning"`
+	FilterLimitations     string `json:"filter_limitations"`
+	UnverifiableDateCount int    `json:"unverifiable_date_count"`
+}
+
+type SearchResult struct {
+	Documents  []Document     `json:"documents"`
+	TotalCount int            `json:"total_count"`
+	Coverage   SearchCoverage `json:"coverage"`
 }
 
 // Search 调用 Python query 引擎采集数据并返回文档。
 func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Document, error) {
+	result, err := e.SearchWithCoverage(ctx, req)
+	return result.Documents, err
+}
+
+func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlReq) (SearchResult, error) {
 	body := searchReq{
-		Keywords:   req.Keywords,
-		Sources:    req.Sources,
-		MaxResults: req.MaxDepth,
-		AnalysisID: req.AnalysisID,
+		Keywords:     req.Keywords,
+		Sources:      req.Sources,
+		MaxResults:   req.MaxDepth,
+		AnalysisID:   req.AnalysisID,
+		DateFrom:     req.DateFrom,
+		DateTo:       req.DateTo,
+		ExcludeWords: req.ExcludeWords,
 	}
 	// Inject Bocha API key from admin-configurable platform settings.
 	if e.bochaKeyFunc != nil {
@@ -69,12 +83,12 @@ func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Docume
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("crawler: marshal request: %w", err)
+		return SearchResult{}, fmt.Errorf("crawler: marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", e.baseURL+"/search", bytes.NewReader(b))
 	if err != nil {
-		return nil, fmt.Errorf("crawler: new request: %w", err)
+		return SearchResult{}, fmt.Errorf("crawler: new request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if e.authToken != "" {
@@ -83,20 +97,20 @@ func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Docume
 
 	resp, err := e.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("crawler: fetch: %w", err)
+		return SearchResult{}, fmt.Errorf("crawler: fetch: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("crawler: engine returned %d: %s", resp.StatusCode, string(bodyBytes))
+		return SearchResult{}, fmt.Errorf("crawler: engine returned %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var result searchResp
+	var result SearchResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("crawler: decode response: %w", err)
+		return SearchResult{}, fmt.Errorf("crawler: decode response: %w", err)
 	}
-	return result.Documents, nil
+	return result, nil
 }
 
 // Crawl 实现 CrawlerEngine 接口；采集结果由 Search 返回给管线消费。

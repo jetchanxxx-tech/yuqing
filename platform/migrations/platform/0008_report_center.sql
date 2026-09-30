@@ -3,7 +3,7 @@
 -- 基于：P2_IMPLEMENTATION_PLAN.html 决策
 --
 -- 语义：
---   analyses.created_by   — 创建人（创建时写入）；历史数据由 CLI 回填
+--   analyses.created_by   — 创建人（创建时写入）；历史数据无可信归属时拒绝迁移
 --   reports.created_by   — 创建人（从 analyses.created_by 继承）
 --   reports.report_version — 同一 analysis 的第 N 次报告（从 1 起）
 
@@ -13,25 +13,27 @@
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS created_by TEXT;
 ALTER TABLE analyses ALTER COLUMN created_by DROP DEFAULT;
 
--- 回填：取 tenant_members 表该租户第一个成员（按 user_id 字典序，确定性）
-WITH first_member AS (
-    SELECT tenant_id, user_id,
-           ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY user_id) AS rn
-    FROM tenant_members
-)
-UPDATE analyses a
-SET created_by = fm.user_id
-FROM first_member fm
-WHERE a.tenant_id = fm.tenant_id
-  AND fm.rn = 1
-  AND (a.created_by IS NULL OR a.created_by = '');
+-- 成员身份不能证明谁创建了历史分析；拒绝缺失/无效的归属，不凭空分配。
+-- 迁移前需在 v7 克隆核对来源，并显式回填可信用户 ID；失败不会推进 goose 版本。
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM analyses WHERE created_by IS NULL OR btrim(created_by) = '') THEN
+        RAISE EXCEPTION 'cannot backfill analyses.created_by: verified creator missing; resolve historical ownership before migration';
+    END IF;
+    IF EXISTS (SELECT 1 FROM analyses a LEFT JOIN users u ON u.id = a.created_by WHERE u.id IS NULL) THEN
+        RAISE EXCEPTION 'cannot backfill analyses.created_by: creator does not exist in users';
+    END IF;
+END;
+$$;
+-- +goose StatementEnd
 
--- 回填后设非空约束（历史数据已回填完毕）
+-- 只对已确认的归属设非空约束
 ALTER TABLE analyses ALTER COLUMN created_by SET NOT NULL;
 
 -- FK + 索引
 ALTER TABLE analyses ADD CONSTRAINT fk_analyses_created_by
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE;
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 CREATE INDEX idx_analyses_created_by ON analyses(created_by);
 
 -- ─────────────────────────────────────────────────────────
@@ -49,15 +51,25 @@ ALTER TABLE reports ALTER COLUMN report_version SET DEFAULT 1;
 UPDATE reports r
 SET created_by = a.created_by
 FROM analyses a
-WHERE r.analysis_id = a.id
+WHERE r.analysis_id = a.id AND r.tenant_id = a.tenant_id
   AND (r.created_by IS NULL OR r.created_by = '');
 
--- 回填后设非空约束
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM reports WHERE created_by IS NULL OR btrim(created_by) = '') THEN
+        RAISE EXCEPTION 'cannot backfill reports.created_by: verified creator missing or analysis tenant mismatch';
+    END IF;
+END;
+$$;
+-- +goose StatementEnd
+
+-- 已确认的报告归属才可设非空约束
 ALTER TABLE reports ALTER COLUMN created_by SET NOT NULL;
 
 -- FK + 索引
 ALTER TABLE reports ADD CONSTRAINT fk_reports_created_by
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE;
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT;
 CREATE INDEX idx_reports_created_by ON reports(created_by);
 
 -- 回填 report_version：同一 analysis 按 created_at 升序编号

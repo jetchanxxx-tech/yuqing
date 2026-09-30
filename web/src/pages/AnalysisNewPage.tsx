@@ -27,6 +27,7 @@ import { createAnalysis } from '../api/analyses';
 import { getCredits, getUsage } from '../api/billing';
 import {
   ANALYSIS_TYPES,
+  ANALYSIS_TEMPLATES,
   SOURCES,
   SOURCE_LABELS,
   type AnalysisType,
@@ -39,7 +40,7 @@ const BASE_TOKENS = 3000;
 
 const TYPE_ICONS = [SafetyOutlined, RocketOutlined, TeamOutlined, CompassOutlined];
 
-const STEP_LABELS = ['分析类型', '关键词设置', '数据源选择', '确认提交'];
+const STEP_LABELS = ['选择场景或视角', '关键词设置', '数据源选择', '确认提交'];
 
 export default function AnalysisNewPage() {
   const { message } = App.useApp();
@@ -48,6 +49,8 @@ export default function AnalysisNewPage() {
 
   const [current, setCurrent] = useState(0);
   const [name, setName] = useState('');
+  const [entry, setEntry] = useState<'template' | 'manual' | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(null);
   const [type, setType] = useState<AnalysisType | null>(null);
   // ?keywords= 支持「热榜 → 分析」预填（热榜页「分析」按钮带参数跳入）
   const [keywords, setKeywords] = useState<string[]>(() => {
@@ -64,10 +67,12 @@ export default function AnalysisNewPage() {
   const overBudget = remainingTokens !== null && estTokens > remainingTokens;
   /** 报告额度（方案 B：每次分析 = 1 次） */
   const noCredits = (creditsQ.data?.balance ?? 1) <= 0;
+  const selectedTemplate = ANALYSIS_TEMPLATES.find((template) => template.id === templateId);
+  const defaultView = ANALYSIS_TYPES.find((item) => item.value === selectedTemplate?.defaultType)?.label;
 
   const canNext =
     current === 0
-      ? name.trim().length >= 2
+      ? name.trim().length >= 2 && entry !== null && (entry === 'manual' || templateId !== null)
       : current === 1
         ? keywords.length >= 1
         : current === 2
@@ -100,7 +105,7 @@ export default function AnalysisNewPage() {
 
   const next = () => {
     if (!canNext) {
-      if (current === 0) message.warning(name.trim().length < 2 ? '请填写分析名称（至少 2 个字）' : '请选择一种分析类型');
+      if (current === 0) message.warning(name.trim().length < 2 ? '请填写分析名称（至少 2 个字）' : '请选择模板或手动创建');
       else if (current === 1) message.warning('请至少输入 1 个关键词');
       else message.warning('请至少选择 1 个数据源');
       return;
@@ -167,13 +172,46 @@ export default function AnalysisNewPage() {
               onChange={(e) => setName(e.target.value)}
               style={{ maxWidth: 480, marginBottom: 24 }}
             />
-            <Typography.Title level={5}>选择分析类型（可选）</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ marginTop: -8, marginBottom: 16 }}>
-              可选标签，用于优化分析提示词。若不选择，系统将使用通用分析模式。
-            </Typography.Paragraph>
-            <Row gutter={[16, 16]}>
-              {ANALYSIS_TYPES.map((t, i) => typeCard(t, i))}
-            </Row>
+            <Typography.Title level={5}>创建方式</Typography.Title>
+            <Space wrap style={{ marginBottom: 16 }}>
+              <Button type={entry === 'template' ? 'primary' : 'default'} onClick={() => { setEntry('template'); setTemplateId(null); setType(null); }}>按模板</Button>
+              <Button type={entry === 'manual' ? 'primary' : 'default'} onClick={() => { setEntry('manual'); setTemplateId(null); setType(null); }}>手动选择视角</Button>
+            </Space>
+            {entry === 'template' && (
+              <>
+                <Alert type="info" showIcon style={{ marginBottom: 16 }} message="仅选择场景与分析视角，提交后运行一次分析"
+                  description="周期监测尚未上线；这里不会保存监测方案，也不会自动启用排除词、风险标签、预警或专属报告模板。" />
+                <Row gutter={[16, 16]}>
+                  {ANALYSIS_TEMPLATES.map((template) => (
+                    <Col xs={24} sm={12} lg={8} key={template.id}>
+                      <Card hoverable onClick={() => { setTemplateId(template.id); setType(template.defaultType); }}
+                        style={{ height: '100%', borderColor: templateId === template.id ? '#FF2442' : undefined }}>
+                        <Typography.Text strong>{template.label}</Typography.Text>
+                        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{template.desc}</Typography.Paragraph>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+                {selectedTemplate && (
+                  <div style={{ marginTop: 20 }}>
+                    <Typography.Paragraph>默认分析视角：{defaultView}</Typography.Paragraph>
+                    <Typography.Text>分析视角（可修改，仅影响现有分析的提示词）</Typography.Text>
+                    <Select aria-label="分析视角" value={type} onChange={setType} style={{ display: 'block', maxWidth: 320, marginTop: 8 }}
+                      options={ANALYSIS_TYPES.map((item) => ({ value: item.value, label: item.label }))} />
+                    <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>
+                      关键词：单次分析时手动输入；数据源：单次分析时手动选择，是否可采集以实际返回为准。<br />
+                      排除词：未启用；监测周期：未启用；风险标签：未启用；预警规则：未启用；报告模板：未启用。
+                    </Typography.Paragraph>
+                  </div>
+                )}
+              </>
+            )}
+            {entry === 'manual' && (
+              <>
+                <Typography.Paragraph type="secondary">四种视角可选；不选择时使用原有通用分析模式。</Typography.Paragraph>
+                <Row gutter={[16, 16]}>{ANALYSIS_TYPES.map((t, i) => typeCard(t, i))}</Row>
+              </>
+            )}
           </div>
         )}
         {/* ② 关键词 */}
@@ -226,7 +264,7 @@ export default function AnalysisNewPage() {
               选择数据源
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-              支持全平台抓取，至少选择 1 个
+              选择希望尝试采集的数据源（至少 1 个）；是否可用、是否有数据以实际执行结果为准。
             </Typography.Paragraph>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {SOURCES.map((s) => {
@@ -263,6 +301,7 @@ export default function AnalysisNewPage() {
               labelStyle={{ width: 110, background: '#fafafa' }}
               items={[
                 { key: 'name', label: '分析名称', children: name.trim() },
+                ...(selectedTemplate ? [{ key: 'template', label: '选择的场景', children: `${selectedTemplate.label}（仅用于本次选择，不保存方案）` }] : []),
                 {
                   key: 'type',
                   label: '分析类型',
@@ -300,6 +339,8 @@ export default function AnalysisNewPage() {
                 </>
               }
             />
+            {entry === 'template' && <Alert type="warning" showIcon style={{ marginTop: 12 }} message="仅创建单次分析"
+              description="模板方案保存、周期调度与预警执行尚未接通；本次只提交现有分析字段，不保存模板 ID。" />}
           </div>
         )}
         {/* 底部操作 */}

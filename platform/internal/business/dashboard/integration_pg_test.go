@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
 )
 
 // TestDashboard_PostgreSQL_CreatedByColumn tests that dashboard queries work
@@ -40,21 +40,35 @@ func TestDashboard_PostgreSQL_CreatedByColumn(t *testing.T) {
 
 	// Insert test tenant
 	_, err = pool.Exec(ctx, `
-		INSERT INTO tenants (id, name, plan_code, status)
-		VALUES ($1, $2, $3, $4)
-	`, tenantID, "Test Tenant", "free", "active")
+		INSERT INTO tenants (id, name, slug, db_name, plan_code, status)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, tenantID, "Test Tenant", tenantID, tenantID+"_db", "free", "active")
 	if err != nil {
 		t.Fatalf("failed to create test tenant: %v", err)
+	}
+	var slug, dbName string
+	if err := pool.QueryRow(ctx, `SELECT slug, db_name FROM tenants WHERE id = $1`, tenantID).Scan(&slug, &dbName); err != nil {
+		t.Fatalf("failed to read tenant identity: %v", err)
+	}
+	if slug != tenantID || dbName != tenantID+"_db" {
+		t.Fatalf("tenant identity = %q/%q, want %q/%q", slug, dbName, tenantID, tenantID+"_db")
 	}
 
 	// Insert test analysis with created_by
 	analysisID := "a-" + id.New()
 	_, err = pool.Exec(ctx, `
-		INSERT INTO analyses (id, tenant_id, keywords, type, status, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, analysisID, tenantID, `["test"]`, "quick_scan", "completed", userID)
+		INSERT INTO analyses (id, tenant_id, name, analysis_type, keywords, state, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, analysisID, tenantID, "Dashboard test analysis", "event", `["test"]`, "completed", userID)
 	if err != nil {
 		t.Fatalf("failed to create analysis: %v", err)
+	}
+	var name, analysisType, state string
+	if err := pool.QueryRow(ctx, `SELECT name, analysis_type, state FROM analyses WHERE id = $1`, analysisID).Scan(&name, &analysisType, &state); err != nil {
+		t.Fatalf("failed to read analysis fixture: %v", err)
+	}
+	if name != "Dashboard test analysis" || analysisType != "event" || state != "completed" {
+		t.Fatalf("analysis fixture = %q/%q/%q", name, analysisType, state)
 	}
 
 	// Test: Query analyses with created_by (dashboard overview uses this)

@@ -2,6 +2,9 @@ package report
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -58,6 +61,44 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 		CreatedBy:     createdBy,
 	}
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
+		return nil, err
+	}
+	return &rp, nil
+}
+
+// CreateFromAnalysisOnce uses a stable per-run key. Re-delivery after a
+// completed analysis cannot create a second report, while Rerun uses a new key.
+func (s *Service) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysisID, format, createdBy, runKey string) (*Report, error) {
+	if tenantID == "" || analysisID == "" || runKey == "" || !supportedFormat(format) {
+		return nil, fmt.Errorf("report: tenant_id, analysis_id, run key and valid format required")
+	}
+	digest := sha256.Sum256([]byte(tenantID + "\x00" + analysisID + "\x00" + format + "\x00" + runKey))
+	reportID := hex.EncodeToString(digest[:13])
+	getExisting := func() (*Report, error) {
+		existing, err := s.store.Get(ctx, tenantID, reportID)
+		if err != nil {
+			return nil, err
+		}
+		if existing.AnalysisID != analysisID || existing.Format != format || existing.CreatedBy != createdBy {
+			return nil, pkgerrors.Wrap(pkgerrors.ErrConflict, "report key collision")
+		}
+		return existing, nil
+	}
+	if existing, err := getExisting(); err == nil {
+		return existing, nil
+	} else if !errors.Is(err, pkgerrors.ErrNotFound) {
+		return nil, err
+	}
+	previous, err := s.store.List(ctx, tenantID, Filter{AnalysisID: analysisID})
+	if err != nil {
+		return nil, err
+	}
+	rp := Report{ID: reportID, AnalysisID: analysisID, Format: format, Status: statusCompleted,
+		FileKey: fmt.Sprintf("reports/%s.%s", reportID, format), ReportVersion: len(previous) + 1, CreatedBy: createdBy}
+	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
+		if errors.Is(err, pkgerrors.ErrConflict) {
+			return getExisting()
+		}
 		return nil, err
 	}
 	return &rp, nil

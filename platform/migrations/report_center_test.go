@@ -2,12 +2,15 @@ package migrations
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -89,9 +92,61 @@ func TestReportCenterMigration(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				// Only the hotfixed fixture supplies a verified historical owner.
+				if _, err := pool.Exec(ctx, "UPDATE analyses SET created_by='u1' WHERE id='a1'"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, stmt := range []string{
+				"INSERT INTO tenants (id, name, slug, db_name) VALUES ('t2', 'Orphan', 'orphan', 'orphan_db')",
+				"INSERT INTO analyses (id, tenant_id, name) VALUES ('orphan_a', 't2', 'Keep')",
+				"INSERT INTO reports (id, tenant_id, analysis_id) VALUES ('orphan_r', 't2', 'orphan_a')",
+			} {
+				if _, err := pool.Exec(ctx, stmt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := provider.UpTo(ctx, 8); err == nil || !strings.Contains(err.Error(), "cannot backfill analyses.created_by") {
+				t.Fatalf("v8 must explicitly reject tenant with no member: %v", err)
+			}
+			var gooseVersion int
+			if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&gooseVersion); err != nil || gooseVersion != 7 {
+				t.Fatalf("failed migration must stay at v7, got %d: %v", gooseVersion, err)
+			}
+			var preserved int
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM reports WHERE id='orphan_r'`).Scan(&preserved); err != nil || preserved != 1 {
+				t.Fatalf("failed migration lost report: count=%d err=%v", preserved, err)
+			}
+			for _, stmt := range []string{"DELETE FROM reports WHERE id='orphan_r'", "DELETE FROM analyses WHERE id='orphan_a'"} {
+				if _, err := pool.Exec(ctx, stmt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !hotfix {
+				if _, err := provider.UpTo(ctx, 8); err == nil || !strings.Contains(err.Error(), "cannot backfill analyses.created_by") {
+					t.Fatalf("must not assign first member as historical creator: %v", err)
+				}
+				if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&gooseVersion); err != nil || gooseVersion != 7 {
+					t.Fatalf("ambiguous ownership must leave goose at v7, got %d: %v", gooseVersion, err)
+				}
+				for _, stmt := range []string{"DELETE FROM reports WHERE id='r1'", "DELETE FROM analyses WHERE id='a1'"} {
+					if _, err := pool.Exec(ctx, stmt); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
 			if _, err := provider.UpTo(ctx, 8); err != nil {
 				t.Fatalf("apply v8 to %s: %v", name, err)
+			}
+			if !hotfix {
+				for _, stmt := range []string{
+					"INSERT INTO analyses (id, tenant_id, name, created_by) VALUES ('a1', 't1', 'Test', 'u1')",
+					"INSERT INTO reports (id, tenant_id, analysis_id, created_by) VALUES ('r1', 't1', 'a1', 'u1')",
+				} {
+					if _, err := pool.Exec(ctx, stmt); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
 
 			var owner, reportOwner, versionType string
@@ -106,11 +161,11 @@ func TestReportCenterMigration(t *testing.T) {
 			var constraints int
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_constraint
 				WHERE conname IN ('fk_analyses_created_by', 'fk_reports_created_by')
-				AND connamespace = $1::regnamespace`, schema).Scan(&constraints); err != nil {
+				AND connamespace = $1::regnamespace AND confdeltype = 'r'`, schema).Scan(&constraints); err != nil {
 				t.Fatal(err)
 			}
 			if constraints != 2 {
-				t.Errorf("want two ownership foreign keys, got %d", constraints)
+				t.Errorf("want two RESTRICT ownership foreign keys, got %d", constraints)
 			}
 			var ownershipDefaults int
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
@@ -120,6 +175,18 @@ func TestReportCenterMigration(t *testing.T) {
 			}
 			if ownershipDefaults != 0 {
 				t.Errorf("ownership columns retain %d defaults", ownershipDefaults)
+			}
+			if _, err := pool.Exec(ctx, "DELETE FROM users WHERE id='u1'"); err == nil {
+				t.Fatal("deleting the owner silently destroyed owned analysis/report")
+			} else {
+				var pgErr *pgconn.PgError
+				if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+					t.Fatalf("user deletion must fail with foreign-key violation: %v", err)
+				}
+			}
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM analyses a JOIN reports r ON r.analysis_id=a.id
+				WHERE a.id='a1' AND a.created_by='u1' AND r.id='r1' AND r.created_by='u1'`).Scan(&preserved); err != nil || preserved != 1 {
+				t.Fatalf("user deletion lost business data: count=%d err=%v", preserved, err)
 			}
 		})
 	}

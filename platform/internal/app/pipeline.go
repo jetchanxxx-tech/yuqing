@@ -2,16 +2,18 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/business/report"
 	"github.com/yuqing/platform/internal/config"
 	"github.com/yuqing/platform/internal/engine"
+	"github.com/yuqing/platform/internal/pkg/queue"
 	"github.com/yuqing/platform/internal/platform/billing"
 	"github.com/yuqing/platform/internal/platform/credit"
-	"github.com/yuqing/platform/internal/pkg/queue"
 )
 
 // pipelineBudget 计算整条管线的总预算：采集 + 分析 + 报告各阶段的超时之和。
@@ -64,17 +66,25 @@ type engineFetcher struct {
 }
 
 func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([]analysis.Document, error) {
-	docs, err := f.crawler.Search(ctx, &engine.CrawlReq{
-		Keywords:   req.Keywords,
-		Sources:    req.Sources,
-		AnalysisID: req.AnalysisID,
-		MaxDepth:   req.MaxResults,
+	result, err := f.FetchWithCoverage(ctx, req)
+	return result.Documents, err
+}
+
+func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.FetchRequest) (analysis.FetchResult, error) {
+	result, err := f.crawler.SearchWithCoverage(ctx, &engine.CrawlReq{
+		Keywords:     req.Keywords,
+		Sources:      req.Sources,
+		ExcludeWords: req.ExcludeWords,
+		DateFrom:     req.DateFrom,
+		DateTo:       req.DateTo,
+		AnalysisID:   req.AnalysisID,
+		MaxDepth:     req.MaxResults,
 	})
 	if err != nil {
-		return nil, err
+		return analysis.FetchResult{}, err
 	}
-	out := make([]analysis.Document, 0, len(docs))
-	for _, d := range docs {
+	out := make([]analysis.Document, 0, len(result.Documents))
+	for _, d := range result.Documents {
 		out = append(out, analysis.Document{
 			ID:          d.ID,
 			Title:       d.Title,
@@ -87,7 +97,18 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 			ContentHash: d.ContentHash,
 		})
 	}
-	return out, nil
+	warnings := make([]string, 0, 2)
+	if result.Coverage.Warning != "" {
+		warnings = append(warnings, result.Coverage.Warning)
+	}
+	if len(req.ExcludeWords) > 0 || req.DateFrom != "" || req.DateTo != "" {
+		if result.Coverage.FilterLimitations != "" {
+			warnings = append(warnings, result.Coverage.FilterLimitations)
+		} else {
+			warnings = append(warnings, "query engine did not report filter coverage")
+		}
+	}
+	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; ")}, nil
 }
 
 // engineInsightAdapter 把引擎客户端适配为 analysis.InsightAnalyzer。
@@ -173,6 +194,7 @@ type engineReportAdapter struct {
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
 		Title:            req.Title,
+		TemplateID:       req.TemplateID,
 		Format:           "html",
 		Documents:        toEngineDocuments(req.Documents),
 		Sentiments:       toEngineSentiments(req.Sentiments),
@@ -194,6 +216,16 @@ type reportSvcAdapter struct {
 
 func (a *reportSvcAdapter) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (string, error) {
 	r, err := a.svc.CreateFromAnalysis(ctx, tenantID, analysisID, format, createdBy)
+	if err != nil || r == nil {
+		return "", err
+	}
+	return r.ID, nil
+}
+
+type pgReportSvcAdapter struct{ *reportSvcAdapter }
+
+func (a *pgReportSvcAdapter) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysisID, format, createdBy, runKey string) (string, error) {
+	r, err := a.svc.CreateFromAnalysisOnce(ctx, tenantID, analysisID, format, createdBy, runKey)
 	if err != nil || r == nil {
 		return "", err
 	}
@@ -267,29 +299,32 @@ func startPipeline(
 		p = p.WithReportSvc(&reportSvcAdapter{svc: reportSvc})
 	}
 
-	err := q.Subscribe(ctx, analysis.TopicAnalysisTasks, func(ctx context.Context, msg queue.Message) error {
-		task, err := analysis.DecodeTaskMessage(msg.Body)
-		if err != nil {
-			log.Warn("pipeline: undecodable task message",
-				slog.String("err", err.Error()), slog.String("body", string(msg.Body)))
-			return nil // 丢弃坏消息，避免无限重试
-		}
-		if task.TenantID == "" {
-			// 历史格式（裸 ID）无法定位租户，明确记录而非静默失败
-			log.Warn("pipeline: task message missing tenant_id, skipped",
-				slog.String("analysis_id", task.AnalysisID))
-			return nil
-		}
-		if err := p.Handle(ctx, task); err != nil {
-			log.Warn("pipeline: task did not complete",
-				slog.String("analysis_id", task.AnalysisID), slog.String("err", err.Error()))
-		}
-		return nil
-	})
+	err := q.Subscribe(ctx, analysis.TopicAnalysisTasks, analysisTaskHandler(log, p.Handle))
 	if err != nil {
 		log.Error("pipeline: failed to subscribe analysis.tasks", slog.String("err", err.Error()))
-		return p
+		panic(fmt.Sprintf("pipeline: subscription failed: %v", err))
 	}
 	log.Info("pipeline: subscribed", slog.String("topic", analysis.TopicAnalysisTasks))
 	return p
+}
+
+func analysisTaskHandler(log *slog.Logger, handle func(context.Context, analysis.TaskMessage) error) queue.Handler {
+	return func(ctx context.Context, msg queue.Message) error {
+		task, err := analysis.DecodeTaskMessage(msg.Body)
+		if err != nil {
+			log.Warn("pipeline: undecodable task message", slog.String("message_id", msg.MessageID))
+			return fmt.Errorf("pipeline: undecodable task message (message_id=%s)", msg.MessageID)
+		}
+		if task.TenantID == "" {
+			log.Warn("pipeline: task message missing tenant_id",
+				slog.String("analysis_id", task.AnalysisID))
+			return fmt.Errorf("pipeline: task message missing tenant_id")
+		}
+		if err := handle(ctx, task); err != nil {
+			log.Warn("pipeline: task did not complete",
+				slog.String("analysis_id", task.AnalysisID), slog.String("err", err.Error()))
+			return err
+		}
+		return nil
+	}
 }

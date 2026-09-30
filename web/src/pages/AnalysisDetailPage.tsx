@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -39,8 +39,10 @@ import {
   cancelAnalysis,
   getAnalysis,
   getAnalysisResult,
+  getEventTimeline,
   rerunAnalysis,
   type AnalysisResult,
+  type EventTimelineResponse,
   type DimensionResult,
   type SentimentItem,
 } from '../api/analyses';
@@ -77,6 +79,7 @@ const TREND_ICONS: Record<string, React.ReactNode> = {
 
 export default function AnalysisDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [timelineCursor, setTimelineCursor] = useState('');
   const { message } = App.useApp();
   const queryClient = useQueryClient();
 
@@ -96,6 +99,11 @@ export default function AnalysisDetailPage() {
   const completed = state === 'completed';
   const running = state !== undefined && !TERMINAL_STATES.includes(state);
   const failed = state === 'failed';
+  const timelineQ = useQuery({
+    queryKey: ['analysis', 'event-timeline', id, timelineCursor],
+    queryFn: () => getEventTimeline(id as string, timelineCursor),
+    enabled: !!id && (completed || failed),
+  });
 
   // —— 结果（仅 completed 时拉取） ——
   const resultQ = useQuery({
@@ -126,6 +134,8 @@ export default function AnalysisDetailPage() {
     mutationFn: () => rerunAnalysis(id as string),
     onSuccess: () => {
       message.success('任务已重新排队');
+      setTimelineCursor('');
+      void queryClient.invalidateQueries({ queryKey: ['analysis', 'event-timeline', id] });
       void queryClient.invalidateQueries({ queryKey: ['analyses'] });
     },
   });
@@ -288,7 +298,47 @@ export default function AnalysisDetailPage() {
           )}
         </Col>
       </Row>
+      {(completed || failed) && (
+        <Card title="事件原文时间线（按已采集来源发表时间）" style={{ borderRadius: 16, marginTop: 16 }}>
+          {timelineQ.isLoading ? <LoadingBlock rows={3} /> : timelineQ.isError ? (
+            <ErrorBlock description="时间线加载失败" onRetry={() => void timelineQ.refetch()} />
+          ) : timelineQ.data ? (
+            <EventEvidenceTimeline data={timelineQ.data} onNext={setTimelineCursor} />
+          ) : null}
+        </Card>
+      )}
     </div>
+  );
+}
+
+function EventEvidenceTimeline({ data, onNext }: { data: EventTimelineResponse; onNext: (cursor: string) => void }) {
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Alert type="info" showIcon message="仅按本次分析采集范围内原文所记载的发表时间排序，未独立核验来源时间；不代表全网首发。" />
+      <Typography.Text type="secondary">
+        原文 {data.coverage.source_count} 条，已定位 {data.coverage.timed_count} 条，未定位 {data.coverage.unlocated_count} 条，去重 {data.coverage.duplicate_count} 条。
+      </Typography.Text>
+      {data.nodes.length === 0 && data.coverage.timed_count === 0 && <Empty description="暂无有发表时间和可回溯链接的原文" />}
+      <Timeline items={data.nodes.map((node) => ({
+        key: node.document_id,
+        children: <Space direction="vertical" size={2}>
+          <Typography.Text strong>{node.kind === 'first_observed' ? '采集范围内最早记录 · ' : ''}{formatDateTime(node.event_time)} · {node.title || '无标题原文'}</Typography.Text>
+          <Typography.Text type="secondary">来源事实 · {node.source_name || node.source_type || '来源未标明'}{node.author ? ` · ${node.author}` : ''} · 文档 ID: {node.document_id}</Typography.Text>
+          <a href={node.evidence_urls[0]} target="_blank" rel="noopener noreferrer">查看原始来源</a>
+        </Space>,
+      }))} />
+      {data.coverage.unlocated_count > 0 && (
+        <Alert type="warning" showIcon message={`另有 ${data.coverage.unlocated_count} 条未定位原文（缺少有效发表时间或可回溯链接），未纳入时间排序。`} />
+      )}
+      {data.unlocated.length > 0 && <List size="small" header="未定位原文" dataSource={data.unlocated} renderItem={(doc) => (
+        <List.Item key={doc.document_id}>
+          {doc.title || doc.document_id || '未知原文'} · {doc.source_name || '来源未知'} · {doc.reason === 'missing_published_at' ? '缺少有效发表时间' : '来源链接不可核验'}
+          {doc.url && <> · <a href={doc.url} target="_blank" rel="noopener noreferrer">查看来源</a></>}
+        </List.Item>
+      )} />}
+      <Alert type="warning" showIcon message="传播关系不可用：无可核验的转发、回复或引用证据，未绘制传播链路。官方回应及回应后变化尚未核验。" />
+      {data.next_cursor && <Button onClick={() => onNext(data.next_cursor)}>下一页证据</Button>}
+    </Space>
   );
 }
 

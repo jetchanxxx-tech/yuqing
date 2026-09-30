@@ -25,7 +25,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 
 	// Health check (unauthenticated).
 	r.GET("/api/v1/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "version": "0.2.2-beta"})
+		c.JSON(200, gin.H{"status": "ok", "version": "0.2.3-beta"})
 	})
 
 	// Auth routes (unauthenticated): register / login / refresh.
@@ -50,6 +50,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 		v1.RegisterSessionRoutes(session, deps)
 
 		v1.RegisterAnalysisRoutes(api, deps)
+		v1.RegisterMonitorPlanRoutes(api, deps)
 		v1.RegisterAPIKeyRoutes(api, deps)
 		v1.RegisterReportRoutes(api, deps)
 		v1.RegisterDashboardRoutes(api, deps)

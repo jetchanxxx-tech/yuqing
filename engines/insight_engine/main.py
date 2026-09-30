@@ -466,6 +466,8 @@ async def _analyze_one_dimension(
 # 维度并发闸门：5 路同时打满会触发供应商限流（429），闸到 3 并发 +
 # 单次重试。串行则多花 1-2 分钟 —— 3 是延迟与稳定性的折中。
 _DIMENSION_CONCURRENCY = 3
+_ANALYZE_BUDGET_SECONDS = 1200  # Full insight may exceed the UI 5-10 minute estimate.
+_SUMMARY_RESERVE_SECONDS = 120
 
 # 重试前的恒定退避秒数（测试 monkeypatch 为 0 加速）。闸门已把并发压到 3，
 # 重试风暴风险有限；持锁退避避免绕过并发闸门。
@@ -474,14 +476,22 @@ _RETRY_DELAY_SECONDS = 2
 logger = logging.getLogger(__name__)
 
 
+def _error_reason(exc: Exception) -> str:
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        return "超时"
+    return str(exc) or type(exc).__name__
+
+
 async def _run_dimensions(
     llm, documents: list[dict], analysis_type: str, title: str,
     llm_model: str = "", mode: str = "",
+    gate: asyncio.Semaphore | None = None,
+    deadline: float | None = None,
 ) -> tuple[list[dict], list[str]]:
     """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
     返回 (成功的维度, 失败原因列表)。"""
     specs = [d for d in DIMENSIONS if d.id in QUICK_DIMENSION_IDS] if mode == "quick" else list(DIMENSIONS)
-    sem = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
+    sem = gate if gate is not None else asyncio.Semaphore(_DIMENSION_CONCURRENCY)
 
     async def guarded(spec: DimensionSpec) -> dict:
         async with sem:
@@ -492,19 +502,32 @@ async def _run_dimensions(
                 # 重试仍失败则异常向上抛，由 gather(return_exceptions=True)
                 # 收进 failed 列表。永久性错误（如 key 无效）会白付一次重试，
                 # 换取瞬时错误的恢复，值得。
-                logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, exc)
+                logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, _error_reason(exc))
                 await asyncio.sleep(_RETRY_DELAY_SECONDS)
                 return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode)
 
-    results = await asyncio.gather(
-        *(guarded(spec) for spec in specs), return_exceptions=True
-    )
+    tasks = [asyncio.create_task(guarded(spec)) for spec in specs]
+    try:
+        if deadline is not None:
+            _, pending = await asyncio.wait(
+                tasks, timeout=max(0, deadline - asyncio.get_running_loop().time())
+            )
+            for task in pending:
+                task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     dims: list[dict] = []
     failed: list[str] = []
     for spec, res in zip(specs, results):
-        if isinstance(res, Exception):
-            failed.append(f"{spec.name}（{res}）")
+        if isinstance(res, asyncio.CancelledError):
+            failed.append(f"{spec.name}（超时）")
+        elif isinstance(res, Exception):
+            failed.append(f"{spec.name}（{_error_reason(res)}）")
         else:
             dims.append(res)
     return dims, failed
@@ -532,43 +555,66 @@ async def analyze(req: AnalyzeRequest) -> dict:
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": ""}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url, timeout=300)
+    llm = build_client(key, req.llm_base_url, timeout=900)
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
     warnings = []
+    deadline = asyncio.get_running_loop().time() + _ANALYZE_BUDGET_SECONDS
+    work_deadline = deadline - _SUMMARY_RESERVE_SECONDS
 
-    # ① 情感 + 话题（分类任务，temperature=0 求稳定；quick 模式同关思考）
-    # 失败不致命：维度分析比情感分类更有价值，容许降级
+    # 情感/话题与维度分析互不依赖，共享三路闸门并行执行。摘要仍等两者完成。
+    # 失败不致命：维度分析比情感分类更有价值，容许降级。
+    gate = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
+
+    async def classify_sentiment_topics() -> dict:
+        async with gate:
+            return await _chat_json_smart(
+                llm,
+                model,
+                [
+                    {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
+                    {
+                        "role": "user",
+                        "content": _SENTIMENT_TOPIC_PROMPT.format(
+                            docs=json.dumps(briefs, ensure_ascii=False)
+                        ),
+                    },
+                ],
+                mode=req.mode,
+                temperature=0,
+            )
+
+    sentiment_task = asyncio.create_task(classify_sentiment_topics())
+    dimensions_task = asyncio.create_task(_run_dimensions(
+        llm, req.documents, req.analysis_type, req.title, model, req.mode,
+        gate, work_deadline,
+    ))
     sentiments = []
     topics = []
     try:
-        sent_topics = await _chat_json_smart(
-            llm,
-            model,
-            [
-                {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
-                {
-                    "role": "user",
-                    "content": _SENTIMENT_TOPIC_PROMPT.format(
-                        docs=json.dumps(briefs, ensure_ascii=False)
-                    ),
-                },
-            ],
-            mode=req.mode,
-            temperature=0,
-        )
-        sentiments = sent_topics.get("sentiments", []) if isinstance(sent_topics, dict) else []
-        topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
-        if not isinstance(topics, list):
-            topics = []
-    except HTTPException:
-        raise
-    except Exception as exc:
-        # 情感+话题失败降级，继续执行维度分析（维度是核心价值）
-        logger.warning("sentiment/topic analysis failed: %s; continuing with dimensions", exc)
-        warnings.append(f"情感和话题分析失败：{exc}")
+        try:
+            sent_topics = await asyncio.wait_for(
+                sentiment_task,
+                timeout=max(0, work_deadline - asyncio.get_running_loop().time()),
+            )
+            sentiments = sent_topics.get("sentiments", []) if isinstance(sent_topics, dict) else []
+            topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
+            if not isinstance(topics, list):
+                topics = []
+        except HTTPException:
+            raise
+        except Exception as exc:
+            reason = _error_reason(exc)
+            logger.warning("sentiment/topic analysis failed: %s; continuing with dimensions", reason)
+            warnings.append(f"情感和话题分析失败：{reason}")
+        dimensions, failed = await dimensions_task
+    finally:
+        for task in (sentiment_task, dimensions_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(sentiment_task, dimensions_task, return_exceptions=True)
 
     # ② 趋势由代码按发布时间计算，覆盖 LLM 的猜测
     trends = _compute_trends(topics, req.documents)
@@ -576,10 +622,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         if isinstance(t, dict):
             t["trend"] = trends.get(t.get("id", ""), "stable")
 
-    # ③ 维度并发分析（quick=3 维速览 / full=5 维；单维度失败降级，不拖垮整次分析）
-    dimensions, failed = await _run_dimensions(
-        llm, req.documents, req.analysis_type, req.title, model, req.mode
-    )
+    # ③ 维度分析结果（quick=3 维速览 / full=5 维；单维度失败降级）。
     if failed:
         warnings.append(f"部分维度分析失败：{'；'.join(failed)}")
     # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
@@ -591,41 +634,76 @@ async def analyze(req: AnalyzeRequest) -> dict:
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     summary = ""
     try:
-        summary_resp = await _chat_json_smart(
-            llm,
-            model,
-            [
-                {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
-                {
-                    "role": "user",
-                    "content": _SUMMARY_PROMPT.format(
-                        context=context,
-                        dimensions=json.dumps(
-                            [
-                                {k: v for k, v in d.items() if k in ("name", "findings", "trend")}
-                                for d in dimensions
-                            ],
-                            ensure_ascii=False,
-                        ),
-                        sentiments=json.dumps(sentiments, ensure_ascii=False),
-                        topics=json.dumps(topics, ensure_ascii=False),
-                    ),
-                },
-            ],
+        summary_kwargs = dict(
             mode=req.mode,
             temperature=0.4,
+            max_tokens=8192,
         )
+        try:
+            summary_resp = await asyncio.wait_for(
+                _chat_json_smart(
+                    llm,
+                    model,
+                [
+                    {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
+                    {
+                        "role": "user",
+                        "content": _SUMMARY_PROMPT.format(
+                            context=context,
+                            dimensions=json.dumps(
+                                [
+                                    {k: v for k, v in d.items() if k in ("name", "findings", "trend")}
+                                    for d in dimensions
+                                ],
+                                ensure_ascii=False,
+                            ),
+                            sentiments=json.dumps(sentiments, ensure_ascii=False),
+                            topics=json.dumps(topics, ensure_ascii=False),
+                        ),
+                    },
+                ],
+                    **summary_kwargs,
+                ),
+                timeout=max(0, deadline - asyncio.get_running_loop().time()),
+            )
+        except ValueError:
+            # A truncated or malformed JSON response gets one larger-budget retry.
+            summary_resp = await asyncio.wait_for(
+                _chat_json_smart(
+                    llm,
+                    model,
+                    [
+                        {"role": "system", "content": "只输出合法 JSON，不要 Markdown，不要解释。"},
+                        {"role": "user", "content": _SUMMARY_PROMPT.format(
+                            context=context,
+                            dimensions=json.dumps(
+                                [{k: v for k, v in d.items() if k in ("name", "findings", "trend")} for d in dimensions],
+                                ensure_ascii=False,
+                            ),
+                            sentiments=json.dumps(sentiments, ensure_ascii=False),
+                            topics=json.dumps(topics, ensure_ascii=False),
+                        )},
+                    ],
+                    mode=req.mode,
+                    temperature=0.2,
+                    max_tokens=12288,
+                ),
+                timeout=max(0, deadline - asyncio.get_running_loop().time()),
+            )
         summary = (
             summary_resp.get("revised_summary", summary_resp.get("summary", ""))
             if isinstance(summary_resp, dict)
             else ""
         )
+        if not isinstance(summary, str) or not summary.strip():
+            raise ValueError("摘要结果为空")
     except HTTPException:
         raise
     except Exception as exc:
         # 摘要失败不影响已产出的维度结论
-        logger.warning("summary generation failed: %s", exc)
-        warnings.append(f"摘要生成失败：{exc}")
+        reason = _error_reason(exc)
+        logger.warning("summary generation failed: %s", reason)
+        warnings.append(f"摘要生成失败：{reason}")
         warning = "；".join(warnings)
 
     return {
@@ -644,7 +722,7 @@ async def sentiment(req: SentimentRequest) -> dict:
         return {"results": []}
 
     key = _require_key(req.api_key)
-    llm = build_client(key, req.llm_base_url, timeout=300)
+    llm = build_client(key, req.llm_base_url, timeout=900)
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(

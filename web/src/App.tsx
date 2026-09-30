@@ -14,6 +14,7 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const TrendsPage = lazy(() => import('./pages/TrendsPage'));
 const AnalysisNewPage = lazy(() => import('./pages/AnalysisNewPage'));
+const MonitorPlansPage = lazy(() => import('./pages/MonitorPlansPage'));
 const AnalysisListPage = lazy(() => import('./pages/AnalysisListPage'));
 const AnalysisDetailPage = lazy(() => import('./pages/AnalysisDetailPage'));
 const ReportHistoryPage = lazy(() => import('./pages/ReportHistoryPage'));
@@ -92,6 +93,7 @@ export default function App() {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/trends" element={<TrendsPage />} />
                     <Route path="/analyses/new" element={<AnalysisNewPage />} />
+                    <Route path="/monitor-plans" element={<MonitorPlansPage />} />
                     <Route path="/analyses" element={<AnalysisListPage />} />
                     <Route path="/analyses/:id" element={<AnalysisDetailPage />} />
                     <Route path="/reports" element={<ReportHistoryPage />} />

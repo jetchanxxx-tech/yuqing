@@ -73,6 +73,44 @@ func sampleDocs(n int) []Document {
 	return docs
 }
 
+func TestPipeline_filtersBeforePersistingAndUsesSnapshot(t *testing.T) {
+	docs := []Document{
+		{ID: "ok-start", SourceType: "news", Content: "topic", PublishedAt: "2026-09-01T00:00:00Z"},
+		{ID: "ok-end", SourceType: "news", Content: "topic", PublishedAt: "2026-09-28T23:59:59Z"},
+		{ID: "excluded", SourceType: "news", Content: "advert topic", PublishedAt: "2026-09-15T00:00:00Z"},
+		{ID: "wrong-source", SourceType: "weibo", Content: "topic", PublishedAt: "2026-09-15T00:00:00Z"},
+		{ID: "out-of-window", SourceType: "news", Content: "topic", PublishedAt: "2026-08-31T23:59:59Z"},
+		{ID: "unknown-date", SourceType: "news", Content: "topic"},
+	}
+	fetcher := &fakeFetcher{docs: docs}
+	p, svc := newTestPipeline(t, fetcher, 5*time.Second)
+	ctx := context.Background()
+	a, err := svc.Create(ctx, CreateAnalysisRequest{TenantID: "t1", Name: "filtered", Keywords: []string{"topic"}, Sources: []string{"news"}, ExcludeWords: []string{"advert"}, DateFrom: "2026-09-01", DateTo: "2026-09-28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Handle(ctx, TaskMessage{AnalysisID: a.ID, TenantID: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if fetcher.gotReq.DateFrom != a.DateFrom || fetcher.gotReq.DateTo != a.DateTo || len(fetcher.gotReq.ExcludeWords) != 1 || fetcher.gotReq.ExcludeWords[0] != "advert" {
+		t.Fatalf("fetch snapshot lost: %+v", fetcher.gotReq)
+	}
+	stored := svc.Documents(ctx, "t1", a.ID)
+	if len(stored) != 2 || stored[0].ID != "ok-start" || stored[1].ID != "ok-end" {
+		t.Fatalf("unfiltered documents persisted: %+v", stored)
+	}
+	got, err := svc.Get(ctx, "t1", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DocCount != 2 {
+		t.Fatalf("doc count = %d, want 2", got.DocCount)
+	}
+	if !strings.Contains(got.Warning, "published_at missing or invalid") {
+		t.Fatalf("missing local date coverage warning: %q", got.Warning)
+	}
+}
+
 // ── 正常流程 ────────────────────────────────────────────
 
 func TestPipeline_completesTaskWithDocuments(t *testing.T) {
@@ -143,6 +181,38 @@ func TestPipeline_passesParamsToFetcher(t *testing.T) {
 	}
 	if fetcher.gotReq.TenantID != "t1" || fetcher.gotReq.AnalysisID != created.ID {
 		t.Errorf("tenant/analysis id not forwarded: %+v", fetcher.gotReq)
+	}
+}
+
+func TestFilterFetchedDocumentsAcceptsSourceDateWithoutTime(t *testing.T) {
+	docs, missing := filterFetchedDocuments([]Document{
+		{ID: "dated", SourceType: "news", PublishedAt: "2026-09-28"},
+		{ID: "unknown", SourceType: "news", PublishedAt: ""},
+	}, &AnalysisResult{Sources: []string{"news"}, DateFrom: "2026-09-28", DateTo: "2026-09-28"})
+	if len(docs) != 1 || docs[0].ID != "dated" || missing != 1 {
+		t.Fatalf("date-only source publication should pass day window: docs=%+v missing=%d", docs, missing)
+	}
+}
+
+type coverageFetcherStub struct{ fakeFetcher }
+
+func (f *coverageFetcherStub) FetchWithCoverage(ctx context.Context, req FetchRequest) (FetchResult, error) {
+	return FetchResult{Documents: []Document{{ID: "source", SourceType: "news"}}, Warning: "candidate results truncated"}, nil
+}
+
+func TestPipelineKeepsUpstreamCoverageWarning(t *testing.T) {
+	fetcher := &coverageFetcherStub{}
+	p, svc := newTestPipeline(t, fetcher, 5*time.Second)
+	created, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "t1", Name: "sample", Sources: []string{"news"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Handle(context.Background(), TaskMessage{AnalysisID: created.ID, TenantID: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Get(context.Background(), "t1", created.ID)
+	if err != nil || !strings.Contains(got.Warning, "candidate results truncated") {
+		t.Fatalf("coverage warning lost: analysis=%+v error=%v", got, err)
 	}
 }
 
@@ -252,7 +322,7 @@ func newFakeReportSvc() *fakeReportSvc {
 func (f *fakeReportSvc) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, struct{ tenantID, analysisID, format, createdBy string}{tenantID, analysisID, format, createdBy})
+	f.calls = append(f.calls, struct{ tenantID, analysisID, format, createdBy string }{tenantID, analysisID, format, createdBy})
 	return "report-" + analysisID, nil
 }
 
