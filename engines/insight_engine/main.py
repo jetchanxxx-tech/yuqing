@@ -167,14 +167,15 @@ _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 分析类型：{analysis_type}
 
 【文档素材包】以下是你唯一可引用的素材。引用原声必须**逐字摘录**并注明来源平台，
-不得改写、不得编造任何未出现的内容：
+不得改写、不得编造任何未出现的内容；quotes.text 只能是来源标题或正文的连续原文，不得添加「代表性声音」等标签：
 {materials}
+{quote_retry_instruction}
 
 按五段骨架组织输出（{skeleton}），输出 JSON 对象（不得输出其他内容）：
 {{
   "findings": "【核心发现】本维度的关键结论，不少于 150 字，必须具体到人/事/数字",
   "data_points": ["【数据】每条须含具体数字或比例，如「4 篇文档中 3 篇来自微博」"],
-  "quotes": [{{"text": "【代表性声音】逐字摘录的原声（不得改写）", "source": "来源平台"}}],
+  "quotes": [{{"text": "", "source": ""}}],
   "deep_read": "【深入解读】这一维度说明了什么，不少于 100 字，不得重复 findings",
   "trend": "【趋势】接下来会怎么走，依据是什么"
 }}
@@ -182,7 +183,7 @@ _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 【内容密度硬指标】输出前逐条自查：
 [ ] findings 是否不少于 150 字？
 [ ] data_points 是否至少 3 条，且每条都有具体数字？
-[ ] quotes 是否至少 2 条，且都是逐字摘录（不是概括转述）？
+[ ] quotes 是否至少 2 条，且 text 只含来源原文连续片段、没有标签或改写？
 [ ] deep_read 是否不少于 100 字，且不是 findings 的复述？
 [ ] 是否避免了「舆情」「传播」「倾向」「展望」「引发广泛关注」等官方套话？
 [ ] 素材不足时是否如实说明，而不是用通用话术填充？"""
@@ -216,17 +217,11 @@ _SENTIMENT_TOPIC_PROMPT = """请对以下舆情文档逐条做情感分析，并
 - doc_ids 必须真实来自上面的文档列表，且各话题的 doc_ids 不重叠。
 - trend 字段不要输出，趋势由平台按发布时间计算。"""
 
-_SUMMARY_PROMPT = """你是一名资深舆情分析师。请分两步完成研判摘要：
+_SUMMARY_PROMPT = """你是一名资深舆情分析师。请基于下列研判结论生成完整摘要。
 
-第一步【批判】：先写一段不超过 80 字的初稿，然后自评这四点：
-① 是否过于官方化、套路化？② 是否缺乏真实的民众声音和情感表达？
-③ 是否遗漏了重要的公众观点和争议焦点？④ 是否缺少具体的数字和案例？
-
-第二步【重写】：根据自评结果重写，输出最终摘要。
-要求：200-300 字；至少包含 3 个具体数字；必须体现不同维度结论之间的**张力**
-（例如情感上同情但平台上沉默、官方回应与民间感受背离）；
-避免"舆情""传播""倾向""展望"等官方术语，改用网民真实表达；
-若素材间存在数据或说法冲突，明确指出。{context}
+请在内部批判草稿并重写，检查结论是否具体、是否有真实公众观点、是否覆盖争议焦点和具体数字；不要输出中间草稿、自评或批判过程。
+要求：200-300 字；在素材支持时至少包含 3 个具体数字；体现不同维度结论之间的张力；避免空泛套话和官方术语；若素材间存在数据或说法冲突，明确指出。
+摘要正文不要使用英文 ASCII 双引号；引用请用中文引号「」。不要编造素材中没有的内容。{context}
 
 各维度分析结论（JSON）：
 {dimensions}
@@ -237,7 +232,15 @@ _SUMMARY_PROMPT = """你是一名资深舆情分析师。请分两步完成研�
 话题聚类（JSON）：
 {topics}
 
-输出 JSON 对象：{{"critique": "初稿及自评", "revised_summary": "重写后的最终摘要"}}"""
+只输出完整且合法的 JSON 对象，且仅包含一个字段：{{"revised_summary":"最终摘要正文"}}。不得输出其他字段、Markdown 或正文外文字。"""
+
+_SUMMARY_RETRY_PROMPT = """根据以下维度、情感和话题信息，直接写一段 200-300 字的完整舆情摘要。保留具体数字和观点分歧，不要草稿或自评，不要编造。正文不要包含英文 ASCII 双引号，引用用中文引号「」。{context}
+
+维度：{dimensions}
+情感：{sentiments}
+话题：{topics}
+
+严格只输出合法 JSON：{{"revised_summary":"摘要正文"}}。"""
 
 
 # ── 素材准备 ────────────────────────────────────────────────────
@@ -399,7 +402,7 @@ def _normalize_for_match(s: str) -> str:
 
 def _verify_quotes(
     dimensions: list[dict], documents: list[dict]
-) -> list[str]:
+) -> tuple[list[str], set[str]]:
     """引用保真校验：维度里的每条原声必须是某篇源文档的归一化子串。
 
     LLM 编造或改写的引语一律丢弃，返回丢弃原因列表（并入 warning）。
@@ -412,6 +415,7 @@ def _verify_quotes(
         if isinstance(d, dict)
     ]
     dropped: list[str] = []
+    invalid_dimension_ids: set[str] = set()
     for dim in dimensions:
         kept: list[dict] = []
         for q in dim.get("quotes") or []:
@@ -419,16 +423,17 @@ def _verify_quotes(
             if text and any(text in doc for doc in corpus if doc):
                 kept.append(q)
             else:
+                invalid_dimension_ids.add(str(dim.get("id", "")))
                 dropped.append(f"{dim.get('name', dim.get('id', ''))} 的引语「{q.get('text', '')[:30]}」未命中原文")
         dim["quotes"] = kept
-    return dropped
+    return dropped, invalid_dimension_ids
 
 
 async def _analyze_one_dimension(
     llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str,
-    llm_model: str = "", mode: str = "",
+    llm_model: str = "", mode: str = "", quote_retry: bool = False,
 ) -> dict:
-    """单个维度的独立分析调用。异常由调用方捕获（单维度失败不致命）。"""
+    """单个维度的独立分析调用。异常由调用方捕获。"""
     prompt = _DIMENSION_PROMPT.format(
         dim_id=spec.id,
         dim_name=spec.name,
@@ -438,6 +443,11 @@ async def _analyze_one_dimension(
         analysis_type=analysis_type or "综合监测",
         materials=_materials_text(documents),
         skeleton=_SKELETON,
+        quote_retry_instruction=(
+            "【引语严格重试】上次引语未通过原文核验。只允许复制素材中连续出现的原文，"
+            "不得拼接、改写、概括、添加标签或省略号；找不到足够原句时 quotes 返回空数组。"
+            if quote_retry else ""
+        ),
     )
     data = await _chat_json_smart(
         llm,
@@ -487,16 +497,20 @@ async def _run_dimensions(
     llm_model: str = "", mode: str = "",
     gate: asyncio.Semaphore | None = None,
     deadline: float | None = None,
+    dimension_ids: set[str] | None = None,
+    quote_retry: bool = False,
 ) -> tuple[list[dict], list[str]]:
     """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
     返回 (成功的维度, 失败原因列表)。"""
     specs = [d for d in DIMENSIONS if d.id in QUICK_DIMENSION_IDS] if mode == "quick" else list(DIMENSIONS)
+    if dimension_ids is not None:
+        specs = [d for d in specs if d.id in dimension_ids]
     sem = gate if gate is not None else asyncio.Semaphore(_DIMENSION_CONCURRENCY)
 
     async def guarded(spec: DimensionSpec) -> dict:
         async with sem:
             try:
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry)
             except Exception as exc:
                 # 429/超时类瞬时错误重试一次。首次失败必须留痕（排障依赖它）；
                 # 重试仍失败则异常向上抛，由 gather(return_exceptions=True)
@@ -504,7 +518,7 @@ async def _run_dimensions(
                 # 换取瞬时错误的恢复，值得。
                 logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, _error_reason(exc))
                 await asyncio.sleep(_RETRY_DELAY_SECONDS)
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry)
 
     tasks = [asyncio.create_task(guarded(spec)) for spec in specs]
     try:
@@ -622,13 +636,32 @@ async def analyze(req: AnalyzeRequest) -> dict:
         if isinstance(t, dict):
             t["trend"] = trends.get(t.get("id", ""), "stable")
 
-    # ③ 维度分析结果（quick=3 维速览 / full=5 维；单维度失败降级）。
+    # ③ 引语必须逐字命中原文。核验失败时只重跑受影响的维度，
+    # 共享原始并发闸门和分析 deadline；二次仍不合格则返回 warning，Go 严格失败。
+    dropped, invalid_quote_ids = _verify_quotes(dimensions, req.documents)
+    quote_retry_ids = set(invalid_quote_ids)
+    quote_retry_failures: list[str] = []
+    if quote_retry_ids and not failed:
+        retried, quote_retry_failures = await _run_dimensions(
+            llm, req.documents, req.analysis_type, req.title, model, req.mode,
+            gate, work_deadline, quote_retry_ids, True,
+        )
+        retried_by_id = {str(d.get("id", "")): d for d in retried}
+        dimensions = [retried_by_id.get(str(d.get("id", "")), d) for d in dimensions]
+        dropped, invalid_quote_ids = _verify_quotes(dimensions, req.documents)
+        # The source may not contain two safe verbatim quotes; a verified single quote is valid.
+        # Only an unverified quote after retry remains a failure.
+        if invalid_quote_ids:
+            quote_retry_failures.extend(
+                f"{next((str(d.get('name', d.get('id', ''))) for d in dimensions if str(d.get('id', '')) == dim_id), dim_id)}（仍有无法核验的引语）"
+                for dim_id in sorted(invalid_quote_ids)
+            )
     if failed:
         warnings.append(f"部分维度分析失败：{'；'.join(failed)}")
-    # ③' 引用保真校验：编造引语丢弃并告警（防幻觉，P2 核心）
-    dropped = _verify_quotes(dimensions, req.documents)
     if dropped:
-        warnings.append(f"丢弃 {len(dropped)} 条未命中原文的引语（防编造）：{'；'.join(dropped)}")
+        warnings.append(f"引语重试后仍有 {len(dropped)} 条无法核验：{'；'.join(dropped)}")
+    if quote_retry_failures:
+        warnings.append(f"引语核验重试失败：{'；'.join(quote_retry_failures)}")
     warning = "；".join(warnings)
 
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
@@ -674,7 +707,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     model,
                     [
                         {"role": "system", "content": "只输出合法 JSON，不要 Markdown，不要解释。"},
-                        {"role": "user", "content": _SUMMARY_PROMPT.format(
+                        {"role": "user", "content": _SUMMARY_RETRY_PROMPT.format(
                             context=context,
                             dimensions=json.dumps(
                                 [{k: v for k, v in d.items() if k in ("name", "findings", "trend")} for d in dimensions],
@@ -700,7 +733,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        # 摘要失败不影响已产出的维度结论
+        # 摘要失败会使整次 insight 返回 warning；严格模式下 Go 管线标记任务失败。
         reason = _error_reason(exc)
         logger.warning("summary generation failed: %s", reason)
         warnings.append(f"摘要生成失败：{reason}")
