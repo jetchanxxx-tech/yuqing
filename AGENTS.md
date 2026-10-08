@@ -19,3 +19,11 @@ A successful GitHub run for the exact source commit is required before release. 
 For production, select the successful run on `prod` for the intended commit. Download `yuqing-release-<SHA>` and verify the archive's `.sha256`, its `BUILD_COMMIT`, and the unpacked `SHA256SUMS` before installation. Preserve rollback artifacts and install hash named frontend assets before atomically replacing `index.html`.
 
 Never commit deployment credentials or tokens.
+
+## Approved administration planning scope (2026-10-09)
+
+The administrator backend is organized into user account management and tenant/subscription management. The development director's plan is `docs/planning/ADMIN_USER_CENTER_DEVELOPMENT_PLAN.html`.
+
+Login device management is deferred for this iteration: device lists, device fingerprints, per-device sign-out, and device session pages are outside scope. Account security requirements for password changes and user/tenant suspension remain part of the plan and may use account status or credential versions without introducing device management.
+
+The current task produces a development plan. Its proposed features must not be reported as implemented or deployed.

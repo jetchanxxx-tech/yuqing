@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理员后台与用户中心开发计划 · 盘古舆情</title>
+  <style>
+    :root{--ink:#172b3a;--muted:#5d6c77;--paper:#f4f5f1;--white:#fff;--line:#dbe2df;--accent:#126356;--soft:#eaf3ef;--warn:#805419;--warn-bg:#fbf3e4}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.75 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--accent);text-underline-offset:3px}a:focus-visible{outline:3px solid #c88620;outline-offset:3px}header{background:#173e37;color:#fff;padding:52px max(28px,calc((100vw - 1180px)/2));border-bottom:5px solid #97bfa8}header p{max-width:950px;color:#d3e4db;margin-bottom:0}.eyebrow{font-size:12px;letter-spacing:.12em;font-weight:700;color:#b7d5c3}h1{font-size:clamp(26px,3vw,40px);line-height:1.35;margin:12px 0}h2{font-size:23px;line-height:1.4;margin:0 0 18px}h3{font-size:17px;margin:26px 0 10px}p{margin:10px 0}main{max-width:1240px;margin:auto;display:grid;grid-template-columns:190px minmax(0,1fr);gap:28px;padding:30px}nav{position:sticky;top:24px;align-self:start;font-size:13px}nav strong{display:block;margin-bottom:10px}nav a{display:block;padding:6px 0;text-decoration:none;color:var(--muted)}nav a:hover{color:var(--accent)}article{min-width:0}section{background:var(--white);padding:28px;margin-bottom:20px;border:1px solid var(--line);border-radius:12px;scroll-margin-top:20px}.num{color:var(--accent);font-size:13px;display:block;margin-bottom:6px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 0}.badge{display:inline-block;font-size:12px;line-height:1.6;padding:3px 9px;background:var(--soft);color:var(--accent);border:1px solid #c4d8cc;border-radius:6px}.badge.proposed{background:var(--warn-bg);color:var(--warn);border-color:#e9d5b3}.badge.excluded{background:#eff0f2;color:#505a64;border-color:#d7dce1}.note{border-left:4px solid var(--accent);background:var(--soft);padding:14px 17px;margin:16px 0}.note.warning{background:var(--warn-bg);border-color:#b97e29;color:#694714}.small{font-size:13px;color:var(--muted)}ul,ol{padding-left:24px;margin:10px 0}li{margin:5px 0}code{font:12.5px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;background:#f0f3f2;padding:2px 4px;border-radius:3px;overflow-wrap:anywhere}pre{background:#f0f3f2;padding:16px;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:7px;font-size:12px;line-height:1.7}pre code{padding:0}.table-wrap{overflow-x:auto;margin:16px 0}table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.65}th,td{text-align:left;vertical-align:top;padding:11px 12px;border-bottom:1px solid var(--line)}th{background:#edf2ef;color:#315346;font-weight:700}td:first-child{font-weight:600}tbody tr:last-child td{border-bottom:0}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}.card{border:1px solid var(--line);border-top:3px solid var(--accent);padding:16px;border-radius:6px}.card strong{font-size:17px}.card p{font-size:13px;margin-bottom:0}.path{display:block;color:var(--muted);font-weight:400;margin-top:5px}.flow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:16px 0}.flow div{flex:1;min-width:155px;border:1px solid var(--line);background:var(--soft);padding:14px;border-radius:7px;font-size:13px}.flow strong{display:block}.flow span{display:block;color:var(--muted)}details{border-top:1px solid var(--line);padding-top:12px;margin-top:16px}summary{cursor:pointer;font-weight:600;color:var(--accent)}footer{max-width:1180px;margin:0 auto;padding:0 30px 32px;color:var(--muted);font-size:12px}
+    @media(max-width:950px){main{display:block;padding:18px}nav{position:static;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:6px 15px}nav strong{width:100%}nav a{padding:0}section{padding:22px}.cards{grid-template-columns:1fr}header{padding:30px 22px}}
+    @media print{body{background:#fff;font-size:11px}header{padding:18px;color:#172b3a;background:#fff;border-bottom:2px solid #126356}header p,.eyebrow{color:#5d6c77}main{display:block;padding:0}nav{display:none}section{border:0;border-bottom:1px solid #ddd;border-radius:0;margin:0;padding:18px 0}h2,h3,th{break-after:avoid}tr,.card,.note{break-inside:avoid}.table-wrap{overflow:visible}a{color:inherit;text-decoration:none}.cards{display:block}.card{margin:8px 0}footer{padding:15px 0}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">盘古舆情 · DEVELOPMENT DIRECTOR PLAN · 2026-10-09</div>
+  <h1>管理员后台与用户中心<br>开发计划</h1>
+  <p>目标：让运营能管理真实账号与租户，让用户能完成资料维护、身份恢复和安全操作；先修复权限生效与持久化，再补齐界面和自助流程。</p>
+  <div class="meta"><span class="badge">已批准：账号与租户分开管理</span><span class="badge">已批准：规划其余用户中心能力</span><span class="badge proposed">本文技术与 API 为待实施提案</span><span class="badge excluded">登录设备管理暂缓</span></div>
+</header>
+<main>
+  <nav aria-label="计划章节导航">
+    <strong>交付与执行索引</strong>
+    <a href="#brief">01 范围与默认假设</a>
+    <a href="#baseline">02 源码现状</a>
+    <a href="#ux">03 后台与用户中心</a>
+    <a href="#architecture">04 技术决策</a>
+    <a href="#contracts">05 接口契约</a>
+    <a href="#data">06 数据与迁移</a>
+    <a href="#work">07 阶段与任务</a>
+    <a href="#dependencies">08 依赖与负责人</a>
+    <a href="#acceptance">09 验收矩阵</a>
+    <a href="#closure">10 注销与回收</a>
+    <a href="#release">11 发布与回滚</a>
+    <a href="#decisions">12 决策与交接</a>
+  </nav>
+  <article>
+    <section id="brief">
+      <span class="num">01 / 范围与默认假设</span><h2>交付边界</h2>
+      <p><strong>交付性质：</strong>基于当前文件的开发计划，供产品、前后端、QA 和运维拆任务。本文没有实施业务功能、运行云端 CI、访问生产或发送邮件／短信。</p>
+      <p><strong>架构：</strong>沿用 Go 模块化单体、Gin／pgx／goose、React／Ant Design／TanStack Query，生产继续 PostgreSQL 15。账号身份、租户状态、套餐权益分属明确模块；组合根统一装配，控制器只处理 DTO 与错误信封。</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">状态</th><th scope="col">范围</th></tr></thead><tbody>
+        <tr><td><span class="badge">已批准方向</span></td><td>后台拆为「用户账号管理」与「租户／套餐管理」；管理员可调整平台角色及现有成员基本角色；复用已有资料、改密、邮箱验证、手机绑定，补齐换邮箱、头像、找回密码、已绑定手机号登录、注销、时区展示与文案。</td></tr>
+        <tr><td><span class="badge proposed">待实施提案</span></td><td>下述字段、路由、角色表、token_version、任务优先级、注销流程与迁移方案。细节应在各任务开工前固化契约，不视为已经部署或已通过验收。</td></tr>
+        <tr><td><span class="badge excluded">本轮排除</span></td><td>设备列表、设备指纹、逐设备退出、会话管理页面及新的设备会话体系；手机号注册、邀请协作、企业认证、新支付渠道和微服务拆分。已有 <code>login_sessions</code> 表保留，不接线、不迁出设备产品。</td></tr>
+      </tbody></table></div>
+      <ul>
+        <li>账号是登录主体；租户是团队、数据和套餐容器；成员关系连接两者。当前 11 用户／11 租户／11 成员是上游已核对的基线，不是固定的一对一产品约束。</li>
+        <li>默认保留当前公测与计费行为：源码 PG 装配启用了 <code>SetBetaSkipCredits(true)</code>；注册赠 1 次 credit 与邮箱状态独立。不能借用户中心改造自行启用试用门槛、停止公测放行、重置额度或变更价格。</li>
+        <li>套餐目录、额度、支付状态以现有服务真实结果为准；文案不能声称邮箱验证赠额度、自动付费开通或支付联调已完成。</li>
+        <li>所有编译、依赖安装中涉及编译的步骤、Go 测试／vet、前端 lint／build 与浏览器测试仅进入 GitHub 托管 runner 的既有两份工作流。本地仅编辑、审阅和轻量 HTML 检查。</li>
+      </ul>
+      <p class="small">依据：本次用户方向、AGENTS.md、CLAUDE.md 与下文实际源码。历史 USER_CENTER_PLAN／TECH_ANALYSIS／IMPLEMENTATION 仅为历史设计，不作为实现证据。上游核对的远端 dev 参考 SHA 为 <code>99dce82daba8fb01f7bf1dbbf888cf6590eb2d6b</code>；当前工作区 Git 元数据指向失效的旧 worktree 路径，不能断言文件与该提交完全一致。执行前须恢复 Git 元数据并锁定实际源码 SHA。</p>
+    </section>
+
+    <section id="baseline">
+      <span class="num">02 / 源码现状</span><h2>已有能力与缺口</h2>
+      <div class="table-wrap"><table><thead><tr><th scope="col">模块</th><th scope="col">当前实现</th><th scope="col">本计划处理</th></tr></thead><tbody>
+        <tr><td>管理员后台<span class="path"><code>web/src/pages/AdminPage.tsx</code><br><code>platform/internal/api/v1/admin.go</code></span></td><td>租户列表、刷新、挂起；另有数据源、通知、支付渠道配置。恢复 API 已有，UI 未接。列表 DTO 未返回创建时间／人数。</td><td>增加账号列表／详情／操作；补租户详情、恢复与真实字段。配置功能复用。</td></tr>
+        <tr><td>账号／平台角色<span class="path"><code>platform/internal/platform/auth/service.go</code><br><code>store_pg.go</code></span></td><td>注册顺序写 user、tenant、member。平台管理员由引导邮箱动态追加；PG users 有 status，但 User 模型／读取未带状态。没有管理员账号 CRUD／角色管理／重置密码 API。</td><td>原子注册、状态读取、平台角色持久化与最后管理员保护。平台角色独立于成员角色。</td></tr>
+        <tr><td>鉴权与旧令牌<span class="path"><code>auth/auth.go</code><br><code>api/middleware/apikey_auth.go</code></span></td><td>JWT 信任旧 roles／plan／tenant_status；刷新沿用旧身份。改密后只有前端清 token。access 与 refresh 没有类型区分。</td><td>每次鉴权读当前状态／成员／角色；版本撤销旧 JWT；两种 token 分型。API Key 租户检查一并覆盖 closed 等非 active 状态。</td></tr>
+        <tr><td>用户中心<span class="path"><code>web/src/pages/SettingsPage.tsx</code><br><code>api/v1/usercenter.go</code><br><code>auth/usercenter.go</code></span></td><td>四个 Tab：概览／资料／安全／手机。昵称、时区保存，邮箱验证，旧密码改密，验证码绑定、密码解绑均有链路；手机号脱敏返回。</td><td>保留并加固已有流程；增加换邮箱、头像、邮箱／已验证手机找回密码、已绑定手机登录与注销入口。</td></tr>
+        <tr><td>展示与套餐<span class="path"><code>web/src/lib/format.ts</code><br><code>app/container.go</code><br><code>platform/credit</code></span></td><td>日期按浏览器时区。注册 credit、邮箱 trial 字段、JWT 中的 tenant plan 并非统一政策。报告 gating／购买套餐来自 <code>report_credits.plan_code</code>，列表／登录还读 <code>tenants.plan_code</code>。</td><td>统一只读权益展示源与当前权限解析；修正「验证解锁全部」、保留时长、超额计费、示例客服与手机支付验证文案。</td></tr>
+        <tr><td>邮件／短信<span class="path"><code>app/usercenter.go</code><br><code>pkg/email</code>／<code>pkg/sms</code></span></td><td>动态读取后台配置；上游只核对到供应商已选择 <code>resend</code>／<code>aliyun</code>（也是迁移默认值），未检查密钥完整性或实际发送。短信当前一个模板映射所有用途。</td><td>通道配置完整性及发送能力待受控验收；按用途隔离验证码和模板。供应商选择、配置完备、API 受理和收件成功分别记录。</td></tr>
+        <tr><td>持久化与 CI<span class="path"><code>auth/store_pg_usercenter.go</code><br><code>.github/workflows/postgresql-tests.yml</code></span></td><td>基础表／PG 用户中心 store 已有；读、更新、消费验证码分步。PG 工作流当前只显式覆盖部分 business 包，auth 的 PG 测试可能在全量 Go 作业中 skip。</td><td>交易级消费、PG 重启／并发契约；扩展既有 PG workflow，增加实际运行而非 skip 的门槛。</td></tr>
+      </tbody></table></div>
+      <div class="note warning"><strong>发布前置：</strong>漂亮列表不能替代账号禁用、密码撤销与租户挂起生效。P0 安全与真实 PG 验证全部通过后，才可发布管理操作。</div>
+    </section>
+
+    <section id="ux">
+      <span class="num">03 / 后台与用户中心</span><h2>页面与操作定义</h2>
+      <h3>管理员后台：两个管理入口，复用现有配置</h3>
+      <div class="table-wrap"><table><thead><tr><th scope="col">入口</th><th scope="col">列表／详情</th><th scope="col">操作与交互</th></tr></thead><tbody>
+        <tr><td>用户账号管理</td><td>列表：用户 ID、昵称、邮箱、脱敏手机号、账号状态、邮箱／手机验证、平台角色、关联租户数、创建／最后成功登录时间。搜索邮箱／昵称／ID，按状态／角色／验证筛选，服务端分页。详情分「平台角色」与「团队成员角色」，每个成员行明确租户／role／row_version；另有验证、最后改密与审计，无设备记录。</td><td>P0：查看、禁用／启用、平台管理员授撤、现有成员 tenant_admin／analyst／viewer 变更；两类角色独立确认。P1：新建账号及初始团队、编辑昵称、发重置链接。删除进入注销预检；邮箱／手机由本人验证，管理员不能直接标已验证。</td></tr>
+        <tr><td>租户／套餐管理</td><td>列表：租户 ID／名称、状态、有效套餐、成员人数、剩余额度、创建时间。按状态／套餐筛选；详情显示成员及其基本角色操作、报告／分析数量、额度流水、真实订单、挂起记录。套餐表列现有目录与权益来源，无有效周期数据则明确显示。</td><td>P0：挂起／恢复、详情、现有成员基本角色变更（与用户详情共用用例）。P1：带原因额度调整。P2：确认规则后人工套餐变更。账号禁用不关闭团队；挂起不删账号、不自动退款；不新增成员／邀请。</td></tr>
+        <tr><td>现有配置</td><td>数据源、通知服务、支付渠道保留原入口；通知明确展示「供应商已选择／配置完整性待核对／受控验收结果」，敏感值只返回掩码及 configured 标志。</td><td>保存空输入表示「不修改」；清除秘密要独立确认。错误、超时和供应商拒绝不可显示发送／支付成功。用途模板分别设置，不能拿绑定模板宣称手机登录已可用。</td></tr>
+      </tbody></table></div>
+      <p><strong>共同状态：</strong>初次加载、加载失败＋重试、无数据、筛选无结果、无权限必须区分。操作提交时按行锁定按钮，返回成功后重新取详情与列表；业务冲突用 409 显示原因，网络超时先重新读取目标状态、按幂等键安全重试，request_id 用于支持排查。发送类不能盲目重发；危险动作展示目标／影响范围，要求原因与确认，不能仅靠 UI 乐观成功。</p>
+      <h3>用户中心：保留四个 Tab，明确自助流程</h3>
+      <ul>
+        <li><strong>账户概览：</strong>从新鲜 <code>/auth/me</code> 与 profile 读取身份；套餐／额度来自现有权益服务。显示账户与团队两个状态，不把运营挂起混作用户禁用。</li>
+        <li><strong>个人资料：</strong>昵称与时区复用；加入头像上传／删除。时区须验证为 IANA 标识，保存后影响全站时间展示，含管理员表格、订单、分析、报告列表与安全页。</li>
+        <li><strong>账户安全：</strong>改密保留；换邮箱须验证当前密码和新邮箱，确认前旧邮箱仍是登录标识；成功后撤销旧 token 并通知旧邮箱。注销预检、申请与状态放在本 Tab。</li>
+        <li><strong>手机绑定：</strong>保留验证码绑定及密码解绑，补换绑确认。绑定手机可作登录／找回入口的能力在 P1 真正上线后才展示；支付敏感确认另列 P2 依赖。</li>
+        <li><strong>登录／找回：</strong>既有邮箱登录继续可用；P1 增加「已绑定手机号＋短信码」登录与邮箱／已验证手机找回。未知手机号不会隐式注册或创建租户。</li>
+      </ul>
+      <p class="small">时区只改变明确 UTC 时刻的展示与日期筛选边界，数据库仍用 TIMESTAMPTZ／UTC。仅有日期或缺少来源时区的原文时间保留原精度并明确标注，不能擅自当作 UTC 时刻换日。账单周期、credit 策略与既有聚合口径不因用户改时区而重算；导出若暂未接入用户时区，必须标注其固定时区。</p>
+    </section>
+
+    <section id="architecture">
+      <span class="num">04 / 技术决策</span><h2>保持单体，补齐真实权限边界</h2>
+      <div class="flow" aria-label="请求依赖方向">
+        <div><strong>React 页面／DTO</strong><span>表单、状态、分页、错误展示</span></div>
+        <div><strong>Gin handler／鉴权</strong><span>当前账号与角色、路由权限</span></div>
+        <div><strong>应用用例／领域规则</strong><span>状态跃迁、最后管理员、一次性凭据</span></div>
+        <div><strong>端口与适配器</strong><span>PG 事务、头像存储、Resend／SMS</span></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th scope="col">方案</th><th scope="col">收益</th><th scope="col">代价／选择</th></tr></thead><tbody>
+        <tr><td>A：单体＋PG 即时鉴权＋账号 token_version</td><td>改密／禁用／角色撤销直接使账号旧 token 失效；无需设备会话表。11 个账号规模可直接查询，持久化可验证。</td><td>每次请求增加 PG 查询；PG 故障时鉴权失败。<strong>推荐本轮采用。</strong>授权状态不做存在过期窗口的缓存。</td></tr>
+        <tr><td>B：登录会话服务＋Redis／设备 token 记录</td><td>能做逐设备撤销、集中会话统计与更细粒度限流。</td><td>增加存储与多实例一致性、设备模型和迁移负担；超出已确认范围。暂缓，未来可在现有鉴权端口后演进。</td></tr>
+      </tbody></table></div>
+      <h3>拟定 ADR-A：当前数据库状态决定授权</h3>
+      <p><span class="badge proposed">状态：Proposed</span> JWT 只携带身份 ID、明确 <code>token_kind=access|refresh</code>、<code>token_version</code> 和有效期。鉴权从数据库读取账号状态／版本、平台角色、当前成员关系和租户状态，重建 principal；不信任旧 token 的角色、套餐、挂起标志。刷新必须验证 refresh 类型，并重新解析同一身份的当前权限。</p>
+      <ul>
+        <li>密码变更／重置、禁用、角色变更、邮箱或手机身份变更、注销申请：在同一事务更新数据与递增 token_version。事务提交后的下一次旧 access／refresh 请求返回 401；账号禁用后任何登录方式也拒绝。</li>
+        <li>发布后拒绝缺少版本／类型的旧格式 JWT，并安排一次统一重新登录。保留当前 token TTL；不做设备列表、refresh 逐设备轮换或新会话页面。</li>
+        <li>路由分组：普通账号路径要求 active 用户；管理员路径额外校验平台角色；租户业务路径必须有当前成员且租户 active。挂起租户的 active 用户可进入受限用户中心，平台管理员仍有恢复权限。P2 的 closure_pending 可用原密码重新登录取得新版本 token，但最新 DB 状态仅放行注销状态、退出及政策允许的撤回路径，其余 403；不新建会话体系。此为拟定路由策略，确认文案须同步。</li>
+        <li>租户挂起提交后，旧 JWT 与 API Key 的新业务请求均 403；provisioning／closed 同样阻断。已有请求和供应商外部调用无法撤回：关键写入／队列领取及任务阶段边界复核状态，停止新增工作；任务取消和回补复用既有语义，不引入新的计费政策。</li>
+        <li>用户中心仅接受真实用户 JWT，API Key 不能进入换密／解绑／换邮箱／注销路由。<code>/auth/me</code> 与刷新后 UI 重新取角色、时区和状态。</li>
+      </ul>
+      <h3>拟定 ADR-B：平台管理员落库，成员角色保持团队语义</h3>
+      <p><span class="badge proposed">状态：Proposed</span> 新建平台角色关联表；<code>platform_admin</code> 不再由邮箱永久动态授予。已有引导账号通过预构建 CLI 按明确 user_id 一次性入库；启动不再按环境邮箱追加。换邮箱后平台角色跟随 user_id，撤销后不能靠原邮箱重新获得权限。</p>
+      <p>平台角色授撤、禁用、注销共享 PG 事务级管理员锁：操作后至少一名 active 平台管理员，角色／状态／版本／审计同时提交；并发互撤只能一个成功。成员角色独立保存在 <code>tenant_members.role</code>，只允许修改显式租户中已存在成员的 tenant_admin／analyst／viewer，不能写入 platform_admin／api_service。每个租户的角色变更持有租户事务锁，检查成员版本且至少保留一个 tenant_admin；降级最后一名返回 409，提交时递增成员 row_version 与目标账号 token_version，下一请求按当前成员角色授权。审计记录目标 tenant_id／user_id、前后角色、原因与操作者；不新增成员、邀请或协作功能。</p>
+      <h3>拟定 ADR-C：PG 是生产事实源，秘密写入和操作留痕</h3>
+      <p><span class="badge proposed">状态：Proposed</span> 复用 auth、tenant、credit／payment、settings 模块；增加小型 <code>platform/accountadmin</code> 应用服务组合账号管理端口。领域规则不依赖 Gin／pgx，PG Store 实现事务。业务模块不得直接 import 平台模块，新队列／任务状态检查通过组合根注入函数。</p>
+      <p>管理员查询聚合账号＋成员＋租户的读 DTO，服务端参数白名单，避免 N+1 与跨租户数据混用。复用现有 <code>audit_logs</code> 表记录 actor、目标、前后状态、原因、request_id 与时间；当前请求 logger 不能替代持久操作审计。密码、JWT、验证码与完整供应商密钥不进入 DTO 或审计。</p>
+    </section>
+
+    <section id="contracts">
+      <span class="num">05 / 接口契约</span><h2>拟新增及补齐 API</h2>
+      <p>前缀均为 <code>/api/v1</code>。已有接口保留兼容；分页拟定 <code>page=1&amp;page_size=20</code>，最大 100，返回 <code>{items,total,page,page_size}</code>。租户旧接口先保留 <code>tenants</code> 字段，前端迁完再取消兼容。时间为 RFC3339；空集合返回 []。</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">阶段／路由</th><th scope="col">输入与结果</th><th scope="col">服务端约束</th></tr></thead><tbody>
+        <tr><td>P0 <code>GET /admin/users</code><br><code>GET /admin/users/:id</code></td><td>分页＋q/status/platform_role/verified；详情独立返回 platform_roles 与 memberships（tenant_id／role／row_version），及最近操作审计摘要。</td><td><code>admin:users:read</code>；脱敏手机号，不返回 password_hash／token。平台角色与各团队角色分别管理。</td></tr>
+        <tr><td>P0 <code>POST /admin/users/:id/disable</code><br><code>POST /admin/users/:id/enable</code><br><code>PUT /admin/users/:id/platform-role</code></td><td><code>{reason,expected_version}</code>；角色写 <code>{platform_admin:boolean,...}</code>。返回当前状态／版本。</td><td><code>admin:users:manage</code>／<code>admin:roles:manage</code>；最后管理员保护。启用不恢复旧 JWT；expected_version 不符 409。</td></tr>
+        <tr><td>P0 补 <code>GET /admin/tenants</code><br>新 <code>GET /admin/tenants/:id</code><br>已有 suspend／resume</td><td>新增创建时间、COUNT 成员人数、effective_plan_code／权益来源；详情含成员及角色版本、credit、真实订单。挂起／恢复补 reason／expected_version。</td><td>原有权限＋独立 tenant read/manage；状态跃迁 CAS，不能客户端写任意 status。挂起不修改账号表。</td></tr>
+        <tr><td>P0 <code>PUT /admin/tenants/:tenant_id/members/:user_id/role</code></td><td><code>{role,reason,expected_version}</code>；expected_version 为成员 row_version。返回 tenant_id／user_id／role／row_version。</td><td><code>admin:members:manage</code> 仅授 platform_admin；按 tenant_id＋user_id 定位已有成员，缺失 404，不创建成员。白名单 tenant_admin／analyst／viewer，其余 400；版本冲突／最后团队管理员 409，原子更新／撤旧 token／审计，权限即时生效。</td></tr>
+        <tr><td>P1 <code>POST /admin/users</code><br><code>PATCH /admin/users/:id</code><br><code>POST /admin/users/:id/password-reset</code></td><td>创建邮箱／昵称／初始团队；创建待激活账号与一次性设密凭据，返回 ID／发送状态。PATCH 本轮仅昵称。reset 返回受理状态。</td><td>创建复用原子开户，默认成员 tenant_admin，平台角色不自动提升；赠额沿用当前注册规则且一次。管理员看不到新密码／重置 token；发送由明确按钮触发。</td></tr>
+        <tr><td>P1 <code>POST /admin/tenants/:id/credit-adjustments</code></td><td><code>{delta,reason,idempotency_key,expected_version}</code>；返回实际流水及余额。</td><td><code>admin:credits:manage</code>；余额不得负，原因落库，重复 key 同一结果／异参数 409。不是支付成功或套餐购买。</td></tr>
+        <tr><td>P1 公开 <code>POST /auth/activation/confirm</code></td><td>set_password token＋new_password；激活成功需重新登录，不返回管理员可见的密码。</td><td>只消费目的为 set_password、目标为 pending_activation 的一次性凭据，原子设密／激活／增加版本；不能启用 disabled 或 closed 用户。重发激活链接由管理员创建详情的明确按钮触发。</td></tr>
+        <tr><td>P1 公开 <code>POST /auth/password-reset/request</code><br><code>POST /auth/password-reset/confirm</code></td><td>邮箱请求或已验证手机号 code；确认 token／code 与 new_password。非登录用户可访问。</td><td>已知／未知目标统一 202 文案；新密码沿用 ≥8 位且字母＋数字。单凭据消费与改密／版本更新在一个事务；disabled／closed 不借此重新激活。</td></tr>
+        <tr><td>P1 公开 <code>POST /auth/phone/send-code</code><br><code>POST /auth/phone/login</code></td><td>phone；phone＋code。只有既有已验证绑定用户能得到 token pair，principal 与邮箱登录共用。</td><td>purpose=phone_login；未知号码统一响应但不发送、不注册。身份状态、成员、租户权限与邮箱登录一致。</td></tr>
+        <tr><td>P1 <code>POST /user/email-change/request</code><br><code>POST /user/email-change/confirm</code></td><td>password＋new_email；confirmation token（页面需登录身份，可重新登录后继续）。成功返回新邮箱并要求重登。</td><td>凭据绑定 user_id／目的／目标邮箱／版本；确认时再次校验唯一性。旧验证／恢复链接不能确认新邮箱，成功后撤销旧凭据并通知旧邮箱。</td></tr>
+        <tr><td>P1 <code>POST /user/avatar</code><br><code>DELETE /user/avatar</code><br>已有 profile、phone API 加固</td><td>头像 multipart；返回站内 avatar_url。手机换绑新码前须当前密码，已有解绑沿用密码验证；更新身份后重登。</td><td>avatar 仅本人；拟限 PNG/JPEG/WebP、2 MiB／4096 像素边界，重新编码，拒绝 SVG 与远程 URL 抓取。绑定验证码必须绑定发起 user_id。</td></tr>
+        <tr><td>P2 <code>GET /user/account-closure/preview</code><br><code>POST /user/account-closure</code><br><code>GET /user/account-closure/status</code></td><td>预检影响／blockers；password＋二次确认、申请 ID。pending 用户以原密码登录后看 status；D2 允许撤回时增加 <code>POST /user/account-closure/cancel</code>，需 password 再确认。</td><td>没有团队、订单、报告处置决策不得开启执行按钮。pending 的新 token 仅能访问受限路径；最后管理员／团队唯一管理员等 blocker 服务端复核。</td></tr>
+        <tr><td>P2 条件接口：<code>POST /admin/tenants/:id/plan-change</code>；<code>PUT /user/notification-preferences</code></td><td>人工权益变更需要 plan_code、原因、expected_version；偏好写现有 JSON 列。</td><td>套餐规则确认后才实施，不伪造 paid 订单；偏好只向真实接线事件开放，未接线项禁用。</td></tr>
+      </tbody></table></div>
+      <p><strong>错误信封：</strong>沿用 <code>{code,message,request_id}</code>；401 处理身份／token 撤销，403 处理权限／团队状态，409 处理并发／唯一性／最后管理员，429 携 Retry-After 处理防刷，503 表示身份存储或全局通道不可用。公开找回／手机发码始终采用一致的受理状态／文案，不因目标存在或单次供应商失败返回不同码；202 不代表送达，失败留后台记录。全局不可用须对已知／未知目标一致，限流也先于存在性检查。既有错误映射统一，不泄露供应商秘密或 SQL 错误。</p>
+    </section>
+
+    <section id="data">
+      <span class="num">06 / 数据与迁移</span><h2>扩展已有表，保护历史数据</h2>
+      <p>截至当前源码最高迁移为 0013。以下编号是拟定值，开工时须确认实际最大序号；不能覆盖已部署 SQL。新增迁移可先扩表，应用后切读写，清理另行安排。</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">迁移／模型</th><th scope="col">拟定变化</th><th scope="col">约束与回填</th></tr></thead><tbody>
+        <tr><td>P0 <code>0014_account_admin_security.sql</code></td><td>users：token_version／row_version，状态进入模型；新增 <code>platform_user_roles(user_id,role,granted_by,granted_at)</code>。tenants 与 tenant_members：row_version；读出已有 created_at。新增管理员查询索引。</td><td>历史 active／成员关系与角色保持；版本默认 0，新格式 token 明确携带 0；拒旧缺字段 JWT。平台角色唯一 user_id＋role；成员 CAS 定位复合主键，平台／各租户最后管理员检查在 PG 事务锁内完成。</td></tr>
+        <tr><td>P0 PG 读取与开户</td><td>补 User.Status／CreatedAt／LastLoginAt／TokenVersion；当前 tenant 读模型补 CreatedAt。注册 user＋tenant＋member 采用一个 PG transaction，登录成功写 last_login_at。</td><td>保留已存在的成员关系和 ID，不因当前一对一数据创建唯一 user_id 约束。赠额维持原政策，但失败可追踪、可幂等补偿；不能留下孤儿账号／团队。</td></tr>
+        <tr><td>P1 <code>0015_identity_verification.sql</code></td><td>扩 verification_tokens：purpose／token_hash／target／issuer_user_id／issued_version；扩短信凭据：user_id／purpose／code_hash／attempts／used_at。旧 token／code 列清空、解除 NOT NULL；短信旧 phone 单列唯一约束改 phone＋purpose（不改 users 的 phone 唯一）。发送节流状态通过 PG 持久化；新账号 pending_activation。</td><td>purpose=email_verify／set_password／password_reset／email_change／phone_bind／phone_login／phone_reset；本轮不加 payment_confirm。邮箱 token 用 CSPRNG ≥32 字节，hash-only 存储；短信低熵码用服务端秘密 HMAC。同号码＋目的替换旧码，消费＋身份更新同事务；状态机保护激活。</td></tr>
+        <tr><td>P1 防刷／切换</td><td>验证码 5 分钟，发送间隔 60 秒，错误最多 5 次；重置／换邮箱／激活链接拟 30 分钟，现有邮箱验证 24 小时。公开发送接口补手机号／IP 窗口限流。</td><td>验证码重发取消旧码；attempts 与发送节流在服务重启后继续有效。拟 IP 20 次／小时、目标 5 次／小时，上线前根据供应商限额确认。迁移时停止旧凭据消费并明确提示重新请求，不混用旧 bind 字串。</td></tr>
+        <tr><td>P1 额度／审计</td><td>扩既有 credit_transactions 的运营 reason_detail／actor_id／idempotency_key 与 report_credits.row_version；复用 audit_logs。修正 <code>AdminAdjust</code> 当前未保存 note 的问题；管理写入同时递增目标 row_version。</td><td>新增运营幂等 key 索引；沿用余额非负／purchase／refund 的唯一性保护。套餐展示统一采用 report_credits 当前 source，历史 tenant plan 差异只报告，不根据推测支付状态批量改价／赠额。</td></tr>
+        <tr><td>P2 <code>0016_account_closure.sql</code></td><td>新增 account_closure_requests：申请／计划／状态／影响快照／scheduled_at／执行错误；用户 closed_at／PII 清理标记，团队归档与回收作业标记。</td><td>具体冷静期、财务留存与报告保留由业务决策；未确认前配置关闭执行。已有 login_sessions 保留历史 schema，不新增设备查询、指纹或逐会话撤销。</td></tr>
+      </tbody></table></div>
+      <p><strong>平台角色迁移步骤：</strong>发布扩表 migration → 使用新包中的拟新增 <code>yuqing-cli bootstrap-platform-admin --user-id &lt;已核对账号&gt;</code> 一次性幂等入库 → 核对至少一个 active 管理员／可访问后台 → 禁用动态邮箱追加逻辑 → 新格式鉴权切换并重登。CLI 仅使用环境配置读取 DB，日志不打印邮箱配置或秘密；SQL 文件不固化生产邮箱。</p>
+      <p><strong>无设备迁移：</strong>旧 JWT 统一重登不要求新增会话表。保留表结构不等于设备功能已批准。角色表回填失败／管理员数量为零，必须停止切换，不能以继续信任旧 JWT 作为补救。</p>
+    </section>
+
+    <section id="work">
+      <span class="num">07 / 阶段与任务</span><h2>按验收门槛推进，任务可独立评审</h2>
+      <div class="cards">
+        <div class="card"><strong>P0 · 安全且可管理</strong><p>即时权限、PG 角色、最后管理员、账号／租户列表详情、恢复 UI、事实文案。全部通过才能开放危险操作。</p></div>
+        <div class="card"><strong>P1 · 自助身份闭环</strong><p>验证码用途与原子消费、受控通道验收、找回／换邮箱／手机登录、头像／时区、新建账号与可审计额度调整。</p></div>
+        <div class="card"><strong>P2 · 生命周期与后续依赖</strong><p>业务决策通过后做注销与回收；人工套餐变更、真实通知偏好；手机支付敏感确认需支付联调先通过。</p></div>
+      </div>
+      <p class="small">下面每行是可建 issue 的工作包。执行者先提交针对风险的失败用例，由 GitHub runner 验证，再实现并验证；每包完成要求契约、实现、PG／接口验证证据、前端状态与评审一致。本文不承诺未经估算的固定工期。</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">任务／负责人</th><th scope="col">具体文件／模块</th><th scope="col">交付与完成标准</th></tr></thead><tbody>
+        <tr><td>K0 · P0<br>QA＋后端＋运维</td><td>修改 <code>.github/workflows/postgresql-tests.yml</code>、<code>build-release.yml</code>；补 <code>platform/migrations/account_admin_test.go</code>（新）；<code>web/e2e/account-admin.config.ts</code>（新）。</td><td>PG job 覆盖 auth／tenant／后续 accountadmin 与 credit／payment，保证数据库变量有效、关键测试不是 skip；隔离测试环境、测试账号与供应商测试地址，拒绝真实生产 endpoint。先有失败回归，再实现 K1／K2。</td></tr>
+        <tr><td>K1 · P0<br>后端身份负责人</td><td><code>platform/internal/platform/auth/auth.go</code>、<code>service.go</code>、<code>interfaces.go</code>、<code>store_pg.go</code>／<code>store_pg_usercenter.go</code>；新 <code>authorization_state.go</code>；memory 对应 store；<code>api/router.go</code>、<code>middleware/apikey_auth.go</code>、<code>app/container.go</code>；0014。</td><td>统一 token 类型／版本、实时身份解析、路由分组、旧 JWT 失效、API Key 租户状态、成功登录时间；注册三表事务。新旧 token／禁用／改密／refresh／租户挂起回归通过。</td></tr>
+        <tr><td>K2 · P0<br>后端管理负责人</td><td>新 <code>platform/internal/platform/accountadmin/{service,store_pg,store_memory}.go</code>；auth 角色端口、<code>platform/cmd/cli/main.go</code>（引导子命令）；新 <code>api/v1/admin_users.go</code> 与 <code>admin_members.go</code>；修改 <code>admin.go</code>、<code>platform/tenant/{service,store_pg}.go</code>、<code>api/v1/services.go</code>。</td><td>账号管理／平台授撤／既有成员基本角色变更、PG 审计、平台／租户最后管理员锁、成员 CAS 与即时撤旧 token；tenant CAS、人数／时间。验证租户范围、角色白名单、并发降权、重启持久；不做邀请或新成员创建。</td></tr>
+        <tr><td>K3 · P0<br>前端负责人</td><td><code>web/src/pages/AdminPage.tsx</code> 拆新 <code>pages/admin/{UsersTab,UserDetail,TenantsTab,TenantDetail}.tsx</code>；<code>api/admin.ts</code>；<code>stores/auth.tsx</code>、<code>api/client.ts</code>；<code>components/MainLayout.tsx</code>／<code>App.tsx</code>。</td><td>两入口、分页／详情；用户详情分平台／团队角色，成员操作显示租户、旧／新角色、原因及确认；403／409 原因明确，成功刷新两处详情及 /me。恢复按钮、401 清身份缓存；普通角色不得管理。不新增设备或邀请入口。</td></tr>
+        <tr><td>K4 · P0<br>产品＋前端＋后端</td><td><code>SettingsPage.tsx</code>、<code>api/user.ts</code>、<code>api/billing.ts</code>；<code>app/container.go</code> 当前套餐注入；<code>auth/service.go</code> principal 构建。</td><td>展示统一 effective plan source；修改不实邮箱／额度／保留期／客服／手机用途文案。公测跳过扣费、价格、存量额度保持当前规则；缺真实数据显示未知，不补假值。</td></tr>
+        <tr><td>K5 · P1<br>后端身份＋QA</td><td>新 <code>auth/verification.go</code>、<code>verification_pg_test.go</code>；修改 <code>interfaces.go</code>、<code>store_pg_usercenter.go</code>、<code>usercenter_store_memory.go</code>、<code>usercenter.go</code>、<code>app/usercenter.go</code>；0015。</td><td>目的／目标／user_id 绑定，hash-only 凭据、原子消费＋状态更新、持久失败次数／限流；绑定／登录／找回模板分开。并发同码仅一次成功、五次错码／过期／旧目的重放失败。</td></tr>
+        <tr><td>K6 · P1<br>QA＋运维／产品</td><td><code>pkg/email/resend.go</code>、<code>pkg/sms/aliyun.go</code> 的适配器测试；后台通知配置与发布验收记录（实施时归档）。</td><td>K6a 先核对通道配置／用途模板，指定测试收件人验证受理与送达；K6b 在 K7／K9 路由完成后验收验证／重置／换邮箱／激活邮件与绑定／登录／找回 SMS 的点击／消费。记录脱敏 provider ID；失败不走成功 UI；发送前明确收件人与次数。</td></tr>
+        <tr><td>K7 · P1<br>后端身份＋前端</td><td>新 <code>auth/identity_recovery.go</code>、<code>api/v1/identity_recovery.go</code>、<code>web/src/pages/PasswordResetPage.tsx</code>；修改 LoginPage、SettingsPage、App、api/user、stores/auth；usercenter PG 契约。</td><td>邮箱／已验证手机恢复，已绑定手机登录，换邮箱／换绑手机；重置／确认成功强制重登；原邮箱未收到确认前保持有效；不存在手机号不新建账号。普通输入、过期、被占用、并发、供应商失败均有明确状态。</td></tr>
+        <tr><td>K8 · P1<br>前端＋后端资料</td><td>修改 <code>web/src/lib/format.ts</code> 与全站调用点、SettingsPage／MainLayout；新 <code>pkg/storage/avatar.go</code>、<code>avatar_local.go</code>（目前无该目录实现）；<code>api/v1/usercenter.go</code>、profile store。</td><td>IANA 校验、UTC 数据＋用户时区格式化、夏令时／无效值测试；头像上传／移除、大小／格式／归属检查与旧文件回收。新存储 adapter 通过组合根装配，不把文件系统依赖带入 auth 规则。</td></tr>
+        <tr><td>K9 · P1<br>后端管理＋前端</td><td><code>accountadmin</code>、<code>api/v1/admin_users.go</code>、新账号弹窗；<code>platform/credit/{credit,store_pg}.go</code>、<code>api/v1/admin_credits.go</code>（新）与 tenant 详情。</td><td>待激活账号＋初始团队事务开户，不暗中授平台权限；赠试用至多一次，激活链接一次设密。reset 明确发送、运营调整原因／幂等／审计，负余额／并发失败回滚。</td></tr>
+        <tr><td>K10 · P2<br>产品／财务＋后端＋运维</td><td>新 <code>platform/accountclosure</code>、<code>api/v1/account_closure.go</code>；SettingsPage 安全 Tab；0016；CLI 增预检／执行／重试（均拟新增，复用云端预构建二进制）。</td><td>决策 D2／D3 通过后实现预检、申请、限制身份、回收作业；团队／未结订单 blockers 有测试，报告与财务留存分别处理。重复执行安全、可恢复失败；无账号级硬删级联。</td></tr>
+        <tr><td>K11 · P2<br>产品／支付＋后端／前端</td><td><code>billing</code>／<code>credit</code>／<code>payment</code>、admin tenant 详情、已有 <code>notification_prefs</code>；未来单独支付确认 adapter。</td><td>人工套餐规则先确认；变更与真实购买分开、不能回写 paid。通知偏好只接真实发送事件。手机支付敏感确认是后续独立任务：通过支付渠道真联调后，凭据绑定订单／金额／tenant，不能绕过验签／金额核对／入账幂等。</td></tr>
+      </tbody></table></div>
+    </section>
+
+    <section id="dependencies">
+      <span class="num">08 / 依赖与负责人</span><h2>并行开发与交接契约</h2>
+      <pre aria-label="任务依赖图"><code>K0 云端 PG／E2E 门槛
+ └─ K1 身份与状态 ── K2 账号／角色／租户 API ── K3 后台界面
+           └─────────────────────────────────── K4 展示与文案 ── P0 验收
+
+P0 验收 ── K5 验证凭据／模板 ── K6a 通道准备／受理送达
+             ├───────────────────────────────── K7 身份恢复闭环
+             └───────────────────────────────── K9 新建／重置账号
+K6a ＋ K7 ＋ K9 ── K6b 受控端到端发送／点击／消费验收 ── P1 验收
+P0 验收 ── K8 头像／时区（与 K5 并行）
+K2 ＋ 额度幂等／审计契约 ── K9 额度调整（与 K7 并行）
+
+P1 验收 ＋ D2/D3 业务处置决策 ── K10 注销／回收
+P1 验收 ＋ D1 套餐政策／支付实测 ── K11 后续权益／支付确认</code></pre>
+      <div class="table-wrap"><table><thead><tr><th scope="col">角色</th><th scope="col">责任／交接</th></tr></thead><tbody>
+        <tr><td>开发总监／技术负责人</td><td>冻结阶段范围、评审 ADR／契约／PG 事务边界；确认没有设备或协作范围扩张。合并门槛以证据为准，不以页面截图代替鉴权检查。</td></tr>
+        <tr><td>后端身份负责人</td><td>拥有 auth、验证码、JWT 和角色规则；与管理负责人约定 <code>AuthorizationState</code> 及账户状态版本。所有需要 token_version 的动作只能调用共享用例。</td></tr>
+        <tr><td>后端管理负责人</td><td>拥有 accountadmin、tenant 列表与审计；提供分页 DTO、错误码、CAS、权限名称及幂等契约。与 credit／payment 负责人统一有效套餐读取接口。</td></tr>
+        <tr><td>前端负责人</td><td>按已冻结 DTO 实现列表／表单状态及身份刷新；无需等待全部后端才开始，但契约桩不能进入发布包当作真实数据。</td></tr>
+        <tr><td>QA</td><td>编写测试矩阵、云端 PG non-skip 门槛与浏览器风险用例；主动验证越权、并发、重启、失败、旧 token。记录指定测试账号，不用真实生产用户做破坏性验证。</td></tr>
+        <tr><td>运维／产品／财务</td><td>运维负责备份恢复与 prod exact SHA 产物；产品确定试用、注销、用户文案与测试收件人；财务确认订单／退款／留存处置。岗位可兼任，但每个任务须明确实际负责人。</td></tr>
+      </tbody></table></div>
+      <p>每个 PR 只纳入明确负责模块；<code>container.go</code>、<code>router.go</code>、迁移编号与前端 auth store 指定一名集成人负责，减少并行冲突。共享源码中不得回退其他工作者的修改。</p>
+    </section>
+
+    <section id="acceptance">
+      <span class="num">09 / 验收矩阵</span><h2>能观察、能复现的通过标准</h2>
+      <div class="table-wrap"><table><thead><tr><th scope="col">编号／阶段</th><th scope="col">验证行为</th><th scope="col">证据／通过条件</th></tr></thead><tbody>
+        <tr><td>A1 · P0</td><td>U1 先取得 access＋refresh；本人改密／管理员禁用／撤角色后分别重放两类 token。refresh 当 access 使用、access 当 refresh 使用。</td><td>提交后旧 token 全部 401，类型混用拒绝；disabled 的密码／手机登录及 reset 不激活。启用后原 token 仍不可用。PG 上执行，同秒改密不受 iat 精度影响。</td></tr>
+        <tr><td>A2 · P0</td><td>以 active JWT／API Key 访问租户后挂起；重放查询／创建／下载／订单接口并尝试队列领取。恢复再登录。</td><td>挂起提交后的新租户请求 403，恢复状态由 DB 生效；provisioning／closed 也阻断。后台恢复入口在管理员个人租户挂起时仍可用，用户中心受限边界与契约一致。</td></tr>
+        <tr><td>A3 · P0</td><td>平台管理员并发互撤／禁用最后一名；同租户两名 tenant_admin 并发降级，重放成员旧版本／旧 JWT；跨租户或不存在成员、写 platform_admin／api_service；降为 viewer 后验证写接口，重启查角色／审计。</td><td>平台 active 管理员与各租户 tenant_admin 均至少留一名，最后一名／版本冲突 409；无成员 404，非法角色 400，不增成员或改其他团队。成功旧 token 401、新登录按新角色授权，审计包含 tenant 与前后角色且 PG 重启保留；bootstrap 不重授，tenant_admin／viewer／API Key 调 admin 均 403。</td></tr>
+        <tr><td>A4 · P0</td><td>注册／账号或租户操作后重启应用；开户第二／第三写入注入失败；多人租户、空列表、同创建时间分页；方案源有差异。</td><td>状态／角色／审计／资料仍在，开户失败不遗留孤儿行；created_at 为真实值、user_count 等于成员数；分页稳定。effective plan 与现有报告权限一致，没有同步伪造购买。</td></tr>
+        <tr><td>A5 · P1</td><td>同凭据并发两次提交、重发旧码、五次错误、过期、跨目的、不同用户绑同目标；发送失败；服务重启后继续尝试。</td><td>至多一次更新／消费，旧码不能重放，尝试次数／发送窗口持续有效，DB 不留明文 token／code；供应商失败不会绑手机／换邮箱或显示已送达。</td></tr>
+        <tr><td>A6 · P1</td><td>指定 Resend 邮箱与阿里云手机真实收件，点验证／恢复／换邮箱链接并提交绑定／登录码；已知／未知目标及单次供应商失败请求。</td><td>脱敏 provider ID＋受理／收件／页面／DB 结果链完整；公开请求状态／文案一致，202 只代表受理，错误留后台记录。模板匹配，无密码或码入日志；未实测不签通过。</td></tr>
+        <tr><td>A7 · P1</td><td>已验证绑定手机登录、手机／邮箱找回；新邮箱确认前用旧邮箱登录，新邮箱与他人并发抢占；头像畸形／过大／跨用户删除。</td><td>未知手机号无 users／tenants 新行；同一 principal／安全规则；未确认不换邮箱，唯一冲突回滚，不丢旧凭据；文件校验／归属生效且删除不影响他人。</td></tr>
+        <tr><td>A8 · P1</td><td>切 Asia/Shanghai → America/New_York，覆盖夏令时边界与 UTC 跨日；重载后查分析／报告／订单／安全时间；无效时区。</td><td>同一 UTC 时间展示跟随个人时区并标识，浏览器时区不同仍一致；invalid IANA 拒绝。后台日期筛选转换明确；数据库与计费周期不重算。</td></tr>
+        <tr><td>A9 · P1</td><td>账号创建中断／激活链接重放；并发负额度调整；同 idempotency_key 再次请求／不同参数；密码重置发送失败。</td><td>开户无孤儿、试用至多一次；用户自己设密，明文不返回管理员；余额≥0、流水原因完整、单次审计，无 paid 假记录；失败在 UI 明确可重试。</td></tr>
+        <tr><td>A10 · P2</td><td>单人／多人团队、未结订单／退款／任务的注销预检；申请后以原密码重登取状态并尝试普通业务路径；回收中断再执行。</td><td>pending 状态可读且所有普通业务路径 403；blocker 生效，不误删他人报告／财务流水；期限按批准政策执行，回收幂等／可观察，不报告未清理数据为已删除。</td></tr>
+      </tbody></table></div>
+      <h3>仅在 GitHub 托管 runner 执行的验证</h3>
+      <p>复用 <code>build-release.yml</code>（ubuntu-24.04）及其调用的 <code>postgresql-tests.yml</code>（PostgreSQL 15）。P0 必须扩展现有 PG 选择器：不能只运行分析／报告测试，也不能以未设置 PG URL 导致的 skip 为通过。</p>
+      <pre><code># 以下命令仅作为 GitHub workflow 的 run 配置，禁止本地或自有服务器运行。
+# platform/：现有全量、竞态、vet 与二进制步骤保留
+go test ./... -count=1 -race -timeout 10m
+go vet ./...
+make build GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+
+# platform/：PG job 必须设置 YUQING_TEST_PG_URL 指向 runner 的 postgres service
+# 分阶段加入实际已创建的包；K0 同时验证关键测试非 SKIP
+go test ./migrations ./internal/platform/auth ./internal/platform/tenant -v -count=1
+go test ./internal/platform/accountadmin ./internal/platform/credit ./internal/platform/payment -v -count=1
+# 保留现有 business PG 检查，并给新增 accountclosure 包加入契约
+
+# web/：现有 frontend 作业；依赖安装同样仅在托管 runner
+npm ci --no-audit --no-fund
+npm run lint
+npm run build
+# 同一 workflow 中增加账号／后台风险 E2E，使用 runner 已构建前端与测试 API／PG
+npx playwright test --config e2e/account-admin.config.ts</code></pre>
+      <p>新的 E2E 配置需要实现，不可直接使用指向生产的 <code>production.config.ts</code>；静态前端由 runner 提供，API 使用刚构建的二进制，环境固定为测试租户，默认屏蔽供应商真实发送。迁移测试含旧 schema 升级、约束／回填、重复运行与不兼容状态拒绝；报表／扣费回归保留原有用例。</p>
+      <div class="note"><strong>阶段通过：</strong>P0=A1–A4＋云端两工作流全部成功；P1=A5–A9＋K6 受控送达证据；P2=A10＋相应业务决策。当前文档没有把任何待实施测试标为已通过。</div>
+    </section>
+
+    <section id="closure">
+      <span class="num">10 / 注销与回收</span><h2>删除账号前，先定义团队与资产归属</h2>
+      <p>提案采用「预检 → 申请 → closure_pending／撤 token → 经批准的等待期 → 执行清理 → closed／脱敏」；财务、合同或安全调查保留事项由产品／财务确认。预检与确认瞬间都检查当前数据，不能沿用过期影响快照。</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">对象／情形</th><th scope="col">拟定安全默认</th><th scope="col">处置与回收</th></tr></thead><tbody>
+        <tr><td>全局用户</td><td>禁用仅阻止此账号；注销申请撤销旧 JWT／验证凭据。pending 身份只能读取注销状态／按批准策略撤销申请，不访问团队业务。</td><td>完成时清除或匿名化邮箱／手机号／昵称／头像，保留无身份信息的 user_id tombstone 供审计引用。邮箱／手机能否重用由政策确认，不能在处理中释放唯一约束。</td></tr>
+        <tr><td>最后平台管理员</td><td>拒绝注销／禁用／降权，不允许流程绕过 K2 的共享管理员锁。</td><td>先由另一个经验证的 active 管理员承接；不是设备管理或账号注销的特例后门。</td></tr>
+        <tr><td>多人团队</td><td>不因某个成员注销删除租户／其他成员数据。若申请人是唯一 tenant_admin，阻止执行并进入运营责任转交流程。</td><td>可用 K2 的现有成员角色变更先提升承接者再降级申请人，不新增邀请／协作；或单独批准团队关闭。成员退出／账号匿名化与团队业务资产分开处理。</td></tr>
+        <tr><td>单人团队</td><td>预检显示团队资产、credit、订单与任务影响；申请人确认团队关闭意图，经政策确认后才执行。</td><td>停 API Key／新任务，取消或结清执行中任务；租户先 closed／归档，未来定时清理其报告、原始文档与相关文件。不直接 CASCADE 删除整条租户。</td></tr>
+        <tr><td>订单／额度／财务</td><td>pending／paid 尚未 granted／refund_needed／未完成退款／争议账单阻止自动完成，走补偿与财务处理。</td><td>orders、credit_transactions、invoice 与必要审计按确认的财务留存期保留，关联账号脱敏；注销不自动退款、不将订单改 paid、不销毁流水。剩余额度处理需业务确认。</td></tr>
+        <tr><td>报告／分析／文件／备份</td><td>团队资产仍归租户，created_by 可引用 tombstone。实际保存期读取套餐／批准政策，不能沿用页面旧 30／90／365 文案。</td><td>回收作业逐批删除 DB 业务行与文件，失败重试、统计剩余数，记录完成时间；备份按轮换策略到期，并确保从备份恢复后重新应用 tombstone／清理记录。</td></tr>
+      </tbody></table></div>
+      <p>「撤销注销申请」若纳入政策，必须验证密码／批准的恢复渠道且重新发 token；「全部已删除」只在在线数据清理完成后显示。若财务记录／备份仍需保留，应准确说明范围与到期条件。</p>
+    </section>
+
+    <section id="release">
+      <span class="num">11 / 发布与回滚</span><h2>从 dev 到 prod 的分阶段发布</h2>
+      <ol>
+        <li><strong>开工基线：</strong>恢复 Git 工作区元数据，固定 dev 源码 SHA，核对最新迁移与运行配置。先在 GitHub PostgreSQL 服务复刻历史 schema 并升级；测试数据不得来自生产凭据或完整真实用户。</li>
+        <li><strong>审查与 CI：</strong>每包在 dev 分支／PR 跑两工作流。失败新提交修复并重跑，不能降级为本地 build。涉及角色／验证／注销的 PG 测试必须实际执行。</li>
+        <li><strong>生产准备：</strong>运维保存当前源码 SHA、二进制／前端产物、受保护配置、迁移版本；做 PostgreSQL 一致性备份，并在隔离恢复环境验证可恢复。备份与敏感配置不进入公开仓库。</li>
+        <li><strong>合并和产物：</strong>dev → prod PR 完成评审与 required checks，合并后为 prod <em>准确目标 SHA</em> 重新跑成功构建。PR merge SHA、其他分支／旧提交或未完成 run 的包均不能代替。必需 Go／frontend／PG／package 检查全绿。</li>
+        <li><strong>校验安装：</strong>选择成功 prod run 的 <code>yuqing-release-&lt;SHA&gt;</code>，下载归档＋外部 .sha256；校验归档、<code>BUILD_COMMIT</code> 与解包后的 <code>SHA256SUMS</code>。服务器只校验、解包、运行新预构建 <code>yuqing-cli migrate platform</code>、配置、启停与健康检查；缺二进制／dist 直接失败。</li>
+        <li><strong>迁移和切换：</strong>先增量扩表，再入库现有管理员；完成至少一名 active 管理员核对后发布安全修复包并统一重登。安全修复全局生效；账号创建／找回／注销等新功能按独立配置默认关闭、测试租户先开。配置开关不得关闭禁用／版本／挂起校验。</li>
+        <li><strong>前端与检查：</strong>先安装 hash 命名 assets，再原子替换 index.html；保留旧 assets 与 rollback 包。验收健康、管理员登录／恢复、普通角色拒绝、改密旧 token 401、挂起 403、profile 与 PG 审计读取；不执行未经授权的短信／邮件发送或真实支付。</li>
+        <li><strong>扩大开放：</strong>观察新旧 token 拒绝、role／状态冲突、PG 错误、恢复成功率、供应商受理与失败、发送量／费用、注销回收失败。观察时间由实际流量与验收负责人确定，不编造无流量的成功指标。</li>
+      </ol>
+      <div class="note warning"><strong>回滚限制：</strong>优先关闭新功能入口，安全校验继续生效。备份增量表不执行 destructive Down；头像／验证／注销数据需保留。最早允许回退的应用包必须已经具备数据库状态校验、持久角色与 token_version，否则回滚会让已撤销凭据重新有效。无法保持安全能力时，停止敏感入口、修复后由 GitHub 构建新包，不能重开旧不安全鉴权。</div>
+      <p class="small">发布要记录 SHA／run ID／校验结果／迁移版本／备份与回滚包位置／操作者／健康验收。上面是实施阶段 runbook 提案；本次仅写计划，没有推送、发布、迁移或连接生产。</p>
+    </section>
+
+    <section id="decisions">
+      <span class="num">12 / 决策与交接</span><h2>继续开发所需的业务决策</h2>
+      <div class="table-wrap"><table><thead><tr><th scope="col">决策</th><th scope="col">默认假设／影响</th><th scope="col">阻塞的任务</th></tr></thead><tbody>
+        <tr><td>D1 试用／计费／套餐</td><td>保持现有公测 bypass、注册 credit 与套餐目录。邮箱验证不增加额度；删除「解锁全部」承诺。需要业务另行确认何时恢复扣 credit、验证前后具体权限、人工套餐期限／是否付费及价格编辑权限。</td><td>不阻塞 P0／P1；阻塞新政策与 K11 的人工权益写入。现有 <code>POST /admin/plans</code> 返回 501，不能启用假成功套餐编辑。</td></tr>
+        <tr><td>D2 注销等待期／身份回用</td><td>需确定冷静期、是否允许撤回、邮箱／手机号何时可重用、退出团队与单人团队关闭的确认方式。没有决定前仅预检与政策说明，不开放执行。</td><td>K10 执行按钮／作业。</td></tr>
+        <tr><td>D3 财务与数据留存</td><td>需确定剩余付费额度、退款／争议订单、财务记录留存期、报告／文档和备份回收范围；多人团队唯一管理员先责任转交。无统一数字时不硬编码永久或立即删除。</td><td>K10 完成与回收。</td></tr>
+        <tr><td>D4 通道实测与用途模板</td><td>当前只知供应商已选择，运维须先核对密钥／发件身份／用途模板／签名的配置完整性；产品指定测试邮箱／手机号与发送预算，K6 实测记录送达证据。暂未实测不能标已验收。本次不会发送。</td><td>P1 找回、手机号登录、管理员激活／重置开放。</td></tr>
+        <tr><td>D5 手机支付敏感确认</td><td>需商户渠道真实联调及支付场景规则。短信码只确认发起敏感操作，支付成功仍来自验签＋金额核对＋原子入账，不由前端或码验证声明。</td><td>K11 后续支付任务；不阻塞其他用户中心。</td></tr>
+      </tbody></table></div>
+      <h3>开工与阶段完成清单</h3>
+      <ul>
+        <li>□ 给 K0–K4 指定实际负责人，恢复源码 SHA 与迁移基线，冻结 AuthorizationState／分页／错误码契约。</li>
+        <li>□ P0 验收通过后，开放后台状态／角色操作，再并行 K5–K9；不得用 memory 测试替代 PG 证据。</li>
+        <li>□ 真实发送验收与支付联调分别留证；既有配置状态不视为供应商送达／收款成功。</li>
+        <li>□ D2／D3 后再开启注销执行；持续检查最后管理员与团队／财务资产边界。</li>
+        <li>□ 每次正式发布附 prod 精确 SHA 成功 run、校验归档、迁移和回滚证据。</li>
+      </ul>
+      <details><summary>实际源码参考入口</summary><ul>
+        <li><a href="../../AGENTS.md">AGENTS.md</a>、<a href="../../CLAUDE.md">CLAUDE.md</a> 与 <a href="../../.github/workflows/build-release.yml">build-release.yml</a>／<a href="../../.github/workflows/postgresql-tests.yml">postgresql-tests.yml</a>。</li>
+        <li><a href="../../web/src/pages/AdminPage.tsx">AdminPage.tsx</a>、<a href="../../web/src/pages/SettingsPage.tsx">SettingsPage.tsx</a>、<a href="../../web/src/api/admin.ts">api/admin.ts</a>、<a href="../../web/src/api/user.ts">api/user.ts</a>、<a href="../../web/src/lib/format.ts">format.ts</a>。</li>
+        <li><a href="../../platform/internal/platform/auth/service.go">auth/service.go</a>、<a href="../../platform/internal/platform/auth/auth.go">auth/auth.go</a>、<a href="../../platform/internal/platform/auth/usercenter.go">auth/usercenter.go</a>、<a href="../../platform/internal/platform/auth/store_pg_usercenter.go">store_pg_usercenter.go</a>。</li>
+        <li><a href="../../platform/internal/api/v1/admin.go">api/v1/admin.go</a>、<a href="../../platform/internal/api/middleware/apikey_auth.go">middleware/apikey_auth.go</a>、<a href="../../platform/internal/app/container.go">app/container.go</a>、<a href="../../platform/internal/app/usercenter.go">app/usercenter.go</a>。</li>
+        <li><a href="../../platform/migrations/platform/0001_init.sql">0001_init.sql</a>、<a href="../../platform/migrations/platform/0006_billing_credits_orders.sql">0006_billing_credits_orders.sql</a>、<a href="../../platform/migrations/platform/0007_user_center_p0.sql">0007_user_center_p0.sql</a>。</li>
+      </ul></details>
+    </section>
+  </article>
+</main>
+<footer>规划版本：2026-10-09 · 开发总监职责：范围、依赖、验收与发布门槛 · HTML 为本轮交付物，业务实施状态见各阶段证据。</footer>
+</body>
+</html>
