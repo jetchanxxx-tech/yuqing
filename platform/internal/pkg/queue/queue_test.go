@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -88,33 +89,53 @@ func TestMemoryQueue_publishBeforeSubscribe_buffers(t *testing.T) {
 	defer q.Close()
 
 	// Publish before any subscriber.
-	q.Publish(context.Background(), "late.topic", []byte("buffered"))
+	if err := q.Publish(context.Background(), "late.topic", []byte("buffered")); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
 
-	var received []string
-	q.Subscribe(context.Background(), "late.topic", func(ctx context.Context, msg Message) error {
-		received = append(received, string(msg.Body))
+	received := make(chan string, 1)
+	if err := q.Subscribe(context.Background(), "late.topic", func(ctx context.Context, msg Message) error {
+		received <- string(msg.Body)
 		return nil
-	})
+	}); err != nil {
+		t.Fatalf("Subscribe failed: %v", err)
+	}
 
-	time.Sleep(100 * time.Millisecond)
-	if len(received) != 1 || received[0] != "buffered" {
-		t.Errorf("received = %v, want [buffered]", received)
+	select {
+	case body := <-received:
+		if body != "buffered" {
+			t.Errorf("received = %q, want buffered", body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for buffered message")
 	}
 }
 
 func TestMemoryQueue_closeStopsDelivery(t *testing.T) {
 	q := NewMemory()
+	defer q.Close()
 
-	var count int
-	q.Subscribe(context.Background(), "closing", func(ctx context.Context, msg Message) error {
-		count++
+	var count atomic.Int32
+	delivered := make(chan struct{}, 1)
+	if err := q.Subscribe(context.Background(), "closing", func(ctx context.Context, msg Message) error {
+		count.Add(1)
+		delivered <- struct{}{}
 		return nil
-	})
+	}); err != nil {
+		t.Fatalf("Subscribe failed: %v", err)
+	}
 
-	time.Sleep(50 * time.Millisecond)
-	q.Publish(context.Background(), "closing", []byte("msg1"))
-	time.Sleep(50 * time.Millisecond)
-	q.Close()
+	if err := q.Publish(context.Background(), "closing", []byte("msg1")); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first message")
+	}
+	if err := q.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
 
 	// Try to publish after close.
 	err := q.Publish(context.Background(), "closing", []byte("msg2"))
@@ -122,7 +143,7 @@ func TestMemoryQueue_closeStopsDelivery(t *testing.T) {
 		t.Error("expected error when publishing to closed queue")
 	}
 
-	if count != 1 {
-		t.Errorf("count = %d, want 1", count)
+	if got := count.Load(); got != 1 {
+		t.Errorf("count = %d, want 1", got)
 	}
 }
