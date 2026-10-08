@@ -10,6 +10,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > ⚠️ **仓库是公开的（github.com/jetchanxxx-tech/yuqing）** —— 绝不提交任何凭据。详见「凭据与安全」。
 
+## 构建执行规则（最高优先级，2026-10-09）
+
+**用户要求：所有编译、构建和需要编译的测试只在 GitHub 托管 runner 上执行。** 这条规则覆盖历史文档中的本地构建流程。本地电脑、开发主机及任何自有服务器均禁止执行 `go build`、`go test`（含 `-race` / `-c`）、`go vet`、`go run`、`npm run build`、`npm run dev`（会转换并预构建依赖）、`tsc`、Vite 打包及其 Makefile/脚本封装；RSSHub 等附属服务也遵循同一规则。不得将构建转移到 self-hosted runner。
+
+- 本地可编辑代码、检查 diff、做不触发编译的轻量语法检查，以及下载、校验、上传 GitHub 构建产物。
+- 服务器只接收已构建的产物，执行哈希校验、解包、配置、迁移、服务启停和健康检查；缺少二进制或 `web/dist` 必须报错，不得自动构建。
+- `.github/workflows/build-release.yml` 在 push 到 `dev` / `prod` / `main` / `beta/**`、PR 及 `workflow_dispatch` 时执行 Go 全量 `-race` 测试、vet、三个 linux/amd64 二进制构建，以及 Node 22 前端 lint / build。
+- `actions/upload-artifact` 将带提交 SHA 的产物保留 30 天；部署包为 `yuqing-linux-amd64-${SHA}.tar.gz`，包含该提交的源码、`platform/bin`、`web/dist` 和 `SHA256SUMS`，并附外部 `.tar.gz.sha256`。本地与服务器先校验归档，解包后执行 `sha256sum -c SHA256SUMS`。
+- `build-release.yml` 的 `postgresql` 作业通过 `workflow_call` 复用 `.github/workflows/postgresql-tests.yml`，因此 `dev` / `prod` / `beta/**` 的 PG 检查随新构建工作流执行；PG 工作流保留 `main` / `develop` 的独立 push/PR 触发，并支持手动和被调用触发。最终 `package` 作业依赖 Go、前端、PostgreSQL 三类检查全部成功后才生成归档。工作流配置存在不等于已运行成功，必须查看对应 SHA 的 Actions 结果。
+
+### 分支与产物选择
+
+- `dev` 用于日常开发与 CI 配置，已设为 GitHub 默认分支以支持手动触发；现有 `main` 和 `beta/*` 保留。
+- `prod` 记录已验证的线上版本，初始部署基线为 `6d6af7e85b4d154f76d57792d85030dec22c9ccb`。开发变更通过 `dev → prod` PR，CI 通过并完成评审后再合并发布。
+- 日常验证选择 `dev` 的提交产物；正式部署选择 `prod` 当前目标 SHA 的成功工作流产物，不能用其他分支或过期提交的包代替。PR 的临时 merge SHA 产物用于验证，正式部署须用合并后 `prod` 提交重新构建的包。
+- `prod` 已配置 PR 合并和必需检查保护，检查项为 `Go tests and binaries`、`Frontend build`、`Release archive`；归档检查依赖 PostgreSQL 成功。默认分支与保护规则已通过 GitHub API 核验；每次发布仍需核对实际设置和目标 SHA 的检查结果。
+
 ## Tech Stack
 
 - **Platform**: Go 1.25, Gin, pgx v5, goose migrations, golang-jwt v5, argon2id
@@ -26,25 +43,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# ── Go (platform/) ────────────────────────────────────────
+# 以下 Go / 前端构建命令仅供 GitHub 托管 runner 执行，禁止本地和服务器运行。
+# ── Go (platform/，仅 GitHub Actions) ─────────────────────
 cd platform
 make test                            # go test ./... -count=1 -race （26 包；含用户中心 auth 契约 11+ 测试）
-go test ./... -count=1               # 不带 -race 的快速跑
-go test -run TestRegister ./internal/platform/auth/   # 单个测试
-go test ./internal/api/v1/ -count=1  # 单个包（契约测试）
 make test-cover                      # 覆盖率
 make build                           # 交叉编译 linux/amd64 → bin/{yuqing-server,yuqing-worker,yuqing-cli}
 make lint                            # = go vet ./...
-go run ./cmd/server                  # 开发模式 (:8080) — 内存 store，无需 PG/Redis
 
-# ── 前端 (web/) ───────────────────────────────────────────
+# ── 前端 (web/，仅 GitHub Actions) ─────────────────────────
 cd web
 npm ci && npm run build              # = tsc -b && vite build → dist/
-npm run dev                          # Vite dev :5173（proxy /api → 127.0.0.1:8080）
 npm run lint                         # oxlint
 
 # ── E2E (web/e2e/) ────────────────────────────────────────
-npx playwright test --config e2e/playwright.config.ts     # 本地 dev server 冒烟
+npx playwright test --config e2e/playwright.config.ts     # 仅 GitHub Actions；会启动开发服务
 npx playwright test --config e2e/production.config.ts     # 打生产站点（27 用例）
 # 生产套件凭据**只能**来自环境变量，缺失时 spec 直接抛错：
 #   E2E_EMAIL / E2E_PASSWORD / E2E_BASE_URL（默认 https://yuqing.pangu-cloud.com —— 老机域名已废弃，打生产时显式设为 https://yuqing2.pangu-cloud.com）
@@ -53,9 +66,9 @@ npx playwright test --config e2e/production.config.ts     # 打生产站点（27
 # ── Python engines (engines/) ─────────────────────────────
 cd engines
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt      # 含 scrapling[fetchers]
+pip install --only-binary=:all: -r requirements.txt  # 仅预构建 wheel；缺包回 GitHub 处理
 scrapling install --chromium         # 首次 ~150MB
-python3 -m pytest tests/ -v          # 54 用例（scraper/llm_client/insight 含五维/报告）
+python3 -m pytest tests/ -v          # 仅 GitHub 测试环境；54 用例
 # 开发：在具体引擎目录下 `uvicorn main:app --port 8000`
 # 生产（systemd）：WorkingDirectory 与 PYTHONPATH 均为 /opt/pangu-source，
 #   ExecStart=/opt/yuqing/engines/venv/bin/uvicorn engines.<name>_engine.main:app
@@ -65,7 +78,7 @@ BOCHA_API_KEY=sk-xxx uvicorn main:app --port 8000
 # ── Forum Engine (engines/forum_engine/) ──────────────────
 cd engines/forum_engine
 export ZHIPU_API_KEY=xxx             # 智谱AI API Key（必需）
-python test_integration.py           # 集成测试 6/6（Agent配置/Prompt/数据库/日志/环境）
+python test_integration.py           # 仅 GitHub 测试环境；集成测试 6/6
 uvicorn main:app --port 8004         # 启动服务
 # API: POST /run_forum (topic/documents/analysis_id/max_rounds)
 # 注意：LLM失败返回503（不返回Mock），符合生产环境要求
@@ -78,7 +91,7 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh   # 幂等部署（仅 Ubuntu
 
 ## Architecture: Modular Monolith
 
-`platform/cmd/` 下三个 Go 二进制，由 `platform/Makefile` 交叉编译：
+`platform/cmd/` 下三个 Go 二进制，由 GitHub 托管 runner 调用 `platform/Makefile` 交叉编译：
 
 | Binary | Role |
 |--------|------|
@@ -179,7 +192,7 @@ Go Pipeline (state=fetching)
 `store.driver: memory|postgres` 切换（config.yaml）。postgres 模式全部服务落平台库
 （`yuqing_platform`，业务表带 tenant_id 列；database-per-tenant 物理隔离是长期演进），
 重启不丢账号/任务/文档 —— 生产已启用。pgx store 契约测试用 `YUQING_TEST_PG_URL`
-gate（未设置时 skip，本地无 PG 也能全绿）。
+gate（未设置时 skip）；真实 PG 契约必须在 GitHub Actions 的 PostgreSQL 服务上执行。
 
 | 服务 | 核心职责 |
 |------|---------|
@@ -193,7 +206,7 @@ gate（未设置时 skip，本地无 PG 也能全绿）。
 | `usage.Meter` | Record/BudgetStatus/Aggregate（全租户聚合供 /admin/usage） |
 | `auth.Service`（用户中心） | ChangePassword/邮箱验证（token 一次性）/GetProfile/UpdateProfile/SendPhoneCode/BindPhone/UnbindPhone —— 依赖经 `EnableUserCenter()` 装配，未装配时全部方法 fail-closed |
 
-存储实现为 memory/postgres 双轨（见上 store.driver）。**凡给 PG 写的新 store 方法必须同步补契约测试**（auth 的范式见 `usercenter_pg_test.go`，用 `YUQING_TEST_PG_URL` gate 在装了 PG 的机器/生产上跑）—— v0.1.1 连续 4 个生产 PG bug 全部源于 PG 路径零覆盖，此为血泪教训。
+存储实现为 memory/postgres 双轨（见上 store.driver）。**凡给 PG 写的新 store 方法必须同步补契约测试**（auth 的范式见 `usercenter_pg_test.go`，用 `YUQING_TEST_PG_URL` gate 在 GitHub 托管 runner 的测试数据库上跑）—— v0.1.1 连续 4 个生产 PG bug 全部源于 PG 路径零覆盖，此为血泪教训。
 
 ### LLM Metered Provider (API resale)
 
@@ -316,20 +329,20 @@ any active state → failed | canceled
 sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [SKIP]，已有配置不覆盖
 ```
 
-- `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。检测并跳过已装的 nginx/postgresql/redis/go/node；显式 `-o bin/yuqing-*` 生成二进制（`go build -o dir/ ./cmd/...` 会产出 `server`/`worker`/`cli`，与 unit 名不匹配导致服务静默启动失败）
+- `scripts/deploy.sh` — Ubuntu 24.04，无 Docker。使用 GitHub 构建包内的三个 `platform/bin/yuqing-*` 和 `web/dist`；缺少产物时终止，不安装 Go/Node 构建工具、不执行编译。已有配置不覆盖。当前生产 yuqing2 为 CentOS，按 Runbook §9 安装已验证的产物。
 - `scripts/nginx-ssl.conf` / `nginx-http.conf` — 有域名走 HTTPS，否则 HTTP-only。SSL 版含 `/.well-known/acme-challenge/` 直通location。nginx 1.24 用 `listen 443 ssl http2`（参数形式，`http2 on;` 指令 1.25 才有）
 - `scripts/systemd/*.service` — 7 个 unit：`yuqing-{server,worker,query,media,insight,report,forum}`
   - **Forum Engine (v0.3.0)**：需环境变量 `ZHIPU_API_KEY`，systemd unit 通过 EnvironmentFile 注入
 - **证书**：acme.sh（Gitee 镜像安装，get.acme.sh 境内不通）。其 cron 每日检查，到期前 30 天自动续期并 reload nginx
 - 迁移 0005：analyses.dimensions JSONB 列；迁移 0006：收费体系三表（report_credits/credit_transactions/orders）；**迁移 0007：用户中心（users 新列 + verification_tokens/sms_verification_codes/login_sessions 三表）**；**迁移 0008（v0.1.2-beta）：analyses.created_by + reports.created_by 列（报告归属）**；**迁移 0009+（待添加）：Forum Engine三表（debates/debate_metrics/llm_call_logs，见 engines/forum_engine/README.md）** —— 部署顺序硬约束：先 `yuqing-cli migrate platform` 再起新 server
-- ⚠️ **迁移三踩坑（v0.1.1 实测，详见 RUNBOOK §9.7）**：① yuqing-cli 用 embed FS 把迁移 SQL 编译进二进制——改服务器磁盘迁移文件无效，必须重编译 CLI；② PL/pgSQL `$$` 块必须加 `-- +goose StatementBegin/End`，否则 goose 分句报 42601（psql 试跑通过 ≠ goose 通过）；③ CLI 必须带 `YUQING_CONFIG=/opt/yuqing/config/config.yaml`。部署前用 psql 事务试跑（BEGIN...ROLLBACK）验语法
+- ⚠️ **迁移三踩坑（v0.1.1 实测，详见 RUNBOOK §9.7）**：① yuqing-cli 用 embed FS 把迁移 SQL 编译进二进制——改服务器磁盘迁移文件无效，必须在 GitHub Actions 重编译 CLI 并下载新产物；② PL/pgSQL `$$` 块必须加 `-- +goose StatementBegin/End`，否则 goose 分句报 42601（psql 试跑通过 ≠ goose 通过）；③ CLI 必须带 `YUQING_CONFIG=/opt/yuqing/config/config.yaml`。部署前用 psql 事务试跑（BEGIN...ROLLBACK）验语法
 - **v0.1.2+ 存量数据回填**：`yuqing-cli backfill-reports` 从 analyses.report_content 回填 reports 表（历史分析的报告）
 - server unit 已有 `public-base-url.conf` drop-in 注入 `YUQING_PUBLIC_BASE_URL`（邮箱验证链接基地址，防 Host 头伪造）
 - 收费体系语义：每次分析 Create/Rerun 各扣 1 次额度，管线失败/取消自动回补；额度不足 HTTP 402 `NO_CREDITS`；新注册赠 1 次试用；beta 公测期额度不过期
 - 分析模式：套餐裁剪 quick（Lite 3 维速览，尝试 thinking=disabled 压成本）/ full（5 维）；Go→Python 经 `InsightAnalyzeReq.Mode` 透传，Python 侧 400 时自动去掉 thinking 参数重试
 - 支付回调路由 `/api/v1/callbacks/payment/:channel` 是唯一免鉴权业务端点 —— 安全完全依赖渠道验签，改动 payment 包时必须保持防线顺序：验签 → 金额核验 → pending→paid 原子跃迁（provider_txn_id 唯一）→ 幂等发放
 - 引导管理员经 `yuqing-server.service.d/bootstrap-admin.conf` drop-in 注入，保证重建环境可复现
-- **🔴 部署铁律（用户 2026-09-22 明令）：一切编译/构建只在本地完成后上传**（Go 交叉编译、前端 dist、RSSHub tarball 等）—— 服务器只做解压/配置/迁移/启停。生产服务器内存小，任何构建都可能打满内存打死 sshd（RSSHub tsc 构建实测打挂 1.7Gi 服务器）
+- **🔴 部署铁律（用户 2026-10-09 更新）：一切编译/构建和编译型测试只在 GitHub 托管 runner 完成**（Go、前端、RSSHub 等）；本地与任何服务器禁止编译。下载同一 SHA 的成功构建包，校验后上传；服务器只验哈希、解包、配置、迁移、启停和健康检查。旧的「本地构建后上传」要求已被本规则替代。
 - **唯一生产环境 = yuqing2.pangu-cloud.com**（101.96.209.90:22352，CentOS Stream 9 / 4C3.6Gi / oneinstack 源码 nginx / PG15 平台库 + 用户自有 MySQL 并存 / Redis 8.4 / Node 在 /usr/local/node/bin）。老机 47.120.20.10 的部署配置已废弃（用户 2026-09-22 确认丢弃，其上数据未迁移）
 - **规范化部署手册 `docs/ops/DEPLOYMENT_RUNBOOK.md`**（新服务器/其他智能体照此执行，含全部踩坑）；运维手册 `docs/ops/OPS_MANUAL.html`；部署日志 `docs/ops/DEPLOYMENT_LOG.html`；CI/CD 规划 `docs/ops/CICD_PLAN.html`（文档归档：planning/user/ops/dev 四类）
 
@@ -353,4 +366,4 @@ sudo YUQING_DOMAIN=<域名> bash scripts/deploy.sh     # 幂等：已装组件 [
 - 前端任务页带分阶段预估时长提示（实测 357s 校准：采集 1-2 分/五维分析 3-5 分/报告 1 分），RUNNING_HINTS 在 AnalysisDetailPage.tsx
 - 项目品牌：**盘古舆情**（README/前端/demo/docs 均用此名；Go module 名 `yuqing` 保持内部标识不变）
 - 面向人交付的文档用 **HTML**（`docs/*.html`），不用 Markdown —— 用户明确要求过
-- 提交前把关：`make test` 全绿 + `npm run build` 通过 + `go vet` 无警告
+- 提交前检查 diff 与凭据；提交后查看当前 SHA 的 GitHub Actions：Go 全量 `-race` 测试、vet、三二进制构建、前端 lint/build 及 PostgreSQL 测试均成功后才能部署。不得在本地补跑这些编译型检查。
