@@ -105,7 +105,7 @@ else
   log_info "Redis 已安装并启动"
 fi
 
-# Go/Node builds are forbidden on the deployment host; ship prebuilt artifacts.
+# Go/Node builds run only on GitHub hosted runners; install verified Actions artifacts.
 
 # 引擎依赖须预先就绪；不能在部署主机安装源码包或浏览器。
 

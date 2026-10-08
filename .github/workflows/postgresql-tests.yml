@@ -6,10 +6,21 @@ on:
   pull_request:
     branches: [main, develop]
 
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgresql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-postgresql:
     name: PostgreSQL Store Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -33,8 +44,9 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: platform/go.mod
           cache: true
+          cache-dependency-path: platform/go.sum
 
       - name: Run PostgreSQL tests
         working-directory: platform

@@ -56,6 +56,13 @@ func createOrder(t *testing.T, svc *Service, tenantID, sku, channel string) *Ord
 
 func TestCreate_usesServerCatalogAndQR(t *testing.T) {
 	svc, prov, _ := newTestService(t)
+	clock := time.Date(2026, time.October, 9, 0, 0, 0, 0, time.UTC)
+	// 每次读取时钟都会前进，避免两次独立取时导致有效期缩短。
+	svc.now = func() time.Time {
+		now := clock
+		clock = clock.Add(time.Second)
+		return now
+	}
 	o := createOrder(t, svc, "t1", "lite", ChannelAlipay)
 
 	if o.AmountCents != 9900 || o.Credits != 4 {

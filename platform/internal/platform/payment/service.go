@@ -89,6 +89,7 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 		return nil, ErrNotConfigured
 	}
 
+	createdAt := s.now()
 	o := &Order{
 		ID:          id.New(),
 		TenantID:    tenantID,
@@ -98,8 +99,8 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 		AmountCents: sku.PriceCents,
 		Channel:     channel,
 		State:       StatePending,
-		ExpiresAt:   s.now().Add(orderTTL),
-		CreatedAt:   s.now(),
+		ExpiresAt:   createdAt.Add(orderTTL),
+		CreatedAt:   createdAt,
 	}
 
 	resp, err := p.CreatePayment(ctx, &CreatePaymentReq{
