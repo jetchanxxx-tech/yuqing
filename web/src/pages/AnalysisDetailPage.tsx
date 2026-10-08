@@ -640,7 +640,12 @@ function DimensionsView({ dimensions }: { dimensions: DimensionResult[] }) {
       <Space wrap size={8}>
         <Typography.Text strong>{d.name}</Typography.Text>
         {d.trend ? (
-          <Tag style={{ marginInlineEnd: 0 }} color="default">{d.trend}</Tag>
+          <Tag
+            style={{ marginInlineEnd: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+            color="default"
+          >
+            {d.trend}
+          </Tag>
         ) : null}
       </Space>
     ),

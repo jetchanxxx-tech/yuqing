@@ -241,9 +241,11 @@ bash /opt/pangu-source/scripts/healthcheck.sh
 
 ## 9. yuqing2 生产环境专章（CentOS Stream 9 / oneinstack，当前唯一生产）
 
-> 环境：101.96.209.90:22352（jet，sudo），域名 yuqing2.pangu-cloud.com，4C/3.6Gi/40G。
+> 环境：101.96.209.90:22352（root），域名 yuqing2.pangu-cloud.com，4C/3.6Gi/40G。
 > 与 §1-8 的 Ubuntu 流程**不通用**：dnf 而非 apt、PG15 需 PGDG 源、nginx 为 oneinstack 源码版（/usr/local/nginx，vhost include 机制）、Node 为 oneinstack 版（/usr/local/node/bin，**systemd 必须写全路径**）、Python 需另装 3.11。
 > 老机 47.120.20.10 的部署配置已废弃（2026-09-22 用户确认）。
+
+SSH 登录：`ssh -p 22352 root@101.96.209.90`。本节服务器命令以 root 执行；密码通过交互提示或本地凭据输入，自动化从环境变量读取，不写入文档或部署脚本。
 
 ### 9.1 差异速查
 
@@ -270,21 +272,21 @@ bash /opt/pangu-source/scripts/healthcheck.sh
 
 ```bash
 # ③ 服务器：swap + PG15 + Python3.11 + 用户（见会话脚本 deploy_new_p1*.py 要点）
-sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 && sudo chmod 600 /swapfile \
-  && sudo mkswap /swapfile && sudo swapon /swapfile
-sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-sudo dnf -qy module disable postgresql
-sudo dnf install -y --nobest postgresql15-server postgresql15-contrib   # --nobest 兼容 OpenSSL 1.1.1
-sudo /usr/pgsql-15/bin/postgresql-15-setup initdb
-sudo systemctl enable --now postgresql-15
+dd if=/dev/zero of=/swapfile bs=1M count=2048 && chmod 600 /swapfile \
+  && mkswap /swapfile && swapon /swapfile
+dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+dnf -qy module disable postgresql
+dnf install -y --nobest postgresql15-server postgresql15-contrib   # --nobest 兼容 OpenSSL 1.1.1
+/usr/pgsql-15/bin/postgresql-15-setup initdb
+systemctl enable --now postgresql-15
 # pg_hba：host 127.0.0.1/32 改 scram-sha-256，restart
-sudo dnf install -y python3.11 python3.11-pip
-sudo useradd -r -m -d /opt/yuqing -s /sbin/nologin yuqing
+dnf install -y python3.11 python3.11-pip
+useradd -r -m -d /opt/yuqing -s /sbin/nologin yuqing
 
 # ④ PG 库/角色/citext（密码示例 Yuq2Pg_2026!，生产请自定）
-sudo -u postgres psql -c "CREATE USER yuqing WITH PASSWORD '***' CREATEDB;"
-sudo -u postgres createdb -O yuqing yuqing_platform
-sudo -u postgres psql -d yuqing_platform -c "GRANT ALL ON SCHEMA public TO yuqing; CREATE EXTENSION citext;"
+runuser -u postgres -- psql -c "CREATE USER yuqing WITH PASSWORD '***' CREATEDB;"
+runuser -u postgres -- createdb -O yuqing yuqing_platform
+runuser -u postgres -- psql -d yuqing_platform -c "GRANT ALL ON SCHEMA public TO yuqing; CREATE EXTENSION citext;"
 
 # ⑤ 源码/二进制/dist 解压就位（/opt/pangu-source 与 /opt/yuqing/bin、web/dist）
 # ⑥ config.yaml 手写（driver: postgres + engines 全 127.0.0.1 + insight/report timeout 420s
@@ -298,9 +300,9 @@ sudo -u postgres psql -d yuqing_platform -c "GRANT ALL ON SCHEMA public TO yuqin
 ### 9.3 RSSHub 部署（F21 热榜数据适配层）
 
 ```bash
-sudo mkdir -p /opt/rsshub/logs            # ⚠️ 坑：winston 启动时要写 logs/，缺了 crash-loop
-sudo tar xzf /tmp/rsshub-dist.tar.gz -C /opt/rsshub   # 本地构建的 dist+node_modules+package.json
-sudo chown -R yuqing:yuqing /opt/rsshub
+mkdir -p /opt/rsshub/logs            # ⚠️ 坑：winston 启动时要写 logs/，缺了 crash-loop
+tar xzf /tmp/rsshub-dist.tar.gz -C /opt/rsshub   # 本地构建的 dist+node_modules+package.json
+chown -R yuqing:yuqing /opt/rsshub
 # unit: scripts/systemd/yuqing-rsshub.service（要点：
 #   ExecStart=<node全路径> /opt/rsshub/dist/index.mjs    # ⚠️ 产物是 .mjs 非 .js
 #   Environment=PORT=1200
@@ -308,7 +310,7 @@ sudo chown -R yuqing:yuqing /opt/rsshub
 #   Environment=NODE_OPTIONS=--max-http-header-size=32768
 #   MemoryHigh=700M MemoryMax=900M                       # OOM 时死 rsshub 不死 PG
 #   ProtectSystem=strict + 预建 logs 目录）
-sudo systemctl enable --now yuqing-rsshub
+systemctl enable --now yuqing-rsshub
 ss -tlnp | grep 1200        # ⚠️ 必须显示 127.0.0.1:1200，出现 *:1200 = 公网暴露
 ```
 
@@ -317,22 +319,22 @@ ss -tlnp | grep 1200        # ⚠️ 必须显示 127.0.0.1:1200，出现 *:1200
 # ⚠️ 坑：--with-deps 在 CentOS 9 卡死 —— 系统依赖手动 dnf（nss/atk/cups-libs/mesa-libgbm/alsa-lib 等）
 # ⚠️ 下载用 npmmirror CDN；⚠️ 浏览器默认装 $HOME/.cache（service 用户 home=/opt/yuqing）——
 #    就让它装在 /opt/yuqing/.cache/ms-playwright，不要改 PLAYWRIGHT_BROWSERS_PATH（改了反而不生效）
-sudo env PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \
+env PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \
   PATH=/usr/local/node/bin:$PATH /usr/local/node/bin/npx playwright install chromium-headless-shell
-sudo chown -R yuqing:yuqing /opt/yuqing/.cache
-sudo systemctl restart yuqing-rsshub
+chown -R yuqing:yuqing /opt/yuqing/.cache
+systemctl restart yuqing-rsshub
 ```
 
 ### 9.4 nginx 站点（oneinstack 风格 + 自签 SSL）
 
 ```bash
-sudo openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
   -keyout /usr/local/nginx/conf/ssl/yuqing2.pangu-cloud.com.key \
   -out /usr/local/nginx/conf/ssl/yuqing2.pangu-cloud.com.crt -subj "/CN=yuqing2.pangu-cloud.com"
 # vhost conf：/usr/local/nginx/conf/vhost/yuqing2.pangu-cloud.com.conf
 #   root /opt/yuqing/web/dist; location /api/ 反代 127.0.0.1:8080（proxy_buffering off 供 SSE）;
 #   location / try_files $uri /index.html（SPA）。写完 nginx -t && nginx -s reload
-sudo chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑：home 目录 700，nginx(www) 穿越不了 → 500
+chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑：home 目录 700，nginx(www) 穿越不了 → 500
 ```
 
 ### 9.5 LLM 中转站配置（当前：sub.geiliapi.com/v1 + deepseek-v4.1-flash）
@@ -377,6 +379,10 @@ sudo chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑�
 | ① | yuqing-cli 用 embed FS 打包迁移 SQL | 迁移 SQL 在**编译期**嵌入二进制（go:embed）——改服务器磁盘上的迁移文件**无效**，必须本地重编译 CLI 再上传。磁盘上 `/opt/yuqing/migrations/` 那份只是留档 |
 | ② | PL/pgSQL `$$` 块必须加 StatementBegin/End 标记 | goose 默认按分号切割语句，`DO $$ ... $$` / 函数体内的分号会被腰斩，报 `42601 syntax error`。**psql 直接执行能过但 goose 失败**——两种执行器对「语句边界」的语义不同。`$$` 块前后必须加 `-- +goose StatementBegin` / `-- +goose StatementEnd` |
 | ③ | yuqing-cli 必须带 YUQING_CONFIG | unit 的 WorkingDirectory=/opt/yuqing 但 config.yaml 在 `config/` 子目录，裸跑 `bin/yuqing-cli` 找不到配置。统一写法：`cd /opt/yuqing && YUQING_CONFIG=/opt/yuqing/config/config.yaml bin/yuqing-cli migrate platform` |
+
+### 9.8 前端静态修复发布
+
+本地执行 `cd web && npm run build`，先备份线上 `/opt/yuqing/web/dist`，再将新构建的 hash 资源上传到该目录并保留旧 hash 资源。最后将新 `index.html` 上传到同目录临时文件，通过 `mv` 原子替换 `index.html`，避免页面引用尚未上传的资源。发布后访问页面确认修复与资源加载；回滚时恢复备份中的 `index.html`。
 
 ## 10. Beta 0.2.2：0008 热修结构收敛
 

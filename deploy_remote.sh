@@ -6,15 +6,15 @@ set -e
 
 SERVER="101.96.209.90"
 PORT="22352"
-USER="jet"
+DEPLOY_USER="root"
 SQL_FILE="/tmp/HOTFIX_0008_created_by.sql"
 
 echo "=== 步骤1: 上传修复SQL ==="
-scp -P $PORT HOTFIX_0008_created_by.sql ${USER}@${SERVER}:${SQL_FILE}
+scp -P $PORT HOTFIX_0008_created_by.sql ${DEPLOY_USER}@${SERVER}:${SQL_FILE}
 
 echo ""
 echo "=== 步骤2: 执行远程部署 ==="
-ssh -p $PORT ${USER}@${SERVER} << 'ENDSSH'
+ssh -p $PORT ${DEPLOY_USER}@${SERVER} << 'ENDSSH'
 set -e
 
 echo "=== 检查PostgreSQL服务 ==="

@@ -11,7 +11,7 @@ echo "================================"
 # 1. 检查SQL文件
 if [ ! -f "/tmp/HOTFIX_0008_created_by.sql" ]; then
     echo "❌ 错误: SQL文件不存在"
-    echo "请先上传: scp -P 22352 HOTFIX_0008_created_by.sql jet@101.96.209.90:/tmp/"
+    echo "请先上传: scp -P 22352 HOTFIX_0008_created_by.sql root@101.96.209.90:/tmp/"
     exit 1
 fi
 
