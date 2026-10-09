@@ -128,17 +128,22 @@ test.setTimeout(120_000);
 
 test.beforeAll(async ({ request }) => {
   requireRunner();
+  console.info('Account/admin fixture: registering initial operator');
   admin = await register(request, 'initial-admin');
+  console.info('Account/admin fixture: initializing verified operator ID');
   execFileSync(resolve(workspace, 'platform/bin/yuqing-cli'), [
     'bootstrap-platform-admin', '--user-id', admin.user.user_id,
   ], {
     cwd: resolve(workspace, 'platform'),
     env: { ...process.env, YUQING_CONFIG: process.env.YUQING_E2E_CONFIG },
     stdio: 'pipe',
+    timeout: 30_000,
   });
+  console.info('Account/admin fixture: checking current operator login');
   admin = { ...admin, ...await login(request, admin) };
   expect(admin.user.roles).toContain('platform_admin');
   ordinary = await register(request, 'ordinary');
+  console.info('Account/admin fixture: ready');
 });
 
 test('server confirmed platform administrators get both entries and actual server pagination', async ({ page, request }) => {

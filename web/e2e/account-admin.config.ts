@@ -72,8 +72,8 @@ if (!runnerTemp || !statSync(runnerTemp).isDirectory()) {
 // Hosted workspaces and RUNNER_TEMP can have private ancestors. The isolated
 // API user must be able to traverse its fixture without opening the checkout.
 const configDirectory = mkdtempSync('/tmp/yuqing-account-admin-');
-// The API and migration tool run under nobody after their outbound traffic is
-// blocked. Only this generated test configuration needs to be readable by them.
+// The API keeps the runner UID so Playwright can terminate it, with a dedicated
+// group whose outbound traffic is blocked. Only generated test files are used.
 chmodSync(configDirectory, 0o755);
 const isolatedServerBinary = join(configDirectory, 'yuqing-server');
 const isolatedCLIBinary = join(configDirectory, 'yuqing-cli');
@@ -121,14 +121,15 @@ const backendEnvironment = [
 ].join(' ');
 const backendCommand = `
 set -euo pipefail
-backend_uid="$(id -u nobody)"
+backend_user="$(id -un)"
+backend_gid="$(getent group nogroup | cut -d: -f3)"
 # Dynamic settings can choose real providers, so missing secrets alone is not
 # an outbound safeguard. Deny this API user's non-loopback IPv4 and IPv6 traffic
 # before running either prebuilt executable. Firewall failures stop the suite.
-sudo -n iptables -I OUTPUT 1 -m owner --uid-owner "$backend_uid" ! -d 127.0.0.0/8 -j REJECT
-sudo -n ip6tables -I OUTPUT 1 -m owner --uid-owner "$backend_uid" ! -d ::1/128 -j REJECT
-sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(isolatedCLIBinary)} migrate platform
-exec sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(isolatedServerBinary)}
+sudo -n iptables -I OUTPUT 1 -m owner --gid-owner "$backend_gid" ! -d 127.0.0.0/8 -j REJECT
+sudo -n ip6tables -I OUTPUT 1 -m owner --gid-owner "$backend_gid" ! -d ::1/128 -j REJECT
+sudo -n -u "$backend_user" -g nogroup env -i ${backendEnvironment} ${shellQuote(isolatedCLIBinary)} migrate platform
+exec sudo -n -u "$backend_user" -g nogroup env -i ${backendEnvironment} ${shellQuote(isolatedServerBinary)}
 `;
 
 export default defineConfig({
@@ -144,6 +145,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'e2e/report/account-admin', open: 'never' }]],
   use: {
     baseURL: frontendURL,
+    actionTimeout: 10_000,
+    navigationTimeout: 30_000,
     serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
