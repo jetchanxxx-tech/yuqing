@@ -52,6 +52,17 @@ async function register(request: APIRequestContext, label: string): Promise<Acco
   return { ...session, name };
 }
 
+async function sharedFixture(request: APIRequestContext, label: string): Promise<Account> {
+  const email = `k3-shared-${label}@example.invalid`;
+  const name = `K3 shared ${label}`;
+  const existing = await request.post(`${apiURL}/auth/login`, { data: { email, password } });
+  if (existing.status() === 200) return { ...await existing.json() as Session, name };
+  expect(existing.status()).toBe(401);
+  const created = await request.post(`${apiURL}/auth/register`, { data: { name, email, password } });
+  expect(created.status()).toBe(201);
+  return { ...await created.json() as Session, name };
+}
+
 async function login(request: APIRequestContext, account: Account): Promise<Session> {
   const response = await request.post(`${apiURL}/auth/login`, { data: { email: account.user.email, password } });
   expect(response.status()).toBe(200);
@@ -84,7 +95,7 @@ async function signIn(page: Page, account: Account = admin) {
   await page.goto('/login');
   await page.getByLabel('邮箱', { exact: true }).fill(account.user.email);
   await page.getByLabel('密码', { exact: true }).fill(password);
-  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('button', { name: /^登\s*录$/ }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto('/admin');
 }
@@ -129,9 +140,9 @@ test.setTimeout(120_000);
 test.beforeAll(async ({ request }) => {
   requireRunner();
   console.info('Account/admin fixture: registering initial operator');
-  admin = await register(request, 'initial-admin');
+  admin = await sharedFixture(request, 'initial-admin');
   console.info('Account/admin fixture: initializing verified operator ID');
-  execFileSync(resolve(workspace, 'platform/bin/yuqing-cli'), [
+  if (!admin.user.roles.includes('platform_admin')) execFileSync(resolve(workspace, 'platform/bin/yuqing-cli'), [
     'bootstrap-platform-admin', '--user-id', admin.user.user_id,
   ], {
     cwd: resolve(workspace, 'platform'),
@@ -142,7 +153,7 @@ test.beforeAll(async ({ request }) => {
   console.info('Account/admin fixture: checking current operator login');
   admin = { ...admin, ...await login(request, admin) };
   expect(admin.user.roles).toContain('platform_admin');
-  ordinary = await register(request, 'ordinary');
+  ordinary = await sharedFixture(request, 'ordinary');
   console.info('Account/admin fixture: ready');
 });
 

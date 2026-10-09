@@ -141,8 +141,8 @@ export default defineConfig({
   forbidOnly: true,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  outputDir: 'test-results/account-admin',
-  reporter: [['list'], ['html', { outputFolder: 'e2e/report/account-admin', open: 'never' }]],
+  outputDir: join(workspace, 'web/test-results/account-admin'),
+  reporter: [['list'], ['html', { outputFolder: join(workspace, 'web/e2e/report/account-admin'), open: 'never' }]],
   use: {
     baseURL: frontendURL,
     actionTimeout: 10_000,
