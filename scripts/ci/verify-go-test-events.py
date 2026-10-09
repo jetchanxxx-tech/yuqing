@@ -18,6 +18,9 @@ REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
     "internal/api/v1": (
+        "TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders",
+        "TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants",
+        "TestBillingLegacyUnknownKeyPGCanReadReadyHTMLButCannotRequestGeneration",
         "TestBillingEntitlementsPGLegacyCacheAndVersionedProviderUsageStayDistinct",
         "TestBillingEntitlementsPGAbsentInvalidAndUnknownPlansDoNotInventEntitlements",
         "TestBillingEntitlementsPGUsesActualPlanBalanceAndExplicitCycle",
