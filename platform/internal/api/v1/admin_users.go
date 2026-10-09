@@ -139,7 +139,7 @@ func validAdminStatus(c *gin.Context, req adminStatusRequest) bool {
 
 func adminMutation(c *gin.Context, req adminStatusRequest, action string) accountadmin.Mutation {
 	p := middleware.GetPrincipal(c)
-	return accountadmin.Mutation{ActorID: p.UserID, TargetID: c.Param("id"), Action: action, Reason: strings.TrimSpace(req.Reason), ExpectedVersion: *req.ExpectedVersion, RequestID: requestID(c)}
+	return accountadmin.Mutation{ActorID: p.UserID, ActorTokenVersion: p.TokenVersion, TargetID: c.Param("id"), Action: action, Reason: strings.TrimSpace(req.Reason), ExpectedVersion: *req.ExpectedVersion, RequestID: requestID(c)}
 }
 func (s *Services) respondAdminMutation(c *gin.Context, m accountadmin.Mutation) {
 	result, err := s.AccountAdmin.Change(c.Request.Context(), m)

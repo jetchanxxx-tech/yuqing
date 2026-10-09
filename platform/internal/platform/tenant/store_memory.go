@@ -34,6 +34,8 @@ func (m *MemoryStore) Create(_ context.Context, t Tenant) error {
 	if cp.CreatedAt.IsZero() {
 		cp.CreatedAt = time.Now().UTC()
 	}
+	// Match PostgreSQL timestamptz precision for supplied/generated instants.
+	cp.CreatedAt = cp.CreatedAt.UTC().Truncate(time.Microsecond)
 	m.byID[t.ID] = &cp
 	m.order = append(m.order, t.ID)
 	return nil

@@ -225,8 +225,12 @@ func (s *PGStore) auditRows(ctx context.Context, targetType, targetID, tenantID 
 	return result, nil
 }
 
-// Change serializes last-admin checks with the K1 provisioning lock and the
-// tenant-specific lock. CAS, credentials, state and durable audit commit once.
+// Change serializes all privileged mutations with the K1 provisioning lock.
+// The order is platform advisory, optional tenant advisory, actor FOR SHARE,
+// then target rows. The actor lock protects credentials through commit while
+// remaining compatible with billing admission's shared actor reads. Global
+// serialization avoids cross-actor lock upgrades/deadlocks at current scale.
+// CAS, credentials, state and durable audit commit once.
 func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -234,9 +238,10 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	}
 	defer tx.Rollback(context.Background())
 	platform := m.Action == "user.disable" || m.Action == "user.enable" || m.Action == "user.platform_role"
-	if platform {
-		_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID)
-	} else {
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID); err != nil {
+		return nil, internal(err)
+	}
+	if !platform {
 		id := m.TenantID
 		if m.Action != "member.role" {
 			id = m.TargetID
@@ -245,6 +250,23 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	}
 	if err != nil {
 		return nil, internal(err)
+	}
+	var actorStatus string
+	var actorVersion int64
+	var actorAdmin bool
+	err = tx.QueryRow(ctx, `SELECT u.status,u.token_version,EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=u.id AND role='platform_admin')
+		FROM users u WHERE u.id=$1 FOR SHARE OF u`, m.ActorID).Scan(&actorStatus, &actorVersion, &actorAdmin)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, conflict()
+	}
+	if err != nil {
+		return nil, internal(err)
+	}
+	// Validate the request's original identity before any self-target version
+	// changes. A request already queued when its actor is revoked conflicts;
+	// a new request with the old JWT is rejected by authentication with 401.
+	if actorStatus != "active" || actorVersion != m.ActorTokenVersion || !actorAdmin {
+		return nil, conflict()
 	}
 	result := &Result{}
 	before := map[string]any{}

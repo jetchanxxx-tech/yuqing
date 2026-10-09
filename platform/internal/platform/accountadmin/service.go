@@ -89,11 +89,13 @@ type TenantDetail struct {
 	AuditLogs []Audit          `json:"audit_logs"`
 }
 
-// Mutation carries only explicitly validated administrative intent. ActorID is
-// supplied from current authentication, never from the request JSON.
+// Mutation carries only explicitly validated administrative intent. ActorID
+// and ActorTokenVersion come from the original authenticated principal, never
+// from request JSON; stores revalidate that identity through their commit.
 type Mutation struct {
 	ActorID, TargetID, TenantID, Action, Reason, RequestID string
 	ExpectedVersion                                        int64
+	ActorTokenVersion                                      int64
 	PlatformAdmin                                          bool
 	Role                                                   string
 }

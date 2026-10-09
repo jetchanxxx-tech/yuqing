@@ -208,33 +208,38 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	defer s.mu.Unlock()
 	result := &Result{}
 	audit := Audit{ID: int64(len(s.audits) + 1), ActorID: m.ActorID, Action: m.Action, TargetType: "user", TargetID: m.TargetID, TenantID: m.TenantID, Reason: m.Reason, RequestID: m.RequestID, CreatedAt: time.Now().UTC()}
-	if m.Action == "tenant.suspend" || m.Action == "tenant.resume" {
-		audit.TargetType = "tenant"
-		audit.TenantID = m.TargetID
-		err := s.tenants.ChangeAdministration(ctx, m.TargetID, func(t *tenant.Tenant) error {
-			status := tenant.StatusSuspended
-			from := tenant.StatusActive
-			if m.Action == "tenant.resume" {
-				status = tenant.StatusActive
-				from = tenant.StatusSuspended
-			}
-			if t.RowVersion != m.ExpectedVersion || t.Status != from {
-				return conflict()
-			}
-			audit.Before = map[string]any{"status": t.Status, "row_version": t.RowVersion}
-			t.Status = status
-			t.RowVersion++
-			audit.After = map[string]any{"status": t.Status, "row_version": t.RowVersion}
-			result.ID = t.ID
-			result.Status = string(t.Status)
-			result.RowVersion = t.RowVersion
-			return nil
-		})
-		if err != nil {
-			return nil, err
+	// Keep actor validation protected by the real identity lock through both
+	// account and tenant commits. Identity precedes tenant, matching K1 reads
+	// and registration; placing this check inside the tenant callback would
+	// invert that order. The adapter mutex serializes administrative mutations.
+	err := s.accounts.UpdateAdministration(ctx, func(state *auth.AdministrationState) error {
+		actor, exists := state.Users[m.ActorID]
+		if !exists || actor.Status != "active" || actor.TokenVersion != m.ActorTokenVersion || !hasAdmin(state.PlatformRoles[m.ActorID]) {
+			return conflict()
 		}
-	} else {
-		err := s.accounts.UpdateAdministration(ctx, func(state *auth.AdministrationState) error {
+		if m.Action == "tenant.suspend" || m.Action == "tenant.resume" {
+			audit.TargetType = "tenant"
+			audit.TenantID = m.TargetID
+			return s.tenants.ChangeAdministration(ctx, m.TargetID, func(t *tenant.Tenant) error {
+				status := tenant.StatusSuspended
+				from := tenant.StatusActive
+				if m.Action == "tenant.resume" {
+					status = tenant.StatusActive
+					from = tenant.StatusSuspended
+				}
+				if t.RowVersion != m.ExpectedVersion || t.Status != from {
+					return conflict()
+				}
+				audit.Before = map[string]any{"status": t.Status, "row_version": t.RowVersion}
+				t.Status = status
+				t.RowVersion++
+				audit.After = map[string]any{"status": t.Status, "row_version": t.RowVersion}
+				result.ID = t.ID
+				result.Status = string(t.Status)
+				result.RowVersion = t.RowVersion
+				return nil
+			})
+		} else {
 			u, ok := state.Users[m.TargetID]
 			if !ok {
 				return missing()
@@ -328,10 +333,10 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 				}
 			}
 			return nil
-		})
-		if err != nil {
-			return nil, err
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
 	s.audits = append(s.audits, audit)
 	return result, nil
