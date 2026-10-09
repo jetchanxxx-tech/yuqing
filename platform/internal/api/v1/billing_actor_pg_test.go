@@ -7,10 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -137,4 +139,81 @@ func TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledO
 		t.Fatal(err)
 	}
 	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/analyses", raw, nil), http.StatusUnauthorized)
+}
+
+// The request authenticates before waiting for the same exclusive lock used by
+// account administration. Revocation in that window must prevent a durable key.
+func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *testing.T) {
+	for _, kind := range []string{"credential_version", "membership_permission"} {
+		t.Run(kind, func(t *testing.T) {
+			e := newBillingActorPGEnv(t)
+			token, _, owner := mustRegister(t, e.router, "queued-key-"+kind+"@example.invalid", "Queued key owner")
+			dsn, err := url.Parse(e.cfg.DB.Primary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			application := "k4-key-race-" + kind
+			values := dsn.Query()
+			values.Set("application_name", application)
+			dsn.RawQuery = values.Encode()
+			e.cfg.DB.Primary = dsn.String()
+			e.rebuild()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			blocker, err := e.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback(context.Background())
+			if _, err = blocker.Exec(ctx, `SELECT pg_advisory_xact_lock(741914)`); err != nil {
+				t.Fatal(err)
+			}
+			response := make(chan *httptest.ResponseRecorder, 1)
+			go func() {
+				response <- doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": "must not survive revocation"})
+			}()
+			for {
+				var waiting bool
+				if err = e.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock_shared%')`, application).Scan(&waiting); err != nil {
+					t.Fatal(err)
+				}
+				if waiting {
+					break
+				}
+				select {
+				case result := <-response:
+					t.Fatalf("request did not wait for administration transaction: %d %s", result.Code, result.Body.String())
+				case <-ctx.Done():
+					t.Fatal("request never reached transaction lock")
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			if kind == "credential_version" {
+				_, err = blocker.Exec(ctx, `UPDATE users SET token_version=token_version+1 WHERE id=$1`, owner["user_id"])
+			} else {
+				// Permission itself is rechecked even if a historic administrator failed to
+				// increment a credential version when changing membership.
+				_, err = blocker.Exec(ctx, `UPDATE tenant_members SET role='viewer' WHERE tenant_id=$1 AND user_id=$2`, owner["tenant_id"], owner["user_id"])
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = blocker.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case result := <-response:
+				adminContractResponse(t, result, http.StatusForbidden)
+			case <-ctx.Done():
+				t.Fatal("queued request did not complete")
+			}
+			var count int
+			if err = e.pool.QueryRow(ctx, `SELECT count(*) FROM api_keys WHERE tenant_id=$1`, owner["tenant_id"]).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("revoked request created %d durable keys", count)
+			}
+		})
+	}
 }
