@@ -51,14 +51,14 @@ async function loginBilling(page: import('@playwright/test').Page, email: string
 function billingSQL(sql: string, variables: string[] = []) {
   execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', ...variables.flatMap((value) => ['-v', value])], { input: sql, stdio: 'pipe' });
 }
-async function refetchCachedBilling(page: import('@playwright/test').Page) {
+async function refetchCachedBilling(page: import('@playwright/test').Page, path = '/settings') {
   await page.clock.setSystemTime(Date.now() + 120_000);
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    window.dispatchEvent(new Event('visibilitychange'));
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
-    window.dispatchEvent(new Event('visibilitychange'));
-  });
+  // Application intentionally disables focus refetch. Real SPA navigation
+  // remounts the stale query while preserving its QueryClient cache.
+  await page.getByRole('menuitem', { name: '数据面板', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.getByRole('menuitem', { name: path === '/settings' ? '设置' : '用量', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${path}$`));
 }
 
 test('Settings describes actual Pro retention and only connected verification capabilities', async ({ page, request }) => {
@@ -66,14 +66,14 @@ test('Settings describes actual Pro retention and only connected verification ca
   billingSQL("UPDATE report_credits SET plan_code='pro' WHERE tenant_id=:'tenant_id';", [`tenant_id=${account.user.tenant_id}`]);
   await loginBilling(page, account.email);
   await page.goto('/settings');
-  await expect(page.getByText('当前套餐报告与原始文档保留 180 天', { exact: true })).toBeVisible();
-  await expect(page.getByText('客服渠道暂未配置', { exact: true })).toBeVisible();
-  await expect(page.getByText('support@yuqing.example.com', { exact: false })).toHaveCount(0);
+  await expect.soft(page.getByText('当前套餐报告与原始文档保留 180 天', { exact: true })).toBeVisible();
+  await expect.soft(page.getByText('客服渠道暂未配置', { exact: true })).toBeVisible();
+  await expect.soft(page.getByText('support@yuqing.example.com', { exact: false })).toHaveCount(0);
   await page.getByRole('tab', { name: '个人资料', exact: true }).click();
-  await expect(page.getByText('验证邮箱后可解锁全部功能', { exact: false })).toHaveCount(0);
-  await expect(page.getByText('验证用于确认邮箱归属；功能与额度以当前套餐为准。', { exact: true })).toBeVisible();
+  await expect.soft(page.getByText('验证邮箱后可解锁全部功能', { exact: false })).toHaveCount(0);
+  await expect.soft(page.getByText('验证用于确认邮箱归属；功能与额度以当前套餐为准。', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
-  await expect(page.getByText('手机号登录、找回密码与支付验证暂未开放', { exact: true })).toBeVisible();
+  await expect.soft(page.getByText('手机号登录、找回密码与支付验证暂未开放', { exact: true })).toBeVisible();
 });
 
 test('Settings rejects stale cached credit values after a real database read failure and retries', async ({ page, request }) => {
@@ -107,8 +107,10 @@ for (const path of ['/settings', '/usage']) {
     await page.goto(path);
     await expect(page.getByText('速览版', { exact: true })).toBeVisible();
     // Failure-only transport injection; successful data always comes from real Go/PG.
-    await page.route('**/api/v1/billing/plans', (route) => route.abort('connectionfailed'));
-    await refetchCachedBilling(page);
+    let aborted = 0;
+    await page.route('**/api/v1/billing/plans', (route) => { aborted += 1; return route.abort('connectionfailed'); });
+    await refetchCachedBilling(page, path);
+    await expect.poll(() => aborted).toBeGreaterThan(0);
     await expect(page.getByRole('alert').filter({ hasText: '套餐目录暂不可用' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('速览版', { exact: true })).toHaveCount(0);
     await page.unroute('**/api/v1/billing/plans');
