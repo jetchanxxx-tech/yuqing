@@ -341,7 +341,13 @@ func (s *Service) ConfirmVerification(ctx context.Context, purpose, target, valu
 		}
 		a.PasswordHash = hash
 	}
-	return s.verifications.Consume(ctx, a)
+	result, err := s.verifications.Consume(ctx, a)
+	// Public confirmation must not reveal whether a credential existed through
+	// the bind flow's special fifth-failure response. Durable invalidation stays.
+	if (purpose == PhoneLogin || purpose == PhoneReset) && pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		return nil, verificationInvalid()
+	}
+	return result, err
 }
 
 func validateVerificationCredential(c VerificationCredential) error {
