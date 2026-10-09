@@ -107,7 +107,7 @@ func TestContract_accountAuth_suspendedBootstrapAdminCanResumeTenant(t *testing.
 		t.Fatalf("administrator login tenant_status = %v, want suspended", loginUser["tenant_status"])
 	}
 
-	w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/resume", token, nil)
+	w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/resume", token, map[string]any{"reason": "挂起租户管理员可恢复", "expected_version": 0})
 	if w.Code != http.StatusOK {
 		t.Fatalf("suspended administrator POST /admin/tenants/:id/resume status = %d, want 200\nbody: %s", w.Code, w.Body.String())
 	}

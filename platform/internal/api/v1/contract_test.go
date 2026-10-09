@@ -1315,7 +1315,7 @@ func TestContract_admin_tenantLifecycle(t *testing.T) {
 	}
 
 	t.Run("suspend", func(t *testing.T) {
-		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/suspend", admin, nil)
+		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/suspend", admin, map[string]any{"reason": "合同测试租户状态变更", "expected_version": 0})
 		if w.Code != http.StatusOK {
 			t.Fatalf("suspend status = %d, want 200\nbody: %s", w.Code, w.Body.String())
 		}
@@ -1325,13 +1325,13 @@ func TestContract_admin_tenantLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("suspend again conflicts", func(t *testing.T) {
-		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/suspend", admin, nil)
+		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/suspend", admin, map[string]any{"reason": "合同测试租户状态变更", "expected_version": 0})
 		if w.Code != http.StatusConflict {
 			t.Fatalf("double suspend status = %d, want 409", w.Code)
 		}
 	})
 	t.Run("resume", func(t *testing.T) {
-		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/resume", admin, nil)
+		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/"+tenantID+"/resume", admin, map[string]any{"reason": "合同测试租户恢复", "expected_version": 1})
 		if w.Code != http.StatusOK {
 			t.Fatalf("resume status = %d, want 200\nbody: %s", w.Code, w.Body.String())
 		}
@@ -1340,7 +1340,7 @@ func TestContract_admin_tenantLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("suspend unknown tenant is 404", func(t *testing.T) {
-		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/ghost/suspend", admin, nil)
+		w := doReq(t, r, http.MethodPost, "/api/v1/admin/tenants/ghost/suspend", admin, map[string]any{"reason": "合同测试不存在租户", "expected_version": 0})
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", w.Code)
 		}

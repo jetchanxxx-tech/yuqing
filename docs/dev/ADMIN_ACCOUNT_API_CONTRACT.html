@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>K2 账号与租户管理接口契约</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:1060px;margin:32px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.3}code,pre{background:#eef2f7;padding:2px 5px;border-radius:4px}pre{padding:16px;white-space:pre-wrap}table{border-collapse:collapse;width:100%}th,td{padding:10px;text-align:left;vertical-align:top;border:1px solid #d5dce6}small{color:#58667a}</style>
+<h1>K2 账号、角色与租户接口契约</h1>
+<p>冻结日期：2026-10-09。状态：<strong>契约与失败验收用例准备；未声称已实现、通过验收或部署。</strong>依据 <a href="../planning/ADMIN_USER_CENTER_DEVELOPMENT_PLAN.html">管理后台开发计划</a> K2。全部路径以前缀 <code>/api/v1</code> 开始；不包含邀请、新成员创建和登录设备管理。</p>
+<h2>读取与分页</h2>
+<p>列表使用 <code>page=1&amp;page_size=20</code>，page ≥ 1，page_size 1–100；非法数字或超限返回 400。按 <code>created_at ASC,id ASC</code> 排序，同创建时间下分页稳定。响应 <code>{items:[],total,page,page_size}</code>；租户列表额外保留 <code>tenants</code>，内容与 items 相同。时间均为 RFC3339；未发生的时间为 null，空集合为 []。</p>
+<table><thead><tr><th>路径</th><th>查询／权限</th><th>响应</th></tr></thead><tbody>
+<tr><td>GET /admin/users</td><td>q（邮箱／昵称／ID）、status、platform_role=platform_admin、verified=email|phone|none；admin:users:read</td><td>用户分页</td></tr>
+<tr><td>GET /admin/users/:id</td><td>admin:users:read</td><td>用户详情</td></tr>
+<tr><td>GET /admin/tenants</td><td>q（名称／ID）、status、plan_code（有效套餐）；admin:tenants:read（旧 admin:tenants:list 保留）</td><td>租户分页＋兼容 tenants</td></tr>
+<tr><td>GET /admin/tenants/:id</td><td>admin:tenants:read</td><td>租户详情</td></tr>
+</tbody></table>
+<pre>用户行：{id,name,email,phone_masked,status,email_verified,phone_verified,
+  platform_roles:[],tenant_count,created_at,last_login_at:null,row_version}
+用户详情：用户行 + {memberships:[{tenant_id,tenant_name,tenant_status,role,row_version}],
+  audit_logs:[]}
+租户行：{id,name,slug,plan_code,status,created_at,row_version,user_count,
+  effective_plan_code,plan_source}
+租户详情：租户行 + {members:[{user_id,name,email,role,row_version}],
+  credit:null|{balance,plan_code},orders:[],audit_logs:[]}
+审计摘要：{id,actor_id,action,target_type,target_id,tenant_id,reason,
+  before,after,request_id,created_at}</pre>
+<p>手机号仅返回脱敏 <code>phone_masked</code>（中国 11 位示例 <code>138****0011</code>），无绑定返回空字符串。不能返回密码散列、JWT、验证码或原始手机号。平台角色与团队成员角色分别返回。<code>tenant_count</code>／<code>user_count</code> 为实际成员关系计数，不能假定一用户一租户。有效套餐采用 report_credits.plan_code（plan_source=report_credits），与报告权限来源一致；无额度池时 effective_plan_code 为空字符串、plan_source=unknown，继续适用报告模块的最严格限制。tenants.plan_code 只显示历史字段，不据此补造有效权益。订单只读既有 orders，无购买记录不得造 paid 订单。</p>
+<h2>状态、角色与并发</h2>
+<table><thead><tr><th>路径</th><th>请求与权限</th><th>成功响应</th></tr></thead><tbody>
+<tr><td>POST /admin/users/:id/disable<br>POST /admin/users/:id/enable</td><td>{reason,expected_version}；admin:users:manage</td><td>{id,status,row_version}</td></tr>
+<tr><td>PUT /admin/users/:id/platform-role</td><td>{platform_admin:boolean,reason,expected_version}；admin:roles:manage</td><td>{id,platform_roles:[],row_version}</td></tr>
+<tr><td>POST /admin/tenants/:id/suspend<br>POST /admin/tenants/:id/resume</td><td>{reason,expected_version}；admin:tenants:manage（旧 admin:tenants:suspend 保留）</td><td>{id,status,row_version}</td></tr>
+<tr><td>PUT /admin/tenants/:tenant_id/members/:user_id/role</td><td>{role,reason,expected_version}；admin:members:manage</td><td>{tenant_id,user_id,role,row_version}</td></tr>
+</tbody></table>
+<p>上述管理权限仅授予持久化的 platform_admin；tenant_admin／analyst／viewer 和 API Key 均不可访问。reason 去除空白后必填；expected_version 必填且 ≥ 0。账号及平台角色使用 users.row_version，租户使用 tenants.row_version，成员使用 tenant_members.row_version。版本不一致返回 409且不修改数据／审计。</p>
+<p>账号仅 active→disabled、disabled→active；启用不能重新激活 pending_activation、closure_pending 或 closed。平台管理员角色只按不可变 user_id 授撤；成员角色白名单 tenant_admin／analyst／viewer，禁止 platform_admin／api_service。按显式 tenant_id＋user_id 定位已存在成员，缺失 404，不创建任何成员。</p>
+<p>账号状态／平台角色操作持有与 K1 共用的 <code>auth.PlatformAdminLockID=741914</code> 事务锁，成功后必须至少保留一名 active 平台管理员；两个管理员并发互撤／互禁只能一个成功。成员操作持有对应租户事务锁，至少保留一名 tenant_admin；并发降级两名管理员只能一个成功。CAS、状态／角色、版本和持久审计同事务提交，审计失败则全部回滚。</p>
+<p>账号状态／平台角色成功变更递增目标 users.row_version 与 token_version。成员变更递增成员 row_version、目标 users.row_version 与 token_version；同账号其他团队关系保持。旧 access／refresh 在下一请求返回 401；启用／重新授权不恢复旧凭据。租户挂起／恢复递增租户 row_version，不能修改用户状态或清除成员；新业务请求读取当前租户状态。</p>
+<h2>持久审计与错误</h2>
+<p>复用 audit_logs：actor_id、tenant_id、action、resource 和 details_json，JSON 内保存 target_type／target_id／reason／before／after／request_id。时间取真实数据库时间。读取在服务重新装配后仍保留；不使用请求 logger 代替审计。动作名采用 <code>user.disable</code>、<code>user.enable</code>、<code>user.platform_role</code>、<code>tenant.suspend</code>、<code>tenant.resume</code>、<code>member.role</code>。</p>
+<p>错误信封 <code>{code,message,request_id}</code>。400 BAD_REQUEST：输入／角色不合法；401 UNAUTHORIZED：身份或凭据撤销；403 FORBIDDEN：平台权限不足；404 NOT_FOUND：目标／成员不存在；409 CONFLICT：版本、状态跃迁或最后管理员冲突。错误不返回 SQL 或秘密。</p>
+<h2>验收边界</h2>
+<p>真实 router memory HTTP 用例验证 DTO、权限、白名单和撤旧 token；GitHub hosted PostgreSQL 用例验证并发最后管理员、CAS、成员范围、审计事务回滚、重新装配持久、多人计数、同时间分页与套餐来源。使用 pgtest 独占 schema；不发送邮件／短信，不运行生产支付，编译与执行仅由批准的 GitHub 工作流完成。云端失败、成功 run 的准确 commit 及结果由主执行者记录到交付状态页。</p>
+<small>冻结契约可供 K3 前端实现；实施状态以 GitHub 验收证据和交付状态页为准。</small>
+</html>

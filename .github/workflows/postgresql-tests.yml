@@ -75,6 +75,7 @@ jobs:
             ./migrations \
             ./internal/api/v1 \
             ./internal/platform/auth \
+            ./internal/platform/accountadmin \
             ./internal/platform/tenant \
             ./internal/platform/credit \
             ./internal/platform/payment \
