@@ -23,6 +23,7 @@ func main() {
 		fmt.Println("  provision-tenant <id> Provision a new tenant database")
 		fmt.Println("  gen-invoice <tenant>  Generate invoice for a tenant billing period")
 		fmt.Println("  backfill-reports      Backfill report records from historical analyses")
+		fmt.Println("  bootstrap-platform-admin --user-id <id> Initialize the first platform administrator")
 		os.Exit(1)
 	}
 
@@ -35,6 +36,8 @@ func main() {
 		handleGenInvoice(os.Args[2:])
 	case "backfill-reports":
 		handleBackfillReports()
+	case "bootstrap-platform-admin":
+		handleBootstrapPlatformAdmin(os.Args[2:])
 	default:
 		fmt.Printf("unknown command: %s\n", os.Args[1])
 		os.Exit(1)
