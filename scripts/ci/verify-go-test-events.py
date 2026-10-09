@@ -22,6 +22,8 @@ REQUIRED_TESTS = {
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
         "TestNotificationSettingsPGSecretsStayServerSide",
+        "TestNotificationSettingsPGQueuedActorCannotCommit",
+        "TestNotificationSettingsPGMaskPreserveAndAuditAtomicity",
         "TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders",
         "TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants",
         "TestBillingLegacyUnknownKeyPGCanReadReadyHTMLButCannotRequestGeneration",
