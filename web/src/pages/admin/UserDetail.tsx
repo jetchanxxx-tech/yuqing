@@ -49,8 +49,10 @@ export function AdminActionDialog({ action, onClose, onSuccess, onError }: {
     ]} />
     <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>{action.notice}</Typography.Paragraph>
     <Form form={form} layout="vertical" initialValues={{ role: action.previous }} onFinish={(values: { reason: string; role?: MemberRole }) => mutation.mutate(values)}>
+      {/* Keep the selected label decorative so the labeled combobox receives clicks. */}
+      {action.memberRole && <style>{'.admin-member-role-select .ant-select-selection-item { pointer-events: none; }'}</style>}
       {action.memberRole && <Form.Item name="role" label="新团队角色" rules={[{ required: true }]}>
-        <Select options={[{ value: 'tenant_admin', label: '团队管理员（tenant_admin）' }, { value: 'analyst', label: '分析成员（analyst）' }, { value: 'viewer', label: '只读成员（viewer）' }]} />
+        <Select className="admin-member-role-select" options={[{ value: 'tenant_admin', label: '团队管理员（tenant_admin）' }, { value: 'analyst', label: '分析成员（analyst）' }, { value: 'viewer', label: '只读成员（viewer）' }]} />
       </Form.Item>}
       <Form.Item name="reason" label="操作原因" rules={[{ required: true, whitespace: true, message: '请输入操作原因' }]}>
         <Input.TextArea rows={3} maxLength={2000} showCount />

@@ -38,7 +38,7 @@ export function MainLayout() {
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
-          items={principal?.roles.includes('platform_admin') ? [...menuItems, { key: '/admin', icon: <SettingOutlined />, label: '管理后台' }] : menuItems}
+          items={principal?.roles.includes('platform_admin') ? [...menuItems, { key: '/admin', icon: <SettingOutlined aria-hidden="true" />, label: '管理后台' }] : menuItems}
           onClick={({ key }) => navigate(key)}
           style={{ border: 'none' }}
         />
@@ -47,7 +47,7 @@ export function MainLayout() {
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
           <Dropdown menu={{
             items: [
-              ...(principal?.roles.includes('platform_admin') ? [{ key: 'admin', label: '管理后台', icon: <SettingOutlined />, onClick: () => navigate('/admin') }] : []),
+              ...(principal?.roles.includes('platform_admin') ? [{ key: 'admin', label: '管理后台', icon: <SettingOutlined aria-hidden="true" />, onClick: () => navigate('/admin') }] : []),
               { key: 'logout', label: '退出登录', icon: <LogoutOutlined />, onClick: logout },
             ],
           }}>
