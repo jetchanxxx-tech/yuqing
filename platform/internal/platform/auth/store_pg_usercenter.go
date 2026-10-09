@@ -69,11 +69,30 @@ func (s *PGStore) GetByPhone(ctx context.Context, phone string) (*User, error) {
 	return u, nil
 }
 
-// UpdatePassword 更新密码哈希并记录 password_changed_at。
-func (s *PGStore) UpdatePassword(ctx context.Context, userID, newHash string) error {
+// UpdatePassword commits only while the verified credential version is current
+// and the account remains active. The predicate and version increments execute
+// in the same UPDATE, including PostgreSQL's concurrent-row recheck.
+func (s *PGStore) UpdatePassword(ctx context.Context, userID, newHash string, expectedVersion int64) error {
 	const q = `UPDATE users SET password_hash = $2, password_changed_at = now(),
-		token_version = token_version + 1, row_version = row_version + 1 WHERE id = $1`
-	return s.execUserUpdate(ctx, q, userID, newHash)
+		token_version = token_version + 1, row_version = row_version + 1
+		WHERE id = $1 AND status = 'active' AND token_version = $3`
+	tag, err := s.pool.Exec(ctx, q, userID, newHash, expectedVersion)
+	if err != nil {
+		return wrapDB(err, "update user password")
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	// The write already failed closed. This read only selects the error for
+	// a missing/inactive account versus a changed credential version.
+	u, err := s.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.Status != "active" {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
+	return pkgerrors.Wrap(pkgerrors.ErrConflict, "credentials changed; sign in again")
 }
 
 // MarkEmailVerified 标记邮箱已验证。

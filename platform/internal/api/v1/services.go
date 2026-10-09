@@ -71,11 +71,7 @@ func respondError(c *gin.Context, err error) {
 		code = "INTERNAL"
 		status = http.StatusInternalServerError
 	}
-	c.JSON(status, gin.H{
-		"code":       code,
-		"message":    err.Error(),
-		"request_id": requestID(c),
-	})
+	c.JSON(status, pkgerrors.ToEnvelope(err, requestID(c)))
 }
 
 // tenantID returns the authenticated principal's tenant ID.

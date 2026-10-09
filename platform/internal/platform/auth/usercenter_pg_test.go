@@ -53,7 +53,7 @@ func userCenterStoreContract(t *testing.T, newStore func(t *testing.T) UserStore
 		userID := id.New()
 		seedUCUserOnUserStore(t, st, userID, "uc-pwd@example.com")
 
-		if err := st.UpdatePassword(ctx, userID, "newhash"); err != nil {
+		if err := st.UpdatePassword(ctx, userID, "newhash", 0); err != nil {
 			t.Fatalf("UpdatePassword: %v", err)
 		}
 		u, _ := st.GetByID(ctx, userID)
@@ -61,10 +61,52 @@ func userCenterStoreContract(t *testing.T, newStore func(t *testing.T) UserStore
 			t.Errorf("hash = %q, want newhash", u.PasswordHash)
 		}
 		if u.PasswordChangedAt == nil {
-			t.Error("password_changed_at 未记录")
+			t.Fatal("password_changed_at 未记录")
 		}
 		if u.TokenVersion != 1 || u.RowVersion != 1 {
 			t.Errorf("password update must atomically increment account versions: token=%d row=%d", u.TokenVersion, u.RowVersion)
+		}
+		if err := st.UpdatePassword(ctx, userID, "stalehash", 0); !errors.Is(err, errors.ErrConflict) {
+			t.Fatalf("stale password version must return ErrConflict: %v", err)
+		}
+		after, err := st.GetByID(ctx, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.PasswordHash != "newhash" || after.TokenVersion != 1 || after.RowVersion != 1 || after.PasswordChangedAt == nil || !after.PasswordChangedAt.Equal(*u.PasswordChangedAt) {
+			t.Fatal("stale password update changed the winning credential or version")
+		}
+		if err := st.UpdatePassword(ctx, userID, "nextversionhash", 1); err != nil {
+			t.Fatalf("current password version must permit update: %v", err)
+		}
+		after, err = st.GetByID(ctx, userID)
+		if err != nil || after.PasswordHash != "nextversionhash" || after.TokenVersion != 2 || after.RowVersion != 2 {
+			t.Errorf("next password update must increment once: %v", err)
+		}
+	})
+
+	t.Run("UpdatePassword missing account remains ErrNotFound", func(t *testing.T) {
+		st := newStore(t)
+		if err := st.UpdatePassword(ctx, id.New(), "hash", 0); !errors.Is(err, errors.ErrNotFound) {
+			t.Fatalf("unknown user password update: %v", err)
+		}
+	})
+
+	t.Run("UpdatePassword disabled account remains unchanged", func(t *testing.T) {
+		st := newStore(t)
+		userID := id.New()
+		if err := st.(Store).CreateUser(ctx, User{ID: userID, Email: "disabled-password@example.com", PasswordHash: "oldhash", Status: "disabled"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.UpdatePassword(ctx, userID, "newhash", 0); !errors.Is(err, errors.ErrUnauthorized) {
+			t.Fatalf("disabled password update must return ErrUnauthorized: %v", err)
+		}
+		u, err := st.GetByID(ctx, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.PasswordHash != "oldhash" || u.Status != "disabled" || u.TokenVersion != 0 || u.RowVersion != 0 || u.PasswordChangedAt != nil {
+			t.Fatal("disabled password update changed the account")
 		}
 	})
 

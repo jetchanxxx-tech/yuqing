@@ -235,7 +235,7 @@ func (s *PGStore) GetUserRole(ctx context.Context, tenantID, userID string) (str
 }
 
 // wrapDB 把非业务性的数据库错误（连接断开、超时、约束之外的 SQL 错误）
-// 统一包成 ErrInternal，避免把驱动错误直接漏到 HTTP 信封里。
+// 身份存储不可用时采用 503；驱动细节保留在内部错误，HTTP 信封统一屏蔽。
 func wrapDB(err error, op string) error {
-	return pkgerrors.Wrap(pkgerrors.ErrInternal, "auth: "+op+": "+err.Error())
+	return pkgerrors.Wrap(pkgerrors.ErrServiceUnavailable, "auth: "+op+": "+err.Error())
 }

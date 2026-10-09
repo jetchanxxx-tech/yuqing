@@ -386,7 +386,7 @@ func TestAuthStore_PGLoginRecorderRejectsStalePasswordSnapshot(t *testing.T) {
 	if err := st.CreateUser(ctx, User{ID: "login-cas", Email: "login-cas@example.com", PasswordHash: "old-hash"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpdatePassword(ctx, "login-cas", "new-hash"); err != nil {
+	if err := st.UpdatePassword(ctx, "login-cas", "new-hash", 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.RecordSuccessfulLogin(ctx, "login-cas", 0); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {

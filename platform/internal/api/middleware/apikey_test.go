@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/tenant"
@@ -21,7 +22,7 @@ type stubTenants struct {
 
 func (s stubTenants) Get(_ context.Context, id string) (*tenant.Tenant, error) {
 	if s.notFound {
-		return nil, &notFoundErr{}
+		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "tenant not found")
 	}
 	return &tenant.Tenant{ID: id, Status: tenant.Status(s.status), PlanCode: "pro"}, nil
 }

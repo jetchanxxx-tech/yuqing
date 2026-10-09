@@ -130,9 +130,11 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		return creditSvc.GrantTrial(ctx, tenantID, credit.TrialCredits)
 	})
 
-	// 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
-	// 用该邮箱注册的账号即获得平台管理权限（YUQING_BOOTSTRAP_ADMIN_EMAIL）。
-	authSvc.SetBootstrapAdminEmail(os.Getenv("YUQING_BOOTSTRAP_ADMIN_EMAIL"))
+	// In-memory demonstrations may seed an administrator. PostgreSQL roles
+	// require explicit CLI provisioning by a verified immutable account ID.
+	if cfg.Store.Driver != "postgres" {
+		authSvc.SetBootstrapAdminEmail(os.Getenv("YUQING_BOOTSTRAP_ADMIN_EMAIL"))
+	}
 
 	// 用户中心 P0：邮箱验证 / 手机号绑定 / 个人资料 / 修改密码。
 	// UserStore 复用 authStore 底层实现（内存/PG 都实现了 UserStore）；

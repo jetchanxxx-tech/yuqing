@@ -37,6 +37,8 @@ REQUIRED_TESTS = {
         "TestAuthorizationSecurityPGLoginRecordsLastLoginAt",
         "TestAuthorizationSecurityPGRegistrationRollsBackTenantFailure",
         "TestAuthorizationSecurityPGRegistrationRollsBackMemberFailure",
+        "TestPasswordChangeConcurrentPGOnlyOneOldPasswordRequestSucceeds/postgres",
+        "TestPasswordChangeConcurrentPGDisabledAfterSnapshotCannotUpdate/postgres",
     ),
     "internal/platform/tenant": (
         "TestTenantStore_PG_satisfiesContract",

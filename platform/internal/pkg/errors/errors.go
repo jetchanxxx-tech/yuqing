@@ -9,20 +9,21 @@ import (
 
 // Sentinel errors for mapping to API error codes.
 var (
-	ErrBudgetExceeded  = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
-	ErrQuotaExceeded   = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
-	ErrNoCredits       = newSentinel("NO_CREDITS", http.StatusPaymentRequired)
-	ErrTenantSuspended = newSentinel("TENANT_SUSPENDED", http.StatusForbidden)
-	ErrNotFound        = newSentinel("NOT_FOUND", http.StatusNotFound)
-	ErrForbidden       = newSentinel("FORBIDDEN", http.StatusForbidden)
-	ErrUnauthorized    = newSentinel("UNAUTHORIZED", http.StatusUnauthorized)
-	ErrConflict        = newSentinel("CONFLICT", http.StatusConflict)
-	ErrInternal        = newSentinel("INTERNAL", http.StatusInternalServerError)
+	ErrBudgetExceeded     = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
+	ErrQuotaExceeded      = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
+	ErrNoCredits          = newSentinel("NO_CREDITS", http.StatusPaymentRequired)
+	ErrTenantSuspended    = newSentinel("TENANT_SUSPENDED", http.StatusForbidden)
+	ErrNotFound           = newSentinel("NOT_FOUND", http.StatusNotFound)
+	ErrForbidden          = newSentinel("FORBIDDEN", http.StatusForbidden)
+	ErrUnauthorized       = newSentinel("UNAUTHORIZED", http.StatusUnauthorized)
+	ErrConflict           = newSentinel("CONFLICT", http.StatusConflict)
+	ErrInternal           = newSentinel("INTERNAL", http.StatusInternalServerError)
+	ErrServiceUnavailable = newSentinel("SERVICE_UNAVAILABLE", http.StatusServiceUnavailable)
 )
 
 // sentinelError is an error with an API code and HTTP status.
 type sentinelError struct {
-	apiCode   string
+	apiCode    string
 	httpStatus int
 }
 
@@ -93,11 +94,18 @@ type APIError struct {
 
 // ToEnvelope maps a Go error to the API error envelope.
 func ToEnvelope(err error, requestID string) APIError {
-	code, _ := CodeFor(err)
+	code, status := CodeFor(err)
 	env := APIError{
 		Code:      code,
 		Message:   err.Error(),
 		RequestID: requestID,
+	}
+	if status >= http.StatusInternalServerError {
+		env.Message = "internal server error"
+		if status == http.StatusServiceUnavailable {
+			env.Message = "service temporarily unavailable"
+		}
+		return env
 	}
 	if w, ok := err.(*wrappedError); ok && w.details != nil {
 		env.Details = w.details

@@ -108,6 +108,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	if err != nil {
 		return err
 	}
+	if u.Status != "active" {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
 	if !VerifyPassword(u.PasswordHash, oldPassword) {
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "old password incorrect")
 	}
@@ -115,7 +118,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	if err != nil {
 		return err
 	}
-	return s.userStore.UpdatePassword(ctx, userID, newHash)
+	return s.userStore.UpdatePassword(ctx, userID, newHash, u.TokenVersion)
 }
 
 // SendVerificationEmail 发送邮箱验证邮件。防刷依赖 VerificationStore 的

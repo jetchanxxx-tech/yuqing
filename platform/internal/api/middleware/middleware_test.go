@@ -159,8 +159,8 @@ func TestAuthRequired_withoutAuthenticator_rejectsSignedToken(t *testing.T) {
 	_, token := jwtFixture(t, auth.Principal{UserID: "u1", TenantID: "t1"})
 	r := gin.New()
 	r.GET("/whoami", AuthRequired(AuthConfig{}), func(c *gin.Context) { c.Status(200) })
-	if w := doBearer(t, r, token); w.Code != http.StatusUnauthorized {
-		t.Fatalf("unwired authenticator status = %d, want 401", w.Code)
+	if w := doBearer(t, r, token); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unwired authenticator status = %d, want 503", w.Code)
 	}
 }
 
@@ -179,15 +179,15 @@ func TestAuthRequired_storeFailure_returnsServerError(t *testing.T) {
 		},
 	)}), func(c *gin.Context) { c.Status(http.StatusOK) })
 	w := doBearer(t, r, "access-token")
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("store failure status = %d, want 500", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("store failure status = %d, want 503", w.Code)
 	}
 	var body map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
 	requestID, _ := body["request_id"].(string)
-	if body["code"] != "INTERNAL" || requestID == "" || strings.Contains(w.Body.String(), "database connection failed") {
+	if body["code"] != "SERVICE_UNAVAILABLE" || requestID == "" || strings.Contains(w.Body.String(), "database connection failed") {
 		t.Fatalf("store failure envelope = %s", w.Body.String())
 	}
 }

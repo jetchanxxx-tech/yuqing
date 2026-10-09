@@ -44,25 +44,19 @@ func bearerToken(c *gin.Context) (string, string) {
 // aborting the chain on failure. Shared by AuthRequired and AuthAny.
 func authenticateJWT(c *gin.Context, cfg AuthConfig, token string) {
 	if cfg.Authenticator == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"code": "UNAUTHORIZED", "message": "invalid or expired token",
-			"request_id": c.GetString(string(CtxRequestID)),
-		})
+		abortAuthorizationUnavailable(c)
 		return
 	}
 	p, err := cfg.Authenticator.Authenticate(c.Request.Context(), token)
 	if err != nil {
-		code, status := pkgerrors.CodeFor(err)
-		message := "authentication service unavailable"
 		if pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
-			message = "invalid or expired token"
-		} else if status < http.StatusInternalServerError {
-			code, status = "INTERNAL", http.StatusInternalServerError
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code": "UNAUTHORIZED", "message": "invalid or expired token",
+				"request_id": c.GetString(string(CtxRequestID)),
+			})
+		} else {
+			abortAuthorizationUnavailable(c)
 		}
-		c.AbortWithStatusJSON(status, gin.H{
-			"code": code, "message": message,
-			"request_id": c.GetString(string(CtxRequestID)),
-		})
 		return
 	}
 	if p == nil || p.UserID == "" || p.AuthType != "jwt" || p.UserStatus != "active" {
@@ -76,18 +70,24 @@ func authenticateJWT(c *gin.Context, cfg AuthConfig, token string) {
 	c.Next()
 }
 
+func abortAuthorizationUnavailable(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable,
+		pkgerrors.ToEnvelope(pkgerrors.ErrServiceUnavailable, c.GetString(string(CtxRequestID))))
+}
+
 // authenticateWithAPIKey validates the raw key, checks the tenant and injects
 // an api_service principal. It aborts the chain on failure. Unknown/revoked
 // keys fail closed with 401; every non-active tenant answers 403.
 func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants TenantLookup, raw string) {
 	if apiKeys == nil || tenants == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"code": "UNAUTHORIZED", "message": "invalid or expired token",
-			"request_id": c.GetString(string(CtxRequestID)),
-		})
+		abortAuthorizationUnavailable(c)
 		return
 	}
 	key, err := apiKeys.ValidateKey(c.Request.Context(), raw)
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		abortAuthorizationUnavailable(c)
+		return
+	}
 	if err != nil || key == nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"code": "UNAUTHORIZED", "message": "invalid api key",
@@ -96,6 +96,10 @@ func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants Ten
 		return
 	}
 	t, err := tenants.Get(c.Request.Context(), key.TenantID)
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		abortAuthorizationUnavailable(c)
+		return
+	}
 	if err != nil || t == nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"code": "UNAUTHORIZED", "message": "invalid api key",

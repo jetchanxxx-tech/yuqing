@@ -14,13 +14,20 @@ import (
 var _ UserStore = (*MemoryStore)(nil)
 var _ VerificationStore = (*MemoryVerificationStore)(nil)
 
-// UpdatePassword 更新密码哈希并记录修改时间。
-func (m *MemoryStore) UpdatePassword(_ context.Context, userID, newHash string) error {
+// UpdatePassword verifies account status/version and updates the credential
+// within one lock, so old password snapshots cannot overwrite a newer change.
+func (m *MemoryStore) UpdatePassword(_ context.Context, userID, newHash string, expectedVersion int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u, ok := m.usersByID[userID]
 	if !ok {
 		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
+	}
+	if u.Status != "active" {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
+	if u.TokenVersion != expectedVersion {
+		return pkgerrors.Wrap(pkgerrors.ErrConflict, "credentials changed; sign in again")
 	}
 	now := time.Now()
 	u.PasswordHash = newHash
