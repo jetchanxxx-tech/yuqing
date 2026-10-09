@@ -13,6 +13,7 @@ import (
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // KeyPrefix identifies a platform API key inside an Authorization header.
@@ -35,7 +36,8 @@ type APIKey struct {
 	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
 
-	keyHash string // SHA-256 hex of the raw key; never exposed via JSON
+	creationActor billingpolicy.Actor
+	keyHash       string // SHA-256 hex of the raw key; never exposed via JSON
 }
 
 // IsRevoked reports whether the key has been revoked.
@@ -75,8 +77,8 @@ func hashKey(raw string) string {
 
 // CreateKey mints a new API key and returns its metadata plus the RAW KEY —
 // the only moment the secret is ever available. The store holds just the hash.
-func (s *Service) CreateKey(ctx context.Context, tenantID, creatorUserID, name string, scopes []string) (*APIKey, string, error) {
-	if strings.TrimSpace(creatorUserID) == "" {
+func (s *Service) CreateKey(ctx context.Context, tenantID string, actor billingpolicy.Actor, name string, scopes []string) (*APIKey, string, error) {
+	if strings.TrimSpace(actor.UserID) == "" {
 		return nil, "", pkgerrors.ErrAPIKeyOwnerUnverified
 	}
 	if strings.TrimSpace(tenantID) == "" {
@@ -86,12 +88,14 @@ func (s *Service) CreateKey(ctx context.Context, tenantID, creatorUserID, name s
 		return nil, "", fmt.Errorf("apikey: name is required")
 	}
 
+	actor.Permission = "apikeys:manage"
 	raw := KeyPrefix + id.New()
 	now := time.Now().UTC()
 	key := &APIKey{
 		ID:            id.New(),
 		TenantID:      tenantID,
-		CreatorUserID: creatorUserID,
+		CreatorUserID: actor.UserID,
+		creationActor: actor,
 		Name:          name,
 		Scopes:        scopes,
 		Prefix:        raw[:displayPrefixLen],

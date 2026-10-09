@@ -78,7 +78,7 @@ func (s *PGStore) Create(ctx context.Context, k *APIKey) error {
 			return err
 		}
 		defer tx.Rollback(context.Background())
-		if err = billingpolicy.CheckActorTx(ctx, tx, k.TenantID, billingpolicy.Actor{UserID: k.CreatorUserID}); err != nil {
+		if err = billingpolicy.CheckActorTx(ctx, tx, k.TenantID, k.creationActor); err != nil {
 			return err
 		}
 		err = tx.QueryRow(ctx, q, k.ID, k.TenantID, k.Name, k.keyHash, scopes, k.Prefix, k.CreatorUserID).Scan(&inserted)

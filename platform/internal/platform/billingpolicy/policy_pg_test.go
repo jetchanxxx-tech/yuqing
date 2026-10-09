@@ -65,3 +65,45 @@ func TestExemptionDoesNotFollowRoleTenantOrTokenEmail(t *testing.T) {
 		t.Fatalf("revoked JWT accepted: %v", err)
 	}
 }
+
+func TestFixedAdminBindingPGRejectsInvalidIdentityAndRollsBackAuditFailure(t *testing.T) {
+	for _, kind := range []string{"missing", "inactive", "no_admin_role", "audit_failure"} {
+		t.Run(kind, func(t *testing.T) {
+			pool := pgtest.Pool(t, "binding_preconditions")
+			ctx := context.Background()
+			if kind != "missing" {
+				if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,status) VALUES('fixed','admin@pangu.com','fixture','active')`); err != nil {
+					t.Fatal(err)
+				}
+				if kind != "no_admin_role" {
+					if _, err := pool.Exec(ctx, `INSERT INTO platform_user_roles(user_id,role) VALUES('fixed','platform_admin')`); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if kind == "inactive" {
+					if _, err := pool.Exec(ctx, `UPDATE users SET status='disabled' WHERE id='fixed'`); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if kind == "audit_failure" {
+				if _, err := pool.Exec(ctx, `CREATE FUNCTION reject_binding_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$`); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := pool.Exec(ctx, `CREATE TRIGGER reject_binding_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_binding_audit()`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := NewService(pool).Bind(ctx, "fixed", true); err == nil {
+				t.Fatal("invalid binding committed")
+			}
+			var policies, audits int
+			if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM billing_exempt_principals),(SELECT count(*) FROM audit_logs)`).Scan(&policies, &audits); err != nil {
+				t.Fatal(err)
+			}
+			if policies != 0 || audits != 0 {
+				t.Fatalf("binding failure left policy/audit=%d/%d", policies, audits)
+			}
+		})
+	}
+}

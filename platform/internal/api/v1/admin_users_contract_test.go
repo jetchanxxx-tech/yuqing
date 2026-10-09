@@ -2,6 +2,7 @@ package v1_test
 
 import (
 	"context"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -243,7 +244,7 @@ func TestContract_adminUsers_onlyPlatformAdminsCanManageAccounts(t *testing.T) {
 			}), http.StatusForbidden)
 		}
 	}
-	_, key, err := deps.APIKey.CreateKey(context.Background(), "t_contract", "u_contract", "account-admin-boundary", nil)
+	_, key, err := deps.APIKey.CreateKey(context.Background(), "t_contract", billingpolicy.Actor{UserID: "u_contract"}, "account-admin-boundary", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

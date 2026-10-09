@@ -144,7 +144,7 @@ func TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledO
 // The request authenticates before waiting for the same exclusive lock used by
 // account administration. Revocation in that window must prevent a durable key.
 func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *testing.T) {
-	for _, kind := range []string{"credential_version", "membership_permission"} {
+	for _, kind := range []string{"credential_version", "membership_permission", "unchanged_actor"} {
 		t.Run(kind, func(t *testing.T) {
 			e := newBillingActorPGEnv(t)
 			token, _, owner := mustRegister(t, e.router, "queued-key-"+kind+"@example.invalid", "Queued key owner")
@@ -190,7 +190,7 @@ func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *test
 			}
 			if kind == "credential_version" {
 				_, err = blocker.Exec(ctx, `UPDATE users SET token_version=token_version+1 WHERE id=$1`, owner["user_id"])
-			} else {
+			} else if kind == "membership_permission" {
 				// Permission itself is rechecked even if a historic administrator failed to
 				// increment a credential version when changing membership.
 				_, err = blocker.Exec(ctx, `UPDATE tenant_members SET role='viewer' WHERE tenant_id=$1 AND user_id=$2`, owner["tenant_id"], owner["user_id"])
@@ -203,7 +203,14 @@ func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *test
 			}
 			select {
 			case result := <-response:
-				adminContractResponse(t, result, http.StatusForbidden)
+				want := http.StatusForbidden
+				if kind == "unchanged_actor" {
+					want = http.StatusCreated
+				}
+				adminContractResponse(t, result, want)
+				if kind != "unchanged_actor" && strings.Contains(result.Body.String(), `"api_key":`) {
+					t.Fatal("rejected request returned a raw key")
+				}
 			case <-ctx.Done():
 				t.Fatal("queued request did not complete")
 			}
@@ -211,7 +218,11 @@ func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *test
 			if err = e.pool.QueryRow(ctx, `SELECT count(*) FROM api_keys WHERE tenant_id=$1`, owner["tenant_id"]).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
-			if count != 0 {
+			wantKeys := 0
+			if kind == "unchanged_actor" {
+				wantKeys = 1
+			}
+			if count != wantKeys {
 				t.Fatalf("revoked request created %d durable keys", count)
 			}
 		})

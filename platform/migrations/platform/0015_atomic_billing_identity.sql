@@ -66,11 +66,12 @@ BEGIN
   IF a.tenant_id IS DISTINCT FROM r.tenant_id THEN RAISE EXCEPTION 'billing run tenant mismatch'; END IF;
   IF r.charge_mode='normal' THEN
    SELECT * INTO c FROM credit_transactions WHERE id=r.consume_tx_id;
-   IF NOT FOUND OR c.reason<>'consume' OR c.delta<>-1 OR c.run_id IS DISTINCT FROM r.id OR c.tenant_id IS DISTINCT FROM r.tenant_id OR c.analysis_id IS DISTINCT FROM r.analysis_id OR c.actor_user_id IS DISTINCT FROM r.actor_user_id THEN
+   IF NOT FOUND OR c.reason<>'consume' OR c.delta<>-1 OR c.run_id IS DISTINCT FROM r.id OR c.tenant_id IS DISTINCT FROM r.tenant_id OR c.analysis_id IS DISTINCT FROM r.analysis_id OR c.actor_user_id IS DISTINCT FROM r.actor_user_id OR c.actor_api_key_id IS DISTINCT FROM r.actor_api_key_id OR c.plan_code_snapshot IS DISTINCT FROM r.plan_code THEN
     RAISE EXCEPTION 'normal run requires its exact consume';
    END IF;
-  ELSIF r.consume_tx_id IS NOT NULL THEN RAISE EXCEPTION 'uncharged run cannot consume';
+  ELSIF r.consume_tx_id IS NOT NULL OR EXISTS(SELECT 1 FROM credit_transactions WHERE run_id=r.id AND reason='consume') THEN RAISE EXCEPTION 'uncharged run cannot consume';
   END IF;
+  IF r.actor_api_key_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM api_keys WHERE id=r.actor_api_key_id AND tenant_id=r.tenant_id AND creator_user_id=r.actor_user_id) THEN RAISE EXCEPTION 'run key actor mismatch'; END IF;
   IF r.charge_mode='exempt' AND NOT EXISTS(SELECT 1 FROM billing_exempt_principals p WHERE p.user_id=r.actor_user_id AND p.policy_key=r.exempt_policy_key AND p.policy_version=r.exempt_policy_version) THEN RAISE EXCEPTION 'exempt run policy mismatch'; END IF;
  END LOOP;
  IF TG_TABLE_NAME='analyses' THEN
@@ -93,6 +94,42 @@ END;
 $$;
 -- +goose StatementEnd
 CREATE TRIGGER billing_run_identity_immutable BEFORE UPDATE ON analysis_runs FOR EACH ROW EXECUTE FUNCTION billing_run_identity_immutable();
+-- New run-linked ledger rows are immutable facts. Legacy NULL/unlinked rows
+-- stay unchanged and are explicitly outside the new pairing rules.
+-- +goose StatementBegin
+CREATE FUNCTION billing_ledger_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF OLD.run_id IS NOT NULL THEN RAISE EXCEPTION 'run ledger facts are immutable'; END IF;
+  RETURN OLD;
+ END IF;
+ IF (OLD.run_id IS NOT NULL OR NEW.run_id IS NOT NULL) AND NEW IS DISTINCT FROM OLD THEN RAISE EXCEPTION 'run ledger facts are immutable'; END IF;
+ RETURN NEW;
+END;
+$$;
+-- +goose StatementEnd
+CREATE TRIGGER billing_ledger_immutable BEFORE UPDATE OR DELETE ON credit_transactions FOR EACH ROW EXECUTE FUNCTION billing_ledger_immutable();
+-- +goose StatementBegin
+CREATE FUNCTION billing_ledger_integrity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE r analysis_runs;
+BEGIN
+ IF NEW.run_id IS NULL THEN RETURN NULL; END IF;
+ SELECT * INTO r FROM analysis_runs WHERE id=NEW.run_id;
+ IF NOT FOUND OR r.charge_mode<>'normal' OR NEW.tenant_id IS DISTINCT FROM r.tenant_id OR NEW.analysis_id IS DISTINCT FROM r.analysis_id
+  OR NEW.actor_user_id IS DISTINCT FROM r.actor_user_id OR NEW.actor_api_key_id IS DISTINCT FROM r.actor_api_key_id OR NEW.plan_code_snapshot IS DISTINCT FROM r.plan_code
+ THEN RAISE EXCEPTION 'ledger run snapshot mismatch'; END IF;
+ IF NEW.reason='consume' THEN
+  IF NEW.id IS DISTINCT FROM r.consume_tx_id OR NEW.delta<>-1 THEN RAISE EXCEPTION 'consume reverse pairing mismatch'; END IF;
+ ELSIF NEW.reason='refund' THEN
+  IF NEW.consume_tx_id IS DISTINCT FROM r.consume_tx_id OR NEW.delta<>1 OR r.state NOT IN ('failed','canceled') THEN RAISE EXCEPTION 'refund must settle this failed or canceled run'; END IF;
+ ELSE RAISE EXCEPTION 'unsupported run-linked ledger reason';
+ END IF;
+ RETURN NULL;
+END;
+$$;
+-- +goose StatementEnd
+CREATE CONSTRAINT TRIGGER billing_ledger_integrity AFTER INSERT OR UPDATE ON credit_transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION billing_ledger_integrity();
+
 CREATE TABLE llm_call_authorizations (
  call_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES analysis_runs(id), engine TEXT NOT NULL, phase TEXT NOT NULL,
  attempt INTEGER NOT NULL CHECK(attempt>0), requested_model TEXT NOT NULL,

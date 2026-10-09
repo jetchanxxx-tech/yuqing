@@ -54,7 +54,7 @@ func (s *Services) handleCreateAPIKey(c *gin.Context) {
 		badRequest(c, "name is required")
 		return
 	}
-	key, raw, err := s.APIKey.CreateKey(c.Request.Context(), p.TenantID, actor.UserID, req.Name, req.Scopes)
+	key, raw, err := s.APIKey.CreateKey(c.Request.Context(), p.TenantID, actor, req.Name, req.Scopes)
 	if err != nil {
 		respondError(c, err)
 		return

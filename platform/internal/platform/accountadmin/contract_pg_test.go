@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"io"
 	"log/slog"
 	"net/http"
@@ -827,7 +828,8 @@ func TestAccountAdminPGAdminPermissionsExcludeMemberRolesAndAPIKeys(t *testing.T
 			}), http.StatusForbidden)
 		}
 	}
-	_, key, err := e.deps.APIKey.CreateKey(context.Background(), member.TenantID, member.ID, "admin-boundary", nil)
+	e.exec(t, `UPDATE tenant_members SET role='tenant_admin' WHERE tenant_id=$1 AND user_id=$2`, member.TenantID, member.ID)
+	_, key, err := e.deps.APIKey.CreateKey(context.Background(), member.TenantID, billingpolicy.Actor{UserID: member.ID}, "admin-boundary", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

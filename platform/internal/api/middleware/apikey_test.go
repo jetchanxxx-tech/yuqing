@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,11 +36,11 @@ func (e *notFoundErr) Error() string { return "tenant not found" }
 func newAPIKeyFixture(t *testing.T) (*apikey.Service, string, string) {
 	t.Helper()
 	svc := apikey.NewService(apikey.NewMemoryStore())
-	_, rawLive, err := svc.CreateKey(context.Background(), "t_key", "fixture-owner", "ci", nil)
+	_, rawLive, err := svc.CreateKey(context.Background(), "t_key", billingpolicy.Actor{UserID: "fixture-owner"}, "ci", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	revoked, rawRevoked, err := svc.CreateKey(context.Background(), "t_key", "fixture-owner", "old", nil)
+	revoked, rawRevoked, err := svc.CreateKey(context.Background(), "t_key", billingpolicy.Actor{UserID: "fixture-owner"}, "old", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
