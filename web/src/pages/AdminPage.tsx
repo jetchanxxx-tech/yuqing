@@ -429,7 +429,7 @@ function NotifyTab() {
   const emailReady =
     (s.email_provider === 'resend' && !!s.resend_api_key && !!s.email_from_address) ||
     (s.email_provider === 'smtp' && !!s.smtp_host && !!s.email_from_address);
-  const smsReady = !!s.sms_access_key_id && !!s.sms_template_code;
+  const smsReady = !!s.sms_access_key_id && !!s.sms_bind_phone_template_code;
 
   if (settingsQ.isLoading) return <Card style={{ borderRadius: 16 }}><LoadingBlock rows={8} /></Card>;
   if (settingsQ.isError) return (
@@ -588,14 +588,18 @@ function SmsForm({
   const [akId, setAkId] = useState('');
   const [akSecret, setAkSecret] = useState('');
   const [signName, setSignName] = useState(initial.sms_sign_name || '');
-  const [templateCode, setTemplateCode] = useState(initial.sms_template_code || '');
+  const [templateCode, setTemplateCode] = useState(initial.sms_bind_phone_template_code || '');
+  const [loginTemplate, setLoginTemplate] = useState(initial.sms_phone_login_template_code || '');
+  const [resetTemplate, setResetTemplate] = useState(initial.sms_phone_reset_template_code || '');
   const [sdkAppId, setSdkAppId] = useState(initial.sms_sdk_app_id || '');
 
   const save = () => {
     const patch: Record<string, string> = {
       sms_provider: provider,
       sms_sign_name: signName.trim(),
-      sms_template_code: templateCode.trim(),
+      sms_bind_phone_template_code: templateCode.trim(),
+      sms_phone_login_template_code: loginTemplate.trim(),
+      sms_phone_reset_template_code: resetTemplate.trim(),
     };
     if (akId.trim()) patch.sms_access_key_id = akId.trim();
     if (akSecret.trim()) patch.sms_access_key_secret = akSecret.trim();
@@ -642,9 +646,12 @@ function SmsForm({
         </Typography.Paragraph>
         <Space>
           <Input placeholder="盘古舆情" value={signName} onChange={(e) => setSignName(e.target.value)} style={{ width: 200 }} />
-          <Input placeholder="SMS_12345678" value={templateCode} onChange={(e) => setTemplateCode(e.target.value)} style={{ width: 240 }} />
+          <Input aria-label="绑定手机模板" placeholder="绑定手机模板 ID" value={templateCode} onChange={(e) => setTemplateCode(e.target.value)} style={{ width: 240 }} />
         </Space>
       </div>
+
+      <Input aria-label="手机登录模板" placeholder="手机登录模板 ID（可预配置）" value={loginTemplate} onChange={(e) => setLoginTemplate(e.target.value)} />
+      <Input aria-label="手机找回模板" placeholder="手机找回模板 ID（可预配置）" value={resetTemplate} onChange={(e) => setResetTemplate(e.target.value)} />
 
       <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
         保存短信配置

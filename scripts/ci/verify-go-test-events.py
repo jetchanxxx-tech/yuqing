@@ -49,6 +49,7 @@ REQUIRED_TESTS = {
     "internal/platform/auth": (
         "TestVerificationPGSupplierFailureInvalidatesCredentialKeepsGate",
         "TestVerificationPGPublicRequestsHaveMatchingDurableAdmission",
+        "TestVerificationPGPhoneLoginCannotUpgradeConsumedVersion",
         "TestVerificationPGAtomicContract",
         "TestVerificationPGQueuedRevocationRejectsOriginalActor",
         "TestVerificationPGFailureRollsBackCredentialAndVersions",

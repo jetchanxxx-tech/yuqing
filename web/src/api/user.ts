@@ -38,9 +38,7 @@ export async function sendVerificationEmail() {
 
 /** 公开接口：邮件链接落地验证（无需登录态） */
 export async function verifyEmailByToken(token: string) {
-  const { data } = await client.get<{ message: string }>('/auth/verify-email', {
-    params: { token },
-  });
+  const { data } = await client.post<{ message: string }>('/auth/verify-email', { token });
   return data.message;
 }
 
@@ -76,6 +74,8 @@ export const NOTIFY_SETTINGS_KEYS = [
   'sms_access_key_id',
   'sms_access_key_secret',
   'sms_sign_name',
-  'sms_template_code',
+  'sms_bind_phone_template_code',
+  'sms_phone_login_template_code',
+  'sms_phone_reset_template_code',
   'sms_sdk_app_id',
 ] as const;

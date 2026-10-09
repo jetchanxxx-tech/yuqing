@@ -114,7 +114,7 @@ func TestEmailVerificationFlow(t *testing.T) {
 	if err := svc.SendVerificationEmail(context.Background(), "u1", "https://test.example.com"); err != nil {
 		t.Fatalf("SendVerificationEmail: %v", err)
 	}
-	if mail.to != "a@test.com" || !strings.Contains(mail.body, "https://test.example.com/verify-email?token=") {
+	if mail.to != "a@test.com" || !strings.Contains(mail.body, "https://test.example.com/verify-email#token=") {
 		t.Fatalf("邮件内容不符：to=%s body contains link=%v", mail.to, strings.Contains(mail.body, "verify-email?token="))
 	}
 

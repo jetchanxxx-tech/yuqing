@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/mail"
 	"net/url"
 	"strings"
@@ -244,7 +245,7 @@ func (s *Service) issueVerificationAs(ctx context.Context, u *User, purpose, tar
 		if purpose == SetPassword {
 			path = "/activate"
 		}
-		link := origin + path + "?token=" + url.QueryEscape(value)
+		link := origin + path + "#token=" + url.QueryEscape(value)
 		body := buildVerifyEmailHTML(u.Name, link)
 		if purpose != EmailVerify {
 			body = "<p>请在 30 分钟内打开安全链接完成操作：</p><p><a href=\"" + link + "\">完成验证</a></p>"
@@ -267,6 +268,11 @@ func (s *Service) RequestPublicVerification(ctx context.Context, purpose, target
 	if purpose != PasswordReset && purpose != PhoneLogin && purpose != PhoneReset {
 		return pkgerrors.ErrConflict
 	}
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return pkgerrors.ErrConflict
+	}
+	ip = parsedIP.String()
 	target, err := verificationTarget(purpose, target)
 	if err != nil {
 		return err
@@ -318,7 +324,7 @@ func (s *Service) ConfirmVerification(ctx context.Context, purpose, target, valu
 		}
 	}
 	a := VerificationAttempt{Purpose: purpose, Target: target, Hash: verificationHash(s.secret, purpose, target, value)}
-	if value == "" {
+	if value == "" || len(value) > 256 {
 		return nil, verificationInvalid()
 	}
 	if actor != nil {
@@ -421,4 +427,38 @@ func applyVerification(u *User, c VerificationCredential, a VerificationAttempt,
 		return verificationInvalid()
 	}
 	return nil
+}
+
+// LoginWithPhoneCode is the K7 login consumer port. Authorization and signing
+// use the exact version returned by atomic consumption; never upgrade it after
+// a concurrent password/identity change. Routes are mounted by K7.
+func (s *Service) LoginWithPhoneCode(ctx context.Context, phone, code string) (*Principal, *TokenPair, error) {
+	u, err := s.ConfirmVerification(ctx, PhoneLogin, phone, code, "", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	tenantID := ""
+	tenant, err := s.store.GetUserTenant(ctx, u.ID)
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		return nil, nil, err
+	}
+	if tenant != nil {
+		tenantID = tenant.ID
+	}
+	principal, err := s.loadPrincipal(ctx, u.ID, tenantID, u.TokenVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	recorder, ok := s.store.(LoginRecorder)
+	if !ok {
+		return nil, nil, pkgerrors.ErrServiceUnavailable
+	}
+	if err = recorder.RecordSuccessfulLogin(ctx, u.ID, u.TokenVersion); err != nil {
+		return nil, nil, err
+	}
+	pair, err := GenerateTokenPair(*principal, s.secret, s.accessTTL, s.refreshTTL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return principal, pair, nil
 }

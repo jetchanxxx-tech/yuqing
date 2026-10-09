@@ -68,7 +68,7 @@ type settingsSMS struct {
 func NewSettingsSMS(store settings.Store) *settingsSMS { return &settingsSMS{store: store} }
 
 // Send 实现 auth.SMSProvider。templateCode 为业务用途别名（如 SMS_BIND_PHONE），
-// 实际发送用 settings 里的 sms_template_code（独立部署环境各自申请的模板）。
+// 实际发送使用该目的独立配置的供应商模板。
 func (m *settingsSMS) Send(ctx context.Context, to, alias string, params map[string]string) error {
 	get := func(key string) string {
 		v, _ := m.store.Get(ctx, key)
@@ -117,11 +117,15 @@ func smsPurposeSetting(alias string) (string, error) {
 }
 func (m *settingsSMS) CheckVerification(ctx context.Context, purpose string) error {
 	aliases := map[string]string{"phone_bind": "SMS_BIND_PHONE", "phone_login": "SMS_PHONE_LOGIN", "phone_reset": "SMS_PHONE_RESET"}
+	provider, err := m.store.Get(ctx, "sms_provider")
+	if err != nil || (provider != "aliyun" && provider != "tencent") {
+		return fmt.Errorf("sms: verification channel not configured")
+	}
 	key, err := smsPurposeSetting(aliases[purpose])
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"sms_provider", key} {
+	for _, name := range []string{"sms_access_key_id", "sms_access_key_secret", "sms_sign_name", key} {
 		value, err := m.store.Get(ctx, name)
 		if err != nil || value == "" {
 			return fmt.Errorf("sms: verification channel not configured")

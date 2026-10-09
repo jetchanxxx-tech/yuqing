@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Result, Spin } from 'antd';
-import { useSearchParams } from 'react-router-dom';
 import { verifyEmailByToken } from '../api/user';
 
-/** 邮箱验证落地页（公开路由 /verify-email?token=xxx，邮件链接点击进入） */
+/** 邮箱验证落地页（公开路由 /verify-email#token=xxx，邮件链接点击进入） */
 export default function VerifyEmailPage() {
-  const [searchParams] = useSearchParams();
-  const [token] = useState(() => searchParams.get('token'));
+  const [token] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('token'));
   const started = useRef(false);
   const [state, setState] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [error, setError] = useState('');
@@ -17,7 +15,7 @@ export default function VerifyEmailPage() {
     window.history.replaceState(window.history.state, '', window.location.pathname);
     if (!token) {
       setState('error');
-      setError('验证链接无效（缺少 token）');
+      setError('验证链接无效或已失效，请重新请求验证邮件');
       return;
     }
     verifyEmailByToken(token)

@@ -584,7 +584,7 @@ function UnbindPhoneModal({ open, phone, onClose, onUnbound }: { open: boolean; 
       </Typography.Paragraph>
       <Form layout="vertical">
         <Form.Item label="为了账户安全，请输入登录密码确认" required>
-          <Input.Password value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input.Password aria-label="为了账户安全，请输入登录密码确认" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Form.Item>
       </Form>
     </Modal>

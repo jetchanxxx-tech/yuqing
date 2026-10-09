@@ -129,6 +129,42 @@ func verificationStoreContract(t *testing.T, store func(*testing.T) (UserStore, 
 			t.Fatalf("activation not atomic: %v", err)
 		}
 	})
+
+	t.Run("concurrent_identity_changes_share_original_version", func(t *testing.T) {
+		users, v := store(t)
+		seedUCUserOnUserStore(t, users, "owner", "owner@example.com")
+		email := verificationFixture("owner", EmailChange, "changed@example.com", "email-change", time.Minute)
+		phone := verificationFixture("owner", PhoneBind, "13800138000", "123456", time.Minute)
+		for _, c := range []VerificationCredential{email, phone} {
+			if err := v.Issue(ctx, c); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.RecordDelivery(ctx, c.ID, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+		zero := int64(0)
+		out := make(chan error, 2)
+		for _, c := range []VerificationCredential{email, phone} {
+			go func(c VerificationCredential) {
+				_, err := v.Consume(ctx, VerificationAttempt{Purpose: c.Purpose, Target: c.Target, Hash: c.Hash, UserID: c.UserID, ExpectedVersion: &zero})
+				out <- err
+			}(c)
+		}
+		count := 0
+		for i := 0; i < 2; i++ {
+			if <-out == nil {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("same original version admitted %d identity changes", count)
+		}
+		u, _ := users.GetByID(ctx, "owner")
+		if u.TokenVersion != 1 || u.RowVersion != 1 {
+			t.Fatal("identity version mutation was not atomic")
+		}
+	})
 	t.Run("unaccepted_and_rejected_delivery_cannot_mutate", func(t *testing.T) {
 		users, v := store(t)
 		seedUCUserOnUserStore(t, users, "owner", "owner@example.com")

@@ -46,7 +46,7 @@ func TestVerificationHTTPConfiguredOriginAndCredentialPrivacy(t *testing.T) {
 	s.Auth.EnableUserCenter(fixture.store, auth.NewMemoryVerificationStore(), nil, mail, "https://trusted.example.com")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	if w.Code != 200 || mail.calls != 1 || !strings.Contains(mail.body, "https://trusted.example.com/verify-email?token=") || strings.Contains(mail.body, "attacker.invalid") {
+	if w.Code != 200 || mail.calls != 1 || !strings.Contains(mail.body, "https://trusted.example.com/verify-email#token=") || strings.Contains(mail.body, "attacker.invalid") {
 		t.Fatalf("configured origin not authoritative: %d", w.Code)
 	}
 	if strings.Contains(w.Body.String(), "token=") {
@@ -56,6 +56,16 @@ func TestVerificationHTTPConfiguredOriginAndCredentialPrivacy(t *testing.T) {
 	if w.Code != 429 || w.Header().Get("Retry-After") == "" {
 		t.Fatal("send gate omitted retry advice")
 	}
+	bearer := strings.Split(strings.Split(mail.body, "token=")[1], "\"")[0]
+	legacy := doReq(t, r, "GET", "/api/v1/auth/verify-email?token="+bearer, "", nil)
+	if legacy.Code != 400 {
+		t.Fatal("legacy query transport must request a new link")
+	}
+	confirmed := doReq(t, r, "POST", "/api/v1/auth/verify-email", "", map[string]string{"token": bearer})
+	if confirmed.Code != 200 || confirmed.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("body-only confirmation failed: %d", confirmed.Code)
+	}
+
 }
 func TestVerificationHTTPPhoneBindingRevokesOriginalSession(t *testing.T) {
 	r, s := newContractEnv(t)

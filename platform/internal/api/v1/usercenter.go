@@ -29,7 +29,10 @@ func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
 // RegisterUserCenterPublicRoutes mounts the email-link verification endpoint
 // (public: 用户点击邮件里的链接时未携带 Authorization 头).
 func RegisterUserCenterPublicRoutes(r *gin.RouterGroup, svcs *Services) {
-	r.GET("/verify-email", svcs.handleVerifyEmail)
+	r.POST("/verify-email", svcs.handleVerifyEmail)
+	r.GET("/verify-email", func(c *gin.Context) {
+		badRequest(c, "legacy verification links expired; request a new verification email")
+	})
 }
 
 // principalUserID 返回当前登录用户 ID，缺principal时返回空串（已写401）。
@@ -88,13 +91,17 @@ func (s *Services) handleSendVerificationEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "verification email accepted; delivery unconfirmed"})
 }
 
-// handleVerifyEmail GET /verify-email?token=xxx（公开，邮件链接落地）。
+// handleVerifyEmail accepts bearer credentials only in the POST body.
 func (s *Services) handleVerifyEmail(c *gin.Context) {
-	token := c.Query("token")
-	if token == "" {
-		badRequest(c, "token query parameter is required")
+	c.Header("Cache-Control", "no-store")
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+		badRequest(c, "verification token is required")
 		return
 	}
+	token := req.Token
 	if err := s.Auth.VerifyEmail(c.Request.Context(), token); err != nil {
 		respondError(c, err)
 		return

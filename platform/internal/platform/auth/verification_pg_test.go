@@ -373,3 +373,62 @@ func TestVerificationPGPublicRequestsHaveMatchingDurableAdmission(t *testing.T) 
 		t.Fatal("unknown target gate was not durable")
 	}
 }
+
+type verificationLoginBarrier struct {
+	*PGStore
+	reached chan struct{}
+	release chan struct{}
+}
+
+func (s *verificationLoginBarrier) GetUserTenant(ctx context.Context, uid string) (*Tenant, error) {
+	close(s.reached)
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return s.PGStore.GetUserTenant(ctx, uid)
+}
+func TestVerificationPGPhoneLoginCannotUpgradeConsumedVersion(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_login_version")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	users := NewPGStore(pool)
+	seedUCUserOnUserStore(t, users, "login-user", "login@example.com")
+	if err := users.SetPhone(ctx, "login-user", "13800138000"); err != nil {
+		t.Fatal(err)
+	}
+	v := NewPGVerificationStore(pool)
+	c := verificationFixture("login-user", PhoneLogin, "13800138000", "123456", time.Minute)
+	if err := v.Issue(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.RecordDelivery(ctx, c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	barrier := &verificationLoginBarrier{PGStore: users, reached: make(chan struct{}), release: make(chan struct{})}
+	svc := NewService(barrier, testSecret, "15m", "720h")
+	svc.EnableUserCenter(users, v, nil, nil, "https://example.com")
+	out := make(chan error, 1)
+	go func() {
+		_, pair, err := svc.LoginWithPhoneCode(ctx, c.Target, "123456")
+		if pair != nil {
+			out <- fmt.Errorf("issued fresh tokens after original credential revocation")
+			return
+		}
+		out <- err
+	}()
+	select {
+	case <-barrier.reached:
+	case <-ctx.Done():
+		t.Fatal("login never consumed credential")
+	}
+	if err := users.UpdatePassword(ctx, "login-user", "new-password-hash", 0); err != nil {
+		close(barrier.release)
+		t.Fatal(err)
+	}
+	close(barrier.release)
+	if err := <-out; !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("consumed version must stay authoritative: %v", err)
+	}
+}
