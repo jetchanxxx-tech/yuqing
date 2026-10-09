@@ -116,6 +116,8 @@ func TestApiKeyAuth_rejections(t *testing.T) {
 		{"revoked key", svc, stubTenants{status: "active"}, rawRevoked, 401},
 		{"unknown tenant", svc, stubTenants{notFound: true}, rawLive, 401},
 		{"suspended tenant", svc, stubTenants{status: "suspended"}, rawLive, 403},
+		{"closed tenant", svc, stubTenants{status: "closed"}, rawLive, 403},
+		{"provisioning tenant", svc, stubTenants{status: "provisioning"}, rawLive, 403},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
