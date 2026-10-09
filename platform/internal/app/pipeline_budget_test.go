@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"github.com/yuqing/platform/internal/platform/credit"
 	"testing"
 	"time"
 
@@ -98,5 +100,17 @@ func TestPipelineBudget_ignoresInvalidEntryOnly(t *testing.T) {
 
 	if got := pipelineBudget(cfg); got != 360*time.Second {
 		t.Errorf("pipelineBudget() = %v, want 6m (60s + 300s)", got)
+	}
+}
+
+func TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier(t *testing.T) {
+	service := credit.NewService(credit.NewMemoryStore())
+	for _, code := range []string{"", "unknown-plan"} {
+		if err := service.SetPlanCode(context.Background(), "invalid-team", code); err != nil {
+			t.Fatal(err)
+		}
+		if mode := analysisModeFor(service)("invalid-team"); mode != "unavailable" {
+			t.Errorf("invalid persisted plan %q selected feature mode %q", code, mode)
+		}
 	}
 }

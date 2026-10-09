@@ -16,8 +16,10 @@ import sys
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
-    "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge"),
+    "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
     "internal/api/v1": (
+        "TestBillingEntitlementsPGLegacyCacheAndVersionedProviderUsageStayDistinct",
+        "TestBillingEntitlementsPGAbsentInvalidAndUnknownPlansDoNotInventEntitlements",
         "TestBillingEntitlementsPGUsesActualPlanBalanceAndExplicitCycle",
         "TestBillingEntitlementsPGFixedAccountShowsRealBalanceAndPendingCost",
         "TestBillingUsagePGActualCostReplayLateSettlementAndQuotaIsolation",
