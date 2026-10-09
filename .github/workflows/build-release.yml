@@ -75,9 +75,74 @@ jobs:
     name: PostgreSQL contract checks
     uses: ./.github/workflows/postgresql-tests.yml
 
+  account-admin:
+    name: Account and administrator acceptance
+    needs: [go, frontend, postgresql]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_account_admin_test?sslmode=disable
+      E2E_BASE_URL: http://127.0.0.1:4173
+      E2E_API_URL: http://127.0.0.1:8080
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: yuqing_account_admin_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require GitHub hosted runner
+        shell: bash
+        run: test "${RUNNER_ENVIRONMENT}" = github-hosted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-binaries-${{ github.sha }}
+          path: platform/bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          path: web/dist
+      - name: Prepare prebuilt executables
+        run: chmod 755 platform/bin/yuqing-*
+      - name: Install locked browser test dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium on the hosted runner
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Verify administrator bootstrap on the prebuilt CLI
+        run: python3 scripts/ci/verify-admin-bootstrap.py
+      - name: Run the isolated account and administrator suite
+        working-directory: web
+        run: npx playwright test --config e2e/account-admin.config.ts
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-admin-browser-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            web/test-results/account-admin/
+            web/e2e/report/account-admin/
+          if-no-files-found: warn
+          retention-days: 7
+
   package:
     name: Release archive
-    needs: [go, frontend, postgresql]
+    needs: [go, frontend, postgresql, account-admin]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

@@ -91,6 +91,10 @@ writeFileSync(backendConfig, JSON.stringify({
   rsshub_base: '',
 }), { mode: 0o644 });
 
+// Test fixtures may invoke only the checked-out commit's prebuilt CLI to grant
+// platform roles to a freshly registered, explicitly identified test account.
+process.env.YUQING_E2E_CONFIG = backendConfig;
+
 const previewConfig = join(configDirectory, 'preview.mjs');
 writeFileSync(previewConfig, `export default ${JSON.stringify({
   preview: {
@@ -106,9 +110,6 @@ const backendEnvironment = [
   `YUQING_CONFIG=${shellQuote(backendConfig)}`,
   'YUQING_BETA_SKIP_CREDITS=true',
   `YUQING_PUBLIC_BASE_URL=${shellQuote(frontendURL)}`,
-  // K2 will replace the current bootstrap mechanism with persistent roles.
-  // This address is a fixture only; it cannot receive mail.
-  'YUQING_BOOTSTRAP_ADMIN_EMAIL=account-admin-ci@example.invalid',
 ].join(' ');
 const backendCommand = `
 set -euo pipefail
