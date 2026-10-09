@@ -9,6 +9,7 @@ import (
 
 // Sentinel errors for mapping to API error codes.
 var (
+	ErrAccountingDurability  = newSentinel("ACCOUNTING_DURABILITY_ERROR", http.StatusServiceUnavailable)
 	ErrBadRequest            = newSentinel("BAD_REQUEST", http.StatusBadRequest)
 	ErrBudgetExceeded        = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
 	ErrQuotaExceeded         = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)

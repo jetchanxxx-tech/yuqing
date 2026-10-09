@@ -13,7 +13,7 @@ import re
 import uuid
 
 from engines.common.usage_bridge import authorize_call, deliver_pending_usage_events
-from engines.common.usage_outbox import persist_usage_event
+from engines.common.usage_outbox import persist_usage_event, AccountingDurabilityError
 
 import httpx
 
@@ -80,23 +80,18 @@ class LLMClient:
         persist_usage_event(event, permission["permit"], pending=True)
         try:
             response = await self._chat_once(model, messages, **kwargs)
-            usage = response.get("usage")
-            event["actual_model"] = response.get("model") or model
-            event["provider_request_id"] = response.get("id") or ""
-            if isinstance(usage, dict):
-                prompt = usage.get("prompt_tokens")
-                completion = usage.get("completion_tokens")
-                cache = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", usage.get("prompt_cache_hit_tokens", 0))
-                if all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (prompt, completion, cache)) and cache <= prompt:
-                    event.update(usage_status="reported", prompt_tokens=prompt, completion_tokens=completion, cache_tokens=cache)
-            event["outcome"] = "provider_response"
-            persist_usage_event(event, permission["permit"])
-        except BaseException:
+        except BaseException as error:
+            observed = getattr(error, "observed_response", None)
+            if observed:
+                _observe_usage(event, observed)
             event["outcome"] = "provider_error"
             persist_usage_event(event, permission["permit"])
-            # asyncio cancellation must still retain the event; delivery happens
-            # on the next lifecycle tick or process restart.
             raise
+        _observe_usage(event, response)
+        event["outcome"] = "provider_response"
+        # This fatal error is intentionally outside the supplier exception
+        # handler: failure to persist must not retry or relabel observed facts.
+        persist_usage_event(event, permission["permit"])
         await deliver_pending_usage_events()
         return response
 
@@ -129,35 +124,44 @@ class LLMClient:
         return _parse_json_content(content)
 
 
+def _observe_usage(event: dict, response: dict) -> None:
+    usage = response.get("usage")
+    event["actual_model"] = response.get("model") or event["actual_model"]
+    event["provider_request_id"] = response.get("id") or event["provider_request_id"]
+    if isinstance(usage, dict):
+        prompt = usage.get("prompt_tokens")
+        completion = usage.get("completion_tokens")
+        cache = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", usage.get("prompt_cache_hit_tokens", 0))
+        if all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (prompt, completion, cache)) and cache <= prompt:
+            event.update(usage_status="reported", prompt_tokens=prompt, completion_tokens=completion, cache_tokens=cache)
+
+
 def _parse_sse(body: str) -> dict:
-    """把 SSE 分片拼回 {"choices":[{"message":{"content"},"finish_reason"}],"usage"}。"""
+    """Preserve received usage and request identity even if a later chunk fails."""
     content: list[str] = []
     finish_reason = None
-    usage = None
-    model = None
-    request_id = None
-    for line in body.splitlines():
-        if not line.startswith("data:"):
-            continue
-        data = line[5:].strip()
-        if data == "[DONE]":
-            break
-        chunk = json.loads(data)
-        if chunk.get("error"):
-            err = chunk["error"]
-            raise RuntimeError(f"LLM 流式返回错误: {err.get('message', err) if isinstance(err, dict) else err}")
-        usage = chunk.get("usage") or usage
-        model = chunk.get("model") or model
-        request_id = chunk.get("id") or request_id
-        for choice in chunk.get("choices") or []:
-            content.append((choice.get("delta") or {}).get("content") or "")
-            finish_reason = choice.get("finish_reason") or finish_reason
-    return {
-        "choices": [{"message": {"content": "".join(content)}, "finish_reason": finish_reason}],
-        "usage": usage,
-        "model": model,
-        "id": request_id,
-    }
+    observed = {"usage": None, "model": None, "id": None}
+    try:
+        for line in body.splitlines():
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)
+            # Error chunks can themselves carry the final usage facts.
+            for field in ("usage", "model", "id"):
+                observed[field] = chunk.get(field) or observed[field]
+            if chunk.get("error"):
+                error = chunk["error"]
+                raise RuntimeError(f"LLM stream error: {error.get('message', error) if isinstance(error, dict) else error}")
+            for choice in chunk.get("choices") or []:
+                content.append((choice.get("delta") or {}).get("content") or "")
+                finish_reason = choice.get("finish_reason") or finish_reason
+    except Exception as error:
+        error.observed_response = observed
+        raise
+    return {"choices": [{"message": {"content": "".join(content)}, "finish_reason": finish_reason}], **observed}
 
 
 def _parse_json_content(content: str) -> dict:

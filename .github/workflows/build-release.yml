@@ -97,6 +97,52 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  billing-bridge:
+    name: Actual Python Go PostgreSQL usage bridge
+    needs: [go]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_billing_bridge_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: yuqing_billing_bridge_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-binaries-${{ github.sha }}
+          path: platform/bin
+      - name: Prepare prebuilt binaries and bridge sandbox dependencies
+        run: |
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          chmod 755 platform/bin/yuqing-*
+          python -m pip install 'httpx>=0.27.0' 'psycopg[binary]>=3.2'
+      - name: Verify actual committed ACK loss and restart settlement
+        run: python scripts/ci/verify-llm-usage-bridge.py
+      - name: Preserve actual bridge evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-billing-bridge-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/billing-bridge/
+          if-no-files-found: error
+          retention-days: 7
+
   postgresql:
     name: PostgreSQL contract checks
     uses: ./.github/workflows/postgresql-tests.yml
@@ -168,7 +214,7 @@ jobs:
 
   package:
     name: Release archive
-    needs: [go, frontend, postgresql, account-admin, python]
+    needs: [go, frontend, postgresql, account-admin, python, billing-bridge]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

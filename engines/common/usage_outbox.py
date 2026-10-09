@@ -7,6 +7,10 @@ import tempfile
 import time
 
 
+class AccountingDurabilityError(RuntimeError):
+    """Observed accounting could not be made durable; never retry a provider."""
+
+
 def directory() -> Path:
     configured = os.environ.get("YUQING_USAGE_OUTBOX_DIR", "")
     if not configured:
@@ -34,7 +38,7 @@ def _process_identity(pid: int) -> str | None:
         return None
 
 
-def persist_usage_event(event: dict, permit: str, *, pending: bool = False) -> str:
+def _persist_usage_event(event: dict, permit: str, *, pending: bool = False) -> str:
     event_id = event["event_id"]
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", event_id):
         raise ValueError("invalid usage event identity")
@@ -53,6 +57,13 @@ def persist_usage_event(event: dict, permit: str, *, pending: bool = False) -> s
         if os.path.exists(temporary):
             os.unlink(temporary)
     return str(destination)
+
+
+def persist_usage_event(event: dict, permit: str, *, pending: bool = False) -> str:
+    try:
+        return _persist_usage_event(event, permit, pending=pending)
+    except Exception as error:
+        raise AccountingDurabilityError("usage persistence unavailable") from error
 
 
 def pending_records():

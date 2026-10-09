@@ -12,11 +12,12 @@ from string import Template
 from typing import Literal
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
 from engines.common.usage_bridge import usage_lifespan
+from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.auth import InternalAuthMiddleware
 
 try:
@@ -30,6 +31,11 @@ except ImportError:
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Report Engine", version="0.2.0", lifespan=usage_lifespan)
+
+@app.exception_handler(AccountingDurabilityError)
+async def accounting_failure(_request, _error):
+    return JSONResponse(status_code=503, content={"code": "ACCOUNTING_DURABILITY_ERROR", "message": "usage persistence unavailable"})
+
 if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
     app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
 
@@ -277,6 +283,8 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
             ],
             temperature=0.3,
         )
+    except AccountingDurabilityError:
+        raise
     except Exception:
         return None
     # chat_json 只保证「能解析成 JSON」，不保证是对象
