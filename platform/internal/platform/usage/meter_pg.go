@@ -62,22 +62,23 @@ func (m *PGMeter) BudgetStatus(ctx context.Context, tenantID string) (llm.Budget
 	return llm.BudgetStatus{SpentTokens: spent, QuotaTokens: budget.TokenQuota, Status: status}, nil
 }
 
-// Record appends a usage event. 流水表不去重：与内存版一样，重复投递同一事件
-// 会重复计数（usage_events 没有可去重的唯一键，且 BIGSERIAL id 不构成幂等键）。
+// Record preserves the legacy Go meter contract for explicit trusted facts.
+// Actual provider attempts use CallService.Record and its call/event idempotency.
 //
 // model 列 NOT NULL：空 model 以空串写入，不会因缺字段而丢事件 ——
 // 丢事件比多一条脏数据更难排查。
 func (m *PGMeter) Record(ctx context.Context, e llm.UsageEvent) error {
-	const q = `INSERT INTO usage_events
+	const q = `WITH policy AS (SELECT EXISTS(SELECT 1 FROM billing_exempt_principals WHERE user_id=$2) AS exempt)
+ INSERT INTO usage_events
 	           (tenant_id, user_id, model, analysis_id,
 	            prompt_tokens, completion_tokens, cache_tokens,
-	            cost_micro_cny, billed_micro_cny,quota_tokens,usage_status,cost_status)
-	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$5::bigint+$6::bigint+$7::bigint,'reported','known')`
+	            cost_micro_cny, billed_micro_cny,quota_tokens,usage_status,cost_status,billing_exempt)
+	           SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9,CASE WHEN exempt THEN 0::bigint ELSE $10::bigint END,'reported','known',exempt FROM policy`
 
 	_, err := m.pool.Exec(ctx, q,
 		e.TenantID, nullIfEmpty(e.UserID), e.Model, nullIfEmpty(e.AnalysisID),
 		e.PromptTokens, e.CompletionTokens, e.CacheTokens,
-		e.CostMicroCNY, e.BilledMicroCNY,
+		e.CostMicroCNY, e.BilledMicroCNY, int64(e.PromptTokens)+int64(e.CompletionTokens)+int64(e.CacheTokens),
 	)
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.ErrInternal, "usage: record: "+err.Error())

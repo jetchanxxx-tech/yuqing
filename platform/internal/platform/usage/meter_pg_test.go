@@ -250,3 +250,26 @@ func TestPGMeter_persistsCostColumns(t *testing.T) {
 		t.Errorf("溯源字段 = %q/%q/%q, want deepseek-chat/a1/u1", model, analysisID, userID)
 	}
 }
+
+func TestPGMeterTrustedLegacyFactUsesFixedServerPolicy(t *testing.T) {
+	pool := pgtest.Pool(t, "usage_fixed_policy")
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,status) VALUES('fixed','admin@pangu.com','fixture','active')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO billing_exempt_principals(policy_key,user_id,bound_by) VALUES('fixed_admin_v1','fixed','isolated-test')`); err != nil {
+		t.Fatal(err)
+	}
+	meter := NewPGMeter(pool)
+	if err := meter.Record(ctx, llm.UsageEvent{TenantID: "team", UserID: "fixed", Model: "legacy-trusted", PromptTokens: 400, CompletionTokens: 100, CostMicroCNY: 3200}); err != nil {
+		t.Fatal(err)
+	}
+	var quota, cost int64
+	var exempt bool
+	if err := pool.QueryRow(ctx, `SELECT quota_tokens,cost_micro_cny,billing_exempt FROM usage_events`).Scan(&quota, &cost, &exempt); err != nil {
+		t.Fatal(err)
+	}
+	if quota != 0 || cost != 3200 || !exempt {
+		t.Fatalf("trusted legacy fact bypassed server fixed policy: %d/%d/%v", quota, cost, exempt)
+	}
+}
