@@ -228,3 +228,54 @@ func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *test
 		})
 	}
 }
+
+func TestBillingActorPGFixedOwnerKeyChargesOnlyItsImmutableCreator(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	fixedToken, _, fixed := mustRegister(t, e.router, "admin@pangu.com", "Fixed billing administrator")
+	ordinaryToken, _, ordinary := mustRegister(t, e.router, "ordinary-billing-key@example.invalid", "Ordinary key")
+	ctx := context.Background()
+	if _, err := e.pool.Exec(ctx, `INSERT INTO billing_exempt_principals(policy_key,user_id,bound_by) VALUES('fixed_admin_v1',$1,'isolated-known-id-fixture')`, fixed["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	// Another administrator, even with the same email in an untrusted body, pays.
+	if _, err := e.pool.Exec(ctx, `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, ordinary["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE report_credits SET balance=0 WHERE tenant_id IN($1,$2)`, fixed["tenant_id"], ordinary["tenant_id"]); err != nil {
+		t.Fatal(err)
+	}
+	mint := func(token, name string) string {
+		t.Helper()
+		result := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": name}), http.StatusCreated)
+		return result["api_key"].(string)
+	}
+	fixedKey := mint(fixedToken, "fixed key")
+	ordinaryKey := mint(ordinaryToken, "ordinary key")
+	created := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", fixedKey, map[string]any{"name": "fixed free key report", "user_id": ordinary["user_id"]}), http.StatusCreated)
+	if created["created_by"] != fixed["user_id"] || created["current_run_id"] == nil {
+		t.Fatalf("key write did not persist trusted actor: %v", created)
+	}
+	var actor, key, mode string
+	var balance, consumes int
+	if err := e.pool.QueryRow(ctx, `SELECT actor_user_id,actor_api_key_id,charge_mode FROM analysis_runs WHERE id=$1`, created["current_run_id"]).Scan(&actor, &key, &mode); err != nil {
+		t.Fatal(err)
+	}
+	if actor != fixed["user_id"] || key == "" || mode != "exempt" {
+		t.Fatalf("key run actor/key/mode=%s/%s/%s", actor, key, mode)
+	}
+	denied := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", ordinaryKey, map[string]any{"name": "ordinary key report", "email": "admin@pangu.com", "billing_exempt": true}), http.StatusPaymentRequired)
+	if denied["code"] != "NO_CREDITS" {
+		t.Fatalf("ordinary key rejection=%v", denied)
+	}
+	if err := e.pool.QueryRow(ctx, `SELECT balance,(SELECT count(*) FROM credit_transactions WHERE reason='consume') FROM report_credits WHERE tenant_id=$1`, fixed["tenant_id"]).Scan(&balance, &consumes); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 || consumes != 0 {
+		t.Fatalf("exempt key altered balance/consume=%d/%d", balance, consumes)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/users", fixedKey, nil), http.StatusForbidden)
+	if _, err := e.pool.Exec(ctx, `UPDATE api_keys SET revoked_at=now() WHERE id=$1`, key); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", fixedKey, map[string]any{"name": "revoked key"}), http.StatusUnauthorized)
+}

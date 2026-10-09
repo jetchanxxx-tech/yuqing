@@ -20,6 +20,7 @@ REQUIRED_TESTS = {
     "internal/api/v1": (
         "TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission",
         "TestBillingLedgerPGEnforcesBidirectionalImmutableRunConsumption",
+        "TestBillingActorPGFixedOwnerKeyChargesOnlyItsImmutableCreator",
         "TestBillingActorPGKeyCreatorIsServerAssignedImmutableAndPersistent",
         "TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges",
         "TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledOwner",

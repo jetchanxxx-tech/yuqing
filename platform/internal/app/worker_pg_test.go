@@ -75,7 +75,7 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":2,"coverage":{"admission_version":"lexical-v1","accepted_count":2}}`)
+		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"keep-two","title":"second safe evidence","content":"safe second document","source_type":"news","published_at":"2026-09-03"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":3,"coverage":{"admission_version":"lexical-v1","accepted_count":3}}`)
 	}))
 	defer engine.Close()
 	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
@@ -153,8 +153,12 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 	}
 	for _, id := range []string{first, second} {
 		var count int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1`, id).Scan(&count); err != nil || count != 1 {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1`, id).Scan(&count); err != nil || count != 2 {
 			t.Fatalf("filtered document count=%d err=%v", count, err)
+		}
+		var blocked int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1 AND (id='skip' OR title='blocked')`, id).Scan(&blocked); err != nil || blocked != 0 {
+			t.Fatalf("excluded document persisted count=%d err=%v", blocked, err)
 		}
 	}
 	producer := queue.NewPGQueue(pool, queue.PGQueueOptions{})
