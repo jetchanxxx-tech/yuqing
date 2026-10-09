@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
-from engines.common.usage_bridge import install_delivery_lifecycle
+from engines.common.usage_bridge import usage_lifespan
 from engines.common.auth import InternalAuthMiddleware
 
 try:
@@ -29,8 +29,7 @@ except ImportError:
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
-app = FastAPI(title="Report Engine", version="0.2.0")
-install_delivery_lifecycle(app)
+app = FastAPI(title="Report Engine", version="0.2.0", lifespan=usage_lifespan)
 if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
     app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
 

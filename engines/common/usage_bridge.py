@@ -1,5 +1,6 @@
 """Authenticated loopback-only bridge to the platform's accepted run ledger."""
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import ipaddress
 import logging
@@ -67,19 +68,18 @@ async def delivery_loop() -> None:
         await asyncio.sleep(15)
 
 
-def install_delivery_lifecycle(app) -> None:
-    async def start():
-        if os.environ.get("YUQING_BILLING_URL"):
-            app.state.usage_delivery_task = asyncio.create_task(delivery_loop())
-
-    async def stop():
-        task = getattr(app.state, "usage_delivery_task", None)
+@asynccontextmanager
+async def usage_lifespan(app):
+    task = None
+    if os.environ.get("YUQING_BILLING_URL"):
+        task = asyncio.create_task(delivery_loop())
+        app.state.usage_delivery_task = task
+    try:
+        yield
+    finally:
         if task:
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-
-    app.add_event_handler("startup", start)
-    app.add_event_handler("shutdown", stop)

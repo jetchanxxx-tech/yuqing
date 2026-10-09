@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/usage"
 	"io"
 	"net"
@@ -18,11 +19,11 @@ func RegisterInternalBillingRoutes(router *gin.Engine, s *Services) {
 		expected := os.Getenv("YUQING_BILLING_SERVICE_TOKEN")
 		actual := c.GetHeader("X-Billing-Service-Token")
 		if err != nil || ip == nil || !ip.IsLoopback() || expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) != 1 {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": "FORBIDDEN"})
+			c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.ErrForbidden, requestID(c)))
 			return
 		}
 		if s.LLMCalls == nil {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"code": "SERVICE_UNAVAILABLE"})
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, pkgerrors.ToEnvelope(pkgerrors.ErrServiceUnavailable, requestID(c)))
 			return
 		}
 		c.Next()

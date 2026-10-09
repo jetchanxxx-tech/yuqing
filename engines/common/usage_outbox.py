@@ -24,13 +24,23 @@ def _sync_directory(root: Path) -> None:
         os.close(descriptor)
 
 
+def _process_identity(pid: int) -> str | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        start = stat.rsplit(")", 1)[1].split()[19]
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        return f"{boot}:{start}"
+    except FileNotFoundError:
+        return None
+
+
 def persist_usage_event(event: dict, permit: str, *, pending: bool = False) -> str:
     event_id = event["event_id"]
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", event_id):
         raise ValueError("invalid usage event identity")
     root = directory()
     destination = root / f"{event_id}.json"
-    record = {"event": event, "permit": permit, "pending": pending, "owner_pid": os.getpid(), "written_at": time.time()}
+    record = {"event": event, "permit": permit, "pending": pending, "owner_pid": os.getpid(), "owner_identity": _process_identity(os.getpid()), "written_at": time.time()}
     descriptor, temporary = tempfile.mkstemp(prefix=".usage-", dir=root)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -55,14 +65,11 @@ def pending_records():
             # A live provider attempt must not be ACKed as zero/unknown by a
             # second engine's periodic flusher. After its process dies, the
             # durable pre-call intent is delivered as explicitly unknown usage.
-            try:
-                os.kill(int(record["owner_pid"]), 0)
+            identity = _process_identity(int(record["owner_pid"]))
+            if identity is not None and identity == record.get("owner_identity"):
                 continue
-            except ProcessLookupError:
-                record["pending"] = False
-                record["event"]["outcome"] = "process_interrupted"
-            except PermissionError:
-                continue
+            record["pending"] = False
+            record["event"]["outcome"] = "process_interrupted"
         yield path, record
 
 
