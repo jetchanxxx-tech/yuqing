@@ -431,6 +431,14 @@ function NotifyTab() {
     (s.email_provider === 'smtp' && !!s.smtp_host && !!s.email_from_address);
   const smsReady = !!s.sms_access_key_id && !!s.sms_template_code;
 
+  if (settingsQ.isLoading) return <Card style={{ borderRadius: 16 }}><LoadingBlock rows={8} /></Card>;
+  if (settingsQ.isError) return (
+    <Card style={{ borderRadius: 16 }}>
+      <Alert type="error" showIcon message="通知配置加载失败" description={adminErrorMessage(settingsQ.error)}
+        action={<Button autoInsertSpace={false} loading={settingsQ.isFetching} onClick={() => void settingsQ.refetch()}>重试</Button>} />
+    </Card>
+  );
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       {saveQ.isError && <Alert type="error" showIcon message="通知配置保存失败" description={adminErrorMessage(saveQ.error)} />}
