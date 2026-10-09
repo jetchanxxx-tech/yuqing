@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -38,8 +39,11 @@ func authStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err != nil {
 			t.Fatalf("GetUserByEmail failed: %v", err)
 		}
-		if *got != want {
+		if got.ID != want.ID || got.Email != want.Email || got.PasswordHash != want.PasswordHash || got.Name != want.Name {
 			t.Errorf("user = %+v, want %+v", *got, want)
+		}
+		if got.Status != "active" || got.CreatedAt.IsZero() || got.LastLoginAt != nil || got.TokenVersion != 0 || got.RowVersion != 0 {
+			t.Errorf("new user security defaults = %+v", got)
 		}
 	})
 
@@ -285,5 +289,127 @@ func TestAuthStore_PG_duplicateSlugOrDBNameIsConflict(t *testing.T) {
 				t.Errorf("err = %v, want ErrConflict", err)
 			}
 		})
+	}
+}
+
+func TestAuthStore_PGPlatformRolePersistsWithoutBootstrapLoginRegrant(t *testing.T) {
+	pool := pgtest.Pool(t, "auth_platform_role")
+	ctx := context.Background()
+	svc := NewService(NewPGStore(pool), testSecret, "15m", "720h")
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+	p, pair := mustRegister(t, svc, "root@pangu.com", testPassword, "Root")
+	restarted := NewService(NewPGStore(pool), testSecret, "15m", "720h")
+	current, err := restarted.Authenticate(ctx, pair.AccessToken)
+	if err != nil || !hasRole(current.Roles, "platform_admin") {
+		t.Fatalf("new service must load the persisted role: %+v %v", current, err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM platform_user_roles WHERE user_id = $1`, p.UserID); err != nil {
+		t.Fatal(err)
+	}
+	current, err = svc.Authenticate(ctx, pair.AccessToken)
+	if err != nil || hasRole(current.Roles, "platform_admin") {
+		t.Fatalf("request must observe platform-role revocation: %+v %v", current, err)
+	}
+	current, _, err = svc.Login(ctx, p.Email, testPassword)
+	if err != nil || hasRole(current.Roles, "platform_admin") {
+		t.Fatalf("login must not infer the revoked role from email: %+v %v", current, err)
+	}
+}
+
+func TestAuthStore_PGConcurrentInitialAdminRegistrationSeedsOnlyOne(t *testing.T) {
+	pool := pgtest.Pool(t, "auth_concurrent_admin")
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	errors := make(chan error, 2)
+	for _, suffix := range []string{"one", "two"} {
+		wg.Add(1)
+		go func(suffix string) {
+			defer wg.Done()
+			user := User{ID: "user-" + suffix, Email: suffix + "@example.com", PasswordHash: "hash", Name: suffix}
+			tenant := Tenant{ID: "tenant-" + suffix, Name: suffix, Slug: suffix, DBName: suffix, Status: "active", PlanCode: "free"}
+			errors <- NewPGStore(pool).RegisterAccount(ctx, user, tenant, Member{TenantID: tenant.ID, UserID: user.ID, Role: "tenant_admin"}, true)
+		}(suffix)
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var admins, users, tenants, members int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM platform_user_roles),
+		(SELECT count(*) FROM users), (SELECT count(*) FROM tenants), (SELECT count(*) FROM tenant_members)`).Scan(&admins, &users, &tenants, &members); err != nil {
+		t.Fatal(err)
+	}
+	if admins != 1 || users != 2 || tenants != 2 || members != 2 {
+		t.Fatalf("concurrent registrations: admins=%d users=%d tenants=%d members=%d", admins, users, tenants, members)
+	}
+}
+
+func TestAuthStore_PGTokenTenantDoesNotChangeAfterMembershipRemoval(t *testing.T) {
+	pool := pgtest.Pool(t, "auth_fixed_tenant")
+	ctx := context.Background()
+	st := NewPGStore(pool)
+	svc := NewService(st, testSecret, "15m", "720h")
+	p, pair := mustRegister(t, svc, "fixed-tenant@example.com", testPassword, "FixedTenant")
+	if err := st.CreateTenant(ctx, Tenant{ID: "other-tenant", Name: "Other", Slug: "other", DBName: "other", Status: "active", PlanCode: "pro"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateMember(ctx, Member{TenantID: "other-tenant", UserID: p.UserID, Role: "analyst"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM tenant_members WHERE tenant_id = $1 AND user_id = $2`, p.TenantID, p.UserID); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.Authenticate(ctx, pair.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TenantID != p.TenantID || current.MemberExists || len(current.Roles) != 0 {
+		t.Fatalf("membership removal switched tenant or preserved member permission: %+v", current)
+	}
+	refreshed, err := svc.Refresh(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err = svc.Authenticate(ctx, refreshed.AccessToken)
+	if err != nil || current.TenantID != p.TenantID || current.MemberExists {
+		t.Fatalf("refresh must preserve fixed tenant and current missing membership: %+v %v", current, err)
+	}
+}
+
+func TestAuthStore_PGLoginRecorderRejectsStalePasswordSnapshot(t *testing.T) {
+	pool := pgtest.Pool(t, "auth_login_cas")
+	ctx := context.Background()
+	st := NewPGStore(pool)
+	if err := st.CreateUser(ctx, User{ID: "login-cas", Email: "login-cas@example.com", PasswordHash: "old-hash"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdatePassword(ctx, "login-cas", "new-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordSuccessfulLogin(ctx, "login-cas", 0); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("old verified password snapshot must not record successful login: %v", err)
+	}
+	u, err := st.GetUserByEmail(ctx, "login-cas@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.LastLoginAt != nil || u.TokenVersion != 1 || u.RowVersion != 1 || u.CreatedAt.IsZero() || u.Status != "active" {
+		t.Fatalf("read user omitted real security fields: %+v", u)
+	}
+	if err := st.RecordSuccessfulLogin(ctx, u.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET status = 'disabled' WHERE id = $1`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordSuccessfulLogin(ctx, u.ID, 1); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("disabled user must not record a login: %v", err)
+	}
+	u, err = st.GetByID(ctx, u.ID)
+	if err != nil || u.Status != "disabled" || u.LastLoginAt == nil || u.TokenVersion != 1 || u.RowVersion != 1 {
+		t.Fatalf("get by ID omitted current user security state: %+v %v", u, err)
 	}
 }

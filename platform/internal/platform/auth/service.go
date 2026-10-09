@@ -17,8 +17,7 @@ import (
 // Fixed role granted to the self-registered tenant owner.
 const roleTenantAdmin = "tenant_admin"
 
-// rolePlatformAdmin 授予平台级管理权限（/admin/* 全部端点）。
-// MVP 内存 store 下无法通过 CLI/DB 直接写入，只能由引导邮箱注册时获得。
+// rolePlatformAdmin is persisted independently from tenant membership roles.
 const rolePlatformAdmin = "platform_admin"
 
 // Default free-plan token quota for new tenants: 1M tokens, hard cap.
@@ -33,6 +32,11 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Name         string
+	Status       string
+	CreatedAt    time.Time
+	LastLoginAt  *time.Time
+	TokenVersion int64
+	RowVersion   int64
 	// ── 用户中心 P0 字段（迁移 0007；memory store 全量支持，pg store 渐进接线）──
 	Phone             string
 	AvatarURL         string
@@ -80,8 +84,7 @@ type Service struct {
 	refreshTTL string
 	meter      *usage.Meter
 
-	// bootstrapAdminEmail: 用该邮箱注册的用户额外获得 platform_admin 角色。
-	// 空值表示不启用（默认）。见 SetBootstrapAdminEmail。
+	// Optional initial registration seed; login never assigns roles by email.
 	bootstrapAdminEmail string
 
 	// postRegister 注册成功后的钩子（组合根接入 credit.Service：新租户赠
@@ -114,23 +117,11 @@ func (s *Service) SetPostRegister(fn func(ctx context.Context, tenantID string) 
 	s.postRegister = fn
 }
 
-// SetBootstrapAdminEmail 配置引导管理员邮箱（大小写不敏感）。
-// 用于解决「内存 store 下无法创建平台管理员」的引导问题：设好后，
-// 用该邮箱注册的账号即为平台管理员，可访问 /admin/* 全部端点。
+// SetBootstrapAdminEmail allows a new matching account to seed the first
+// persisted administrator. Existing accounts need an explicit administrative
+// migration; login and token authentication never infer roles from this email.
 func (s *Service) SetBootstrapAdminEmail(email string) {
 	s.bootstrapAdminEmail = normalizeEmail(email)
-}
-
-// rolesFor 返回用户的完整角色集：基础角色 + 命中引导邮箱时的 platform_admin。
-//
-// Register 与 Login 必须共用此逻辑。成员表只存基础角色，若 Login 仅回显该
-// 角色，用户重新登录后 platform_admin 会丢失、管理后台再次 403（实测踩过）。
-func (s *Service) rolesFor(email, baseRole string) []string {
-	roles := []string{baseRole}
-	if s.bootstrapAdminEmail != "" && normalizeEmail(email) == s.bootstrapAdminEmail {
-		roles = append(roles, rolePlatformAdmin)
-	}
-	return roles
 }
 
 // NewService creates an auth service with its own usage meter.
@@ -165,10 +156,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	}
 
 	userID := id.New()
-	u := User{ID: userID, Email: email, PasswordHash: hash, Name: name}
-	if err := s.store.CreateUser(ctx, u); err != nil {
-		return nil, nil, err
-	}
+	u := User{ID: userID, Email: email, PasswordHash: hash, Name: name, Status: "active", CreatedAt: time.Now()}
 
 	tenantID := id.New()
 	t := Tenant{
@@ -179,12 +167,21 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 		Status:   string(ptenant.StatusActive),
 		PlanCode: "free",
 	}
-	if err := s.store.CreateTenant(ctx, t); err != nil {
+	m := Member{TenantID: tenantID, UserID: userID, Role: roleTenantAdmin}
+	registration, ok := s.store.(RegistrationStore)
+	if !ok {
+		return nil, nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "atomic registration unavailable")
+	}
+	// Check token configuration before committing a new account.
+	if _, err := GenerateTokenPair(Principal{UserID: userID, TenantID: tenantID}, s.secret, s.accessTTL, s.refreshTTL); err != nil {
 		return nil, nil, err
 	}
-
-	m := Member{TenantID: tenantID, UserID: userID, Role: roleTenantAdmin}
-	if err := s.store.CreateMember(ctx, m); err != nil {
+	bootstrap := s.bootstrapAdminEmail != "" && email == s.bootstrapAdminEmail
+	if err := registration.RegisterAccount(ctx, u, t, m, bootstrap); err != nil {
+		return nil, nil, err
+	}
+	p, err := s.loadPrincipal(ctx, userID, tenantID, u.TokenVersion)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -199,17 +196,6 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	// Free plan: 1M token hard cap applied at provisioning time.
 	s.meter.SetQuota(tenantID, freePlanTokenQuota, llm.BudgetHardCap)
 
-	// 引导管理员：邮箱命中配置时额外授予 platform_admin
-	roles := s.rolesFor(email, roleTenantAdmin)
-
-	p := &Principal{
-		UserID:       userID,
-		TenantID:     tenantID,
-		Email:        email,
-		Roles:        roles,
-		PlanCode:     t.PlanCode,
-		TenantStatus: t.Status,
-	}
 	pair, err := GenerateTokenPair(*p, s.secret, s.accessTTL, s.refreshTTL)
 	if err != nil {
 		return nil, nil, err
@@ -228,55 +214,55 @@ func (s *Service) Login(ctx context.Context, email, password string) (*Principal
 		}
 		return nil, nil, err
 	}
-	if !VerifyPassword(u.PasswordHash, password) {
+	if u.Status != "active" || !VerifyPassword(u.PasswordHash, password) {
 		return nil, nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid email or password")
 	}
 
+	var tenantID string
 	t, err := s.store.GetUserTenant(ctx, u.ID)
-	if err != nil {
-		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-			return nil, nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "user has no active tenant")
-		}
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 		return nil, nil, err
 	}
-	role, err := s.store.GetUserRole(ctx, t.ID, u.ID)
-	if err != nil {
-		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-			return nil, nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "user has no membership")
-		}
-		return nil, nil, err
+	if t != nil {
+		tenantID = t.ID
 	}
-
-	p := &Principal{
-		UserID:       u.ID,
-		TenantID:     t.ID,
-		Email:        u.Email,
-		Roles:        s.rolesFor(u.Email, role),
-		PlanCode:     t.PlanCode,
-		TenantStatus: t.Status,
+	p, err := s.loadPrincipal(ctx, u.ID, tenantID, u.TokenVersion)
+	if err != nil {
+		return nil, nil, err
 	}
 	pair, err := GenerateTokenPair(*p, s.secret, s.accessTTL, s.refreshTTL)
 	if err != nil {
+		return nil, nil, err
+	}
+	recorder, ok := s.store.(LoginRecorder)
+	if !ok {
+		return nil, nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "login recorder unavailable")
+	}
+	if err := recorder.RecordSuccessfulLogin(ctx, u.ID, u.TokenVersion); err != nil {
 		return nil, nil, err
 	}
 	return p, pair, nil
 }
 
 // Authenticate validates an access token and returns its principal.
-func (s *Service) Authenticate(_ context.Context, token string) (*Principal, error) {
+func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, error) {
 	p, err := ValidateAccessToken(token, s.secret)
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid or expired access token")
 	}
-	return p, nil
+	return s.loadPrincipal(ctx, p.UserID, p.TenantID, p.TokenVersion)
 }
 
-// Refresh validates a refresh token (itself a JWT in the MVP) and reissues
-// a fresh token pair for the same principal.
-func (s *Service) Refresh(_ context.Context, refreshToken string) (*TokenPair, error) {
-	p, err := ValidateAccessToken(refreshToken, s.secret)
+// Refresh validates a refresh token and reissues tokens from current stored
+// authorization, preserving the tenant explicitly bound to the original token.
+func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair, error) {
+	identity, err := validateToken(refreshToken, s.secret, "refresh")
 	if err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid or expired refresh token")
+	}
+	p, err := s.loadPrincipal(ctx, identity.UserID, identity.TenantID, identity.TokenVersion)
+	if err != nil {
+		return nil, err
 	}
 	return GenerateTokenPair(*p, s.secret, s.accessTTL, s.refreshTTL)
 }

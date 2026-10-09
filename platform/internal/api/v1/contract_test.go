@@ -27,8 +27,11 @@ import (
 	"github.com/yuqing/platform/internal/app"
 	"github.com/yuqing/platform/internal/business/analysis"
 	"github.com/yuqing/platform/internal/config"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/llm"
 	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/credit"
+	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
 const testJWTSecret = "contract-test-secret-key-min-32-chars!!"
@@ -45,13 +48,36 @@ func newContractEnv(t *testing.T) (*gin.Engine, *v1.Services) {
 	cfg.Auth.AccessTTL = "15m"
 	cfg.Auth.RefreshTTL = "720h"
 	cfg.RateLimit.Enabled = false
+	return newContractEnvWithConfig(t, cfg)
+}
+
+type contractAccountFixture struct {
+	mu     sync.Mutex
+	store  *auth.SharedTenantStore
+	deps   *v1.Services
+	seeded bool
+	hash   string
+}
+
+var contractAccountFixtures sync.Map // test name -> *contractAccountFixture
+
+// newContractEnvWithConfig exposes the same real stores to authentication,
+// account profile and tenant administration. No HTTP path trusts JWT roles.
+func newContractEnvWithConfig(t *testing.T, cfg *config.Config) (*gin.Engine, *v1.Services) {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	deps := app.Build(cfg, logger)
-	// 契约测试的租户是伪造 principal（t_contract），不走注册流程 ——
-	// 预置额度绕过创建闸门（额度语义本身由 credit 包契约测试覆盖）。
-	if deps.Credits != nil {
-		_ = deps.Credits.GrantPurchase(context.Background(), "t_contract", "contract-seed", 1000)
-	}
+	tenants := tenant.NewMemoryStore()
+	store := auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
+	deps.Tenant = tenant.NewService(tenants)
+	deps.Auth = auth.NewService(store, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
+	deps.Auth.SetPostRegister(func(ctx context.Context, tenantID string) error {
+		return deps.Credits.GrantTrial(ctx, tenantID, credit.TrialCredits)
+	})
+	deps.Auth.EnableUserCenter(store, auth.NewMemoryVerificationStore(),
+		app.NewSettingsSMS(deps.Settings), app.NewSettingsMailer(deps.Settings), "")
+	contractAccountFixtures.Store(t.Name(), &contractAccountFixture{store: store, deps: deps})
+	t.Cleanup(func() { contractAccountFixtures.Delete(t.Name()) })
 	return api.NewRouter(cfg, logger, deps), deps
 }
 
@@ -61,10 +87,100 @@ func newContractRouter(t *testing.T) *gin.Engine {
 	return r
 }
 
-// issueToken mints a real access token for the given principal.
+func contractFixture(t *testing.T) *contractAccountFixture {
+	t.Helper()
+	for name := t.Name(); ; {
+		if value, ok := contractAccountFixtures.Load(name); ok {
+			return value.(*contractAccountFixture)
+		}
+		index := strings.LastIndex(name, "/")
+		if index < 0 {
+			t.Fatal("contract account environment is not initialized")
+			return nil
+		}
+		name = name[:index]
+	}
+}
+
+// issueToken selects a stored fixture account and signs only its identity.
+// Every role uses its own user so issuing a viewer token cannot alter an
+// existing analyst's permissions. Platform roles are seeded in the real store.
 func issueToken(t *testing.T, p auth.Principal) string {
 	t.Helper()
-	pair, err := auth.GenerateTokenPair(p, testJWTSecret, "15m", "720h")
+	fixture := contractFixture(t)
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	ctx := context.Background()
+	if !fixture.seeded {
+		hash, err := auth.HashPassword("password-123456")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.hash = hash
+		if err := fixture.store.RegisterAccount(ctx,
+			auth.User{ID: "u_contract_admin", Email: "contract-admin@example.com", Name: "Contract admin", PasswordHash: hash, Status: "active"},
+			auth.Tenant{ID: "t_contract", Name: "Contract tenant", Slug: "t-contract", DBName: tenant.DBName("t_contract"), Status: "active", PlanCode: "free"},
+			auth.Member{UserID: "u_contract_admin", TenantID: "t_contract", Role: "tenant_admin"}, true); err != nil {
+			t.Fatalf("register contract administrator: %v", err)
+		}
+		if err := fixture.deps.Credits.GrantPurchase(ctx, "t_contract", "contract-seed", 1000); err != nil {
+			t.Fatalf("seed contract credits: %v", err)
+		}
+		fixture.seeded = true
+	}
+	role := "guest"
+	if len(p.Roles) > 0 {
+		role = p.Roles[0]
+	}
+	if p.UserID == "u_contract" && role != "analyst" {
+		if role == "platform_admin" {
+			p.UserID = "u_contract_admin"
+		} else {
+			p.UserID += "_" + role
+		}
+		p.Email = p.UserID + "@example.com"
+	}
+	if p.PlanCode == "" {
+		p.PlanCode = "free"
+	}
+	if p.PlanCode != "free" {
+		p.TenantID += "_" + p.PlanCode
+	}
+	if _, err := fixture.deps.Tenant.Get(ctx, p.TenantID); pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		if err := fixture.store.CreateTenant(ctx, auth.Tenant{
+			ID: p.TenantID, Name: p.TenantID, Slug: p.TenantID, DBName: tenant.DBName(p.TenantID), Status: "active", PlanCode: p.PlanCode,
+		}); err != nil {
+			t.Fatalf("seed fixture tenant: %v", err)
+		}
+	} else if err != nil {
+		t.Fatalf("load fixture tenant: %v", err)
+	}
+	u, err := fixture.store.GetByID(ctx, p.UserID)
+	if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		p.Email = p.UserID + "@example.com"
+		if err := fixture.store.CreateUser(ctx, auth.User{
+			ID: p.UserID, Email: p.Email, Name: p.UserID, PasswordHash: fixture.hash, Status: "active",
+		}); err != nil {
+			t.Fatalf("seed fixture user: %v", err)
+		}
+		u, err = fixture.store.GetByID(ctx, p.UserID)
+	}
+	if err != nil {
+		t.Fatalf("load fixture user: %v", err)
+	}
+	if role == "platform_admin" {
+		role = "tenant_admin"
+	}
+	if current, err := fixture.store.GetUserRole(ctx, p.TenantID, p.UserID); pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		if err := fixture.store.CreateMember(ctx, auth.Member{UserID: p.UserID, TenantID: p.TenantID, Role: role}); err != nil {
+			t.Fatalf("seed fixture member: %v", err)
+		}
+	} else if err != nil || current != role {
+		t.Fatalf("fixture member role = %q, want %q: %v", current, role, err)
+	}
+	pair, err := auth.GenerateTokenPair(auth.Principal{
+		UserID: u.ID, TenantID: p.TenantID, TokenVersion: u.TokenVersion,
+	}, testJWTSecret, "15m", "720h")
 	if err != nil {
 		t.Fatalf("GenerateTokenPair failed: %v", err)
 	}
@@ -1287,11 +1403,11 @@ func TestContract_adminUsage_aggregatesRealData(t *testing.T) {
 			t.Errorf("%q = %v, want number", f, body[f])
 		}
 	}
-	if body["total_tenants"] != float64(1) {
-		t.Errorf("total_tenants = %v, want 1", body["total_tenants"])
+	if body["total_tenants"] != float64(2) {
+		t.Errorf("total_tenants = %v, want 2 (fixture and registered tenant)", body["total_tenants"])
 	}
-	if body["active_tenants"] != float64(1) {
-		t.Errorf("active_tenants = %v, want 1", body["active_tenants"])
+	if body["active_tenants"] != float64(2) {
+		t.Errorf("active_tenants = %v, want 2 (fixture and registered tenant)", body["active_tenants"])
 	}
 	if body["total_tokens_used"] != float64(480) {
 		t.Errorf("total_tokens_used = %v, want 480", body["total_tokens_used"])

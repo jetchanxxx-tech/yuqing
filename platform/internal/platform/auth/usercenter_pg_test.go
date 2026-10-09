@@ -63,6 +63,9 @@ func userCenterStoreContract(t *testing.T, newStore func(t *testing.T) UserStore
 		if u.PasswordChangedAt == nil {
 			t.Error("password_changed_at 未记录")
 		}
+		if u.TokenVersion != 1 || u.RowVersion != 1 {
+			t.Errorf("password update must atomically increment account versions: token=%d row=%d", u.TokenVersion, u.RowVersion)
+		}
 	})
 
 	t.Run("MarkEmailVerified 幂等生效", func(t *testing.T) {

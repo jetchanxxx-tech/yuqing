@@ -96,7 +96,7 @@ func (s *Service) requireDeps() error {
 func (s *Service) VerifyBaseURL() string { return s.verifyBaseURL }
 
 // ChangePassword 修改密码：验证旧密码 → 强度校验（≥8 位字母+数字）→ 更新哈希。
-// 调用方（handler）负责在成功后撤销 refresh token 强制重登。
+// Store 更新哈希时原子增加账号版本，旧 access/refresh 在服务端失效。
 func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	if err := s.requireDeps(); err != nil {
 		return err

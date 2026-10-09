@@ -20,13 +20,14 @@ var _ VerificationStore = (*PGVerificationStore)(nil)
 
 const userCenterColumns = `id, email, password_hash, name, phone, avatar_url, timezone,
 	email_verified_at, phone_verified_at, password_changed_at,
-	COALESCE(trial_analysis_used, 0)`
+	COALESCE(trial_analysis_used, 0), status, created_at, last_login_at, token_version, row_version`
 
 func scanUserCenter(row pgx.Row) (*User, error) {
 	var u User
 	var phone, avatarURL, timezone *string
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &phone, &avatarURL, &timezone,
-		&u.EmailVerifiedAt, &u.PhoneVerifiedAt, &u.PasswordChangedAt, &u.TrialAnalysisUsed)
+		&u.EmailVerifiedAt, &u.PhoneVerifiedAt, &u.PasswordChangedAt, &u.TrialAnalysisUsed,
+		&u.Status, &u.CreatedAt, &u.LastLoginAt, &u.TokenVersion, &u.RowVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +71,8 @@ func (s *PGStore) GetByPhone(ctx context.Context, phone string) (*User, error) {
 
 // UpdatePassword 更新密码哈希并记录 password_changed_at。
 func (s *PGStore) UpdatePassword(ctx context.Context, userID, newHash string) error {
-	const q = `UPDATE users SET password_hash = $2, password_changed_at = now() WHERE id = $1`
+	const q = `UPDATE users SET password_hash = $2, password_changed_at = now(),
+		token_version = token_version + 1, row_version = row_version + 1 WHERE id = $1`
 	return s.execUserUpdate(ctx, q, userID, newHash)
 }
 

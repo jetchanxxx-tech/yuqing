@@ -21,7 +21,19 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	r.Use(middleware.Recovery(log))
 	r.Use(middleware.AuditLog(log))
 
-	authCfg := middleware.AuthConfig{JWTSecret: cfg.Auth.JWTSecret}
+	authCfg := middleware.AuthConfig{}
+	if deps.Auth != nil {
+		authCfg.Authenticator = deps.Auth
+	}
+	var apiKeys middleware.APIKeyValidator
+	if deps.APIKey != nil {
+		apiKeys = deps.APIKey
+	}
+	var tenants middleware.TenantLookup
+	if deps.Tenant != nil {
+		tenants = deps.Tenant
+	}
+	rateLimit := middleware.RateLimit(middleware.RateLimiterConfig{Enabled: cfg.RateLimit.Enabled})
 
 	// Health check (unauthenticated).
 	r.GET("/api/v1/health", func(c *gin.Context) {
@@ -38,17 +50,20 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	// 支付渠道回调（公开路由，免鉴权）：安全由渠道验签保证（防线 1）。
 	r.POST("/api/v1/callbacks/payment/:channel", v1.HandlePaymentCallback(deps))
 
-	// Authenticated routes. AuthAny accepts a JWT access token or a tenant
-	// API key (Authorization: Bearer pangu_…); deps.APIKey may be nil, in
-	// which case key credentials fail closed and JWT behavior is unchanged.
-	api := r.Group("/api/v1")
-	api.Use(middleware.AuthAny(authCfg, deps.APIKey, deps.Tenant))
-	api.Use(middleware.RateLimit(middleware.RateLimiterConfig{Enabled: cfg.RateLimit.Enabled}))
-	{
-		// Session endpoints that read the authenticated principal.
-		session := api.Group("/auth")
-		v1.RegisterSessionRoutes(session, deps)
+	// Account routes remain available to active users with a suspended tenant.
+	account := r.Group("/api/v1", middleware.AuthRequired(authCfg), rateLimit)
+	v1.RegisterSessionRoutes(account.Group("/auth"), deps)
+	v1.RegisterUserCenterRoutes(account, deps)
 
+	// Platform administrators can restore tenants even when their own tenant
+	// is suspended. Each administrative action retains its permission check.
+	admin := r.Group("/api/v1", middleware.AuthRequired(authCfg), middleware.RequireRole("platform_admin"), rateLimit)
+	v1.RegisterAdminRoutes(admin, deps)
+
+	// Tenant business routes accept current JWT members or tenant API keys;
+	// all require an active tenant before reaching any business handler.
+	api := r.Group("/api/v1", middleware.AuthAny(authCfg, apiKeys, tenants), middleware.RequireActiveTenant(), rateLimit)
+	{
 		v1.RegisterAnalysisRoutes(api, deps)
 		v1.RegisterMonitorPlanRoutes(api, deps)
 		v1.RegisterAPIKeyRoutes(api, deps)
@@ -56,8 +71,6 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 		v1.RegisterDashboardRoutes(api, deps)
 		v1.RegisterBillingRoutes(api, deps)
 		v1.RegisterTrendsRoutes(api, deps)
-		v1.RegisterAdminRoutes(api, deps)
-		v1.RegisterUserCenterRoutes(api, deps)
 	}
 
 	return r

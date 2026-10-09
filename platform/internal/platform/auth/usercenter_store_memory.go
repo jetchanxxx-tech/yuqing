@@ -25,6 +25,8 @@ func (m *MemoryStore) UpdatePassword(_ context.Context, userID, newHash string) 
 	now := time.Now()
 	u.PasswordHash = newHash
 	u.PasswordChangedAt = &now
+	u.TokenVersion++
+	u.RowVersion++
 	return nil
 }
 

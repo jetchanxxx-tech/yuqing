@@ -59,6 +59,7 @@ func keyRouter(svc *apikey.Service, tenants TenantLookup) *gin.Engine {
 			"roles":         p.Roles,
 			"plan_code":     p.PlanCode,
 			"tenant_status": p.TenantStatus,
+			"auth_type":     p.AuthType,
 		})
 	})
 	return r
@@ -91,6 +92,9 @@ func TestApiKeyAuth_validKey_injectsPrincipal(t *testing.T) {
 	uid, _ := body["user_id"].(string)
 	if uid == "" || uid[:7] != "apikey:" {
 		t.Errorf("user_id = %v, want apikey:<id>", body["user_id"])
+	}
+	if body["auth_type"] != "api_key" {
+		t.Errorf("auth_type = %v, want api_key", body["auth_type"])
 	}
 	if body["plan_code"] != "pro" {
 		t.Errorf("plan_code = %v, want pro (resolved from tenant)", body["plan_code"])
@@ -144,25 +148,13 @@ func TestApiKeyAuth_requiresBearerScheme(t *testing.T) {
 
 const testSecret = "middleware-test-secret-key-min-32ch!"
 
-// mustJWT mints a regular user access token (JWT path of AuthAny).
-func mustJWT(t *testing.T) string {
-	t.Helper()
-	pair, err := auth.GenerateTokenPair(
-		auth.Principal{UserID: "u1", TenantID: "t1", Roles: []string{"analyst"}, TenantStatus: "active"},
-		testSecret, "15m", "720h")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pair.AccessToken
-}
-
 func TestAuthAny_acceptsBothCredentials(t *testing.T) {
 	svc, raw, _ := newAPIKeyFixture(t)
 	r := gin.New()
-	r.GET("/whoami", AuthAny(AuthConfig{JWTSecret: testSecret}, svc, stubTenants{status: "active"}),
+	cfg, jwtToken := jwtFixture(t, auth.Principal{UserID: "u1", TenantID: "t1", Roles: []string{"analyst"}})
+	r.GET("/whoami", AuthAny(cfg, svc, stubTenants{status: "active"}),
 		func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
-	jwtToken := mustJWT(t)
 	t.Run("jwt still works", func(t *testing.T) {
 		if w := doBearer(t, r, jwtToken); w.Code != 200 {
 			t.Fatalf("jwt status = %d, want 200", w.Code)

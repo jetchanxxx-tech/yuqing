@@ -22,7 +22,7 @@ const (
 	argon2SaltLen = 16
 )
 
-// Principal is the authenticated user/tenant context extracted from a JWT.
+// Principal is the authenticated user and current authorization state.
 type Principal struct {
 	UserID       string   `json:"uid"`
 	TenantID     string   `json:"tid"`
@@ -30,6 +30,10 @@ type Principal struct {
 	Roles        []string `json:"roles"`
 	PlanCode     string   `json:"plan"`
 	TenantStatus string   `json:"ts"`
+	UserStatus   string   `json:"user_status"`
+	TokenVersion int64    `json:"token_version"`
+	MemberExists bool     `json:"member_exists"`
+	AuthType     string   `json:"auth_type"`
 }
 
 // TokenPair contains access and refresh tokens.
@@ -38,15 +42,13 @@ type TokenPair struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// jwtClaims carries the principal in JWT claims.
+// JWTs contain only a signed identity. Authorization comes from the store.
 type jwtClaims struct {
 	jwt.RegisteredClaims
-	UserID       string   `json:"uid"`
-	TenantID     string   `json:"tid"`
-	Email        string   `json:"email"`
-	Roles        []string `json:"roles"`
-	PlanCode     string   `json:"plan"`
-	TenantStatus string   `json:"ts"`
+	UserID       string `json:"uid"`
+	TenantID     string `json:"tid"`
+	TokenKind    string `json:"token_kind"`
+	TokenVersion *int64 `json:"token_version"`
 }
 
 // HashPassword returns an argon2id hash of the password in encoded form:
@@ -105,11 +107,11 @@ func GenerateTokenPair(p Principal, secret string, accessTTL, refreshTTL string)
 	}
 
 	now := time.Now()
-	accessToken, err := signToken(p, secret, now, accessDur)
+	accessToken, err := signToken(p, secret, now, accessDur, "access")
 	if err != nil {
 		return nil, err
 	}
-	refreshToken, err := signToken(p, secret, now, refreshDur)
+	refreshToken, err := signToken(p, secret, now, refreshDur, "refresh")
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +122,10 @@ func GenerateTokenPair(p Principal, secret string, accessTTL, refreshTTL string)
 	}, nil
 }
 
-func signToken(p Principal, secret string, now time.Time, ttl time.Duration) (string, error) {
+func signToken(p Principal, secret string, now time.Time, ttl time.Duration, kind string) (string, error) {
+	if p.UserID == "" || p.TokenVersion < 0 {
+		return "", fmt.Errorf("auth: invalid token identity")
+	}
 	claims := jwtClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -130,10 +135,8 @@ func signToken(p Principal, secret string, now time.Time, ttl time.Duration) (st
 		},
 		UserID:       p.UserID,
 		TenantID:     p.TenantID,
-		Email:        p.Email,
-		Roles:        p.Roles,
-		PlanCode:     p.PlanCode,
-		TenantStatus: p.TenantStatus,
+		TokenKind:    kind,
+		TokenVersion: &p.TokenVersion,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims)
@@ -146,33 +149,39 @@ func generateJTI() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// ValidateAccessToken parses and validates an access token, returning the Principal.
+// ValidateAccessToken validates the signed identity, not current permissions.
+// Request authentication must use Service.Authenticate to load those permissions.
 func ValidateAccessToken(tokenString, secret string) (*Principal, error) {
+	return validateToken(tokenString, secret, "access")
+}
+
+func validateToken(tokenString, secret, kind string) (*Principal, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &jwtClaims{},
 		func(t *jwt.Token) (any, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			if t.Method != jwt.SigningMethodHS256 {
 				return nil, fmt.Errorf("auth: unexpected signing method: %v", t.Header["alg"])
 			}
 			return []byte(secret), nil
 		},
 		jwt.WithLeeway(30*time.Second),
+		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("auth: invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(*jwtClaims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.UserID == "" || claims.Subject != claims.UserID ||
+		claims.TokenKind != kind || claims.TokenVersion == nil || *claims.TokenVersion < 0 {
 		return nil, fmt.Errorf("auth: invalid claims")
 	}
 
 	return &Principal{
 		UserID:       claims.UserID,
 		TenantID:     claims.TenantID,
-		Email:        claims.Email,
-		Roles:        claims.Roles,
-		PlanCode:     claims.PlanCode,
-		TenantStatus: claims.TenantStatus,
+		TokenVersion: *claims.TokenVersion,
+		AuthType:     "jwt",
 	}, nil
 }
 

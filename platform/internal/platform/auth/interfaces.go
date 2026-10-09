@@ -13,7 +13,8 @@ type UserStore interface {
 	GetByID(ctx context.Context, userID string) (*User, error)
 	// GetByPhone 按手机号查用户（不存在返回 ErrNotFound）。
 	GetByPhone(ctx context.Context, phone string) (*User, error)
-	// UpdatePassword 更新密码哈希并记录 password_changed_at。
+	// UpdatePassword atomically updates the hash and timestamp and increments
+	// token_version/row_version, revoking all previously issued account tokens.
 	UpdatePassword(ctx context.Context, userID, newHash string) error
 	// MarkEmailVerified 标记邮箱已验证。
 	MarkEmailVerified(ctx context.Context, userID string) error

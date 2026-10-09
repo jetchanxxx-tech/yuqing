@@ -24,10 +24,56 @@ func NewSharedTenantStore(base *MemoryStore, tenants *tenant.MemoryStore) *Share
 }
 
 var _ Store = (*SharedTenantStore)(nil)
+var _ RegistrationStore = (*SharedTenantStore)(nil)
+var _ AuthorizationStateStore = (*SharedTenantStore)(nil)
+
+// RegisterAccount validates all local rows before creating the shared tenant.
+// Once Create succeeds, the remaining writes cannot fail and are committed
+// while holding the same account lock used by all identity readers.
+func (s *SharedTenantStore) RegisterAccount(ctx context.Context, user User, t Tenant, member Member, bootstrap bool) error {
+	if err := validateRegistration(user, t, member); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.checkUserMemberLocked(user, member); err != nil {
+		return err
+	}
+	if err := s.CreateTenant(ctx, t); err != nil {
+		return err
+	}
+	s.commitAccountLocked(user, member, bootstrap)
+	return nil
+}
+
+// LoadAuthorizationState must resolve the explicit token tenant through the
+// shared store. The embedded MemoryStore has no private copy of tenant rows.
+func (s *SharedTenantStore) LoadAuthorizationState(ctx context.Context, userID, tenantID string) (*AuthorizationState, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	state, err := s.authorizationStateLocked(userID, tenantID)
+	if err != nil || tenantID == "" {
+		return state, err
+	}
+	t, err := s.tenants.Get(ctx, tenantID)
+	if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		state.MemberExists = false
+		return state, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if t == nil {
+		state.MemberExists = false
+		return state, nil
+	}
+	state.TenantStatus, state.PlanCode = string(t.Status), t.PlanCode
+	return state, nil
+}
 
 // CreateTenant stores the tenant row in the shared tenant store.
-func (s *SharedTenantStore) CreateTenant(_ context.Context, t Tenant) error {
-	return s.tenants.Create(context.Background(), tenant.Tenant{
+func (s *SharedTenantStore) CreateTenant(ctx context.Context, t Tenant) error {
+	return s.tenants.Create(ctx, tenant.Tenant{
 		ID:       t.ID,
 		Name:     t.Name,
 		Slug:     t.Slug,

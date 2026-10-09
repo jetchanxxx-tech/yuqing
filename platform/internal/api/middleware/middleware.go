@@ -6,11 +6,14 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
 // Context keys for middleware-injected values.
@@ -21,23 +24,72 @@ const (
 	CtxRequestID ctxKey = "request_id"
 )
 
-// AuthConfig holds auth middleware settings.
-type AuthConfig struct {
-	JWTSecret string
+// Authenticator resolves a signed access token into current account state.
+type Authenticator interface {
+	Authenticate(ctx context.Context, token string) (*auth.Principal, error)
 }
 
-// AuthRequired validates the JWT Bearer token and injects Principal into context.
+// AuthConfig holds the account authentication dependency.
+type AuthConfig struct {
+	Authenticator Authenticator
+}
+
+// AuthRequired accepts JWT accounts only, including accounts whose tenant is
+// suspended. Tenant business routes apply RequireActiveTenant separately.
 func AuthRequired(cfg AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, why := bearerToken(c)
 		if why != "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": "UNAUTHORIZED", "message": why,
+				"request_id": c.GetString(string(CtxRequestID)),
+			})
+			return
+		}
+		if strings.HasPrefix(token, apikey.KeyPrefix) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code": "FORBIDDEN", "message": "user account authentication required",
+				"request_id": c.GetString(string(CtxRequestID)),
 			})
 			return
 		}
 		authenticateJWT(c, cfg, token)
 	}
+}
+
+// RequireActiveTenant gates tenant business requests on current membership
+// and tenant state. API keys belong directly to their validated tenant.
+func RequireActiveTenant() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		p := GetPrincipal(c)
+		if p == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code": "UNAUTHORIZED", "message": "authentication required",
+				"request_id": c.GetString(string(CtxRequestID)),
+			})
+			return
+		}
+		if p.AuthType != "api_key" && (p.AuthType != "jwt" || !p.MemberExists) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code": "FORBIDDEN", "message": "current tenant membership required",
+				"request_id": c.GetString(string(CtxRequestID)),
+			})
+			return
+		}
+		if p.TenantID == "" || p.TenantStatus != string(tenant.StatusActive) {
+			abortInactiveTenant(c, p.TenantStatus)
+			return
+		}
+		c.Next()
+	}
+}
+
+func abortInactiveTenant(c *gin.Context, status string) {
+	code, message := "TENANT_INACTIVE", "tenant account is not active"
+	if status == string(tenant.StatusSuspended) {
+		code, message = "TENANT_SUSPENDED", "tenant account is suspended"
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": code, "message": message, "request_id": c.GetString(string(CtxRequestID))})
 }
 
 // RequireRole checks that the authenticated principal has at least one of the required roles.
@@ -47,6 +99,7 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		if p == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": "UNAUTHORIZED", "message": "authentication required",
+				"request_id": c.GetString(string(CtxRequestID)),
 			})
 			return
 		}
@@ -60,6 +113,7 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"code": "FORBIDDEN", "message": "insufficient permissions",
+			"request_id": c.GetString(string(CtxRequestID)),
 		})
 	}
 }
@@ -71,6 +125,7 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		if p == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": "UNAUTHORIZED", "message": "authentication required",
+				"request_id": c.GetString(string(CtxRequestID)),
 			})
 			return
 		}
@@ -82,6 +137,7 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"code": "FORBIDDEN", "message": "insufficient permissions",
+			"request_id": c.GetString(string(CtxRequestID)),
 		})
 	}
 }
@@ -125,8 +181,9 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 					)
 				}
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-					"code":    "INTERNAL",
-					"message": "internal server error",
+					"code":       "INTERNAL",
+					"request_id": c.GetString(string(CtxRequestID)),
+					"message":    "internal server error",
 				})
 			}
 		}()
