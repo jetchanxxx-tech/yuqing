@@ -31,6 +31,18 @@ func (p *PGStore) Balance(ctx context.Context, tenantID string) (int, error) {
 	return bal, err
 }
 
+func (p *PGStore) Snapshot(ctx context.Context, tenantID string) (*Snapshot, error) {
+	s := &Snapshot{}
+	err := p.pool.QueryRow(ctx, `SELECT balance,plan_code FROM report_credits WHERE tenant_id=$1`, tenantID).Scan(&s.Balance, &s.PlanCode)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
 func (p *PGStore) ApplyDelta(ctx context.Context, tenantID string, delta int, tx Transaction) (int, error) {
 	db, err := p.pool.Begin(ctx)
 	if err != nil {

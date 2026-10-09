@@ -34,6 +34,21 @@ func (m *MemoryStore) Balance(_ context.Context, tenantID string) (int, error) {
 	return m.balances[tenantID], nil
 }
 
+func (m *MemoryStore) Snapshot(_ context.Context, tenantID string) (*Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bal, hasBalance := m.balances[tenantID]
+	plan, hasPlan := m.plans[tenantID]
+	if !hasBalance && !hasPlan {
+		return nil, nil
+	}
+	// PostgreSQL's report_credits default is free for a balance-only pool.
+	if !hasPlan {
+		plan = "free"
+	}
+	return &Snapshot{Balance: bal, PlanCode: plan}, nil
+}
+
 func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, tx Transaction) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

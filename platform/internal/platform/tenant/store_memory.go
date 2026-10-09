@@ -3,6 +3,7 @@ package tenant
 import (
 	"context"
 	"sync"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
@@ -30,8 +31,28 @@ func (m *MemoryStore) Create(_ context.Context, t Tenant) error {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "tenant already exists")
 	}
 	cp := t
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = time.Now().UTC()
+	}
 	m.byID[t.ID] = &cp
 	m.order = append(m.order, t.ID)
+	return nil
+}
+
+// ChangeAdministration holds the shared tenant row lock through CAS, status
+// and audit preparation; an unsuccessful callback leaves the live row intact.
+func (m *MemoryStore) ChangeAdministration(_ context.Context, id string, change func(*Tenant) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.byID[id]
+	if !ok {
+		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "tenant not found")
+	}
+	cp := *t
+	if err := change(&cp); err != nil {
+		return err
+	}
+	*t = cp
 	return nil
 }
 

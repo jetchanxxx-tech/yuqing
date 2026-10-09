@@ -17,6 +17,7 @@ type MemoryStore struct {
 	tenantsByID         map[string]*Tenant
 	tenantOfUser        map[string]string // userID → tenantID
 	roleByMember        map[memberKey]string
+	memberVersions      map[memberKey]int64
 	platformRolesByUser map[string][]string
 }
 
@@ -33,6 +34,7 @@ func NewMemoryStore() *MemoryStore {
 		tenantsByID:         make(map[string]*Tenant),
 		tenantOfUser:        make(map[string]string),
 		roleByMember:        make(map[memberKey]string),
+		memberVersions:      make(map[memberKey]int64),
 		platformRolesByUser: make(map[string][]string),
 	}
 }

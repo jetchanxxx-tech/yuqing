@@ -29,6 +29,7 @@ import (
 	"github.com/yuqing/platform/internal/config"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/tenant"
@@ -71,6 +72,7 @@ func newContractEnvWithConfig(t *testing.T, cfg *config.Config) (*gin.Engine, *v
 	store := auth.NewSharedTenantStore(auth.NewMemoryStore(), tenants)
 	deps.Tenant = tenant.NewService(tenants)
 	deps.Auth = auth.NewService(store, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
+	deps.AccountAdmin = accountadmin.NewService(accountadmin.NewMemoryStore(store, tenants, deps.Credits, deps.Payment))
 	deps.Auth.SetPostRegister(func(ctx context.Context, tenantID string) error {
 		return deps.Credits.GrantTrial(ctx, tenantID, credit.TrialCredits)
 	})

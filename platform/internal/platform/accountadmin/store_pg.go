@@ -1,0 +1,389 @@
+package accountadmin
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/credit"
+	"github.com/yuqing/platform/internal/platform/payment"
+)
+
+type PGStore struct{ pool *pgxpool.Pool }
+
+func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
+
+var _ Store = (*PGStore)(nil)
+
+const userProjection = `u.id,COALESCE(u.name,''),u.email,COALESCE(u.phone,''),u.status,
+	u.email_verified_at IS NOT NULL,u.phone_verified_at IS NOT NULL,
+	ARRAY(SELECT role FROM platform_user_roles WHERE user_id=u.id ORDER BY role),
+	(SELECT COUNT(*) FROM tenant_members WHERE user_id=u.id),u.created_at,u.last_login_at,u.row_version`
+const userFilter = `WHERE ($1='' OR strpos(lower(u.id),lower($1))>0 OR strpos(lower(COALESCE(u.name,'')),lower($1))>0 OR strpos(lower(u.email::text),lower($1))>0)
+	AND ($2='' OR u.status=$2)
+	AND ($3='' OR EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=u.id AND role=$3))
+	AND ($4='' OR ($4='email' AND u.email_verified_at IS NOT NULL) OR ($4='phone' AND u.phone_verified_at IS NOT NULL)
+	OR ($4='none' AND u.email_verified_at IS NULL AND u.phone_verified_at IS NULL))`
+
+func scanUser(row pgx.Row) (UserRow, error) {
+	u := UserRow{}
+	var phone string
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &phone, &u.Status, &u.EmailVerified, &u.PhoneVerified, &u.PlatformRoles, &u.TenantCount, &u.CreatedAt, &u.LastLoginAt, &u.RowVersion)
+	u.PhoneMasked = MaskPhone(phone)
+	if u.PlatformRoles == nil {
+		u.PlatformRoles = []string{}
+	}
+	return u, err
+}
+
+func (s *PGStore) ListUsers(ctx context.Context, q Query) ([]UserRow, int, error) {
+	args := []any{q.Q, q.Status, q.PlatformRole, q.Verified}
+	total := 0
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users u `+userFilter, args...).Scan(&total); err != nil {
+		return nil, 0, internal(err)
+	}
+	start, _ := pageBounds(total, q)
+	args = append(args, q.PageSize, start)
+	rows, err := s.pool.Query(ctx, `SELECT `+userProjection+` FROM users u `+userFilter+` ORDER BY u.created_at,u.id LIMIT $5 OFFSET $6`, args...)
+	if err != nil {
+		return nil, 0, internal(err)
+	}
+	defer rows.Close()
+	items := []UserRow{}
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, 0, internal(err)
+		}
+		items = append(items, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, internal(err)
+	}
+	return items, total, nil
+}
+
+func (s *PGStore) User(ctx context.Context, id string) (*UserDetail, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx, `SELECT `+userProjection+` FROM users u WHERE u.id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, missing()
+	}
+	if err != nil {
+		return nil, internal(err)
+	}
+	result := &UserDetail{UserRow: u, Memberships: []Membership{}}
+	rows, err := s.pool.Query(ctx, `SELECT t.id,t.name,t.status,m.role,m.row_version FROM tenant_members m JOIN tenants t ON t.id=m.tenant_id
+		WHERE m.user_id=$1 ORDER BY t.created_at,t.id`, id)
+	if err != nil {
+		return nil, internal(err)
+	}
+	for rows.Next() {
+		m := Membership{}
+		if err := rows.Scan(&m.TenantID, &m.TenantName, &m.TenantStatus, &m.Role, &m.RowVersion); err != nil {
+			rows.Close()
+			return nil, internal(err)
+		}
+		result.Memberships = append(result.Memberships, m)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, internal(err)
+	}
+	result.AuditLogs, err = s.auditRows(ctx, "user", id, "")
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+const tenantProjection = `t.id,t.name,t.slug,t.plan_code,t.status,t.created_at,t.row_version,
+	(SELECT COUNT(*) FROM tenant_members WHERE tenant_id=t.id),COALESCE(rc.plan_code,''),
+	CASE WHEN rc.tenant_id IS NULL THEN 'unknown' ELSE 'report_credits' END`
+const tenantJoin = ` FROM tenants t LEFT JOIN report_credits rc ON rc.tenant_id=t.id `
+const tenantFilter = `WHERE ($1='' OR strpos(lower(t.id),lower($1))>0 OR strpos(lower(t.name),lower($1))>0)
+	AND ($2='' OR t.status=$2) AND ($3='' OR rc.plan_code=$3)`
+
+func scanTenant(row pgx.Row) (TenantRow, error) {
+	t := TenantRow{}
+	err := row.Scan(&t.ID, &t.Name, &t.Slug, &t.PlanCode, &t.Status, &t.CreatedAt, &t.RowVersion, &t.UserCount, &t.EffectivePlanCode, &t.PlanSource)
+	return t, err
+}
+
+func (s *PGStore) ListTenants(ctx context.Context, q Query) ([]TenantRow, int, error) {
+	args := []any{q.Q, q.Status, q.PlanCode}
+	total := 0
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*)`+tenantJoin+tenantFilter, args...).Scan(&total); err != nil {
+		return nil, 0, internal(err)
+	}
+	start, _ := pageBounds(total, q)
+	args = append(args, q.PageSize, start)
+	rows, err := s.pool.Query(ctx, `SELECT `+tenantProjection+tenantJoin+tenantFilter+` ORDER BY t.created_at,t.id LIMIT $4 OFFSET $5`, args...)
+	if err != nil {
+		return nil, 0, internal(err)
+	}
+	defer rows.Close()
+	items := []TenantRow{}
+	for rows.Next() {
+		t, err := scanTenant(rows)
+		if err != nil {
+			return nil, 0, internal(err)
+		}
+		items = append(items, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, internal(err)
+	}
+	return items, total, nil
+}
+
+func (s *PGStore) Tenant(ctx context.Context, id string) (*TenantDetail, error) {
+	t, err := scanTenant(s.pool.QueryRow(ctx, `SELECT `+tenantProjection+tenantJoin+` WHERE t.id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, missing()
+	}
+	if err != nil {
+		return nil, internal(err)
+	}
+	result := &TenantDetail{TenantRow: t, Members: []TenantMember{}, Orders: []*payment.Order{}}
+	rows, err := s.pool.Query(ctx, `SELECT u.id,COALESCE(u.name,''),u.email,m.role,m.row_version
+		FROM tenant_members m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1 ORDER BY u.created_at,u.id`, id)
+	if err != nil {
+		return nil, internal(err)
+	}
+	for rows.Next() {
+		m := TenantMember{}
+		if err := rows.Scan(&m.UserID, &m.Name, &m.Email, &m.Role, &m.RowVersion); err != nil {
+			rows.Close()
+			return nil, internal(err)
+		}
+		result.Members = append(result.Members, m)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, internal(err)
+	}
+	result.Credit, err = credit.NewPGStore(s.pool).Snapshot(ctx, id)
+	if err != nil {
+		return nil, internal(err)
+	}
+	orders, err := payment.NewPGStore(s.pool).List(ctx, id, int(^uint(0)>>1))
+	if err != nil {
+		return nil, internal(err)
+	}
+	if orders != nil {
+		result.Orders = orders
+	}
+	result.AuditLogs, err = s.auditRows(ctx, "tenant", id, id)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *PGStore) auditRows(ctx context.Context, targetType, targetID, tenantID string) ([]Audit, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id,COALESCE(actor_id,''),action,COALESCE(tenant_id,''),details_json,created_at FROM audit_logs
+		WHERE (details_json->>'target_type'=$1 AND details_json->>'target_id'=$2) OR ($3<>'' AND tenant_id=$3)
+		ORDER BY created_at,id`, targetType, targetID, tenantID)
+	if err != nil {
+		return nil, internal(err)
+	}
+	defer rows.Close()
+	result := []Audit{}
+	for rows.Next() {
+		a := Audit{}
+		var details []byte
+		if err := rows.Scan(&a.ID, &a.ActorID, &a.Action, &a.TenantID, &details, &a.CreatedAt); err != nil {
+			return nil, internal(err)
+		}
+		var d struct {
+			TargetType string         `json:"target_type"`
+			TargetID   string         `json:"target_id"`
+			Reason     string         `json:"reason"`
+			RequestID  string         `json:"request_id"`
+			Before     map[string]any `json:"before"`
+			After      map[string]any `json:"after"`
+		}
+		if err := json.Unmarshal(details, &d); err != nil {
+			return nil, internal(err)
+		}
+		a.TargetType = d.TargetType
+		a.TargetID = d.TargetID
+		a.Reason = d.Reason
+		a.RequestID = d.RequestID
+		a.Before = d.Before
+		a.After = d.After
+		result = append(result, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, internal(err)
+	}
+	return result, nil
+}
+
+// Change serializes last-admin checks with the K1 provisioning lock and the
+// tenant-specific lock. CAS, credentials, state and durable audit commit once.
+func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, internal(err)
+	}
+	defer tx.Rollback(context.Background())
+	platform := m.Action == "user.disable" || m.Action == "user.enable" || m.Action == "user.platform_role"
+	if platform {
+		_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID)
+	} else {
+		id := m.TenantID
+		if m.Action != "member.role" {
+			id = m.TargetID
+		}
+		_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,741915))`, id)
+	}
+	if err != nil {
+		return nil, internal(err)
+	}
+	result := &Result{}
+	before := map[string]any{}
+	after := map[string]any{}
+	targetType, tenantID := "user", m.TenantID
+	switch m.Action {
+	case "user.disable", "user.enable", "user.platform_role":
+		var status string
+		var version int64
+		var roles []string
+		err = tx.QueryRow(ctx, `SELECT u.status,u.row_version,ARRAY(SELECT role FROM platform_user_roles WHERE user_id=u.id ORDER BY role)
+			FROM users u WHERE u.id=$1 FOR UPDATE OF u`, m.TargetID).Scan(&status, &version, &roles)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, missing()
+		}
+		if err != nil {
+			return nil, internal(err)
+		}
+		if version != m.ExpectedVersion {
+			return nil, conflict()
+		}
+		result.ID = m.TargetID
+		result.RowVersion = version + 1
+		if m.Action == "user.platform_role" {
+			if hasAdmin(roles) == m.PlatformAdmin {
+				return nil, conflict()
+			}
+			before = map[string]any{"platform_roles": append([]string{}, roles...), "row_version": version}
+			if m.PlatformAdmin {
+				_, err = tx.Exec(ctx, `INSERT INTO platform_user_roles(user_id,role,granted_by) VALUES($1,'platform_admin',$2)`, m.TargetID, m.ActorID)
+				roles = []string{"platform_admin"}
+			} else {
+				_, err = tx.Exec(ctx, `DELETE FROM platform_user_roles WHERE user_id=$1 AND role='platform_admin'`, m.TargetID)
+				roles = []string{}
+			}
+			if err != nil {
+				return nil, internal(err)
+			}
+			result.PlatformRoles = &roles
+			after = map[string]any{"platform_roles": roles, "row_version": version + 1}
+		} else {
+			from, to := "active", "disabled"
+			if m.Action == "user.enable" {
+				from, to = "disabled", "active"
+			}
+			if status != from {
+				return nil, conflict()
+			}
+			before = map[string]any{"status": status, "row_version": version}
+			status = to
+			after = map[string]any{"status": status, "row_version": version + 1}
+			result.Status = status
+		}
+		_, err = tx.Exec(ctx, `UPDATE users SET status=$2,row_version=row_version+1,token_version=token_version+1 WHERE id=$1`, m.TargetID, status)
+		if err != nil {
+			return nil, internal(err)
+		}
+		var admins int
+		if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM users u JOIN platform_user_roles r ON r.user_id=u.id WHERE u.status='active' AND r.role='platform_admin'`).Scan(&admins); err != nil {
+			return nil, internal(err)
+		}
+		if admins < 1 {
+			return nil, conflict()
+		}
+	case "member.role":
+		var role string
+		var version int64
+		err = tx.QueryRow(ctx, `SELECT role,row_version FROM tenant_members WHERE tenant_id=$1 AND user_id=$2 FOR UPDATE`, m.TenantID, m.TargetID).Scan(&role, &version)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, missing()
+		}
+		if err != nil {
+			return nil, internal(err)
+		}
+		if version != m.ExpectedVersion || role == m.Role {
+			return nil, conflict()
+		}
+		before = map[string]any{"role": role, "row_version": version}
+		_, err = tx.Exec(ctx, `UPDATE tenant_members SET role=$3,row_version=row_version+1 WHERE tenant_id=$1 AND user_id=$2`, m.TenantID, m.TargetID, m.Role)
+		if err != nil {
+			return nil, internal(err)
+		}
+		var admins int
+		if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM tenant_members WHERE tenant_id=$1 AND role='tenant_admin'`, m.TenantID).Scan(&admins); err != nil {
+			return nil, internal(err)
+		}
+		if admins < 1 {
+			return nil, conflict()
+		}
+		_, err = tx.Exec(ctx, `UPDATE users SET row_version=row_version+1,token_version=token_version+1 WHERE id=$1`, m.TargetID)
+		if err != nil {
+			return nil, internal(err)
+		}
+		after = map[string]any{"role": m.Role, "row_version": version + 1}
+		result.TenantID = m.TenantID
+		result.UserID = m.TargetID
+		result.Role = m.Role
+		result.RowVersion = version + 1
+	case "tenant.suspend", "tenant.resume":
+		targetType = "tenant"
+		tenantID = m.TargetID
+		var status string
+		var version int64
+		err = tx.QueryRow(ctx, `SELECT status,row_version FROM tenants WHERE id=$1 FOR UPDATE`, m.TargetID).Scan(&status, &version)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, missing()
+		}
+		if err != nil {
+			return nil, internal(err)
+		}
+		from, to := "active", "suspended"
+		if m.Action == "tenant.resume" {
+			from, to = "suspended", "active"
+		}
+		if version != m.ExpectedVersion || status != from {
+			return nil, conflict()
+		}
+		before = map[string]any{"status": status, "row_version": version}
+		_, err = tx.Exec(ctx, `UPDATE tenants SET status=$2,row_version=row_version+1 WHERE id=$1`, m.TargetID, to)
+		if err != nil {
+			return nil, internal(err)
+		}
+		after = map[string]any{"status": to, "row_version": version + 1}
+		result.ID = m.TargetID
+		result.Status = to
+		result.RowVersion = version + 1
+	default:
+		return nil, conflict()
+	}
+	details, err := json.Marshal(map[string]any{"target_type": targetType, "target_id": m.TargetID, "reason": m.Reason, "request_id": m.RequestID, "before": before, "after": after})
+	if err != nil {
+		return nil, internal(err)
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO audit_logs(actor_id,tenant_id,action,resource,details_json) VALUES($1,NULLIF($2,''),$3,$4,$5::jsonb)`, m.ActorID, tenantID, m.Action, m.TargetID, details)
+	if err != nil {
+		return nil, internal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, internal(err)
+	}
+	return result, nil
+}

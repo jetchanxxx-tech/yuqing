@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuqing/platform/internal/api/middleware"
-	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/billing"
 	"github.com/yuqing/platform/internal/platform/tenant"
 )
@@ -15,9 +14,16 @@ import (
 // (RBAC matrix in internal/platform/auth/auth.go).
 func RegisterAdminRoutes(r *gin.RouterGroup, svcs *Services) {
 	admin := r.Group("/admin")
-	admin.GET("/tenants", middleware.RequirePermission("admin:tenants:list"), svcs.handleListTenants)
-	admin.POST("/tenants/:id/suspend", middleware.RequirePermission("admin:tenants:suspend"), svcs.handleSuspendTenant)
-	admin.POST("/tenants/:id/resume", middleware.RequirePermission("admin:tenants:suspend"), svcs.handleResumeTenant)
+	admin.GET("/users", middleware.RequirePermission("admin:users:read"), svcs.handleListAdminUsers)
+	admin.GET("/users/:id", middleware.RequirePermission("admin:users:read"), svcs.handleAdminUser)
+	admin.POST("/users/:id/disable", middleware.RequirePermission("admin:users:manage"), svcs.handleDisableAdminUser)
+	admin.POST("/users/:id/enable", middleware.RequirePermission("admin:users:manage"), svcs.handleEnableAdminUser)
+	admin.PUT("/users/:id/platform-role", middleware.RequirePermission("admin:roles:manage"), svcs.handleAdminPlatformRole)
+	admin.GET("/tenants", middleware.RequirePermission("admin:tenants:read"), svcs.handleListTenants)
+	admin.GET("/tenants/:id", middleware.RequirePermission("admin:tenants:read"), svcs.handleAdminTenant)
+	admin.POST("/tenants/:id/suspend", middleware.RequirePermission("admin:tenants:manage"), svcs.handleSuspendTenant)
+	admin.POST("/tenants/:id/resume", middleware.RequirePermission("admin:tenants:manage"), svcs.handleResumeTenant)
+	admin.PUT("/tenants/:id/members/:user_id/role", middleware.RequirePermission("admin:members:manage"), svcs.handleAdminMemberRole)
 	admin.GET("/usage", middleware.RequirePermission("billing:manage"), svcs.handlePlatformUsage)
 	admin.GET("/plans", middleware.RequirePermission("admin:plans:manage"), svcs.handleAdminListPlans)
 	admin.POST("/plans", middleware.RequirePermission("admin:plans:manage"), svcs.handleAdminCreatePlan)
@@ -25,35 +31,18 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svcs *Services) {
 	admin.PUT("/settings", middleware.RequirePermission("admin:plans:manage"), svcs.handleUpdateSettings)
 }
 
-// adminTenant is the admin list row (web/src/api/admin.ts Tenant).
-type adminTenant struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Slug     string `json:"slug"`
-	DBName   string `json:"db_name,omitempty"`
-	PlanCode string `json:"plan_code"`
-	Status   string `json:"status"`
-}
-
 // handleListTenants lists platform tenants from the shared tenant store.
 func (s *Services) handleListTenants(c *gin.Context) {
-	tenants, err := s.Tenant.List(c.Request.Context())
+	q, ok := adminQuery(c, false)
+	if !ok {
+		return
+	}
+	rows, total, err := s.AccountAdmin.ListTenants(c.Request.Context(), q)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
-	rows := make([]adminTenant, 0, len(tenants))
-	for _, t := range tenants {
-		rows = append(rows, adminTenant{
-			ID:       t.ID,
-			Name:     t.Name,
-			Slug:     t.Slug,
-			DBName:   t.DBName,
-			PlanCode: t.PlanCode,
-			Status:   string(t.Status),
-		})
-	}
-	c.JSON(http.StatusOK, gin.H{"tenants": rows, "total": len(rows)})
+	c.JSON(http.StatusOK, gin.H{"items": rows, "tenants": rows, "total": total, "page": q.Page, "page_size": q.PageSize})
 }
 
 func (s *Services) handleSuspendTenant(c *gin.Context) {
@@ -65,27 +54,15 @@ func (s *Services) handleResumeTenant(c *gin.Context) {
 }
 
 func (s *Services) changeTenantStatus(c *gin.Context, suspend bool) {
-	ctx := c.Request.Context()
-	var err error
+	var req adminStatusRequest
+	if !decodeAdmin(c, &req) || !validAdminStatus(c, req) {
+		return
+	}
+	action := "tenant.resume"
 	if suspend {
-		err = s.Tenant.Suspend(ctx, c.Param("id"))
-	} else {
-		err = s.Tenant.Resume(ctx, c.Param("id"))
+		action = "tenant.suspend"
 	}
-	if err != nil {
-		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-			notFound(c, "tenant not found")
-			return
-		}
-		respondError(c, err)
-		return
-	}
-	t, err := s.Tenant.Get(ctx, c.Param("id"))
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"id": t.ID, "status": t.Status})
+	s.respondAdminMutation(c, adminMutation(c, req, action))
 }
 
 // handleAdminListPlans lists the platform plan catalog (same data as

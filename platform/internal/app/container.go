@@ -27,6 +27,7 @@ import (
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/pkg/db"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
@@ -264,8 +265,15 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		logger.Warn("trends: 未配置 rsshub_base，热榜聚合不可用")
 	}
 
+	var accountAdminStore accountadmin.Store
+	if platformPool != nil {
+		accountAdminStore = accountadmin.NewPGStore(platformPool)
+	} else {
+		accountAdminStore = accountadmin.NewMemoryStore(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore), creditSvc, paymentSvc)
+	}
 	return &v1.Services{
 		Auth:            authSvc,
+		AccountAdmin:    accountadmin.NewService(accountAdminStore),
 		Analysis:        analysisSvc,
 		MonitorPlans:    monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
 		Dashboard:       dashboardSvc,
