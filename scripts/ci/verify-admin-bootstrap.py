@@ -28,9 +28,12 @@ def main():
     dsn = urlunparse(parsed._replace(query=urlencode(params)))
 
     def sql(statement, *, scoped=True):
+        # libpq rejects pgx's arbitrary runtime URI parameters. psql uses
+        # PGOPTIONS while the CLI's pgx DSN retains its search_path parameter.
+        env = {**os.environ, "PGOPTIONS": "-c search_path=" + (schema + ",public" if scoped else "public")}
         result = subprocess.run(
-            ["psql", dsn if scoped else DATABASE, "-v", "ON_ERROR_STOP=1", "-At"],
-            input=statement, text=True, capture_output=True, timeout=30,
+            ["psql", DATABASE, "-v", "ON_ERROR_STOP=1", "-At"],
+            input=statement, text=True, capture_output=True, timeout=30, env=env,
         )
         assert result.returncode == 0, "isolated bootstrap SQL fixture failed: " + result.stderr[:500]
         return result.stdout.strip()
@@ -73,6 +76,7 @@ def main():
             assert sql("SELECT count(*) FROM audit_logs WHERE action='user.bootstrap_admin'") == "1"
             cli("bootstrap-platform-admin", "--user-id", first)
             assert sql("SELECT count(*) FROM audit_logs WHERE action='user.bootstrap_admin'") == "1"
+            assert sql("SELECT row_version || ':' || token_version FROM users WHERE id='%s'" % first) == "1:1"
             cli("bootstrap-platform-admin", "--user-id", second, success=False)
             assert sql("SELECT count(*) FROM platform_user_roles") == "1"
             assert sql("SELECT row_version || ':' || token_version FROM users WHERE id='%s'" % second) == "0:0"
