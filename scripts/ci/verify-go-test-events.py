@@ -82,6 +82,8 @@ REQUIRED_TESTS = {
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
     "internal/platform/payment": ("TestPGStore_contract",),
     "internal/business/analysis": (
+        "TestK4PGStaleWorkerCannotWriteIntoNewRerun",
+        "TestK4PGTaskMessageContainsPersistedRunIdentity",
         "TestK4PGCreateConsumesOneCreditAndPublishesOneTask",
         "TestK4PGZeroCreditsRejectsWithoutTaskOrDebit",
         "TestK4PGRerunConsumesAnotherCreditAndPublishesOneTask",
