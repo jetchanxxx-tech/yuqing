@@ -79,10 +79,11 @@ func (s *PGStore) RegisterAccount(ctx context.Context, user User, tenant Tenant,
 func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID string) (*AuthorizationState, error) {
 	const q = `SELECT u.id, u.email, u.status, u.token_version,
 		ARRAY(SELECT pur.role FROM platform_user_roles pur WHERE pur.user_id = u.id ORDER BY pur.role),
-		COALESCE(t.status, ''), COALESCE(t.plan_code, ''),
+		COALESCE(t.status, ''), COALESCE(NULLIF(rc.plan_code,''),'free'),
 		COALESCE(tm.role, ''), tm.user_id IS NOT NULL
 		FROM users u
 		LEFT JOIN tenants t ON t.id = $2
+ LEFT JOIN report_credits rc ON rc.tenant_id=t.id
 		LEFT JOIN tenant_members tm ON tm.tenant_id = t.id AND tm.user_id = u.id
 		WHERE u.id = $1`
 	state := &AuthorizationState{TenantID: tenantID}

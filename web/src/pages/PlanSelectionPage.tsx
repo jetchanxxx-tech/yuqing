@@ -114,7 +114,7 @@ export default function PlanSelectionPage() {
         <Space>
           {creditsQ.data && (
             <Tag color="#FF2442" style={{ fontSize: 14, padding: '4px 12px' }}>
-              剩余额度：{creditsQ.data.balance} 次
+              {creditsQ.data.billing_exempt ? '当前账号免次数限制，实际余额：' : '剩余额度：'}{creditsQ.data.balance} 次
             </Tag>
           )}
           <Button icon={<ReloadOutlined />} onClick={() => { void refetch(); void creditsQ.refetch(); }}>

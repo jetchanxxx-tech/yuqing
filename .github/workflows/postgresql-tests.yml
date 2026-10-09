@@ -79,6 +79,7 @@ jobs:
             ./internal/platform/auth \
             ./internal/platform/apikey \
             ./internal/platform/billingpolicy \
+            ./internal/platform/usage \
             ./internal/platform/accountadmin \
             ./internal/platform/tenant \
             ./internal/platform/credit \

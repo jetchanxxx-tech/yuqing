@@ -82,7 +82,7 @@ type Service struct {
 	secret     string
 	accessTTL  string
 	refreshTTL string
-	meter      *usage.Meter
+	meter      usage.PlatformMeter
 
 	// Optional initial registration seed; login never assigns roles by email.
 	bootstrapAdminEmail string
@@ -269,4 +269,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// SetMeter shares production metering; PG entitlements remain durable catalog facts.
+func (s *Service) SetMeter(m usage.PlatformMeter) {
+	if m != nil {
+		s.meter = m
+	}
 }

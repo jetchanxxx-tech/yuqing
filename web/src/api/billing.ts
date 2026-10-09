@@ -36,6 +36,11 @@ export interface PlanCatalog {
 export interface CreditsInfo {
   balance: number;
   plan_code: string;
+  effective_plan_source: string;
+  charging_model: 'report_credit';
+  billing_exempt: boolean;
+  limit_mode: 'limited' | 'unlimited';
+  effective_remaining_reports: number | null;
 }
 
 /** 额度流水 */
@@ -66,10 +71,25 @@ export interface Order {
 }
 
 export interface BillingUsage {
+  plan_code: string;
+  effective_plan_source: string;
+  charging_model: 'report_credit';
+  actual_tokens: number;
+  quota_tokens_used: number;
+  token_quota: number;
+  budget_mode: 'none' | 'hard_cap' | 'overage';
+  billing_exempt: boolean;
+  period_start: string | null;
+  period_end: string | null;
+  cycle_status: 'configured' | 'not_configured';
+  known_cost_micro_cny: number;
+  pending_cost_events: number;
+  unsettled_calls: number;
+  provider_cost_complete: boolean;
+  report_balance: number;
   tokens_used: number;
   tokens_quota: number;
   analyses_used: number;
-  analyses_quota: number;
 }
 
 export interface Invoice {

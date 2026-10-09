@@ -21,7 +21,7 @@ import type { FormInstance } from 'antd';
 import { LogoutOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
-import { getPlans } from '../api/billing';
+import { getCredits, getPlans } from '../api/billing';
 import {
   bindPhone,
   changePassword,
@@ -75,7 +75,8 @@ function OverviewTab() {
   const navigate = useNavigate();
 
   const plansQ = useQuery({ queryKey: ['billing', 'plans'], queryFn: getPlans, staleTime: 60_000 });
-  const plan = plansQ.data?.find((p) => p.code === principal?.plan_code);
+  const creditsQ = useQuery({ queryKey: ['billing', 'credits'], queryFn: getCredits });
+  const plan = plansQ.data?.find((p) => p.code === creditsQ.data?.plan_code);
 
   if (!principal) return null;
 
@@ -107,7 +108,7 @@ function OverviewTab() {
               label: '当前套餐',
               children: (
                 <Space>
-                  <span>{plan?.name ?? principal.plan_code}</span>
+                  <span>{plan?.name ?? (creditsQ.isError ? '暂不可用' : creditsQ.data?.plan_code ?? '读取中')}</span>
                   <Button size="small" type="link" style={{ padding: 0 }} onClick={() => navigate('/plans')}>
                     切换套餐
                   </Button>
@@ -130,12 +131,21 @@ function OverviewTab() {
       </Card>
 
       <Card style={{ borderRadius: 16 }}>
+        {creditsQ.data ? <Space direction="vertical">
+          <Typography.Text>{`报告余额：${creditsQ.data.balance} 次`}</Typography.Text>
+          {creditsQ.data.billing_exempt
+            ? <Typography.Text>当前固定账号免次数与消费限制；团队其他成员按套餐计费</Typography.Text>
+            : <Typography.Text>每次创建或重跑消耗 1 次报告额度</Typography.Text>}
+        </Space> : <Typography.Text type="secondary">{creditsQ.isError ? '报告额度暂不可用' : '正在读取报告额度'}</Typography.Text>}
+      </Card>
+
+      <Card style={{ borderRadius: 16 }}>
         <Typography.Title level={5}>使用帮助</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
           · 报告与原始文档的保存时长取决于当前套餐的数据保留策略（30 / 90 / 365 天）
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
-          · Token 用量明细可在「用量」页查看，超额部分按套餐费率计费
+          · Token 用量明细可在「用量」页查看；当前按报告次数收费，不另收 Token 现金费用
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary">
           · 如需更多帮助，可通过客服邮箱联系：support@yuqing.example.com

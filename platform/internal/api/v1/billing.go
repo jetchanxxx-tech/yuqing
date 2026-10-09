@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/llm"
 	"github.com/yuqing/platform/internal/platform/billing"
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
@@ -24,7 +25,7 @@ func RegisterBillingRoutes(r *gin.RouterGroup, svcs *Services) {
 	billingGroup.GET("/orders", svcs.handleListOrders)
 	billingGroup.GET("/orders/:id", svcs.handleGetOrder)
 	billingGroup.GET("/orders/:id/paypage", svcs.handleOrderPayPage)
-	// 旧占位端点（契约测试锁定其 JSON envelope；订阅/账单仍未实现）
+	// Effective plan and usage are real; recurring subscriptions/invoices remain unavailable.
 	billingGroup.GET("/subscription", svcs.handleGetSubscription)
 	billingGroup.POST("/subscribe", svcs.handleSubscribe)
 	billingGroup.GET("/usage", svcs.handleGetUsage)
@@ -32,39 +33,68 @@ func RegisterBillingRoutes(r *gin.RouterGroup, svcs *Services) {
 	billingGroup.GET("/invoices/:id/download", svcs.handleDownloadInvoice)
 }
 
-// ── 旧占位端点（订阅制时代的形状，待 P2 订阅化时替换）────────────
+// Effective report-credit entitlements and explicit subscription availability.
 
-// handleGetSubscription: placeholder until the subscription store exists —
-// every tenant renders as the free plan.
+// Report the actual paid plan and only a configured subscription cycle.
 func (s *Services) handleGetSubscription(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"plan": "free", "status": "active"})
+	tenant, ok := tenantID(c)
+	if !ok {
+		unauthorized(c)
+		return
+	}
+	budget, err := s.effectiveBudget(c.Request.Context(), tenant)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plan": budget.PlanCode, "status": budget.CycleStatus, "period_start": budget.PeriodStart, "period_end": budget.PeriodEnd, "charging_model": "report_credit"})
 }
-
-// handleSubscribe: placeholder until plan changes are transactional.
 func (s *Services) handleSubscribe(c *gin.Context) {
-	var req struct {
-		PlanCode string `json:"plan_code"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, "request body must be JSON {plan_code}")
-		return
-	}
-	if req.PlanCode == "" {
-		badRequest(c, "plan_code is required")
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"subscription": gin.H{"plan": req.PlanCode, "status": "active"}})
+	c.JSON(http.StatusNotImplemented, gin.H{"code": "NOT_IMPLEMENTED", "message": "套餐通过订单购买生效；选择套餐不会创建已付费订阅", "request_id": requestID(c)})
 }
-
-// handleGetUsage: placeholder until the shared usage meter is wired to the
-// tenant's token counter.
 func (s *Services) handleGetUsage(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"tokens_used":    0,
-		"tokens_quota":   1000000,
-		"analyses_used":  0,
-		"analyses_quota": 5,
-	})
+	tenant, ok := tenantID(c)
+	if !ok {
+		unauthorized(c)
+		return
+	}
+	ctx := c.Request.Context()
+	budget, err := s.effectiveBudget(ctx, tenant)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	exempt, err := s.billingExempt(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	var actual, quota, knownCost, pending, unsettled, analysesUsed int64
+	if s.PGPool != nil {
+		err = s.PGPool.QueryRow(ctx, `SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)::bigint+COALESCE(completion_tokens,0)),0),COALESCE(SUM(quota_tokens),0),COALESCE(SUM(cost_micro_cny) FILTER(WHERE cost_status='known'),0),COUNT(*) FILTER(WHERE cost_status IS DISTINCT FROM 'known') FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenant, budget.PeriodStart, budget.PeriodEnd).Scan(&actual, &quota, &knownCost, &pending)
+		if err == nil {
+			err = s.PGPool.QueryRow(ctx, `SELECT COUNT(*) FROM llm_call_authorizations c JOIN analysis_runs r ON r.id=c.run_id WHERE r.tenant_id=$1 AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)`, tenant).Scan(&unsettled)
+		}
+		if err == nil {
+			err = s.PGPool.QueryRow(ctx, `SELECT COUNT(*) FROM analysis_runs WHERE tenant_id=$1 AND charge_mode='normal'`, tenant).Scan(&analysesUsed)
+		}
+	} else {
+		var status llm.BudgetStatus
+		status, err = s.Usage.BudgetStatus(ctx, tenant)
+		actual = status.SpentTokens
+		quota = status.SpentTokens
+	}
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	balance, err := s.Credits.Balance(ctx, tenant)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plan_code": budget.PlanCode, "effective_plan_source": budget.PlanSource, "charging_model": "report_credit", "actual_tokens": actual, "quota_tokens_used": quota, "token_quota": budget.TokenQuota, "budget_mode": budget.Mode, "billing_exempt": exempt, "period_start": budget.PeriodStart, "period_end": budget.PeriodEnd, "cycle_status": budget.CycleStatus, "known_cost_micro_cny": knownCost, "pending_cost_events": pending, "unsettled_calls": unsettled, "provider_cost_complete": pending == 0 && unsettled == 0, "report_balance": balance,
+		"tokens_used": quota, "tokens_quota": budget.TokenQuota, "analyses_used": analysesUsed})
 }
 
 // handleListInvoices: placeholder until invoice generation (worker) persists.
@@ -129,11 +159,23 @@ func (s *Services) handleGetCredits(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	planCode, _ := s.Credits.PlanCode(c.Request.Context(), tenantID)
-	c.JSON(http.StatusOK, gin.H{
-		"balance":   balance,
-		"plan_code": planCode,
-	})
+	budget, err := s.effectiveBudget(c.Request.Context(), tenantID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	exempt, err := s.billingExempt(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	mode := "limited"
+	var remaining any = balance
+	if exempt {
+		mode = "unlimited"
+		remaining = nil
+	}
+	c.JSON(http.StatusOK, gin.H{"balance": balance, "plan_code": budget.PlanCode, "effective_plan_source": budget.PlanSource, "charging_model": "report_credit", "billing_exempt": exempt, "limit_mode": mode, "effective_remaining_reports": remaining})
 }
 
 // handleListCreditTransactions 额度流水（消费/入账/回补）。

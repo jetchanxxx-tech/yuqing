@@ -128,20 +128,16 @@ func (s *CallService) Authorize(ctx context.Context, req CallAuthorizationReques
 	if current != req.RunID || state == "completed" || state == "failed" || state == "canceled" || runState != state {
 		return result, pkgerrors.ErrConflict
 	}
-	var planCode string
-	if err = tx.QueryRow(ctx, `SELECT COALESCE(NULLIF(plan_code,''),'free') FROM report_credits WHERE tenant_id=$1 FOR SHARE`, tenantID).Scan(&planCode); err != nil {
+	budget, err := billing.NewEntitlementService(s.pool).EffectiveBudgetTx(ctx, tx, tenantID)
+	if err != nil {
 		return result, err
 	}
-	plan := billing.DefaultPlans()[planCode]
-	if plan == nil {
-		return result, pkgerrors.ErrForbidden
-	}
-	if chargeMode != "exempt" && plan.BudgetMode == llm.BudgetHardCap {
+	if chargeMode != "exempt" && budget.Mode == llm.BudgetHardCap {
 		var spent int64
-		if err = tx.QueryRow(ctx, `SELECT COALESCE(SUM(quota_tokens),0) FROM usage_events WHERE tenant_id=$1`, tenantID).Scan(&spent); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT COALESCE(SUM(quota_tokens),0) FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenantID, budget.PeriodStart, budget.PeriodEnd).Scan(&spent); err != nil {
 			return result, err
 		}
-		if spent >= int64(plan.TokenQuotaM)*1000000 {
+		if spent >= budget.TokenQuota {
 			return result, pkgerrors.ErrTokenQuotaExceeded
 		}
 	}

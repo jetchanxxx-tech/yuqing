@@ -3,12 +3,12 @@ package usage
 import (
 	"context"
 	"log/slog"
-	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // PlatformMeter 是平台侧计量视图（预算检查 + 全租户汇总）。
@@ -33,86 +33,33 @@ var (
 	_ PlatformMeter = (*PGMeter)(nil)
 )
 
-// PGMeter 把 LLM 用量落到 PostgreSQL（表 usage_events），
-// 替代「重启即清零」的内存计数器。
-//
-// 配额仍在内存：配额来自套餐（plans.token_quota_m / tenants.quota_json），
-// 由 auth 在注册时通过 SetQuota 下发，本轮不改变下发链路。因此 PGMeter 的
-// 语义是「已用 token 持久化，配额进程内配置」：
-//
-//   - BudgetStatus/Record 跨重启一致（这是内存版最严重的问题：
-//     重启后 SpentTokens 归零，hard-cap 租户立刻又能白烧一轮预算）；
-//   - 重启后 SetQuota 必须被重新调用一次，否则该租户视为无配额
-//     （QuotaTokens=0 → 状态恒为 ok）。
-//
-// 查询走 idx_usage_events_tenant_created 索引；BudgetStatus 在每次 LLM 调用
-// 前触发一次聚合，用量表变大后应改为增量计数或 usage_daily 汇总表。
-type PGMeter struct {
-	pool *pgxpool.Pool
+// PGMeter reads durable plan entitlements and quota facts. Process-local
+// registration hints cannot override a paid plan or reset limits on restart.
+type PGMeter struct{ pool *pgxpool.Pool }
 
-	mu     sync.RWMutex
-	quotas map[string]quotaSetting // keyed by tenantID
-}
+func NewPGMeter(pool *pgxpool.Pool) *PGMeter { return &PGMeter{pool: pool} }
 
-type quotaSetting struct {
-	quotaTokens int64
-	budgetMode  llm.BudgetMode
-}
-
-// NewPGMeter creates a metered provider backend over an existing platform pool.
-// The pool is owned by the caller (the composition root), not by the meter.
-func NewPGMeter(pool *pgxpool.Pool) *PGMeter {
-	return &PGMeter{pool: pool, quotas: make(map[string]quotaSetting)}
-}
-
-// SetQuota configures a tenant's token budget (process-local, see type doc).
-func (m *PGMeter) SetQuota(tenantID string, quota int64, mode llm.BudgetMode) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.quotas[tenantID] = quotaSetting{quotaTokens: quota, budgetMode: mode}
-}
-
-// BudgetStatus returns spent tokens (summed from usage_events) against the
-// tenant's in-memory quota.
-//
-// 阈值与内存版一致：ratio >= 1.0 → exceeded，>= 0.8 → warn，否则 ok。
-// 无配额（QuotaTokens == 0）时 ratio 视为 0 —— 与内存版对未知租户的
-// 处理相同，也表示「该租户本轮尚未下发配额」。
+// SetQuota remains an interface compatibility hook for the memory meter only.
+// PostgreSQL's authoritative source is report_credits plus the server catalog.
+func (m *PGMeter) SetQuota(_ string, _ int64, _ llm.BudgetMode) {}
 func (m *PGMeter) BudgetStatus(ctx context.Context, tenantID string) (llm.BudgetStatus, error) {
-	// 逐列 COALESCE：token 列可为 NULL（只有 DEFAULT，没有 NOT NULL），
-	// 一行里任何一个 NULL 都会让整个加法表达式变 NULL 并被 SUM 丢掉 ——
-	// 那会静默少算用量、把已超额租户放行。外层 COALESCE 兜「零行」。
-	const q = `SELECT COALESCE(SUM(COALESCE(prompt_tokens, 0)
-	                              + COALESCE(completion_tokens, 0)
-	                              + COALESCE(cache_tokens, 0)), 0)
-	           FROM usage_events WHERE tenant_id = $1`
-
+	budget, err := billing.NewEntitlementService(m.pool).EffectiveBudget(ctx, tenantID)
+	if err != nil {
+		return llm.BudgetStatus{}, err
+	}
 	var spent int64
-	if err := m.pool.QueryRow(ctx, q, tenantID).Scan(&spent); err != nil {
-		return llm.BudgetStatus{}, pkgerrors.Wrap(pkgerrors.ErrInternal, "usage: budget status: "+err.Error())
+	if err = m.pool.QueryRow(ctx, `SELECT COALESCE(SUM(quota_tokens),0) FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenantID, budget.PeriodStart, budget.PeriodEnd).Scan(&spent); err != nil {
+		return llm.BudgetStatus{}, err
 	}
-
-	m.mu.RLock()
-	setting := m.quotas[tenantID]
-	m.mu.RUnlock()
-
 	status := "ok"
-	ratio := float64(0)
-	if setting.quotaTokens > 0 {
-		ratio = float64(spent) / float64(setting.quotaTokens)
+	if budget.TokenQuota > 0 {
+		if spent >= budget.TokenQuota {
+			status = "exceeded"
+		} else if float64(spent)/float64(budget.TokenQuota) >= 0.8 {
+			status = "warn"
+		}
 	}
-	switch {
-	case ratio >= 1.0:
-		status = "exceeded"
-	case ratio >= 0.8:
-		status = "warn"
-	}
-
-	return llm.BudgetStatus{
-		SpentTokens: spent,
-		QuotaTokens: setting.quotaTokens,
-		Status:      status,
-	}, nil
+	return llm.BudgetStatus{SpentTokens: spent, QuotaTokens: budget.TokenQuota, Status: status}, nil
 }
 
 // Record appends a usage event. 流水表不去重：与内存版一样，重复投递同一事件
@@ -124,8 +71,8 @@ func (m *PGMeter) Record(ctx context.Context, e llm.UsageEvent) error {
 	const q = `INSERT INTO usage_events
 	           (tenant_id, user_id, model, analysis_id,
 	            prompt_tokens, completion_tokens, cache_tokens,
-	            cost_micro_cny, billed_micro_cny)
-	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	            cost_micro_cny, billed_micro_cny,quota_tokens,usage_status,cost_status)
+	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$5::bigint+$6::bigint+$7::bigint,'reported','known')`
 
 	_, err := m.pool.Exec(ctx, q,
 		e.TenantID, nullIfEmpty(e.UserID), e.Model, nullIfEmpty(e.AnalysisID),
@@ -155,16 +102,10 @@ func nullIfEmpty(s string) any {
 func (m *PGMeter) Aggregate() map[string]int64 {
 	out := make(map[string]int64)
 
-	m.mu.RLock()
-	for tenantID := range m.quotas {
-		out[tenantID] = 0
-	}
-	m.mu.RUnlock()
-
 	const q = `SELECT tenant_id,
 	                  SUM(COALESCE(prompt_tokens, 0)
 	                      + COALESCE(completion_tokens, 0)
-	                      + COALESCE(cache_tokens, 0))
+	                      + CASE WHEN event_version IS NULL THEN COALESCE(cache_tokens,0) ELSE 0 END)
 	           FROM usage_events GROUP BY tenant_id`
 
 	rows, err := m.pool.Query(context.Background(), q)

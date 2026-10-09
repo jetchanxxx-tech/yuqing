@@ -122,6 +122,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	analysisSvc.SetCreditReserver(creditSvc)
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
+	authSvc.SetMeter(usageMeter)
 
 	// 新租户注册赠 1 次试用额度（方案 B：试用归 Lite 档体验）。
 	authSvc.SetPostRegister(func(ctx context.Context, tenantID string) error {
