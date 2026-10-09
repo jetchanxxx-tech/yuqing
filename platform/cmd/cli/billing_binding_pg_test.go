@@ -45,7 +45,7 @@ func TestFixedAdminBindingIsImmutableAndIdempotent(t *testing.T) {
 	query.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
 	dsn.RawQuery = query.Encode()
 	config := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(config, []byte(fmt.Sprintf("auth:\n  jwt_secret: fixture-only-not-a-real-secret\nstore:\n  driver: postgres\ndb:\n  primary: %q\n", dsn.String())), 0600); err != nil {
+	if err := os.WriteFile(config, []byte(fmt.Sprintf("auth:\n  jwtSecret: fixture-only-not-a-real-secret\nstore:\n  driver: postgres\ndb:\n  primary: %q\n", dsn.String())), 0600); err != nil {
 		t.Fatal(err)
 	}
 	invoke := func(wantSuccess bool, args ...string) {
