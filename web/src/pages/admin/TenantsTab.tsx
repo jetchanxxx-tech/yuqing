@@ -30,7 +30,7 @@ export default function TenantsTab() {
       <Form form={form} layout="inline" onFinish={(values: Omit<AdminQuery, 'page' | 'page_size'>) => setQuery({ ...values, q: values.q?.trim(), page: 1, page_size: 20 })} style={{ gap: 12, marginBottom: 20 }}>
         <Form.Item name="q"><Input aria-label="搜索租户" placeholder="搜索租户名称或 ID" style={{ width: 260 }} allowClear /></Form.Item>
         <Form.Item name="status"><Select aria-label="租户状态筛选" placeholder="租户状态" style={{ width: 140 }} allowClear options={['provisioning', 'active', 'suspended', 'closed'].map((value) => ({ value, label: adminStatusLabel(value) }))} /></Form.Item>
-        <Form.Item name="plan_code"><Select aria-label="租户套餐筛选" placeholder="历史套餐" style={{ width: 150 }} allowClear options={plans.data?.map((plan) => ({ value: plan.code, label: plan.name }))} /></Form.Item>
+        <Form.Item name="plan_code"><Select aria-label="租户有效套餐筛选" placeholder="有效套餐" style={{ width: 150 }} allowClear options={plans.data?.map((plan) => ({ value: plan.code, label: plan.name }))} /></Form.Item>
         <Button type="primary" htmlType="submit" autoInsertSpace={false}>搜索</Button>
         <Button onClick={() => { form.resetFields(); setQuery({ page: 1, page_size: 20 }); }}>重置</Button>
         <Button onClick={() => void tenants.refetch()} loading={tenants.isFetching}>刷新</Button>

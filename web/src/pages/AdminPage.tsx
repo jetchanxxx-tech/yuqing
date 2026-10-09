@@ -9,7 +9,7 @@ import {
   AlipayCircleFilled, WechatFilled, PayCircleOutlined,
 } from '@ant-design/icons';
 import {
-  getAdminSettings, updateAdminSettings,
+  adminErrorMessage, getAdminSettings, updateAdminSettings,
 } from '../api/admin';
 import { useAuth } from '../stores/auth';
 import { ErrorBlock, LoadingBlock } from '../components/PageState';
@@ -433,6 +433,7 @@ function NotifyTab() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {saveQ.isError && <Alert type="error" showIcon message="通知配置保存失败" description={adminErrorMessage(saveQ.error)} />}
       <Alert
         type="info"
         showIcon
