@@ -378,3 +378,41 @@ test('a malformed cached principal is replaced by the current server identity', 
   await expect(page.getByRole('tab', { name: '用户账号管理', exact: true })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('principal') ?? '{}'))).toMatchObject({ user_id: admin.user.user_id });
 });
+
+test('a rejected real notification settings save reports failure and leaves PostgreSQL unchanged', async ({ page }) => {
+  await signIn(page);
+  const settings = page.waitForResponse((response) => response.url().endsWith('/admin/settings')
+    && response.request().method() === 'GET');
+  await page.getByRole('tab', { name: '通知服务', exact: true }).click();
+  expect((await settings).status()).toBe(200);
+  await page.getByPlaceholder('noreply@your-domain.com').fill('k3-save-failure@example.invalid');
+  await page.getByPlaceholder('发件人名称（盘古舆情）').fill('K3 failed notification save');
+  requireRunner();
+  const snapshot = () => execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-A', '-t', '-c',
+    "SELECT COALESCE(jsonb_object_agg(key,jsonb_build_object('value',value,'updated_at',updated_at) ORDER BY key),'{}'::jsonb)::text FROM platform_settings",
+  ], { encoding: 'utf8', stdio: 'pipe', timeout: 30_000 }).trim();
+  const before = snapshot();
+  // NOT VALID preserves existing rows but rejects every new INSERT/UPDATE,
+  // including the actual notification form's first upsert. No supplier is used.
+  execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-c',
+    'ALTER TABLE platform_settings ADD CONSTRAINT k3_reject_notification_save CHECK (false) NOT VALID',
+  ], { stdio: 'pipe', timeout: 30_000 });
+  try {
+    const rejected = page.waitForResponse((response) => response.url().endsWith('/admin/settings')
+      && response.request().method() === 'PUT');
+    await page.getByRole('button', { name: /保存邮件配置/ }).click();
+    const response = await rejected;
+    expect(response.status()).toBe(500);
+    expect(response.request().postDataJSON()).toMatchObject({
+      email_from_address: 'k3-save-failure@example.invalid', email_from_name: 'K3 failed notification save',
+    });
+    expect(snapshot()).toBe(before);
+    await expect(page.getByRole('alert').filter({ hasText: /配置保存失败|保存失败|服务暂时不可用/ })).toBeVisible();
+    await expect(page.getByText('配置已保存，即刻生效', { exact: true })).toHaveCount(0);
+  } finally {
+    execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-c',
+      'ALTER TABLE platform_settings DROP CONSTRAINT IF EXISTS k3_reject_notification_save',
+    ], { stdio: 'pipe', timeout: 30_000 });
+  }
+  expect(snapshot()).toBe(before);
+});
