@@ -10,7 +10,7 @@ import (
 func TestWorkerRefusesUnwiredQueue(t *testing.T) {
 	for _, testCase := range []struct{ store, driver, want string }{
 		{"postgres", "memory", "persistent PostgreSQL queue"},
-		{"postgres", "postgres", "YUQING_BETA_SKIP_CREDITS"},
+		{"postgres", "postgres", "engines.query.url"},
 		{"memory", "redis", "unsupported queue driver"},
 		{"memory", "memory", "requires PostgreSQL"},
 	} {

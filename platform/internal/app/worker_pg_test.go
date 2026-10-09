@@ -78,7 +78,6 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"keep-two","title":"second safe evidence","content":"safe second document","source_type":"news","published_at":"2026-09-03"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":3,"coverage":{"admission_version":"lexical-v1","accepted_count":3}}`)
 	}))
 	defer engine.Close()
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	cfg := &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}
 	cfg.DB.Primary = dsn.String()
 	cfg.Engines.Query.URL = engine.URL

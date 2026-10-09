@@ -116,7 +116,6 @@ const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 const backendEnvironment = [
   'PATH=/usr/bin:/bin',
   `YUQING_CONFIG=${shellQuote(backendConfig)}`,
-  'YUQING_BETA_SKIP_CREDITS=true',
   `YUQING_PUBLIC_BASE_URL=${shellQuote(frontendURL)}`,
 ].join(' ');
 const backendCommand = `

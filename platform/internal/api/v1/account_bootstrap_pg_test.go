@@ -22,7 +22,6 @@ func TestPGPublicRegistrationCannotBootstrapPlatformAdministrator(t *testing.T) 
 	query := u.Query()
 	query.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
 	u.RawQuery = query.Encode()
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	t.Setenv("YUQING_BOOTSTRAP_ADMIN_EMAIL", "operator@example.com")
 	cfg := &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}
 	cfg.DB.Primary = u.String()

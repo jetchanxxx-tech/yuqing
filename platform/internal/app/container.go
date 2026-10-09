@@ -120,9 +120,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 	// 报告额度闸门：Create/Rerun 各扣 1 次，管线失败/取消自动回补。
 	analysisSvc.SetCreditReserver(creditSvc)
-	if cfg.Store.Driver == "postgres" {
-		analysisSvc.SetBetaSkipCredits(true)
-	}
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 
@@ -293,14 +290,11 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 }
 
 // checkQueueReadiness rejects modes which would silently lose or ACK analyses.
-// The beta PG mode atomically publishes tasks but deliberately bypasses credits.
+// PostgreSQL admission atomically commits credits, runs, analyses and messages.
 func checkQueueReadiness(cfg *config.Config) error {
 	if cfg.Store.Driver == "postgres" {
 		if cfg.Queue.Driver != "postgres" {
 			return fmt.Errorf("app: PostgreSQL store requires persistent PostgreSQL queue; refusing memory fallback (queue.driver=%q)", cfg.Queue.Driver)
-		}
-		if os.Getenv("YUQING_BETA_SKIP_CREDITS") != "true" {
-			return fmt.Errorf("app: PG credit transaction not wired; explicit YUQING_BETA_SKIP_CREDITS=true required for beta test mode")
 		}
 		return nil
 	}

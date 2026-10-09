@@ -39,17 +39,12 @@ type analysisStore interface {
 // Runs are persisted in the injected store keyed by tenant, then published
 // to the queue. The queue stays the only cross-process handoff point.
 type Service struct {
-	queue           queue.Queue
-	concurrency     int
-	store           analysisStore
-	docs            documentStore
-	credits         CreditReserver
-	betaSkipCredits bool
+	queue       queue.Queue
+	concurrency int
+	store       analysisStore
+	docs        documentStore
+	credits     CreditReserver
 }
-
-// SetBetaSkipCredits is an explicit, opt-in test-only credit bypass. Tenant
-// checks and the analysis state machine remain active.
-func (s *Service) SetBetaSkipCredits(enabled bool) { s.betaSkipCredits = enabled }
 
 // CreditReserver 是报告额度闸门（可选注入）。nil 时 Create/Rerun 不做额度
 // 检查（既有测试与开发模式零改动）；生产由组合根注入 credit.Service。
@@ -65,7 +60,7 @@ func (s *Service) SetCreditReserver(r CreditReserver) { s.credits = r }
 
 // consumeCredit 扣 1 次额度；未配置闸门时直接放行。
 func (s *Service) consumeCredit(ctx context.Context, tenantID, analysisID string) error {
-	if s.betaSkipCredits || s.credits == nil {
+	if s.credits == nil {
 		return nil
 	}
 	return s.credits.TryConsume(ctx, tenantID, analysisID)
@@ -77,7 +72,7 @@ func (s *Service) refundCredit(ctx context.Context, tenantID, analysisID string)
 	if _, pg := s.store.(*pgStore); pg {
 		return
 	}
-	if s.betaSkipCredits || s.credits == nil {
+	if s.credits == nil {
 		return
 	}
 	if _, err := s.credits.RefundByAnalysis(ctx, tenantID, analysisID); err != nil {

@@ -63,7 +63,6 @@ func newPGAdminEnv(t *testing.T) *pgAdminEnv {
 	dsn.RawQuery = params.Encode()
 	// This current composition-root gate is restricted to an isolated test
 	// schema. No test here creates a charged task or performs provider delivery.
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	t.Setenv("YUQING_BOOTSTRAP_ADMIN_EMAIL", "")
 	cfg := &config.Config{}
 	cfg.Store.Driver = "postgres"

@@ -26,8 +26,7 @@ func (f *k4BlockedFetcher) Fetch(ctx context.Context, req FetchRequest) ([]Docum
 
 func TestK4PGStaleWorkerCannotWriteIntoNewRerun(t *testing.T) {
 	f := newK4BillingPGFixture(t, 2)
-	// RED exercises the existing production beta path; admission later uses real credits.
-	f.svc.SetBetaSkipCredits(true)
+	// Exercise real atomic admission with purchased credits.
 	a, err := f.svc.Create(f.ctx, f.request(f.ordinaryID, "stale worker isolation"))
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +80,6 @@ func TestK4PGStaleWorkerCannotWriteIntoNewRerun(t *testing.T) {
 
 func TestK4PGTaskMessageContainsPersistedRunIdentity(t *testing.T) {
 	f := newK4BillingPGFixture(t, 1)
-	f.svc.SetBetaSkipCredits(true)
 	a, err := f.svc.Create(f.ctx, f.request(f.ordinaryID, "durable run identity"))
 	if err != nil {
 		t.Fatal(err)

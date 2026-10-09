@@ -42,8 +42,7 @@ func newBillingActorPGEnv(t *testing.T) *billingActorPGEnv {
 	params := dsn.Query()
 	params.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
 	dsn.RawQuery = params.Encode()
-	// K4 removes this old startup guard only after atomic admission lands.
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
+	// Production admission now uses the same real atomic credit path.
 	t.Setenv("YUQING_BOOTSTRAP_ADMIN_EMAIL", "")
 	cfg := &config.Config{}
 	cfg.Store.Driver, cfg.Queue.Driver, cfg.DB.Primary = "postgres", "postgres", dsn.String()

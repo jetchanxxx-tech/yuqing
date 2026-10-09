@@ -343,8 +343,7 @@ func TestK4PGLegacyBetaFlagCannotTransferFixedAdminExemption(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			f := newK4BillingPGFixture(t, 0)
-			// Exercise the currently enabled beta branch without changing production.
-			f.svc.SetBetaSkipCredits(true)
+			// Only the verified immutable UID binding can bypass report limits.
 			if testCase.moveEmail {
 				f.exec(t, `UPDATE users SET email='fixed-admin-renamed@example.com' WHERE id=$1`, f.fixedAdminID)
 				f.exec(t, `UPDATE users SET email='admin@pangu.com' WHERE id=$1`, f.ordinaryID)
