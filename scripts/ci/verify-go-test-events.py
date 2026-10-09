@@ -18,6 +18,8 @@ REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart",),
     "internal/api/v1": (
+        "TestBillingEntitlementsPGUsesActualPlanBalanceAndExplicitCycle",
+        "TestBillingEntitlementsPGFixedAccountShowsRealBalanceAndPendingCost",
         "TestBillingUsagePGActualCostReplayLateSettlementAndQuotaIsolation",
         "TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission",
         "TestBillingLedgerPGEnforcesBidirectionalImmutableRunConsumption",
