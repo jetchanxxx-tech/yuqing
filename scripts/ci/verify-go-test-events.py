@@ -31,6 +31,7 @@ REQUIRED_TESTS = {
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
+        "TestAtomicBillingMigrationPreservesHistoricalUnlinkedFacts",
         "TestReportCenterMigration",
         "TestReportCenterMigration/clean_v7",
         "TestReportCenterMigration/hotfixed_v7",
@@ -88,8 +89,10 @@ REQUIRED_TESTS = {
         "TestAccountAdminPGAdminPermissionsExcludeMemberRolesAndAPIKeys",
     ),
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
-    "internal/platform/payment": ("TestPGStore_contract",),
+    "internal/platform/payment": ("TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
     "internal/business/analysis": (
+        "TestK4PGSlowReportCannotOverwriteOrFailNewRerun",
+        "TestK4PGLegacyRunlessDeliveryNeverAttachesToNewPaidRerun",
         "TestK4PGRerunUsesCurrentActorAndPreservesOriginalCreator",
         "TestK4PGConcurrentRerunCreatesOnlyOneNewCharge",
         "TestK4PGAdmissionRechecksQueuedJWTVersion",

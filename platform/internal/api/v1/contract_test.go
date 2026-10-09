@@ -1475,9 +1475,9 @@ var contractGapRegistry = []contractGap{
 		detail: "invoice file storage + download pending",
 	},
 	{
-		endpoint: "GET /api/v1/billing/{subscription,usage}",
-		severity: "MINOR", status: "PENDING",
-		detail: "placeholder rows — real values need the subscription store and the shared usage meter",
+		endpoint: "POST /api/v1/billing/subscribe",
+		severity: "MINOR", status: "NOT_IMPLEMENTED",
+		detail: "recurring subscriptions are unavailable; actual plan purchases use priced orders and report-credit entitlements",
 	},
 	{
 		endpoint: "GET /api/v1/reports/:id/download",

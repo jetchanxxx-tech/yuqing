@@ -211,3 +211,87 @@ func TestK4PGAdmissionRechecksQueuedJWTVersion(t *testing.T) {
 	f.assertBalance(t, 1)
 	f.assertEffects(t, 0, 0, 0, 0)
 }
+
+type k4BlockedReportGenerator struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (g *k4BlockedReportGenerator) Generate(ctx context.Context, req ReportRequest) (ReportResult, error) {
+	close(g.entered)
+	select {
+	case <-ctx.Done():
+		return ReportResult{}, ctx.Err()
+	case <-g.release:
+		return ReportResult{ReportID: "stale-report", Content: "<p>old run output must not persist</p>"}, nil
+	}
+}
+
+func TestK4PGSlowReportCannotOverwriteOrFailNewRerun(t *testing.T) {
+	f := newK4BillingPGFixture(t, 2)
+	a, err := f.svc.Create(f.ctx, f.request(f.ordinaryID, "slow report boundary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	generator := &k4BlockedReportGenerator{entered: make(chan struct{}), release: make(chan struct{})}
+	pipeline := NewPipeline(f.svc, &fakeFetcher{docs: sampleDocs(1)}, time.Minute, nil).WithGenerator(generator)
+	old := TaskMessage{TenantID: f.tenantID, AnalysisID: a.ID, RunID: a.CurrentRunID}
+	done := make(chan error, 1)
+	go func() { done <- pipeline.Handle(f.ctx, old) }()
+	select {
+	case <-generator.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("report generation did not start")
+	}
+	if err := f.svc.Cancel(f.ctx, f.tenantID, a.ID); err != nil {
+		close(generator.release)
+		t.Fatal(err)
+	}
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
+		close(generator.release)
+		t.Fatal(err)
+	}
+	close(generator.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("old report worker did not finish")
+	}
+	current, err := f.svc.Get(f.ctx, f.tenantID, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.State != StateQueued || current.CurrentRunID == a.CurrentRunID || current.ReportID != "" || current.ReportContent != "" || current.Warning != "" || current.DocCount != 0 {
+		t.Fatalf("slow report changed new round: %+v", current)
+	}
+	f.assertBalance(t, 1)
+	f.assertEffects(t, 1, 2, 2, 1)
+	if err := pipeline.Handle(f.ctx, old); err != nil {
+		t.Fatalf("stale replay should no-op: %v", err)
+	}
+	f.assertBalance(t, 1)
+}
+
+func TestK4PGLegacyRunlessDeliveryNeverAttachesToNewPaidRerun(t *testing.T) {
+	f := newK4BillingPGFixture(t, 1)
+	a := &AnalysisResult{ID: "historical-analysis", Name: "old admitted beta", CreatedBy: f.ordinaryID, State: StateCompleted, CreatedAt: time.Now().UTC()}
+	if err := f.svc.store.put(f.ctx, f.tenantID, a); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, `INSERT INTO analysis_runs(id,tenant_id,analysis_id,run_no,actor_user_id,plan_code,catalog_revision,charge_mode,state) VALUES('historical-run',$1,$2,1,NULL,'lite','legacy','legacy_unbilled','completed')`, f.tenantID, a.ID)
+	f.exec(t, `UPDATE analyses SET current_run_id='historical-run' WHERE id=$1`, a.ID)
+	old := TaskMessage{TenantID: f.tenantID, AnalysisID: a.ID}
+	resolved, current, err := f.svc.ResolveTask(f.ctx, old)
+	if err != nil || !current || resolved.RunID != "historical-run" {
+		t.Fatalf("legacy current message rejected: %+v/%v/%v", resolved, current, err)
+	}
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
+		t.Fatal(err)
+	}
+	_, current, err = f.svc.ResolveTask(f.ctx, old)
+	if err != nil || current {
+		t.Fatalf("runless legacy delivery attached to newly paid run: %v/%v", current, err)
+	}
+	f.assertBalance(t, 0)
+	f.assertEffects(t, 1, 1, 1, 0)
+}
