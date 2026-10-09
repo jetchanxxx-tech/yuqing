@@ -13,6 +13,7 @@ export interface Plan {
   priority_queue?: boolean;
   /** token 配额，单位：百万（0/负值表示无上限） */
   token_quota_m: number;
+  retention_days: number;
 }
 
 /** 加购 SKU（GET /billing/plans 的 addons） */

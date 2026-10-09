@@ -79,6 +79,10 @@ function OverviewTab() {
   const plan = plansQ.data?.find((p) => p.code === creditsQ.data?.plan_code);
 
   if (!principal) return null;
+  if (creditsQ.isError || plansQ.isError) return <Space direction="vertical" style={{ width: '100%' }}>
+    {creditsQ.isError && <Alert type="error" showIcon message="报告额度暂不可用" description="暂时无法确认当前权益，之前缓存的数据不作为当前余额。" action={<Button loading={creditsQ.isFetching} onClick={() => void creditsQ.refetch()}>重试报告额度</Button>} />}
+    {plansQ.isError && <Alert type="error" showIcon message="套餐目录暂不可用" description="暂时无法确认套餐名称和保留期，请重试。" action={<Button loading={plansQ.isFetching} onClick={() => void plansQ.refetch()}>重试套餐目录</Button>} />}
+  </Space>;
 
   const confirmLogout = () => {
     modal.confirm({
@@ -142,13 +146,13 @@ function OverviewTab() {
       <Card style={{ borderRadius: 16 }}>
         <Typography.Title level={5}>使用帮助</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
-          · 报告与原始文档的保存时长取决于当前套餐的数据保留策略（30 / 90 / 365 天）
+          {plan ? `当前套餐报告与原始文档保留 ${plan.retention_days} 天` : '正在读取套餐保留期'}
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
           · Token 用量明细可在「用量」页查看；当前按报告次数收费，不另收 Token 现金费用
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary">
-          · 如需更多帮助，可通过客服邮箱联系：support@yuqing.example.com
+          客服渠道暂未配置
         </Typography.Paragraph>
       </Card>
 
@@ -231,7 +235,7 @@ function ProfileTab() {
           type="warning"
           showIcon
           message="邮箱未验证"
-          description="验证邮箱后可解锁全部功能（未验证也可免费试用 1 次分析）。"
+          description="验证用于确认邮箱归属；功能与额度以当前套餐为准。"
           action={sendButton}
           style={{ marginBottom: 16 }}
         />
@@ -416,7 +420,7 @@ function PhoneTab() {
         ),
       }]} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        绑定手机号后可用于登录、找回密码与支付验证（登录功能将在 F19 上线）。
+        手机号登录、找回密码与支付验证暂未开放
       </Typography.Paragraph>
       {bound ? (
         <Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button>
@@ -537,7 +541,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
             </Button>
           </Space>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-            绑定后可用于：手机号登录（F19）、找回密码、支付验证
+            绑定仅用于验证并保存手机号联系方式
           </Typography.Paragraph>
         </>
       )}
@@ -571,7 +575,7 @@ function UnbindPhoneModal({ open, phone, onClose, onUnbound }: { open: boolean; 
       <Alert
         type="warning"
         showIcon
-        message="解绑后将无法使用手机号登录和找回密码"
+        message="解绑后将移除已验证的手机号联系方式"
         style={{ marginBottom: 16 }}
       />
       <Typography.Paragraph>

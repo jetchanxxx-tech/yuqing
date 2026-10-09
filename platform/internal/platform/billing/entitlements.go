@@ -25,12 +25,12 @@ func NewEntitlementService(pool *pgxpool.Pool) *EntitlementService {
 	return &EntitlementService{pool: pool}
 }
 func BudgetForPlan(code, source string) (Budget, error) {
-	if code == "" {
+	if code == "" && source == "default_free" {
 		code = "free"
 	}
 	plan := DefaultPlans()[code]
 	if plan == nil {
-		return Budget{}, pkgerrors.ErrForbidden
+		return Budget{}, pkgerrors.ErrServiceUnavailable
 	}
 	return Budget{PlanCode: code, PlanSource: source, Mode: plan.BudgetMode, TokenQuota: int64(plan.TokenQuotaM) * 1000000, CycleStatus: "not_configured"}, nil
 }

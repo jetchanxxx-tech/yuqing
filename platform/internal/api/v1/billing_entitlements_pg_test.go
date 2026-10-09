@@ -50,7 +50,7 @@ func TestBillingEntitlementsPGFixedAccountShowsRealBalanceAndPendingCost(t *test
 	if _, err := e.pool.Exec(ctx, `UPDATE report_credits SET balance=0,plan_code='lite' WHERE tenant_id=$1`, account["tenant_id"]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.pool.Exec(ctx, `INSERT INTO usage_events(tenant_id,user_id,model,prompt_tokens,completion_tokens,cache_tokens,quota_tokens,billing_exempt,usage_status,cost_status,cost_micro_cny,billed_micro_cny) VALUES($1,$2,'sandbox',400,100,20,0,true,'reported','known',3200,0),($1,$2,'unknown',0,0,0,0,true,'unknown','pending',NULL,0)`, account["tenant_id"], account["user_id"]); err != nil {
+	if _, err := e.pool.Exec(ctx, `INSERT INTO usage_events(tenant_id,user_id,model,prompt_tokens,completion_tokens,cache_tokens,quota_tokens,billing_exempt,usage_status,cost_status,cost_micro_cny,billed_micro_cny,event_version) VALUES($1,$2,'sandbox',400,100,20,0,true,'reported','known',3200,0,1),($1,$2,'unknown',0,0,0,0,true,'unknown','pending',NULL,0,1)`, account["tenant_id"], account["user_id"]); err != nil {
 		t.Fatal(err)
 	}
 	e.rebuild()

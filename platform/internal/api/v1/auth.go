@@ -38,16 +38,18 @@ type userDTO struct {
 	Email        string   `json:"email"`
 	Roles        []string `json:"roles"`
 	PlanCode     string   `json:"plan_code"`
+	PlanStatus   string   `json:"plan_status"`
+	PlanSource   string   `json:"plan_source"`
 	TenantStatus string   `json:"tenant_status"`
 }
 
 func userFromPrincipal(p *auth.Principal) userDTO {
 	return userDTO{
-		UserID:       p.UserID,
-		TenantID:     p.TenantID,
-		Email:        p.Email,
-		Roles:        p.Roles,
-		PlanCode:     p.PlanCode,
+		UserID:   p.UserID,
+		TenantID: p.TenantID,
+		Email:    p.Email,
+		Roles:    p.Roles,
+		PlanCode: p.PlanCode, PlanStatus: p.PlanStatus, PlanSource: p.PlanSource,
 		TenantStatus: p.TenantStatus,
 	}
 }

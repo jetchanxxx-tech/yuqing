@@ -10,6 +10,7 @@ import (
 
 	"github.com/yuqing/platform/internal/pkg/db"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // PGStore is the PostgreSQL-backed auth Store against the platform database
@@ -79,7 +80,8 @@ func (s *PGStore) RegisterAccount(ctx context.Context, user User, tenant Tenant,
 func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID string) (*AuthorizationState, error) {
 	const q = `SELECT u.id, u.email, u.status, u.token_version,
 		ARRAY(SELECT pur.role FROM platform_user_roles pur WHERE pur.user_id = u.id ORDER BY pur.role),
-		COALESCE(t.status, ''), COALESCE(NULLIF(rc.plan_code,''),'free'),
+		COALESCE(t.status, ''), CASE WHEN rc.tenant_id IS NULL THEN 'free' ELSE rc.plan_code END,
+ CASE WHEN rc.tenant_id IS NULL THEN 'default_free' ELSE 'report_credits' END,
 		COALESCE(tm.role, ''), tm.user_id IS NOT NULL
 		FROM users u
 		LEFT JOIN tenants t ON t.id = $2
@@ -89,12 +91,17 @@ func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID s
 	state := &AuthorizationState{TenantID: tenantID}
 	err := s.pool.QueryRow(ctx, q, userID, tenantID).Scan(
 		&state.UserID, &state.Email, &state.UserStatus, &state.TokenVersion,
-		&state.PlatformRoles, &state.TenantStatus, &state.PlanCode, &state.MemberRole, &state.MemberExists)
+		&state.PlatformRoles, &state.TenantStatus, &state.PlanCode, &state.PlanSource, &state.MemberRole, &state.MemberExists)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 	}
 	if err != nil {
 		return nil, wrapDB(err, "load authorization state")
+	}
+	state.PlanStatus = "valid"
+	if billing.DefaultPlans()[state.PlanCode] == nil {
+		state.PlanCode = "unavailable"
+		state.PlanStatus = "invalid"
 	}
 	return state, nil
 }

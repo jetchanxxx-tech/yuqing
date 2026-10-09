@@ -202,6 +202,9 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return nil
 	}
 
+	if p.modeFor != nil && p.modeForTenant(msg.TenantID) == "unavailable" {
+		return p.fail(ctx, msg, "plan_entitlements_unavailable", pkgerrors.ErrServiceUnavailable)
+	}
 	p.log.Info("pipeline: start",
 		slog.String("analysis_id", msg.AnalysisID), slog.String("tenant_id", msg.TenantID))
 

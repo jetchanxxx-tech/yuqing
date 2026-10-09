@@ -169,8 +169,7 @@ func TestPGMeter_survivesNewInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 新实例 = 重启后的进程：配额需要重新配置（配额仍存在内存里），
-	// 但已用 token 从 usage_events 读回。
+	// A reconstructed meter reads both its plan quota and recorded usage from PostgreSQL.
 	second := NewPGMeter(pool)
 	// No process-local quota seed: the persisted plan must survive restart.
 

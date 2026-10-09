@@ -71,7 +71,7 @@ func (s *Services) handleGetUsage(c *gin.Context) {
 	}
 	var actual, quota, knownCost, pending, unsettled, analysesUsed int64
 	if s.PGPool != nil {
-		err = s.PGPool.QueryRow(ctx, `SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)::bigint+COALESCE(completion_tokens,0)),0),COALESCE(SUM(quota_tokens),0),COALESCE(SUM(cost_micro_cny) FILTER(WHERE cost_status='known'),0),COUNT(*) FILTER(WHERE cost_status IS DISTINCT FROM 'known') FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenant, budget.PeriodStart, budget.PeriodEnd).Scan(&actual, &quota, &knownCost, &pending)
+		err = s.PGPool.QueryRow(ctx, `SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)::bigint+COALESCE(completion_tokens,0)+CASE WHEN event_version IS NULL THEN COALESCE(cache_tokens,0) ELSE 0 END),0),COALESCE(SUM(quota_tokens),0),COALESCE(SUM(cost_micro_cny) FILTER(WHERE cost_status='known'),0),COUNT(*) FILTER(WHERE cost_status IS DISTINCT FROM 'known') FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenant, budget.PeriodStart, budget.PeriodEnd).Scan(&actual, &quota, &knownCost, &pending)
 		if err == nil {
 			err = s.PGPool.QueryRow(ctx, `SELECT COUNT(*) FROM llm_call_authorizations c JOIN analysis_runs r ON r.id=c.run_id WHERE r.tenant_id=$1 AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)`, tenant).Scan(&unsettled)
 		}

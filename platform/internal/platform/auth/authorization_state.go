@@ -17,6 +17,8 @@ type AuthorizationState struct {
 	TenantID      string
 	TenantStatus  string
 	PlanCode      string
+	PlanStatus    string
+	PlanSource    string
 	MemberRole    string
 	MemberExists  bool
 }
@@ -69,7 +71,7 @@ func (s *Service) loadPrincipal(ctx context.Context, userID, tenantID string, ve
 	return &Principal{
 		UserID: state.UserID, Email: state.Email, UserStatus: state.UserStatus,
 		TokenVersion: state.TokenVersion, TenantID: state.TenantID,
-		TenantStatus: state.TenantStatus, PlanCode: state.PlanCode,
+		TenantStatus: state.TenantStatus, PlanCode: state.PlanCode, PlanStatus: state.PlanStatus, PlanSource: state.PlanSource,
 		MemberExists: state.MemberExists, Roles: roles, AuthType: "jwt",
 	}, nil
 }

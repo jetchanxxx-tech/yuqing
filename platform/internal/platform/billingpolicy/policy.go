@@ -122,11 +122,11 @@ func (s *Service) ResolveTx(ctx context.Context, tx pgx.Tx, tenantID string, act
 		return Decision{}, err
 	}
 	d := Decision{PlanCode: "free", CatalogRevision: CatalogRevision}
-	if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT NULLIF(plan_code,'') FROM report_credits WHERE tenant_id=$1),'free')`, tenantID).Scan(&d.PlanCode); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT plan_code FROM report_credits WHERE tenant_id=$1),'free')`, tenantID).Scan(&d.PlanCode); err != nil {
 		return d, err
 	}
 	if billing.DefaultPlans()[d.PlanCode] == nil {
-		return d, pkgerrors.ErrForbidden
+		return d, pkgerrors.ErrServiceUnavailable
 	}
 	err := tx.QueryRow(ctx, `SELECT policy_key,policy_version FROM billing_exempt_principals WHERE user_id=$1`, actor.UserID).Scan(&d.PolicyKey, &d.PolicyVersion)
 	if errors.Is(err, pgx.ErrNoRows) {

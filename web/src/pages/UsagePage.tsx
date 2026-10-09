@@ -9,6 +9,7 @@ export default function UsagePage() {
   const usageQ = useQuery({ queryKey: ['billing', 'usage'], queryFn: getUsage });
   const plansQ = useQuery({ queryKey: ['billing', 'plans'], queryFn: getPlans, staleTime: 60_000 });
   if (usageQ.isLoading || plansQ.isLoading) return <LoadingBlock rows={6} />;
+  if (plansQ.isError) return <Alert type="error" showIcon message="套餐目录暂不可用" description="暂时无法确认套餐信息，已缓存的数据不作为当前权益。" action={<Button loading={plansQ.isFetching} onClick={() => void plansQ.refetch()}>重试套餐目录</Button>} />;
   if (usageQ.isError || !usageQ.data) return <ErrorBlock description="用量数据加载失败" onRetry={() => void usageQ.refetch()} />;
 
   const usage = usageQ.data;

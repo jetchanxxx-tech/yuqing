@@ -29,6 +29,8 @@ type Principal struct {
 	Email        string   `json:"email"`
 	Roles        []string `json:"roles"`
 	PlanCode     string   `json:"plan"`
+	PlanStatus   string   `json:"plan_status"`
+	PlanSource   string   `json:"plan_source"`
 	TenantStatus string   `json:"ts"`
 	UserStatus   string   `json:"user_status"`
 	TokenVersion int64    `json:"token_version"`

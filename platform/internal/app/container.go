@@ -161,14 +161,19 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// Report plan gating resolves the tenant's current plan from the shared
 	// tenant store; unknown tenants default to the most restrictive plan.
 	planCodeFor := func(tenantID string) string {
-		// P1-2 Solution A: Read plan_code from report_credits (single source of truth)
-		// instead of tenants.plan_code to avoid sync issues
-		planCode, err := creditSvc.PlanCode(context.Background(), tenantID)
-		if err != nil || planCode == "" {
-			return "" // Default to most restrictive (fail-closed)
+		snapshot, err := creditSvc.Snapshot(context.Background(), tenantID)
+		if err != nil {
+			return "unavailable"
 		}
-		return planCode
+		if snapshot == nil {
+			return "free"
+		}
+		if billing.DefaultPlans()[snapshot.PlanCode] == nil {
+			return "unavailable"
+		}
+		return snapshot.PlanCode
 	}
+
 	planProvider := func(planCode string) *billing.Plan {
 		return billing.DefaultPlans()[planCode]
 	}
