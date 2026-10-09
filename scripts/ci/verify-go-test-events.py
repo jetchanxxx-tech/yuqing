@@ -15,10 +15,14 @@ import sys
 
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
+    "internal/api/v1": (
+        "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
+    ),
     "migrations": (
         "TestReportCenterMigration",
         "TestReportCenterMigration/clean_v7",
         "TestReportCenterMigration/hotfixed_v7",
+        "TestAccountAdminSecurityMigration",
     ),
     "internal/platform/auth": (
         "TestAuthStore_PG_satisfiesContract",
@@ -28,6 +32,11 @@ REQUIRED_TESTS = {
         "TestAuthStore_PG_duplicateSlugOrDBNameIsConflict",
         "TestUserCenter_PG_satisfiesContract",
         "TestUserCenter_PG_survivesNewInstance",
+        "TestAuthorizationSecurityPGDisabledUserCannotLoginAuthenticateOrRefresh",
+        "TestAuthorizationSecurityPGAuthenticateUsesCurrentMemberRole",
+        "TestAuthorizationSecurityPGLoginRecordsLastLoginAt",
+        "TestAuthorizationSecurityPGRegistrationRollsBackTenantFailure",
+        "TestAuthorizationSecurityPGRegistrationRollsBackMemberFailure",
     ),
     "internal/platform/tenant": (
         "TestTenantStore_PG_satisfiesContract",
