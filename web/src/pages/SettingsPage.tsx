@@ -397,7 +397,8 @@ function SecurityTab() {
 
 function PhoneTab() {
   const { message } = App.useApp();
-  const queryClient = useQueryClient();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const profileQ = useQuery({ queryKey: ['user', 'profile'], queryFn: getProfile });
   const [bindOpen, setBindOpen] = useState(false);
   const [unbindOpen, setUnbindOpen] = useState(false);
@@ -405,7 +406,7 @@ function PhoneTab() {
   const profile = profileQ.data;
   const bound = !!profile?.phone_verified;
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
+  const relogin = () => { logout(); navigate('/login', { replace: true }); };
 
   return (
     <Card style={{ borderRadius: 16 }}>
@@ -433,8 +434,8 @@ function PhoneTab() {
         onClose={() => setBindOpen(false)}
         onBound={() => {
           setBindOpen(false);
-          refresh();
-          message.success('手机号绑定成功');
+          message.success('手机号绑定成功，请重新登录');
+          relogin();
         }}
       />
       <UnbindPhoneModal
@@ -443,8 +444,8 @@ function PhoneTab() {
         onClose={() => setUnbindOpen(false)}
         onUnbound={() => {
           setUnbindOpen(false);
-          refresh();
-          message.success('已解绑');
+          message.success('手机号已解绑，请重新登录');
+          relogin();
         }}
       />
     </Card>
@@ -476,7 +477,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
   const sendM = useMutation({
     mutationFn: () => sendPhoneCode(phone),
     onSuccess: () => {
-      message.success('验证码已发送');
+      message.success('验证码发送已受理，送达待确认');
       setCountdown(60);
       setStep(2);
     },
@@ -519,7 +520,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
         </>
       ) : (
         <>
-          <Alert type="info" showIcon message={`验证码已发送至 ${phone.slice(0, 3)}****${phone.slice(7)}`} style={{ marginBottom: 16 }} />
+          <Alert type="info" showIcon message={`验证码发送已受理：${phone.slice(0, 3)}****${phone.slice(7)}`} style={{ marginBottom: 16 }} />
           <Form layout="vertical">
             <Form.Item label="验证码" required extra={
               countdown > 0

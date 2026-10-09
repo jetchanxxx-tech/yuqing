@@ -196,7 +196,7 @@ func TestPhoneBindUnbindFlow(t *testing.T) {
 	}
 
 	// 2. 错误验证码
-	if err := svc.BindPhone(context.Background(), "u1", "13800138000", "000000"); err == nil {
+	if err := svc.BindPhone(context.Background(), "u1", "13800138000", "not-a-code"); err == nil {
 		t.Fatal("错误验证码应失败")
 	}
 
@@ -300,14 +300,6 @@ func TestUserCenterFailsClosedWhenNotConfigured(t *testing.T) {
 	}
 }
 
-func TestTokenIsTwentyFourDigits(t *testing.T) {
-	tok := newToken()
-	if len(tok) != 24 {
-		t.Fatalf("邮箱验证 token 应 24 位数字，得到 %d 位", len(tok))
-	}
-	_ = time.Now() // 保持 time 导入（ smsCodeTTL 使用）
-}
-
 // ─── 补充覆盖（2026-09-22 测试验证轮） ──────────────────────────
 
 func TestBindPhoneConsumesCodeAfterSuccess(t *testing.T) {
@@ -329,29 +321,28 @@ func TestBindPhoneConsumesCodeAfterSuccess(t *testing.T) {
 }
 
 func TestVerificationExpiryBoundaries(t *testing.T) {
-	_, _, verifs := newUCService(t)
-	ctx := context.Background()
-
-	// 邮箱 token 过期边界：过期条目 Load 视为不存在（MemoryVerificationStore expiresAt 判断）
-	if err := verifs.SaveEmailToken(ctx, "expired-tok", "u1", -time.Second); err != nil {
-		t.Fatal(err)
+	_, users, v := newUCService(t)
+	seedUCUserOnUserStore(t, users, "u1", "expiry@example.com")
+	for _, purpose := range []string{EmailVerify, PhoneBind} {
+		target := "expiry@example.com"
+		if purpose == PhoneBind {
+			target = "13800138000"
+		}
+		c := verificationFixture("u1", purpose, target, "expired-value", -time.Second)
+		if err := v.Issue(context.Background(), c); err != nil {
+			t.Fatal(err)
+		}
+		if err := v.RecordDelivery(context.Background(), c.ID, true); err != nil {
+			t.Fatal(err)
+		}
+		version := int64(0)
+		if _, err := v.Consume(context.Background(), VerificationAttempt{Purpose: purpose, Target: target, Hash: c.Hash, UserID: "u1", ExpectedVersion: &version}); err == nil {
+			t.Fatal("expired credential consumed")
+		}
 	}
-	if _, err := verifs.LoadEmailToken(ctx, "expired-tok"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-		t.Fatalf("过期 email token 应 404，得到 %v", err)
-	}
-	if err := verifs.SaveEmailToken(ctx, "live-tok", "u1", time.Minute); err != nil {
-		t.Fatal(err)
-	}
-	if uid, err := verifs.LoadEmailToken(ctx, "live-tok"); err != nil || uid != "u1" {
-		t.Fatalf("未过期 email token 应可读取，got %q %v", uid, err)
-	}
-
-	// 短信验证码过期边界
-	if err := verifs.SaveSMSCode(ctx, "13800138000", "bind", "123456", -time.Second); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := verifs.LoadSMSCode(ctx, "13800138000", "bind"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-		t.Fatalf("过期短信验证码应 404，得到 %v", err)
+	u, _ := users.GetByID(context.Background(), "u1")
+	if u.EmailVerifiedAt != nil || u.Phone != "" {
+		t.Fatal("expired credential mutated identity")
 	}
 }
 
@@ -487,13 +478,13 @@ func TestBindPhoneCodeInvalidatedAfterFiveWrongTries(t *testing.T) {
 	}
 	// 第 1-4 次错误：401（码仍有效）
 	for i := 0; i < 4; i++ {
-		err := svc.BindPhone(ctx, "u1", "13800138000", "000000")
+		err := svc.BindPhone(ctx, "u1", "13800138000", "not-a-code")
 		if !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
 			t.Fatalf("第 %d 次错码应 401，得到 %v", i+1, err)
 		}
 	}
 	// 第 5 次错误：触发作废 → 404
-	if err := svc.BindPhone(ctx, "u1", "13800138000", "000000"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+	if err := svc.BindPhone(ctx, "u1", "13800138000", "not-a-code"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 		t.Fatalf("第 5 次错码应作废验证码（404），得到 %v", err)
 	}
 	// 作废后即使拿到正确验证码也不能绑定

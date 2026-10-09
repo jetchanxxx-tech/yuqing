@@ -36,6 +36,7 @@ REQUIRED_TESTS = {
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
+        "TestIdentityVerificationMigrationInvalidatesPlaintextPreservesUsers",
         "TestAtomicBillingMigrationPreservesHistoricalUnlinkedFacts",
         "TestReportCenterMigration",
         "TestReportCenterMigration/clean_v7",
@@ -46,6 +47,12 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestVerificationPGSupplierFailureInvalidatesCredentialKeepsGate",
+        "TestVerificationPGPublicRequestsHaveMatchingDurableAdmission",
+        "TestVerificationPGAtomicContract",
+        "TestVerificationPGQueuedRevocationRejectsOriginalActor",
+        "TestVerificationPGFailureRollsBackCredentialAndVersions",
+        "TestVerificationPGPurposeIsolationAndPersistentHourlyGate",
         "TestVerificationPGIssuingUserBinding",
         "TestVerificationPGAttemptsAndSendGateSurviveRestart",
         "TestVerificationPGEmailHashOnlyAndRevocation",

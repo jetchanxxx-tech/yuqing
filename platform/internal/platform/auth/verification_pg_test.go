@@ -2,8 +2,13 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
 	"testing"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/pgtest"
@@ -115,6 +120,14 @@ func TestVerificationPGConsumptionFailureRollsBackIdentity(t *testing.T) {
 	if u.EmailVerifiedAt != nil {
 		t.Error("identity update committed even though credential consumption failed")
 	}
+	var used bool
+	if err := pool.QueryRow(ctx, `SELECT used_at IS NOT NULL FROM verification_tokens WHERE user_id='verify-atomic'`).Scan(&used); err != nil {
+		t.Fatal(err)
+	}
+	if used || u.RowVersion != 0 || u.TokenVersion != 0 {
+		t.Fatal("consume failure committed credential or identity versions")
+	}
+
 }
 
 func TestVerificationPGPhoneHashOnlyAndVersionRevocation(t *testing.T) {
@@ -141,5 +154,222 @@ func TestVerificationPGPhoneHashOnlyAndVersionRevocation(t *testing.T) {
 	u, _ := users.GetByID(ctx, "verify-phone")
 	if u.Phone != "13800138000" || u.TokenVersion != 1 || u.RowVersion != 1 {
 		t.Errorf("identity change must bind phone and revoke old JWT atomically: phone_bound=%v token_version=%d row_version=%d", u.Phone != "", u.TokenVersion, u.RowVersion)
+	}
+}
+
+func TestVerificationPGQueuedRevocationRejectsOriginalActor(t *testing.T) {
+	for _, action := range []string{"disable", "password"} {
+		t.Run(action, func(t *testing.T) {
+			pool := pgtest.Pool(t, "verification_queued")
+			users := NewPGStore(pool)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			seedUCUserOnUserStore(t, users, "queued-user", "queued@example.com")
+			cfg := pool.Config()
+			cfg.ConnConfig.RuntimeParams["application_name"] = "verification-queued-" + action
+			queued, err := pgxpool.NewWithConfig(ctx, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer queued.Close()
+			svc := NewService(NewPGStore(queued), testSecret, "15m", "720h")
+			sms := &fakeSMS{}
+			svc.EnableUserCenter(NewPGStore(queued), NewPGVerificationStore(queued), sms, nil, "https://example.com")
+			hold, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer hold.Rollback(context.Background())
+			if _, err = hold.Exec(ctx, `SELECT id FROM users WHERE id='queued-user' FOR UPDATE`); err != nil {
+				t.Fatal(err)
+			}
+			out := make(chan error, 1)
+			go func() { out <- svc.SendPhoneCode(ctx, "queued-user", "13800138000", 0) }()
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				var blocked bool
+				if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock')`, "verification-queued-"+action).Scan(&blocked); err != nil {
+					t.Fatal(err)
+				}
+				if blocked {
+					break
+				}
+				select {
+				case <-ticker.C:
+				case <-ctx.Done():
+					t.Fatal("issuance never blocked on original user lock")
+				}
+			}
+			statement := `UPDATE users SET token_version=token_version+1,password_hash='new-password-hash' WHERE id='queued-user'`
+			if action == "disable" {
+				statement = `UPDATE users SET token_version=token_version+1,status='disabled' WHERE id='queued-user'`
+			}
+			if _, err = hold.Exec(ctx, statement); err != nil {
+				t.Fatal(err)
+			}
+			if err = hold.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err = <-out; err == nil {
+				t.Fatal("queued issuance adopted revoked actor version")
+			}
+			var credentials int
+			if err = pool.QueryRow(ctx, `SELECT count(*) FROM sms_verification_codes WHERE user_id='queued-user'`).Scan(&credentials); err != nil {
+				t.Fatal(err)
+			}
+			if credentials != 0 || sms.calls != 0 {
+				t.Fatal("revoked actor issued/delivered credential")
+			}
+		})
+	}
+}
+
+func TestVerificationPGFailureRollsBackCredentialAndVersions(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_update_failure")
+	users := NewPGStore(pool)
+	ctx := context.Background()
+	seedUCUserOnUserStore(t, users, "update-user", "update@example.com")
+	v := NewPGVerificationStore(pool)
+	c := verificationFixture("update-user", PhoneBind, "13800138000", "123456", time.Minute)
+	if err := v.Issue(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.RecordDelivery(ctx, c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE users ADD CONSTRAINT reject_verified_phone CHECK(phone IS NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	zero := int64(0)
+	a := VerificationAttempt{Purpose: PhoneBind, Target: c.Target, Hash: c.Hash, UserID: c.UserID, ExpectedVersion: &zero}
+	if _, err := v.Consume(ctx, a); err == nil {
+		t.Fatal("injected user write failure succeeded")
+	}
+	var used bool
+	if err := pool.QueryRow(ctx, `SELECT used_at IS NOT NULL FROM sms_verification_codes WHERE id=$1`, c.ID).Scan(&used); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := users.GetByID(ctx, c.UserID)
+	if used || u.Phone != "" || u.TokenVersion != 0 || u.RowVersion != 0 {
+		t.Fatal("user write failure partially committed")
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE users DROP CONSTRAINT reject_verified_phone`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.Consume(ctx, a); err != nil {
+		t.Fatalf("retry after rollback lost credential: %v", err)
+	}
+}
+
+func TestVerificationPGPurposeIsolationAndPersistentHourlyGate(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_purpose_gate")
+	u := NewPGStore(pool)
+	ctx := context.Background()
+	v := NewPGVerificationStore(pool)
+	seedUCUserOnUserStore(t, u, "purpose-user", "purpose@example.com")
+	if err := u.SetPhone(ctx, "purpose-user", "13800138000"); err != nil {
+		t.Fatal(err)
+	}
+	bind := verificationFixture("purpose-user", PhoneBind, "13800138000", "123456", time.Minute)
+	login := verificationFixture("purpose-user", PhoneLogin, "13800138000", "654321", time.Minute)
+	for _, c := range []VerificationCredential{bind, login} {
+		if err := v.Issue(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		if err := v.RecordDelivery(ctx, c.ID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := v.Consume(ctx, VerificationAttempt{Purpose: PhoneLogin, Target: login.Target, Hash: bind.Hash}); err == nil {
+		t.Fatal("bind credential crossed login purpose")
+	}
+	if _, err := v.Consume(ctx, VerificationAttempt{Purpose: PhoneLogin, Target: login.Target, Hash: login.Hash}); err != nil {
+		t.Fatalf("independent purpose was overwritten: %v", err)
+	}
+	zero := int64(0)
+	if _, err := v.Consume(ctx, VerificationAttempt{Purpose: PhoneBind, Target: bind.Target, Hash: bind.Hash, UserID: bind.UserID, ExpectedVersion: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := NewPGVerificationStore(pool).ReserveSend(ctx, PasswordReset, "unknown@example.com", "192.0.2.1", VerificationLimits{}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE verification_send_gates SET last_sent=now()-interval '61 seconds'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := NewPGVerificationStore(pool).ReserveSend(ctx, PasswordReset, "unknown@example.com", "192.0.2.2", VerificationLimits{}); !pkgerrors.Is(err, pkgerrors.ErrQuotaExceeded) {
+		t.Fatal("fifth target hour limit reset on reconstruction")
+	}
+}
+
+type rejectingVerificationSMS struct{ code string }
+
+func (s *rejectingVerificationSMS) Send(_ context.Context, _, _ string, params map[string]string) error {
+	s.code = params["code"]
+	return fmt.Errorf("supplier rejected test payload")
+}
+func TestVerificationPGSupplierFailureInvalidatesCredentialKeepsGate(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_supplier_rejected")
+	ctx := context.Background()
+	users := NewPGStore(pool)
+	seedUCUserOnUserStore(t, users, "reject-user", "reject@example.com")
+	sender := &rejectingVerificationSMS{}
+	svc := NewService(users, testSecret, "15m", "720h")
+	svc.EnableUserCenter(users, NewPGVerificationStore(pool), sender, nil, "https://example.com")
+	if err := svc.SendPhoneCode(ctx, "reject-user", "13800138000"); !pkgerrors.Is(err, pkgerrors.ErrServiceUnavailable) {
+		t.Fatal("rejected supplier falsely reported acceptance")
+	}
+	if err := svc.BindPhone(ctx, "reject-user", "13800138000", sender.code); err == nil {
+		t.Fatal("supplier failure allowed phone binding")
+	}
+	var rejected bool
+	var hash string
+	if err := pool.QueryRow(ctx, `SELECT delivery_status='rejected' AND used_at IS NOT NULL AND code IS NULL,code_hash FROM sms_verification_codes WHERE user_id='reject-user'`).Scan(&rejected, &hash); err != nil {
+		t.Fatal(err)
+	}
+	bare := sha256.Sum256([]byte(sender.code))
+	if !rejected || hash == hex.EncodeToString(bare[:]) || hash == sender.code {
+		t.Fatal("SMS failure state or server-secret HMAC missing")
+	}
+	restarted := NewService(users, testSecret, "15m", "720h")
+	restarted.EnableUserCenter(users, NewPGVerificationStore(pool), &fakeSMS{}, nil, "https://example.com")
+	if err := restarted.SendPhoneCode(ctx, "reject-user", "13800138000"); !pkgerrors.Is(err, pkgerrors.ErrQuotaExceeded) {
+		t.Fatal("supplier failure rolled back durable send admission")
+	}
+	u, _ := users.GetByID(ctx, "reject-user")
+	if u.Phone != "" || u.TokenVersion != 0 {
+		t.Fatal("supplier failure changed identity")
+	}
+}
+
+func TestVerificationPGPublicRequestsHaveMatchingDurableAdmission(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_public")
+	ctx := context.Background()
+	u := NewPGStore(pool)
+	seedUCUserOnUserStore(t, u, "known-user", "known@example.com")
+	mail := &fakeMailSender{}
+	makeService := func() *Service {
+		s := NewService(u, testSecret, "15m", "720h")
+		s.EnableUserCenter(u, NewPGVerificationStore(pool), nil, mail, "https://example.com")
+		return s
+	}
+	for _, target := range []string{"known@example.com", "unknown@example.com"} {
+		if err := makeService().RequestPublicVerification(ctx, PasswordReset, target, "192.0.2.20"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if mail.calls != 1 {
+		t.Fatal("unknown target caused delivery")
+	}
+	for _, target := range []string{"known@example.com", "unknown@example.com"} {
+		if err := makeService().RequestPublicVerification(ctx, PasswordReset, target, "192.0.2.21"); !pkgerrors.Is(err, pkgerrors.ErrQuotaExceeded) {
+			t.Fatal("restart allowed public existence inference through rate limits")
+		}
+	}
+	var gates int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM verification_send_gates WHERE gate_key LIKE 'target:password_reset:%'`).Scan(&gates); err != nil || gates != 2 {
+		t.Fatal("unknown target gate was not durable")
 	}
 }

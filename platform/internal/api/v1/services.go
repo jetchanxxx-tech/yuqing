@@ -74,6 +74,9 @@ func respondError(c *gin.Context, err error) {
 		code = "INTERNAL"
 		status = http.StatusInternalServerError
 	}
+	if status == http.StatusTooManyRequests {
+		c.Header("Retry-After", "60")
+	}
 	c.JSON(status, pkgerrors.ToEnvelope(err, requestID(c)))
 }
 

@@ -69,13 +69,13 @@ func NewSettingsSMS(store settings.Store) *settingsSMS { return &settingsSMS{sto
 
 // Send 实现 auth.SMSProvider。templateCode 为业务用途别名（如 SMS_BIND_PHONE），
 // 实际发送用 settings 里的 sms_template_code（独立部署环境各自申请的模板）。
-func (m *settingsSMS) Send(ctx context.Context, to, _ string, params map[string]string) error {
+func (m *settingsSMS) Send(ctx context.Context, to, alias string, params map[string]string) error {
 	get := func(key string) string {
 		v, _ := m.store.Get(ctx, key)
 		return v
 	}
 	cfg := sms.Config{
-		Provider: get("sms_provider"),
+		Provider:              get("sms_provider"),
 		AliyunAccessKeyID:     get("sms_access_key_id"),
 		AliyunAccessKeySecret: get("sms_access_key_secret"),
 		AliyunSignName:        get("sms_sign_name"),
@@ -91,9 +91,54 @@ func (m *settingsSMS) Send(ctx context.Context, to, _ string, params map[string]
 	if err != nil {
 		return fmt.Errorf("sms: %w", err)
 	}
-	template := get("sms_template_code")
+	templateKey, err := smsPurposeSetting(alias)
+	if err != nil {
+		return err
+	}
+	template := get(templateKey)
 	if template == "" {
-		return fmt.Errorf("sms: sms_template_code not configured (admin settings)")
+		return fmt.Errorf("sms: purpose template not configured (admin settings)")
 	}
 	return p.Send(ctx, to, template, params)
+}
+
+// Purpose mappings are explicit; a bind template cannot silently send login or
+// recovery messages. K6a configures supplier-specific values and receipt tests.
+func smsPurposeSetting(alias string) (string, error) {
+	switch alias {
+	case "SMS_BIND_PHONE":
+		return "sms_bind_phone_template_code", nil
+	case "SMS_PHONE_LOGIN":
+		return "sms_phone_login_template_code", nil
+	case "SMS_PHONE_RESET":
+		return "sms_phone_reset_template_code", nil
+	}
+	return "", fmt.Errorf("sms: unsupported verification purpose")
+}
+func (m *settingsSMS) CheckVerification(ctx context.Context, purpose string) error {
+	aliases := map[string]string{"phone_bind": "SMS_BIND_PHONE", "phone_login": "SMS_PHONE_LOGIN", "phone_reset": "SMS_PHONE_RESET"}
+	key, err := smsPurposeSetting(aliases[purpose])
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"sms_provider", key} {
+		value, err := m.store.Get(ctx, name)
+		if err != nil || value == "" {
+			return fmt.Errorf("sms: verification channel not configured")
+		}
+	}
+	return nil
+}
+func (m *settingsMailer) CheckVerification(ctx context.Context, purpose string) error {
+	switch purpose {
+	case "email_verify", "set_password", "password_reset", "email_change":
+	default:
+		return fmt.Errorf("mail: unsupported verification purpose")
+	}
+	cfg, err := m.emailConfig(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = email.NewProvider(cfg)
+	return err
 }

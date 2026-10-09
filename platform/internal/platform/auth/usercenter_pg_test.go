@@ -222,114 +222,40 @@ func seedUCUserOnUserStore(t *testing.T, us UserStore, userID, email string) {
 	}
 }
 
-// verificationStoreContract 是 VerificationStore 的行为契约。
-// seedUser 返回一个"存在"的 user_id：PG 实现的 verification_tokens.user_id
-// 有外键（引用 users 表），契约需要真实行；内存版可返回任意字符串。
-func verificationStoreContract(t *testing.T, newStore func(t *testing.T) VerificationStore, seedUser func(t *testing.T) string) {
-	t.Helper()
-	ctx := context.Background()
-
-	t.Run("邮箱 token：Save→Load→Consume→二次 Load 失效", func(t *testing.T) {
-		st := newStore(t)
-		uid := seedUser(t)
-		if err := st.SaveEmailToken(ctx, "tok1", uid, time.Hour); err != nil {
-			t.Fatalf("SaveEmailToken: %v", err)
-		}
-		got, err := st.LoadEmailToken(ctx, "tok1")
-		if err != nil || got != uid {
-			t.Fatalf("Load = %q %v, want %q nil", got, err, uid)
-		}
-		if err := st.ConsumeEmailToken(ctx, "tok1"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := st.LoadEmailToken(ctx, "tok1"); !errors.Is(err, errors.ErrNotFound) {
-			t.Errorf("消费后 Load = %v, want ErrNotFound", err)
-		}
-	})
-
-	t.Run("邮箱 token 负 TTL 视为过期", func(t *testing.T) {
-		st := newStore(t)
-		uid := seedUser(t)
-		if err := st.SaveEmailToken(ctx, "tok2", uid, -time.Minute); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := st.LoadEmailToken(ctx, "tok2"); !errors.Is(err, errors.ErrNotFound) {
-			t.Errorf("过期 token Load = %v, want ErrNotFound", err)
-		}
-	})
-
-	t.Run("短信码：Save→Load；同号覆盖旧码；Consume 后失效", func(t *testing.T) {
-		st := newStore(t)
-		if err := st.SaveSMSCode(ctx, "13800138000", "bind", "111111", 5*time.Minute); err != nil {
-			t.Fatalf("SaveSMSCode: %v", err)
-		}
-		// 覆盖旧码
-		if err := st.SaveSMSCode(ctx, "13800138000", "bind", "222222", 5*time.Minute); err != nil {
-			t.Fatalf("SaveSMSCode(覆盖): %v", err)
-		}
-		got, err := st.LoadSMSCode(ctx, "13800138000", "bind")
-		if err != nil || got != "222222" {
-			t.Fatalf("Load = %q %v, want 222222 nil（覆盖语义）", got, err)
-		}
-		if err := st.ConsumeSMSCode(ctx, "13800138000", "bind"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := st.LoadSMSCode(ctx, "13800138000", "bind"); !errors.Is(err, errors.ErrNotFound) {
-			t.Errorf("消费后 Load = %v, want ErrNotFound", err)
-		}
-	})
-
-	t.Run("短信码过期 → ErrNotFound", func(t *testing.T) {
-		st := newStore(t)
-		if err := st.SaveSMSCode(ctx, "13900139000", "bind", "333333", -time.Minute); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := st.LoadSMSCode(ctx, "13900139000", "bind"); !errors.Is(err, errors.ErrNotFound) {
-			t.Errorf("过期码 Load = %v, want ErrNotFound", err)
-		}
-	})
-}
-
-// 本地（无 PG）也有信号：契约必须被内存版满足。
+// Both drivers exercise hash-only atomic consumption instead of the removed
+// plaintext Save/Load interface.
 func TestUserCenter_Memory_satisfiesContract(t *testing.T) {
 	userCenterStoreContract(t, func(t *testing.T) UserStore { return NewMemoryStore() })
-	verificationStoreContract(t,
-		func(t *testing.T) VerificationStore { return NewMemoryVerificationStore() },
-		func(t *testing.T) string { return "user-" + id.New() },
-	)
+	verificationStoreContract(t, func(t *testing.T) (UserStore, VerificationStore) {
+		u := NewMemoryStore()
+		v := NewMemoryVerificationStore()
+		v.users = u
+		return u, v
+	})
 }
-
-// PG 路径契约：需要 YUQING_TEST_PG_URL（部署服务器/CI 上真实执行）。
 func TestUserCenter_PG_satisfiesContract(t *testing.T) {
 	pool := pgtest.Pool(t, "auth")
-	st := NewPGStore(pool)
-	userCenterStoreContract(t, func(t *testing.T) UserStore { return st })
-	verificationStoreContract(t,
-		func(t *testing.T) VerificationStore { return NewPGVerificationStore(pool) },
-		func(t *testing.T) string {
-			// verification_tokens.user_id 有外键：种真实用户行
-			uid := id.New()
-			seedUCUserOnUserStore(t, st, uid, "uc-vk-"+uid+"@example.com")
-			return uid
-		},
-	)
+	userCenterStoreContract(t, func(t *testing.T) UserStore { return NewPGStore(pool) })
+	verificationStoreContract(t, func(t *testing.T) (UserStore, VerificationStore) {
+		pool := pgtest.Pool(t, "verification_contract")
+		return NewPGStore(pool), NewPGVerificationStore(pool)
+	})
 }
-
-// PG 专有：持久化语义（换实例 = 模拟重启）。
 func TestUserCenter_PG_survivesNewInstance(t *testing.T) {
-	pool := pgtest.Pool(t, "auth")
-	ctx := context.Background()
-
-	st := NewPGStore(pool)
-	uid := id.New()
-	seedUCUserOnUserStore(t, st, uid, "uc-persist-"+uid+"@example.com")
-
+	pool := pgtest.Pool(t, "auth_verification_persistence")
+	u := NewPGStore(pool)
+	seedUCUserOnUserStore(t, u, "persistent-user", "persistent@example.com")
+	c := verificationFixture("persistent-user", EmailVerify, "persistent@example.com", "fixture-bearer", time.Hour)
 	first := NewPGVerificationStore(pool)
-	if err := first.SaveEmailToken(ctx, "persist-tok", uid, time.Hour); err != nil {
+	if err := first.Issue(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	second := NewPGVerificationStore(pool) // 新实例
-	if got, err := second.LoadEmailToken(ctx, "persist-tok"); err != nil || got != uid {
-		t.Errorf("重启后 Load = %q %v, want %q nil", got, err, uid)
+	if err := first.RecordDelivery(context.Background(), c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	second := NewPGVerificationStore(pool)
+	result, err := second.Consume(context.Background(), VerificationAttempt{Purpose: EmailVerify, Hash: c.Hash})
+	if err != nil || result.EmailVerifiedAt == nil {
+		t.Fatalf("durable credential consumption failed: %v", err)
 	}
 }

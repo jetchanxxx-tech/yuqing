@@ -98,9 +98,7 @@ type Service struct {
 	emailSender   MailSender        // 邮件发送
 	verifyBaseURL string            // 邮箱验证链接前缀（如 https://yuqing2.pangu-cloud.com）
 
-	// 防刷（进程内；单实例部署语义，多实例时换 Redis）
-	sendGate  senderThrottle // 发码节流：同目标 60s 一次
-	codeTries codeTries      // 验证码错误尝试计数（≥5 次作废）
+	verificationLimits VerificationLimits
 }
 
 // EnableUserCenter 装配用户中心 P0 依赖（组合根调用）。
@@ -110,6 +108,12 @@ func (s *Service) EnableUserCenter(users UserStore, verifications VerificationSt
 	s.smsSender = sms
 	s.emailSender = mail
 	s.verifyBaseURL = verifyBaseURL
+	if memory, ok := verifications.(*MemoryVerificationStore); ok {
+		if owner, ok := s.store.(interface{ verificationUsers() *MemoryStore }); ok {
+			memory.users = owner.verificationUsers()
+		}
+	}
+
 }
 
 // SetPostRegister 挂接注册后回调。
