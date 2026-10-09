@@ -121,15 +121,15 @@ const backendEnvironment = [
 ].join(' ');
 const backendCommand = `
 set -euo pipefail
-backend_user="$(id -un)"
+backend_uid="$(id -u)"
 backend_gid="$(getent group nogroup | cut -d: -f3)"
 # Dynamic settings can choose real providers, so missing secrets alone is not
 # an outbound safeguard. Deny this API user's non-loopback IPv4 and IPv6 traffic
 # before running either prebuilt executable. Firewall failures stop the suite.
 sudo -n iptables -I OUTPUT 1 -m owner --gid-owner "$backend_gid" ! -d 127.0.0.0/8 -j REJECT
 sudo -n ip6tables -I OUTPUT 1 -m owner --gid-owner "$backend_gid" ! -d ::1/128 -j REJECT
-sudo -n -u "$backend_user" -g nogroup env -i ${backendEnvironment} ${shellQuote(isolatedCLIBinary)} migrate platform
-exec sudo -n -u "$backend_user" -g nogroup env -i ${backendEnvironment} ${shellQuote(isolatedServerBinary)}
+sudo -n setpriv --reuid "$backend_uid" --regid "$backend_gid" --clear-groups env -i ${backendEnvironment} ${shellQuote(isolatedCLIBinary)} migrate platform
+exec sudo -n setpriv --reuid "$backend_uid" --regid "$backend_gid" --clear-groups env -i ${backendEnvironment} ${shellQuote(isolatedServerBinary)}
 `;
 
 export default defineConfig({
