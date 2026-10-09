@@ -41,6 +41,7 @@ type Services struct {
 	Settings     settings.Store
 	APIKey       *apikey.Service
 	Usage        usage.PlatformMeter
+	LLMCalls     *usage.CallService
 
 	// 收费体系（方案 B）：额度与支付。
 	Credits         *credit.Service

@@ -219,13 +219,13 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		var insight *engine.RealInsightEngine
 		if cfg.Engines.Insight.URL != "" {
 			insight = engine.NewRealInsightEngine(
-				cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+				cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.insight.url，情感/话题分析将降级")
 		}
 		if cfg.Engines.Report.URL != "" {
 			reportEngine = engine.NewRealReportEngine(
-				cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+				cfg.Engines.Report.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
@@ -268,7 +268,16 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	} else {
 		accountAdminStore = accountadmin.NewMemoryStore(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore), creditSvc, paymentSvc)
 	}
+	var llmCalls *usage.CallService
+	if platformPool != nil {
+		priceVersion := os.Getenv("YUQING_PROVIDER_PRICE_VERSION")
+		if os.Getenv("YUQING_PROVIDER_PRICE_CURRENCY") != "CNY" {
+			priceVersion = ""
+		}
+		llmCalls = usage.NewCallService(platformPool, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), priceVersion, cfg.LLM.Models)
+	}
 	return &v1.Services{
+		LLMCalls:        llmCalls,
 		Auth:            authSvc,
 		AccountAdmin:    accountadmin.NewService(accountAdminStore),
 		Analysis:        analysisSvc,
@@ -341,11 +350,11 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 	}
 	var insight *engine.RealInsightEngine
 	if cfg.Engines.Insight.URL != "" {
-		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 	}
 	var reportEngine *engine.RealReportEngine
 	if cfg.Engines.Report.URL != "" {
-		reportEngine = engine.NewRealReportEngine(cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+		reportEngine = engine.NewRealReportEngine(cfg.Engines.Report.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 	}
 	pipeline := analysis.NewPipeline(services.Analysis, &engineFetcher{crawler: crawler}, pipelineBudget(cfg), logger).WithModeFor(analysisModeFor(services.Credits)).WithReportSvc(&pgReportSvcAdapter{reportSvcAdapter: &reportSvcAdapter{svc: services.Report}})
 	if insight != nil {

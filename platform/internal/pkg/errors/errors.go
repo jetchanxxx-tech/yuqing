@@ -9,6 +9,7 @@ import (
 
 // Sentinel errors for mapping to API error codes.
 var (
+	ErrBadRequest            = newSentinel("BAD_REQUEST", http.StatusBadRequest)
 	ErrBudgetExceeded        = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
 	ErrQuotaExceeded         = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
 	ErrAPIKeyOwnerUnverified = newSentinel("API_KEY_OWNER_UNVERIFIED", http.StatusForbidden)

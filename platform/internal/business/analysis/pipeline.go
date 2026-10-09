@@ -408,6 +408,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		return InsightResult{}, "insight engine not configured"
 	}
 	res, err := p.analyzer.Analyze(ctx, InsightRequest{
+		RunID:        msg.RunID,
 		TenantID:     msg.TenantID,
 		AnalysisID:   msg.AnalysisID,
 		AnalysisType: p.analysisType(ctx, msg),
@@ -432,6 +433,7 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		return "report engine not configured"
 	}
 	res, err := p.generator.Generate(ctx, ReportRequest{
+		RunID:            msg.RunID,
 		TenantID:         msg.TenantID,
 		AnalysisID:       msg.AnalysisID,
 		TemplateID:       templateID,

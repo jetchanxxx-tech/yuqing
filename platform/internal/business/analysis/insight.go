@@ -60,6 +60,7 @@ type InsightResult struct {
 
 // InsightRequest carries the documents to analyze.
 type InsightRequest struct {
+	RunID        string
 	TenantID     string
 	AnalysisID   string
 	AnalysisType string
@@ -78,6 +79,7 @@ type InsightAnalyzer interface {
 
 // ReportRequest carries the data to render a report.
 type ReportRequest struct {
+	RunID      string
 	TenantID   string
 	AnalysisID string
 	TemplateID string

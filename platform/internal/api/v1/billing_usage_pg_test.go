@@ -31,6 +31,7 @@ func internalBillingRequest(e *billingActorPGEnv, path string, body any, permit,
 func TestBillingUsagePGActualCostReplayLateSettlementAndQuotaIsolation(t *testing.T) {
 	t.Setenv("YUQING_BILLING_SERVICE_TOKEN", "isolated-billing-secret")
 	t.Setenv("YUQING_PROVIDER_PRICE_VERSION", "sandbox-price-v1")
+	t.Setenv("YUQING_PROVIDER_PRICE_CURRENCY", "CNY")
 	e := newBillingActorPGEnv(t)
 	// Prices are explicitly sandbox-only:4/16CNY perM yields3200microCNY.
 	e.cfg.LLM.Models = []config.ModelConfig{{ID: "sandbox-model", Provider: "sandbox", InputCostPerM: 4, OutputCostPerM: 16}}

@@ -16,6 +16,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.usage_bridge import install_delivery_lifecycle
+from engines.common.auth import InternalAuthMiddleware
 
 try:
     from docx import Document
@@ -28,9 +30,14 @@ except ImportError:
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Report Engine", version="0.2.0")
+install_delivery_lifecycle(app)
+if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
+    app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
+
 
 
 class GenerateRequest(BaseModel):
+    run_id: str = ""
     title: str = ""
     template_id: Literal["", "daily", "weekly", "event"] = ""
     format: str = "html"
@@ -252,6 +259,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
     if not key:
         return None
     llm = build_client(key, req.llm_base_url, timeout=300)
+    llm.usage_context = {"run_id": req.run_id, "engine": "report", "phase": "generate"}
     try:
         data = await llm.chat_json(
             req.llm_model or LLM_MODEL,

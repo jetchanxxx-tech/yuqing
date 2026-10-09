@@ -27,10 +27,16 @@ from pydantic import BaseModel
 import httpx
 
 from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.usage_bridge import install_delivery_lifecycle
+from engines.common.auth import InternalAuthMiddleware
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Insight Engine", version="0.4.0")
+install_delivery_lifecycle(app)
+if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
+    app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
+
 
 # 每篇文档正文截断长度 —— 维度分析要读到细节，放宽到 3000 字
 MAX_CONTENT_CHARS = 3000
@@ -42,6 +48,7 @@ MAX_MATERIAL_CHARS = 16000
 
 
 class AnalyzeRequest(BaseModel):
+    run_id: str = ""
     documents: list[dict] = []
     analysis_id: str = ""
     analysis_type: str = ""
@@ -56,6 +63,7 @@ class AnalyzeRequest(BaseModel):
 
 
 class SentimentRequest(BaseModel):
+    run_id: str = ""
     documents: list[dict] = []
     model: str = ""
     analysis_id: str = ""
@@ -591,6 +599,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     key = _require_key(req.api_key)
     llm = build_client(key, req.llm_base_url, timeout=900)
+    llm.usage_context = {"run_id": req.run_id, "engine": "insight", "phase": "analyze"}
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
@@ -781,6 +790,7 @@ async def sentiment(req: SentimentRequest) -> dict:
 
     key = _require_key(req.api_key)
     llm = build_client(key, req.llm_base_url, timeout=900)
+    llm.usage_context = {"run_id": req.run_id, "engine": "insight", "phase": "analyze"}
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(

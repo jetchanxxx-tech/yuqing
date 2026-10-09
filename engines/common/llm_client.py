@@ -10,6 +10,10 @@ import json
 import logging
 import os
 import re
+import uuid
+
+from engines.common.usage_bridge import authorize_call, deliver_pending_usage_events
+from engines.common.usage_outbox import persist_usage_event
 
 import httpx
 
@@ -46,24 +50,62 @@ class LLMClient:
         self.api_key = api_key
         self.timeout = timeout
         self._transport = transport
+        self.usage_context = None
 
     async def chat(self, model: str, messages: list[dict], **kwargs) -> dict:
         """流式请求（持续出字节，避免 Cloudflare 中转 125s 读超时报 524），返回非流式结构。"""
+        usage_context = kwargs.pop("usage_context", None) or self.usage_context
+        if not usage_context and self._transport is None:
+            raise RuntimeError("provider call requires an accepted run and usage bridge")
+        for attempt in (1, 2):
+            try:
+                return await self._metered_attempt(model, messages, usage_context, attempt, **kwargs)
+            except Exception as exc:
+                if attempt == 2 or not _is_transient(exc):
+                    raise
+                logger.warning("LLM transient provider failure; retrying once")
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+
+    async def _metered_attempt(self, model, messages, usage_context, attempt, **kwargs):
+        if not usage_context:
+            # Explicit MockTransport-only unit clients cannot contact suppliers.
+            return await self._chat_once(model, messages, **kwargs)
+        call_id = uuid.uuid4().hex
+        permission = await authorize_call(usage_context, call_id, model, attempt)
+        event = {"event_id": uuid.uuid4().hex, "call_id": call_id, "event_version": 1, "attempt": attempt,
+                 "actual_model": model, "provider_request_id": "", "usage_status": "unknown",
+                 "prompt_tokens": 0, "completion_tokens": 0, "cache_tokens": 0, "outcome": "provider_pending"}
+        # Validate durable storage before spending. A crash leaves an explicit
+        # unknown intent, never a guessed token amount or a verified zero cost.
+        persist_usage_event(event, permission["permit"], pending=True)
         try:
-            return await self._chat_once(model, messages, **kwargs)
-        except Exception as exc:
-            if not _is_transient(exc):
-                raise
-            logger.warning("LLM 调用瞬时失败，%ss 后重试一次: %s", RETRY_DELAY_SECONDS, exc)
-            await asyncio.sleep(RETRY_DELAY_SECONDS)
-            return await self._chat_once(model, messages, **kwargs)
+            response = await self._chat_once(model, messages, **kwargs)
+            usage = response.get("usage")
+            event["actual_model"] = response.get("model") or model
+            event["provider_request_id"] = response.get("id") or ""
+            if isinstance(usage, dict):
+                prompt = usage.get("prompt_tokens")
+                completion = usage.get("completion_tokens")
+                cache = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", usage.get("prompt_cache_hit_tokens", 0))
+                if all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (prompt, completion, cache)) and cache <= prompt:
+                    event.update(usage_status="reported", prompt_tokens=prompt, completion_tokens=completion, cache_tokens=cache)
+            event["outcome"] = "provider_response"
+            persist_usage_event(event, permission["permit"])
+        except BaseException:
+            event["outcome"] = "provider_error"
+            persist_usage_event(event, permission["permit"])
+            # asyncio cancellation must still retain the event; delivery happens
+            # on the next lifecycle tick or process restart.
+            raise
+        await deliver_pending_usage_events()
+        return response
 
     async def _chat_once(self, model: str, messages: list[dict], **kwargs) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "messages": messages, "stream": True, **kwargs},
+                json={"model": model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}, **kwargs},
             )
             resp.raise_for_status()
             if "text/event-stream" not in resp.headers.get("content-type", ""):
@@ -92,6 +134,8 @@ def _parse_sse(body: str) -> dict:
     content: list[str] = []
     finish_reason = None
     usage = None
+    model = None
+    request_id = None
     for line in body.splitlines():
         if not line.startswith("data:"):
             continue
@@ -103,12 +147,16 @@ def _parse_sse(body: str) -> dict:
             err = chunk["error"]
             raise RuntimeError(f"LLM 流式返回错误: {err.get('message', err) if isinstance(err, dict) else err}")
         usage = chunk.get("usage") or usage
+        model = chunk.get("model") or model
+        request_id = chunk.get("id") or request_id
         for choice in chunk.get("choices") or []:
             content.append((choice.get("delta") or {}).get("content") or "")
             finish_reason = choice.get("finish_reason") or finish_reason
     return {
         "choices": [{"message": {"content": "".join(content)}, "finish_reason": finish_reason}],
         "usage": usage,
+        "model": model,
+        "id": request_id,
     }
 
 

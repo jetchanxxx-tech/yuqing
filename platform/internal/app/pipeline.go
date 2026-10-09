@@ -128,6 +128,7 @@ type engineInsightAdapter struct {
 func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
 	docs := toEngineDocuments(req.Documents)
 	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
+		RunID:        req.RunID,
 		Documents:    docs,
 		AnalysisID:   req.AnalysisID,
 		AnalysisType: req.AnalysisType,
@@ -202,6 +203,7 @@ type engineReportAdapter struct {
 
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
+		RunID:            req.RunID,
 		Title:            req.Title,
 		TemplateID:       req.TemplateID,
 		Format:           "html",
