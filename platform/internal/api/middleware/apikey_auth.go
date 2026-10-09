@@ -121,7 +121,7 @@ func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants Ten
 	}
 	c.Set("billing_api_key", key)
 	if key.CreatorUserID == "" && c.Request.Method == http.MethodPost && (c.Request.URL.Path == "/api/v1/analyses" || strings.HasSuffix(c.Request.URL.Path, "/rerun") || c.Request.URL.Path == "/api/v1/apikeys") {
-		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.ErrAPIKeyOwnerUnverified, c.GetString(string(CtxRequestID))))
+		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.Wrap(pkgerrors.ErrAPIKeyOwnerUnverified, "API Key 创建者无法核验，请撤销后重新签发。"), c.GetString(string(CtxRequestID))))
 		return
 	}
 	c.Set(string(CtxPrincipal), p)

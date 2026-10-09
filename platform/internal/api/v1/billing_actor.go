@@ -15,7 +15,7 @@ func resolveBillingActor(c *gin.Context) (billingpolicy.Actor, error) {
 	if p.AuthType == "api_key" {
 		key := middleware.GetAPIKey(c)
 		if key == nil || key.CreatorUserID == "" {
-			return billingpolicy.Actor{}, pkgerrors.ErrAPIKeyOwnerUnverified
+			return billingpolicy.Actor{}, pkgerrors.Wrap(pkgerrors.ErrAPIKeyOwnerUnverified, "API Key 创建者无法核验，请撤销后重新签发。")
 		}
 		return billingpolicy.Actor{UserID: key.CreatorUserID, APIKeyID: key.ID}, nil
 	}

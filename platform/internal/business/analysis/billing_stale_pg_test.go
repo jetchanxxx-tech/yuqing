@@ -295,3 +295,56 @@ func TestK4PGLegacyRunlessDeliveryNeverAttachesToNewPaidRerun(t *testing.T) {
 	f.assertBalance(t, 0)
 	f.assertEffects(t, 1, 1, 1, 0)
 }
+
+func TestK4PGFixedExemptionCannotBypassQueuedUserOrTenantSuspension(t *testing.T) {
+	for _, kind := range []string{"user", "tenant"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newK4BillingPGFixture(t, 0)
+			blocker, err := f.pool.Begin(f.ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback(context.Background())
+			if _, err := blocker.Exec(f.ctx, `SELECT pg_advisory_xact_lock(741914)`); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := f.svc.Create(f.ctx, f.request(f.fixedAdminID, "fixed queued suspension"))
+				done <- err
+			}()
+			expected := pkgerrors.ErrForbidden
+			if kind == "user" {
+				_, err = blocker.Exec(f.ctx, `UPDATE users SET status='disabled' WHERE id=$1`, f.fixedAdminID)
+			} else {
+				_, err = blocker.Exec(f.ctx, `UPDATE tenants SET status='suspended' WHERE id=$1`, f.tenantID)
+				expected = pkgerrors.ErrTenantSuspended
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = blocker.Commit(f.ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err = <-done; !pkgerrors.Is(err, expected) {
+				t.Fatalf("fixed exemption bypassed %s suspension: %v", kind, err)
+			}
+			f.assertBalance(t, 0)
+			f.assertEffects(t, 0, 0, 0, 0)
+		})
+	}
+}
+
+func TestK4PGAcceptedRunRefundStillSettlesAfterActorDisabled(t *testing.T) {
+	f := newK4BillingPGFixture(t, 1)
+	a, err := f.svc.Create(f.ctx, f.request(f.ordinaryID, "accepted before disabling"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, `UPDATE users SET status='disabled' WHERE id=$1`, f.ordinaryID)
+	if err = f.svc.markFailedRun(f.ctx, f.tenantID, a.ID, a.CurrentRunID, "actor_disabled_after_acceptance"); err != nil {
+		t.Fatal(err)
+	}
+	f.assertBalance(t, 1)
+	f.assertEffects(t, 1, 1, 1, 1)
+}

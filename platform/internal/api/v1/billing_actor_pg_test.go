@@ -113,6 +113,12 @@ func TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges(t *testing.
 	if rejected["code"] != "API_KEY_OWNER_UNVERIFIED" {
 		t.Fatalf("unknown key owner needs actionable code: %v", rejected)
 	}
+	for _, path := range []string{"/api/v1/analyses/missing/rerun", "/api/v1/apikeys"} {
+		rejection := adminContractResponse(t, doReq(t, e.router, http.MethodPost, path, raw, map[string]any{"name": "unknown owner write"}), http.StatusForbidden)
+		if rejection["code"] != "API_KEY_OWNER_UNVERIFIED" {
+			t.Fatalf("unknown owner operation %s returned %v", path, rejection)
+		}
+	}
 	var analyses, consumes, messages int
 	if err := e.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM analyses),
 		(SELECT count(*) FROM credit_transactions WHERE reason='consume'),(SELECT count(*) FROM queue_messages)`).Scan(&analyses, &consumes, &messages); err != nil {
@@ -271,6 +277,27 @@ func TestBillingActorPGFixedOwnerKeyChargesOnlyItsImmutableCreator(t *testing.T)
 	}
 	if balance != 0 || consumes != 0 {
 		t.Fatalf("exempt key altered balance/consume=%d/%d", balance, consumes)
+	}
+	if err := e.deps.Credits.GrantPurchase(ctx, ordinary["tenant_id"].(string), "isolated-key-credit-purchase", 1); err != nil {
+		t.Fatal(err)
+	}
+	normalCreated := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", ordinaryKey, map[string]any{"name": "ordinary key purchased report", "user_id": fixed["user_id"]}), http.StatusCreated)
+	if normalCreated["created_by"] != ordinary["user_id"] {
+		t.Fatalf("ordinary key forged free creator: %v", normalCreated)
+	}
+	var normalActor, normalKey, normalMode string
+	if err := e.pool.QueryRow(ctx, `SELECT actor_user_id,actor_api_key_id,charge_mode FROM analysis_runs WHERE id=$1`, normalCreated["current_run_id"]).Scan(&normalActor, &normalKey, &normalMode); err != nil {
+		t.Fatal(err)
+	}
+	if normalActor != ordinary["user_id"] || normalKey == "" || normalMode != "normal" {
+		t.Fatalf("ordinary key charge identity=%s/%s/%s", normalActor, normalKey, normalMode)
+	}
+	var normalBalance, normalConsumes int
+	if err := e.pool.QueryRow(ctx, `SELECT balance,(SELECT count(*) FROM credit_transactions WHERE tenant_id=$1 AND reason='consume') FROM report_credits WHERE tenant_id=$1`, ordinary["tenant_id"]).Scan(&normalBalance, &normalConsumes); err != nil {
+		t.Fatal(err)
+	}
+	if normalBalance != 0 || normalConsumes != 1 {
+		t.Fatalf("ordinary key did not pay exactly once: %d/%d", normalBalance, normalConsumes)
 	}
 	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/users", fixedKey, nil), http.StatusForbidden)
 	if _, err := e.pool.Exec(ctx, `UPDATE api_keys SET revoked_at=now() WHERE id=$1`, key); err != nil {

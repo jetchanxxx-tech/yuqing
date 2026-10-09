@@ -93,6 +93,8 @@ REQUIRED_TESTS = {
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
     "internal/platform/payment": ("TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
     "internal/business/analysis": (
+        "TestK4PGFixedExemptionCannotBypassQueuedUserOrTenantSuspension",
+        "TestK4PGAcceptedRunRefundStillSettlesAfterActorDisabled",
         "TestK4PGSlowReportCannotOverwriteOrFailNewRerun",
         "TestK4PGLegacyRunlessDeliveryNeverAttachesToNewPaidRerun",
         "TestK4PGRerunUsesCurrentActorAndPreservesOriginalCreator",
