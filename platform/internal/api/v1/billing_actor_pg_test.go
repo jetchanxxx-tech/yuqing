@@ -107,7 +107,7 @@ func TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges(t *testing.
 	}
 	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/analyses", raw, nil), http.StatusOK)
 	rejected := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", raw, map[string]any{
-		"topic": "unverified creator cannot be charged", "user_id": account["user_id"], "billing_exempt": true,
+		"name": "unverified creator cannot be charged", "user_id": account["user_id"], "billing_exempt": true,
 	}), http.StatusForbidden)
 	if rejected["code"] != "API_KEY_OWNER_UNVERIFIED" {
 		t.Fatalf("unknown key owner needs actionable code: %v", rejected)

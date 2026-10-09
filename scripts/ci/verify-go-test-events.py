@@ -15,6 +15,7 @@ import sys
 
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
+    "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/api/v1": (
         "TestBillingActorPGKeyCreatorIsServerAssignedImmutableAndPersistent",
         "TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges",

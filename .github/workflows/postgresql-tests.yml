@@ -73,6 +73,7 @@ jobs:
           set +e
           go test -json -count=1 -race -timeout 10m \
             ./migrations \
+            ./cmd/cli \
             ./internal/api/v1 \
             ./internal/platform/auth \
             ./internal/platform/accountadmin \
