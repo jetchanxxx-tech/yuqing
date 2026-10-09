@@ -416,3 +416,38 @@ test('a rejected real notification settings save reports failure and leaves Post
   }
   expect(snapshot()).toBe(before);
 });
+
+test('a real notification settings load outage shows failure and recovers through retry', async ({ page }) => {
+  await signIn(page);
+  requireRunner();
+  const snapshot = () => execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-A', '-t', '-c',
+    "SELECT COALESCE(jsonb_object_agg(key,jsonb_build_object('value',value,'updated_at',updated_at) ORDER BY key),'{}'::jsonb)::text FROM platform_settings",
+  ], { encoding: 'utf8', stdio: 'pipe', timeout: 30_000 }).trim();
+  const before = snapshot();
+  // Break only the real settings read boundary; preserve every fixture row.
+  execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-c',
+    'ALTER TABLE platform_settings RENAME TO platform_settings_k3_read_outage',
+  ], { stdio: 'pipe', timeout: 30_000 });
+  try {
+    const failed = page.waitForResponse((response) => response.url().endsWith('/admin/settings')
+      && response.request().method() === 'GET' && response.status() === 500);
+    await page.getByRole('tab', { name: '通知服务', exact: true }).click();
+    expect((await failed).status()).toBe(500);
+    await expect(page.getByRole('alert').filter({ hasText: /配置加载失败|加载失败|服务暂时不可用/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^重\s*试$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /保存邮件配置/ })).toHaveCount(0);
+    await expect(page.getByText('配置已保存，即刻生效', { exact: true })).toHaveCount(0);
+  } finally {
+    execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-c',
+      'ALTER TABLE platform_settings_k3_read_outage RENAME TO platform_settings',
+    ], { stdio: 'pipe', timeout: 30_000 });
+  }
+  expect(snapshot()).toBe(before);
+  const recovered = page.waitForResponse((response) => response.url().endsWith('/admin/settings')
+    && response.request().method() === 'GET' && response.status() === 200);
+  await page.getByRole('button', { name: /^重\s*试$/ }).click();
+  expect((await recovered).status()).toBe(200);
+  await expect(page.getByRole('button', { name: /保存邮件配置/ })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: /配置加载失败|加载失败/ })).toHaveCount(0);
+  expect(snapshot()).toBe(before);
+});
