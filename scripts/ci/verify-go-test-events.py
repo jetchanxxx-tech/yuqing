@@ -16,6 +16,10 @@ import sys
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "internal/api/v1": (
+        "TestBillingActorPGKeyCreatorIsServerAssignedImmutableAndPersistent",
+        "TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges",
+        "TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledOwner",
+
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
@@ -75,6 +79,18 @@ REQUIRED_TESTS = {
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
     "internal/platform/payment": ("TestPGStore_contract",),
     "internal/business/analysis": (
+        "TestK4PGCreateConsumesOneCreditAndPublishesOneTask",
+        "TestK4PGZeroCreditsRejectsWithoutTaskOrDebit",
+        "TestK4PGRerunConsumesAnotherCreditAndPublishesOneTask",
+        "TestK4PGRerunWithoutCreditsPreservesCompletedResult",
+        "TestK4PGCreateQueueFailureRollsBackCreditAndAnalysis",
+        "TestK4PGRerunQueueFailurePreservesCreditAndPreviousOutput",
+        "TestK4PGConcurrentCreateCannotOversellPurchasedCredits",
+        "TestK4PGLegacyBetaFlagCannotTransferFixedAdminExemption",
+        "TestK4PGFailureOfUnchargedRerunCannotRefundPriorSuccessfulConsume",
+        "TestK4PGFailureRefundsOnlyLatestPaidExecutionOnce",
+        "TestK4PGRefundFailureCannotCommitTerminalState",
+
         "TestPGCreateAndRerunPublishAtomically",
         "TestPGCreateRejectsWithoutExplicitBetaCreditBypass",
         "TestPGCanceledTaskRejectsDocumentsAndDatabaseErrorsFailPipeline",
