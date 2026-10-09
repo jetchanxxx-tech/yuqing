@@ -16,7 +16,10 @@ import sys
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
+    "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart",),
     "internal/api/v1": (
+        "TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission",
+        "TestBillingLedgerPGEnforcesBidirectionalImmutableRunConsumption",
         "TestBillingActorPGKeyCreatorIsServerAssignedImmutableAndPersistent",
         "TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges",
         "TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledOwner",
@@ -82,6 +85,9 @@ REQUIRED_TESTS = {
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
     "internal/platform/payment": ("TestPGStore_contract",),
     "internal/business/analysis": (
+        "TestK4PGRerunUsesCurrentActorAndPreservesOriginalCreator",
+        "TestK4PGConcurrentRerunCreatesOnlyOneNewCharge",
+        "TestK4PGAdmissionRechecksQueuedJWTVersion",
         "TestK4PGStaleWorkerCannotWriteIntoNewRerun",
         "TestK4PGTaskMessageContainsPersistedRunIdentity",
         "TestK4PGCreateConsumesOneCreditAndPublishesOneTask",
@@ -97,7 +103,7 @@ REQUIRED_TESTS = {
         "TestK4PGRefundFailureCannotCommitTerminalState",
 
         "TestPGCreateAndRerunPublishAtomically",
-        "TestPGCreateRejectsWithoutExplicitBetaCreditBypass",
+        "TestPGCreateWithoutCreditsRejectsAtomically",
         "TestPGCanceledTaskRejectsDocumentsAndDatabaseErrorsFailPipeline",
         "TestPGStore_filterSnapshotAndLegacyDefaults",
         "TestPGStore_idIsGlobalPrimaryKey",

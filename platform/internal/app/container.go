@@ -382,7 +382,15 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 				_ = conn.Conn().Close(unlockCtx)
 			}
 		}()
-		if err := services.Analysis.RecoverInterrupted(ctx, task.TenantID, task.AnalysisID); err != nil {
+		resolved, current, err := services.Analysis.ResolveTask(ctx, task)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+		task = resolved
+		if err := services.Analysis.RecoverInterrupted(ctx, task.TenantID, task.AnalysisID, task.RunID); err != nil {
 			return err
 		}
 		return pipeline.Handle(ctx, task)

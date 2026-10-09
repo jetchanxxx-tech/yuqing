@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"log/slog"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 // 必须携带 tenantID：store 按租户分桶，仅凭 analysisID 无法定位任务。
 // （早期版本只投递裸 ID，管线拿到后无从查起。）
 type TaskMessage struct {
+	RunID      string `json:"run_id,omitempty"`
 	AnalysisID string `json:"analysis_id"`
 	TenantID   string `json:"tenant_id"`
 }
@@ -171,6 +173,15 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return fmt.Errorf("analysis: task message missing analysis_id or tenant_id")
 	}
 
+	resolved, current, err := p.svc.ResolveTask(ctx, msg)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return nil
+	}
+	msg = resolved
+	ctx = billingpolicy.WithRun(ctx, msg.RunID)
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
@@ -452,7 +463,7 @@ func (p *Pipeline) ensureReportRecord(ctx context.Context, msg TaskMessage, a *A
 		return nil
 	}
 	if durable, ok := p.reportSvc.(durableReportService); ok {
-		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, a.StartedAt.UTC().Format(time.RFC3339Nano))
+		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, reportRunKey(a))
 		return err
 	}
 	if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy); err != nil {
@@ -506,7 +517,7 @@ func (p *Pipeline) fail(taskCtx context.Context, msg TaskMessage, code string, c
 		slog.String("err", cause.Error()))
 
 	// 用独立上下文：原 ctx 可能已超时，无法再写库
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(billingpolicy.WithRun(context.Background(), msg.RunID), 5*time.Second)
 	defer cancel()
 	if err := p.svc.markFailed(ctx, msg.TenantID, msg.AnalysisID, code); err != nil {
 		p.log.Error("pipeline: mark failed error",
@@ -523,4 +534,11 @@ func (p *Pipeline) setDocCount(ctx context.Context, msg TaskMessage, n int) {
 		a.DocCount = n
 		return nil
 	})
+}
+
+func reportRunKey(a *AnalysisResult) string {
+	if a.CurrentRunID != "" {
+		return a.CurrentRunID
+	}
+	return a.StartedAt.UTC().Format(time.RFC3339Nano)
 }

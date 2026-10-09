@@ -99,6 +99,8 @@ func (s *Services) handleCreateAnalysis(c *gin.Context) {
 	}
 	req.TenantID = p.TenantID
 	req.UserID = actor.UserID
+	req.APIKeyID = actor.APIKeyID
+	req.ActorTokenVersion = actor.TokenVersion
 	if strings.TrimSpace(req.Name) == "" {
 		badRequest(c, "name is required")
 		return
@@ -258,7 +260,12 @@ func (s *Services) handleRerunAnalysis(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	if err := s.Analysis.Rerun(ctx, p.TenantID, c.Param("id")); err != nil {
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if err := s.Analysis.Rerun(ctx, p.TenantID, c.Param("id"), actor); err != nil {
 		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 			notFound(c, "analysis not found")
 			return

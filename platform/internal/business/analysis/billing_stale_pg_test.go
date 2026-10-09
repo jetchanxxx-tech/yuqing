@@ -3,6 +3,8 @@ package analysis
 import (
 	"context"
 	"encoding/json"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"testing"
 	"time"
 )
@@ -51,7 +53,7 @@ func TestK4PGStaleWorkerCannotWriteIntoNewRerun(t *testing.T) {
 		close(fetcher.release)
 		t.Fatal(err)
 	}
-	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID); err != nil {
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
 		close(fetcher.release)
 		t.Fatal(err)
 	}
@@ -103,4 +105,111 @@ func TestK4PGTaskMessageContainsPersistedRunIdentity(t *testing.T) {
 	if persisted != runID {
 		t.Fatalf("message run %s differs from analysis run %s", runID, persisted)
 	}
+}
+
+func TestK4PGRerunUsesCurrentActorAndPreservesOriginalCreator(t *testing.T) {
+	f := newK4BillingPGFixture(t, 2)
+	paid, oldConsume := f.seedPaidAnalysis(t, StateCompleted)
+	if err := f.svc.Rerun(f.ctx, f.tenantID, paid.ID, billingpolicy.Actor{UserID: f.fixedAdminID}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := f.svc.Get(f.ctx, f.tenantID, paid.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.CreatedBy != f.ordinaryID || current.CurrentRunID == paid.CurrentRunID {
+		t.Fatalf("actor changed creator or reused run: %+v", current)
+	}
+	if err = f.svc.Cancel(f.ctx, f.tenantID, paid.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.assertBalance(t, 1)
+	var refunds int
+	if err = f.pool.QueryRow(f.ctx, `SELECT count(*) FROM credit_transactions WHERE consume_tx_id=$1`, oldConsume).Scan(&refunds); err != nil || refunds != 0 {
+		t.Fatalf("old success refunded %d: %v", refunds, err)
+	}
+	free, err := f.svc.Create(f.ctx, f.request(f.fixedAdminID, "fixed created asset"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.svc.store.mutate(f.ctx, f.tenantID, free.ID, func(a *AnalysisResult) error { a.State = StateCompleted; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.svc.Rerun(f.ctx, f.tenantID, free.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
+		t.Fatal(err)
+	}
+	charged, err := f.svc.Get(f.ctx, f.tenantID, free.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if charged.CreatedBy != f.fixedAdminID {
+		t.Fatal("rerun rewrote asset creator")
+	}
+	f.assertBalance(t, 0)
+	var actor, mode string
+	if err = f.pool.QueryRow(f.ctx, `SELECT actor_user_id,charge_mode FROM analysis_runs WHERE id=$1`, charged.CurrentRunID).Scan(&actor, &mode); err != nil {
+		t.Fatal(err)
+	}
+	if actor != f.ordinaryID || mode != "normal" {
+		t.Fatalf("new run actor/mode=%s/%s", actor, mode)
+	}
+}
+
+func TestK4PGConcurrentRerunCreatesOnlyOneNewCharge(t *testing.T) {
+	f := newK4BillingPGFixture(t, 2)
+	a, _ := f.seedPaidAnalysis(t, StateCompleted)
+	errors := make(chan error, 20)
+	start := make(chan struct{})
+	for i := 0; i < 20; i++ {
+		go func() {
+			<-start
+			errors <- f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID})
+		}()
+	}
+	close(start)
+	succeeded, conflicts := 0, 0
+	for i := 0; i < 20; i++ {
+		err := <-errors
+		if err == nil {
+			succeeded++
+		} else if pkgerrors.Is(err, pkgerrors.ErrConflict) {
+			conflicts++
+		} else {
+			t.Errorf("unexpected concurrent rerun: %v", err)
+		}
+	}
+	if succeeded != 1 || conflicts != 19 {
+		t.Fatalf("success/conflicts=%d/%d", succeeded, conflicts)
+	}
+	f.assertBalance(t, 0)
+	f.assertEffects(t, 1, 1, 2, 0)
+}
+
+func TestK4PGAdmissionRechecksQueuedJWTVersion(t *testing.T) {
+	f := newK4BillingPGFixture(t, 1)
+	blocker, err := f.pool.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(context.Background())
+	if _, err = blocker.Exec(f.ctx, `SELECT pg_advisory_xact_lock(741914)`); err != nil {
+		t.Fatal(err)
+	}
+	version := int64(0)
+	req := f.request(f.ordinaryID, "revoked queued credential")
+	req.ActorTokenVersion = &version
+	result := make(chan error, 1)
+	go func() { _, err := f.svc.Create(f.ctx, req); result <- err }()
+	// The actor version changes while admission is held behind administration.
+	if _, err = blocker.Exec(f.ctx, `UPDATE users SET token_version=1 WHERE id=$1`, f.ordinaryID); err != nil {
+		t.Fatal(err)
+	}
+	if err = blocker.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-result; !pkgerrors.Is(err, pkgerrors.ErrForbidden) {
+		t.Fatalf("stale credential admitted: %v", err)
+	}
+	f.assertBalance(t, 1)
+	f.assertEffects(t, 0, 0, 0, 0)
 }

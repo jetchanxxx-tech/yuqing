@@ -15,6 +15,7 @@ import (
 	"github.com/yuqing/platform/internal/pkg/id"
 	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"github.com/yuqing/platform/internal/platform/credit"
 )
 
@@ -65,7 +66,7 @@ func newK4BillingPGFixture(t *testing.T, balance int) *k4BillingPGFixture {
 		       ($2, 'other-admin@example.com', 'test-only', 'Other administrator', 'active')`,
 		f.fixedAdminID, f.otherAdminID)
 	f.exec(t, `INSERT INTO tenant_members (tenant_id, user_id, role)
-		VALUES ($1, $2, 'analyst'), ($1, $3, 'tenant_admin'), ($1, $4, 'analyst')`,
+		VALUES ($1, $2, 'tenant_admin'), ($1, $3, 'tenant_admin'), ($1, $4, 'analyst')`,
 		f.tenantID, f.ordinaryID, f.fixedAdminID, f.otherAdminID)
 	f.exec(t, `INSERT INTO platform_user_roles (user_id, role, granted_by)
 		VALUES ($1, 'platform_admin', $1), ($2, 'platform_admin', $1)`,
@@ -79,6 +80,9 @@ func newK4BillingPGFixture(t *testing.T, balance int) *k4BillingPGFixture {
 		}
 	}
 	f.svc.SetCreditReserver(f.credits)
+	if _, err := billingpolicy.NewService(pool).Bind(ctx, f.fixedAdminID, true); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 
@@ -131,38 +135,35 @@ func (f *k4BillingPGFixture) assertEffects(t *testing.T, analyses, messages, con
 	}
 }
 
-// seedPaidAnalysis creates a historical, already-paid analysis without relying
-// on the Create guard under test. Fixtures are real analysis and credit rows.
-// Once run snapshots exist, this helper must also create the matching old run;
-// it must not invent exemption bindings or silently fall back to beta bypass.
+// Seed a completed/queued paid run through the real atomic admission path.
+// Remove its historical queue delivery only; financial assertions remain real.
 func (f *k4BillingPGFixture) seedPaidAnalysis(t *testing.T, state State) (*AnalysisResult, string) {
 	t.Helper()
-	a := &AnalysisResult{
-		ID: id.New(), CreatedBy: f.ordinaryID, Name: "previous paid analysis",
-		AnalysisType: "brand", State: state, CreatedAt: time.Now().UTC().Add(-time.Hour),
-		Keywords: []string{"billing fixture"}, Sources: []string{"weibo"},
-		Summary: "preserve the completed result", ReportContent: "<p>previous report</p>",
-	}
-	if state == StateCompleted {
-		a.FinishedAt = time.Now().UTC().Add(-time.Minute)
-	}
-	if err := f.svc.store.put(f.ctx, f.tenantID, a); err != nil {
-		t.Fatalf("seed historical analysis: %v", err)
-	}
-	if err := f.credits.TryConsume(f.ctx, f.tenantID, a.ID); err != nil {
-		t.Fatalf("seed the historical paid consumption: %v", err)
-	}
-	txs, err := f.credits.Transactions(f.ctx, f.tenantID, 20)
+	a, err := f.svc.Create(f.ctx, f.request(f.ordinaryID, "previous paid analysis"))
 	if err != nil {
-		t.Fatalf("read historical credit ledger: %v", err)
+		t.Fatal(err)
 	}
-	for _, tx := range txs {
-		if tx.Reason == credit.ReasonUse && tx.AnalysisID == a.ID {
-			return a, tx.ID
+	if err := f.svc.store.mutate(f.ctx, f.tenantID, a.ID, func(a *AnalysisResult) error {
+		a.State = state
+		a.Summary = "preserve the completed result"
+		a.ReportContent = "<p>previous report</p>"
+		if state == StateCompleted {
+			a.FinishedAt = time.Now().UTC()
 		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("historical consume was not persisted")
-	return nil, ""
+	f.exec(t, `DELETE FROM queue_messages WHERE convert_from(body,'UTF8')::jsonb->>'analysis_id'=$1`, a.ID)
+	a, err = f.svc.Get(f.ctx, f.tenantID, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var consume string
+	if err = f.pool.QueryRow(f.ctx, `SELECT consume_tx_id FROM analysis_runs WHERE id=$1`, a.CurrentRunID).Scan(&consume); err != nil {
+		t.Fatal(err)
+	}
+	return a, consume
 }
 
 func (f *k4BillingPGFixture) rejectQueueWrites(t *testing.T) {
@@ -219,7 +220,7 @@ func TestK4PGZeroCreditsRejectsWithoutTaskOrDebit(t *testing.T) {
 func TestK4PGRerunConsumesAnotherCreditAndPublishesOneTask(t *testing.T) {
 	f := newK4BillingPGFixture(t, 2)
 	a, _ := f.seedPaidAnalysis(t, StateCompleted)
-	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID); err != nil {
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
 		t.Fatalf("ordinary paid PG Rerun must succeed without beta bypass: %v", err)
 	}
 	f.assertBalance(t, 0)
@@ -231,7 +232,7 @@ func TestK4PGRerunConsumesAnotherCreditAndPublishesOneTask(t *testing.T) {
 	if got.State != StateQueued || got.CreatedBy != f.ordinaryID || got.Summary != "" || got.ReportContent != "" {
 		t.Errorf("rerun must preserve original creator and clear previous output: %+v", got)
 	}
-	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID); !pkgerrors.Is(err, pkgerrors.ErrConflict) {
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); !pkgerrors.Is(err, pkgerrors.ErrConflict) {
 		t.Errorf("rerunning an active task error = %v, want CONFLICT before attempting another debit", err)
 	}
 	f.assertBalance(t, 0)
@@ -241,7 +242,7 @@ func TestK4PGRerunConsumesAnotherCreditAndPublishesOneTask(t *testing.T) {
 func TestK4PGRerunWithoutCreditsPreservesCompletedResult(t *testing.T) {
 	f := newK4BillingPGFixture(t, 1)
 	a, _ := f.seedPaidAnalysis(t, StateCompleted)
-	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID); !pkgerrors.Is(err, pkgerrors.ErrNoCredits) {
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); !pkgerrors.Is(err, pkgerrors.ErrNoCredits) {
 		t.Errorf("zero balance Rerun error = %v, want NO_CREDITS", err)
 	}
 	got, err := f.svc.Get(f.ctx, f.tenantID, a.ID)
@@ -271,7 +272,7 @@ func TestK4PGRerunQueueFailurePreservesCreditAndPreviousOutput(t *testing.T) {
 	f := newK4BillingPGFixture(t, 2)
 	a, _ := f.seedPaidAnalysis(t, StateCompleted)
 	f.rejectQueueWrites(t)
-	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID); err == nil || !strings.Contains(err.Error(), "k4_queue_write_rejected") {
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err == nil || !strings.Contains(err.Error(), "k4_queue_write_rejected") {
 		t.Errorf("Rerun must reach the injected queue failure, got %v", err)
 	}
 	got, err := f.svc.Get(f.ctx, f.tenantID, a.ID)
@@ -373,17 +374,11 @@ func TestK4PGLegacyBetaFlagCannotTransferFixedAdminExemption(t *testing.T) {
 func TestK4PGFailureOfUnchargedRerunCannotRefundPriorSuccessfulConsume(t *testing.T) {
 	f := newK4BillingPGFixture(t, 1)
 	a, oldConsumeID := f.seedPaidAnalysis(t, StateCompleted)
-	// Current APIs have no run/actor snapshot. Requeue the historical result
-	// directly as fixture data to model an accepted, uncharged next execution;
-	// do not add a second consume or call the missing new actor API.
-	if err := f.svc.store.mutate(f.ctx, f.tenantID, a.ID, func(a *AnalysisResult) error {
-		a.State = StateQueued
-		a.ErrorCode = ""
-		a.FinishedAt = time.Time{}
-		return nil
-	}); err != nil {
-		t.Fatalf("seed the uncharged current execution: %v", err)
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.fixedAdminID}); err != nil {
+		t.Fatal(err)
 	}
+	f.exec(t, `DELETE FROM queue_messages WHERE convert_from(body,'UTF8')::jsonb->>'analysis_id'=$1`, a.ID)
+
 	if err := f.svc.markFailed(f.ctx, f.tenantID, a.ID, "current_unpaid_run_failed"); err != nil {
 		t.Fatalf("mark the uncharged current execution failed: %v", err)
 	}
@@ -402,16 +397,11 @@ func TestK4PGFailureOfUnchargedRerunCannotRefundPriorSuccessfulConsume(t *testin
 func TestK4PGFailureRefundsOnlyLatestPaidExecutionOnce(t *testing.T) {
 	f := newK4BillingPGFixture(t, 2)
 	a, oldConsumeID := f.seedPaidAnalysis(t, StateCompleted)
-	if err := f.credits.TryConsume(f.ctx, f.tenantID, a.ID); err != nil {
-		t.Fatalf("seed the second paid execution: %v", err)
+	if err := f.svc.Rerun(f.ctx, f.tenantID, a.ID, billingpolicy.Actor{UserID: f.ordinaryID}); err != nil {
+		t.Fatal(err)
 	}
-	if err := f.svc.store.mutate(f.ctx, f.tenantID, a.ID, func(a *AnalysisResult) error {
-		a.State = StateQueued
-		a.FinishedAt = time.Time{}
-		return nil
-	}); err != nil {
-		t.Fatalf("seed the current paid execution: %v", err)
-	}
+	f.exec(t, `DELETE FROM queue_messages WHERE convert_from(body,'UTF8')::jsonb->>'analysis_id'=$1`, a.ID)
+
 	if err := f.svc.markFailed(f.ctx, f.tenantID, a.ID, "current_paid_run_failed"); err != nil {
 		t.Fatalf("fail the current paid execution: %v", err)
 	}

@@ -75,6 +75,7 @@ jobs:
             ./migrations \
             ./cmd/cli \
             ./internal/api/v1 \
+            ./internal/app \
             ./internal/platform/auth \
             ./internal/platform/apikey \
             ./internal/platform/billingpolicy \

@@ -361,14 +361,13 @@ func TestPGDocumentStore_emptyIDGetsGenerated(t *testing.T) {
 func TestServiceWithPGStore_survivesServiceRebuild(t *testing.T) {
 	pool := pgTestPool(t)
 	tenant := newTestTenant()
-	defer cleanupAnalyses(t, pool, tenant)
 	defer cleanupDocuments(t, pool, tenant)
 	ctx := context.Background()
 
 	q := queue.NewPGQueue(pool, queue.PGQueueOptions{})
 	defer func() { _ = q.Close() }()
 	svc := NewPGService(pool, q, 4)
-	svc.SetBetaSkipCredits(true)
+	seedPGAdmission(t, pool, tenant, 1)
 
 	created, err := svc.Create(ctx, CreateAnalysisRequest{
 		TenantID: tenant, UserID: "user-1", Name: "雅阁后排舆情",

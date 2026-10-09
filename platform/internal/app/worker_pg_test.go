@@ -88,6 +88,20 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id,email,password_hash) VALUES ('worker-user','worker@example.com','test')`); err != nil {
 		t.Fatal(err)
 	}
+	for _, statement := range []string{
+		`INSERT INTO tenants(id,name,slug,db_name,status) VALUES('worker-tenant','worker','worker','worker','active')`,
+		`INSERT INTO tenant_members(tenant_id,user_id,role) VALUES('worker-tenant','worker-user','tenant_admin')`,
+	} {
+		if _, err := pool.Exec(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := services.Credits.SetPlanCode(ctx, "worker-tenant", "lite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := services.Credits.GrantPurchase(ctx, "worker-tenant", "isolated-worker-credits", 2); err != nil {
+		t.Fatal(err)
+	}
 	create := func() string {
 		result, err := services.Analysis.Create(ctx, analysis.CreateAnalysisRequest{TenantID: "worker-tenant", UserID: "worker-user", Name: "worker run", Keywords: []string{"hello"}, DateFrom: "2026-09-01", ExcludeWords: []string{"blocked"}})
 		if err != nil {
