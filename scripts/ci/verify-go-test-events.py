@@ -45,6 +45,7 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_survivesNewInstance",
     ),
     "internal/platform/accountadmin": (
+        "TestAccountAdminPGQueuedActorRevocationCannotCommit",
         "TestAccountAdminPGUserStatusCASRevocationAndAuditPersists",
         "TestAccountAdminPGPlatformRoleRevocationKeepsMembershipAndCannotBootstrapAgain",
         "TestAccountAdminPGConcurrentLastPlatformAdminProtection",

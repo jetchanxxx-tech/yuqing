@@ -312,6 +312,156 @@ func (e *pgAdminEnv) waitPlatformLockContenders(t *testing.T, want int) {
 	t.Fatalf("two authorized mutations did not reach the shared platform-admin transaction lock")
 }
 
+func (e *pgAdminEnv) holdTenantLock(t *testing.T, tenantID string) func() {
+	t.Helper()
+	conn, err := e.pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock(hashtextextended($1,741915))`, tenantID); err != nil {
+		conn.Release()
+		t.Fatal(err)
+	}
+	released := false
+	release := func() {
+		if released {
+			return
+		}
+		released = true
+		if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1,741915))`, tenantID); err != nil {
+			t.Error(err)
+		}
+		conn.Release()
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// A tenant mutation currently waits on its tenant lock; a corrected mutation
+// may wait on the shared platform lock first. Counting actual blocked database
+// transactions covers both without letting A execute before B has revoked it.
+func (e *pgAdminEnv) waitAdminLockContenders(t *testing.T, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting int
+		if err := e.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid
+			WHERE l.locktype='advisory' AND NOT l.granted AND a.application_name=$1`, e.appName).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("queued administrative requests did not reach %d database lock contenders", want)
+}
+
+func queuedAdminResponse(t *testing.T, responses <-chan *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+	t.Helper()
+	select {
+	case response := <-responses:
+		return response
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued administrative request did not finish")
+	}
+	return nil
+}
+
+// The target is an unrelated ordinary account, so last-admin protection alone
+// cannot reject A's queued action. Authentication must be revalidated through
+// the commit boundary after B revokes A or A changes its own credentials.
+func TestAccountAdminPGQueuedActorRevocationCannotCommit(t *testing.T) {
+	for _, revocation := range []string{"revoke", "disable", "password"} {
+		for _, operation := range []string{"grant", "member", "tenant"} {
+			t.Run(revocation+"/"+operation, func(t *testing.T) {
+				e := newPGAdminEnv(t)
+				actor := e.register(t, "queued-actor@example.com", true)
+				revoker := e.register(t, "queued-revoker@example.com", false)
+				target := e.register(t, "queued-target@example.com", false)
+				e.exec(t, `INSERT INTO platform_user_roles(user_id,role,granted_by) VALUES($1,'platform_admin',$2)`, revoker.ID, actor.ID)
+				e.exec(t, `INSERT INTO tenant_members(tenant_id,user_id,role) VALUES($1,$2,'analyst')`, revoker.TenantID, target.ID)
+				unlockPlatform := e.holdPlatformLock(t)
+				unlockTenant := func() {}
+				if operation == "member" {
+					unlockTenant = e.holdTenantLock(t, revoker.TenantID)
+				}
+				if operation == "tenant" {
+					unlockTenant = e.holdTenantLock(t, target.TenantID)
+				}
+				waiting := 0
+				revokerResponses := make(chan *httptest.ResponseRecorder, 1)
+				if revocation != "password" {
+					method, suffix := http.MethodPut, "/platform-role"
+					body := map[string]any{"platform_admin": false, "reason": "撤销排队操作者平台权限", "expected_version": 0}
+					if revocation == "disable" {
+						method, suffix = http.MethodPost, "/disable"
+						delete(body, "platform_admin")
+					}
+					go func() {
+						revokerResponses <- pgAdminRequest(e.router, method, "/api/v1/admin/users/"+actor.ID+suffix, revoker.Access, "queued-actor-revocation", body)
+					}()
+					e.waitPlatformLockContenders(t, 1)
+					waiting = 1
+				}
+				method, path := http.MethodPut, "/api/v1/admin/users/"+target.ID+"/platform-role"
+				body := map[string]any{"platform_admin": true, "reason": "已撤销操作者不得完成排队变更", "expected_version": 0}
+				if operation == "member" {
+					path = "/api/v1/admin/tenants/" + revoker.TenantID + "/members/" + target.ID + "/role"
+					delete(body, "platform_admin")
+					body["role"] = "viewer"
+				}
+				if operation == "tenant" {
+					method, path = http.MethodPost, "/api/v1/admin/tenants/"+target.TenantID+"/suspend"
+					delete(body, "platform_admin")
+				}
+				actorResponses := make(chan *httptest.ResponseRecorder, 1)
+				go func() {
+					actorResponses <- pgAdminRequest(e.router, method, path, actor.Access, "queued-stale-actor-action", body)
+				}()
+				e.waitAdminLockContenders(t, waiting+1)
+				if revocation == "password" {
+					pgAdminBody(t, pgAdminRequest(e.router, http.MethodPut, "/api/v1/auth/password", actor.Access, "queued-password-revocation", map[string]any{
+						"old_password": "password-123456", "new_password": "replacement-password-9876",
+					}), http.StatusOK)
+				}
+				unlockPlatform()
+				if revocation != "password" {
+					pgAdminBody(t, queuedAdminResponse(t, revokerResponses), http.StatusOK)
+				}
+				// Only now can A reach its tenant lock, after the revocation commit.
+				unlockTenant()
+				response := queuedAdminResponse(t, actorResponses)
+				// An already authenticated queued mutation conflicts with its old
+				// actor snapshot; the next new credential request is a 401.
+				if response.Code != http.StatusConflict {
+					t.Errorf("revoked queued actor status = %d, want 409; body: %s", response.Code, response.Body.String())
+				} else {
+					pgAdminBody(t, response, http.StatusConflict)
+				}
+				e.revoked(t, actor)
+				var targetStatus, tenantStatus, memberRole string
+				var targetVersion, tokenVersion, tenantVersion, memberVersion int64
+				var targetRoles, audits, staleAudits int
+				if err := e.pool.QueryRow(context.Background(), `SELECT u.status,u.row_version,u.token_version,t.status,t.row_version,m.role,m.row_version,
+					(SELECT COUNT(*) FROM platform_user_roles WHERE user_id=u.id),
+					(SELECT COUNT(*) FROM audit_logs),(SELECT COUNT(*) FROM audit_logs WHERE details_json->>'request_id'='queued-stale-actor-action')
+					FROM users u JOIN tenants t ON t.id=$2 JOIN tenant_members m ON m.tenant_id=$3 AND m.user_id=u.id WHERE u.id=$1`, target.ID, target.TenantID, revoker.TenantID).
+					Scan(&targetStatus, &targetVersion, &tokenVersion, &tenantStatus, &tenantVersion, &memberRole, &memberVersion, &targetRoles, &audits, &staleAudits); err != nil {
+					t.Fatal(err)
+				}
+				wantAudits := 1
+				if revocation == "password" {
+					wantAudits = 0
+				}
+				if targetStatus != "active" || targetVersion != 0 || tokenVersion != 0 || tenantStatus != "active" || tenantVersion != 0 || memberRole != "analyst" || memberVersion != 0 || targetRoles != 0 || audits != wantAudits || staleAudits != 0 {
+					t.Errorf("revoked actor committed target/audit state: user=%s/%d/%d tenant=%s/%d member=%s/%d roles=%d audits=%d staleAudits=%d", targetStatus, targetVersion, tokenVersion, tenantStatus, tenantVersion, memberRole, memberVersion, targetRoles, audits, staleAudits)
+				}
+			})
+		}
+	}
+}
+
 func TestAccountAdminPGConcurrentLastPlatformAdminProtection(t *testing.T) {
 	for _, operation := range []string{"revoke", "disable", "mixed"} {
 		t.Run(operation, func(t *testing.T) {
