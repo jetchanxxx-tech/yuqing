@@ -50,6 +50,7 @@ REQUIRED_TESTS = {
         "TestVerificationPGSupplierFailureInvalidatesCredentialKeepsGate",
         "TestVerificationPGPublicRequestsHaveMatchingDurableAdmission",
         "TestVerificationPGPhoneLoginCannotUpgradeConsumedVersion",
+        "TestVerificationPGPublicCodeFailuresStayUniform",
         "TestVerificationPGAtomicContract",
         "TestVerificationPGQueuedRevocationRejectsOriginalActor",
         "TestVerificationPGFailureRollsBackCredentialAndVersions",

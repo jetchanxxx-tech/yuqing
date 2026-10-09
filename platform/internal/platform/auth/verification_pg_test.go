@@ -432,3 +432,30 @@ func TestVerificationPGPhoneLoginCannotUpgradeConsumedVersion(t *testing.T) {
 		t.Fatalf("consumed version must stay authoritative: %v", err)
 	}
 }
+
+func TestVerificationPGPublicCodeFailuresStayUniform(t *testing.T) {
+	pool := pgtest.Pool(t, "verification_public_failures")
+	ctx := context.Background()
+	u := NewPGStore(pool)
+	seedUCUserOnUserStore(t, u, "login-user", "uniform@example.com")
+	if err := u.SetPhone(ctx, "login-user", "13800138000"); err != nil {
+		t.Fatal(err)
+	}
+	v := NewPGVerificationStore(pool)
+	c := verificationFixture("login-user", PhoneLogin, "13800138000", "123456", time.Minute)
+	if err := v.Issue(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.RecordDelivery(ctx, c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(u, testSecret, "15m", "720h")
+	s.EnableUserCenter(u, v, nil, nil, "https://example.com")
+	for i := 0; i < 6; i++ {
+		for _, target := range []string{"13800138000", "13900139000"} {
+			if _, _, err := s.LoginWithPhoneCode(ctx, target, "wrong"); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+				t.Fatalf("public failure differed at attempt %d: %v", i+1, err)
+			}
+		}
+	}
+}
