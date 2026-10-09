@@ -25,3 +25,9 @@ func resolveBillingActor(c *gin.Context) (billingpolicy.Actor, error) {
 	version := p.TokenVersion
 	return billingpolicy.Actor{UserID: p.UserID, TokenVersion: &version}, nil
 }
+
+// Unknown historical owners retain reads, but never work hidden behind GET.
+func unverifiedAPIKeyOwner(c *gin.Context) bool {
+	key := middleware.GetAPIKey(c)
+	return key != nil && key.CreatorUserID == ""
+}

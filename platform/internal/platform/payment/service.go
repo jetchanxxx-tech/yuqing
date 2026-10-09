@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/yuqing/platform/internal/platform/billing"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // 订单有效期：二维码超时关闭。渠道侧通常 2h-24h，我们收窄到 15 分钟
@@ -129,13 +129,23 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 
 // Get 查询订单（租户隔离）。paid 但未发放的订单顺带自愈 —— 发放是幂等的，
 // 崩溃窗口（已 paid 未 granted）由每次查询补齐。
-func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+// ReadOnlyGet returns stored tenant-scoped order facts without provider queries
+// or repairing an ungranted payment. It is safe for an unverified historical Key.
+func (s *Service) ReadOnlyGet(ctx context.Context, tenantID, orderID string) (*Order, error) {
 	o, err := s.store.Get(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
 	if o.TenantID != tenantID {
 		return nil, ErrNotFound // 跨租户探测按不存在处理
+	}
+	return o, nil
+}
+
+func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+	o, err := s.ReadOnlyGet(ctx, tenantID, orderID)
+	if err != nil {
+		return nil, err
 	}
 	if s.ensureGranted(ctx, o) {
 		o.Granted = true

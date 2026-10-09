@@ -85,16 +85,23 @@ func TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders(t *testing.T)
 }
 
 func TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants(t *testing.T) {
-	for _, state := range []string{"pending", "paid_ungranted"} {
+	for _, state := range []string{"pending", "paid_ungranted", "pending_paypage"} {
 		t.Run(state, func(t *testing.T) {
 			e, token, raw, account := legacyOwnerFixture(t)
 			ctx := context.Background()
-			fake := payment.NewFakeProvider(payment.ChannelAlipay)
+			channel := payment.ChannelAlipay
+			if state == "pending_paypage" {
+				channel = payment.ChannelUnionPay
+			}
+			fake := payment.NewFakeProvider(channel)
 			fake.CreateResp = &payment.CreatePaymentResp{QRCodeURL: "sandbox://pending"}
+			if state == "pending_paypage" {
+				fake.CreateResp.QRCodeURL = "<form>existing sandbox cashier</form>"
+			}
 			provider := &legacyOwnerPaymentProbe{FakeProvider: fake}
 			store := payment.NewPGStore(e.pool)
-			e.deps.Payment = payment.NewService(store, e.deps.Credits, map[string]payment.Provider{payment.ChannelAlipay: provider}, nil)
-			order, err := e.deps.Payment.Create(ctx, account["tenant_id"].(string), "lite", payment.ChannelAlipay)
+			e.deps.Payment = payment.NewService(store, e.deps.Credits, map[string]payment.Provider{channel: provider}, nil)
+			order, err := e.deps.Payment.Create(ctx, account["tenant_id"].(string), "lite", channel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -120,11 +127,21 @@ func TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants(t *testing.T)
 				t.Fatalf("read-only key performed settlement: response=%v order=%+v balance=%d queries=%d", returned, stored, balance, provider.queries)
 			}
 			_, _, other := mustRegister(t, e.router, "foreign-order@example.invalid", "Other order tenant")
-			foreign, err := e.deps.Payment.Create(ctx, other["tenant_id"].(string), "lite", payment.ChannelAlipay)
+			foreign, err := e.deps.Payment.Create(ctx, other["tenant_id"].(string), "lite", channel)
 			if err != nil {
 				t.Fatal(err)
 			}
 			adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/billing/orders/"+foreign.ID, raw, nil), http.StatusNotFound)
+			if state == "pending_paypage" {
+				page := doReq(t, e.router, http.MethodGet, "/api/v1/billing/orders/"+order.ID+"/paypage?token="+token, raw, nil)
+				if page.Code != http.StatusOK || page.Body.String() != "<form>existing sandbox cashier</form>" {
+					t.Fatalf("stored cashier read=%d/%s", page.Code, page.Body.String())
+				}
+				unchanged, _ := store.Get(ctx, order.ID)
+				if provider.queries != 0 || unchanged.Granted || unchanged.State != payment.StatePending {
+					t.Fatal("cashier read invoked payment work")
+				}
+			}
 			known := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": "known order reader"}), http.StatusCreated)
 			adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/billing/orders/"+order.ID, known["api_key"].(string), nil), http.StatusOK)
 			balance, _ = e.deps.Credits.Balance(ctx, account["tenant_id"].(string))

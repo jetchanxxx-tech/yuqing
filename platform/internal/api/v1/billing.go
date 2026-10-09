@@ -252,7 +252,7 @@ func (s *Services) handleGetOrder(c *gin.Context) {
 		unauthorized(c)
 		return
 	}
-	order, err := s.Payment.Reconcile(c.Request.Context(), tenantID, c.Param("id"))
+	order, err := s.readOrderForRequest(c, tenantID, c.Param("id"))
 	if err != nil {
 		if pkgerrors.Is(err, payment.ErrNotFound) {
 			notFound(c, "order not found")
@@ -277,7 +277,7 @@ func (s *Services) handleOrderPayPage(c *gin.Context) {
 		c.String(http.StatusUnauthorized, "invalid token")
 		return
 	}
-	order, err := s.Payment.Reconcile(c.Request.Context(), principal.TenantID, c.Param("id"))
+	order, err := s.readOrderForRequest(c, principal.TenantID, c.Param("id"))
 	if err != nil {
 		if pkgerrors.Is(err, payment.ErrNotFound) {
 			c.String(http.StatusNotFound, "order not found")
@@ -295,4 +295,11 @@ func (s *Services) handleOrderPayPage(c *gin.Context) {
 		return
 	}
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(order.QRCodeURL))
+}
+
+func (s *Services) readOrderForRequest(c *gin.Context, tenantID, orderID string) (*payment.Order, error) {
+	if unverifiedAPIKeyOwner(c) {
+		return s.Payment.ReadOnlyGet(c.Request.Context(), tenantID, orderID)
+	}
+	return s.Payment.Reconcile(c.Request.Context(), tenantID, orderID)
 }
