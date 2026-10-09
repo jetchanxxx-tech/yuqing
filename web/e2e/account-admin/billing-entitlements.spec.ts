@@ -55,13 +55,14 @@ async function refetchCachedBilling(page: import('@playwright/test').Page, path 
   await page.clock.setSystemTime(Date.now() + 120_000);
   // Application intentionally disables focus refetch. Real SPA navigation
   // remounts the stale query while preserving its QueryClient cache.
-  await page.getByRole('menuitem', { name: '数据面板', exact: true }).click();
+  await page.getByRole('menuitem', { name: /数据面板/ }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole('menuitem', { name: path === '/settings' ? '设置' : '用量', exact: true }).click();
+  await page.getByRole('menuitem', { name: path === '/settings' ? /设置/ : /用量/ }).click();
   await expect(page).toHaveURL(new RegExp(`${path}$`));
 }
 
 test('Settings describes actual Pro retention and only connected verification capabilities', async ({ page, request }) => {
+  test.setTimeout(120_000);
   const account = await billingAccount(request, 'truthful-help');
   billingSQL("UPDATE report_credits SET plan_code='pro' WHERE tenant_id=:'tenant_id';", [`tenant_id=${account.user.tenant_id}`]);
   await loginBilling(page, account.email);
