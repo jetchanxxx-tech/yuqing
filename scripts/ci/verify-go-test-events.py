@@ -17,7 +17,11 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
+    "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend"),
+    "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError"),
+    "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestNotificationSettingsPGSecretsStayServerSide",
         "TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders",
         "TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants",
         "TestBillingLegacyUnknownKeyPGCanReadReadyHTMLButCannotRequestGeneration",

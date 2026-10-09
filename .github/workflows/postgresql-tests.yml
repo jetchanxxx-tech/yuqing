@@ -77,6 +77,9 @@ jobs:
             ./internal/api/v1 \
             ./internal/app \
             ./internal/platform/auth \
+            ./internal/platform/settings \
+            ./internal/pkg/email \
+            ./internal/pkg/sms \
             ./internal/platform/apikey \
             ./internal/platform/billingpolicy \
             ./internal/platform/usage \
