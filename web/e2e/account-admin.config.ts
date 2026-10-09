@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { chmodSync, existsSync, mkdtempSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,10 +69,18 @@ const runnerTemp = process.env.RUNNER_TEMP;
 if (!runnerTemp || !statSync(runnerTemp).isDirectory()) {
   throw new Error('Account/admin E2E requires the runner temporary directory.');
 }
-const configDirectory = mkdtempSync(join(resolve(runnerTemp), 'yuqing-account-admin-'));
+// Hosted workspaces and RUNNER_TEMP can have private ancestors. The isolated
+// API user must be able to traverse its fixture without opening the checkout.
+const configDirectory = mkdtempSync('/tmp/yuqing-account-admin-');
 // The API and migration tool run under nobody after their outbound traffic is
 // blocked. Only this generated test configuration needs to be readable by them.
 chmodSync(configDirectory, 0o755);
+const isolatedServerBinary = join(configDirectory, 'yuqing-server');
+const isolatedCLIBinary = join(configDirectory, 'yuqing-cli');
+copyFileSync(serverBinary, isolatedServerBinary);
+copyFileSync(cliBinary, isolatedCLIBinary);
+chmodSync(isolatedServerBinary, 0o755);
+chmodSync(isolatedCLIBinary, 0o755);
 const backendConfig = join(configDirectory, 'backend.json');
 writeFileSync(backendConfig, JSON.stringify({
   server: { addr: '127.0.0.1:8080', env: 'test' },
@@ -119,8 +127,8 @@ backend_uid="$(id -u nobody)"
 # before running either prebuilt executable. Firewall failures stop the suite.
 sudo -n iptables -I OUTPUT 1 -m owner --uid-owner "$backend_uid" ! -d 127.0.0.0/8 -j REJECT
 sudo -n ip6tables -I OUTPUT 1 -m owner --uid-owner "$backend_uid" ! -d ::1/128 -j REJECT
-sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(cliBinary)} migrate platform
-exec sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(serverBinary)}
+sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(isolatedCLIBinary)} migrate platform
+exec sudo -n -u nobody env -i ${backendEnvironment} ${shellQuote(isolatedServerBinary)}
 `;
 
 export default defineConfig({
@@ -147,7 +155,7 @@ export default defineConfig({
   webServer: [
     {
       command: `bash -c ${shellQuote(backendCommand)}`,
-      cwd: join(workspace, 'platform'),
+      cwd: configDirectory,
       url: `${apiURL}/api/v1/health`,
       reuseExistingServer: false,
       timeout: 60_000,

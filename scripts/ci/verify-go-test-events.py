@@ -45,6 +45,7 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_survivesNewInstance",
     ),
     "internal/platform/accountadmin": (
+        "TestAccountAdminPGBootstrapSerializesInitialGrant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit/revoke/grant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit/revoke/member",

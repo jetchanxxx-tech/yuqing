@@ -67,10 +67,10 @@ func (s *PGStore) BootstrapPlatformAdmin(ctx context.Context, userID string) (bo
 	}
 	details, err := json.Marshal(map[string]any{
 		"target_type": "user", "target_id": userID, "source": "cli",
-		"reason": "Initial platform administrator provisioned by verified immutable user ID",
+		"reason":     "Initial platform administrator provisioned by verified immutable user ID",
 		"request_id": id.New(),
-		"before": map[string]any{"platform_roles": []string{}, "row_version": rowVersion, "token_version": tokenVersion},
-		"after": map[string]any{"platform_roles": []string{"platform_admin"}, "row_version": rowVersion + 1, "token_version": tokenVersion + 1},
+		"before":     map[string]any{"platform_roles": []string{}, "row_version": rowVersion, "token_version": tokenVersion},
+		"after":      map[string]any{"platform_roles": []string{"platform_admin"}, "row_version": rowVersion + 1, "token_version": tokenVersion + 1},
 	})
 	if err != nil {
 		return false, internal(err)
