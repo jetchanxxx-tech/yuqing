@@ -35,11 +35,11 @@ func (e *notFoundErr) Error() string { return "tenant not found" }
 func newAPIKeyFixture(t *testing.T) (*apikey.Service, string, string) {
 	t.Helper()
 	svc := apikey.NewService(apikey.NewMemoryStore())
-	_, rawLive, err := svc.CreateKey(context.Background(), "t_key", "ci", nil)
+	_, rawLive, err := svc.CreateKey(context.Background(), "t_key", "fixture-owner", "ci", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	revoked, rawRevoked, err := svc.CreateKey(context.Background(), "t_key", "old", nil)
+	revoked, rawRevoked, err := svc.CreateKey(context.Background(), "t_key", "fixture-owner", "old", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

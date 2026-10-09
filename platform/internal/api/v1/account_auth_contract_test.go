@@ -124,7 +124,7 @@ func TestContract_accountAuth_APIKeyCannotReadAccountOrAdmin(t *testing.T) {
 	if tenantID == "" {
 		t.Fatal("register response has no tenant ID")
 	}
-	_, rawKey, err := deps.APIKey.CreateKey(context.Background(), tenantID, "account-boundary", nil)
+	_, rawKey, err := deps.APIKey.CreateKey(context.Background(), tenantID, user["user_id"].(string), "account-boundary", nil)
 	if err != nil {
 		t.Fatalf("create tenant API key: %v", err)
 	}

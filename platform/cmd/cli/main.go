@@ -36,6 +36,8 @@ func main() {
 		handleGenInvoice(os.Args[2:])
 	case "backfill-reports":
 		handleBackfillReports()
+	case "bind-billing-exempt-admin":
+		handleBindBillingExemptAdmin(os.Args[2:])
 	case "bootstrap-platform-admin":
 		handleBootstrapPlatformAdmin(os.Args[2:])
 	default:

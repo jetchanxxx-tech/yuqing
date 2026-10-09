@@ -119,8 +119,23 @@ func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants Ten
 		TenantStatus: string(t.Status),
 		AuthType:     "api_key",
 	}
+	c.Set("billing_api_key", key)
+	if key.CreatorUserID == "" && c.Request.Method == http.MethodPost && (c.Request.URL.Path == "/api/v1/analyses" || strings.HasSuffix(c.Request.URL.Path, "/rerun") || c.Request.URL.Path == "/api/v1/apikeys") {
+		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.ErrAPIKeyOwnerUnverified, c.GetString(string(CtxRequestID))))
+		return
+	}
 	c.Set(string(CtxPrincipal), p)
 	c.Next()
+}
+
+// GetAPIKey returns only validated server metadata, never body-supplied identity.
+func GetAPIKey(c *gin.Context) *apikey.APIKey {
+	value, ok := c.Get("billing_api_key")
+	if !ok {
+		return nil
+	}
+	key, _ := value.(*apikey.APIKey)
+	return key
 }
 
 // ApiKeyAuth authenticates a request with a tenant API key only

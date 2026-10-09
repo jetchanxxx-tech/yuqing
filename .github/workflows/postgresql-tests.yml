@@ -76,6 +76,8 @@ jobs:
             ./cmd/cli \
             ./internal/api/v1 \
             ./internal/platform/auth \
+            ./internal/platform/apikey \
+            ./internal/platform/billingpolicy \
             ./internal/platform/accountadmin \
             ./internal/platform/tenant \
             ./internal/platform/credit \

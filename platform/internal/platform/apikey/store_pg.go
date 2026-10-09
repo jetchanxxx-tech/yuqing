@@ -12,6 +12,7 @@ import (
 	"github.com/yuqing/platform/internal/pkg/db"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // PGStore is the PostgreSQL-backed API key store against the platform
@@ -42,7 +43,7 @@ var _ Store = (*PGStore)(nil)
 // 标量 null 的 JSONB 反序列化后恰好得到 nil 切片，与内存版「未设置 scopes
 // 就是 nil」一致；同时也避免依赖驱动对 NULL→[]byte 的处理细节。
 const apiKeyColumns = `id, tenant_id, name, key_hash,
-	COALESCE(scopes, 'null'::jsonb), COALESCE(prefix, ''), last_used_at, revoked_at`
+	COALESCE(scopes, 'null'::jsonb), COALESCE(prefix, ''), last_used_at, revoked_at, COALESCE(creator_user_id,'')`
 
 // Create inserts a key.
 //
@@ -58,8 +59,8 @@ func (s *PGStore) Create(ctx context.Context, k *APIKey) error {
 	// 参数一律显式转型：INSERT ... SELECT 的目标列类型不会反向推断出
 	// SELECT 里裸参数的型别，显式 ::text / ::jsonb 让语句在任何 PostgreSQL
 	// 版本上都能通过 Parse 阶段的参数类型检查。
-	const q = `INSERT INTO api_keys (id, tenant_id, name, key_hash, scopes, prefix)
-	           SELECT $1::text, $2::text, $3::text, $4::text, $5::jsonb, $6::text
+	const q = `INSERT INTO api_keys (id, tenant_id, name, key_hash, scopes, prefix, creator_user_id)
+	           SELECT $1::text, $2::text, $3::text, $4::text, $5::jsonb, $6::text, NULLIF($7::text,'')
 	           WHERE NOT EXISTS (SELECT 1 FROM api_keys WHERE key_hash = $4::text)
 	             AND NOT EXISTS (SELECT 1 FROM api_keys WHERE id = $1::text)
 	           RETURNING id`
@@ -70,8 +71,26 @@ func (s *PGStore) Create(ctx context.Context, k *APIKey) error {
 	}
 
 	var inserted string
-	err = s.pool.QueryRow(ctx, q, k.ID, k.TenantID, k.Name, k.keyHash, scopes, k.Prefix).Scan(&inserted)
+	var tx pgx.Tx
+	if k.CreatorUserID != "" {
+		tx, err = s.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(context.Background())
+		if err = billingpolicy.CheckActorTx(ctx, tx, k.TenantID, billingpolicy.Actor{UserID: k.CreatorUserID}); err != nil {
+			return err
+		}
+		err = tx.QueryRow(ctx, q, k.ID, k.TenantID, k.Name, k.keyHash, scopes, k.Prefix, k.CreatorUserID).Scan(&inserted)
+	} else {
+		// Store-level legacy fixtures/imports retain unknown identity. Public creation
+		// is guarded by Service.CreateKey and never reaches this branch.
+		err = s.pool.QueryRow(ctx, q, k.ID, k.TenantID, k.Name, k.keyHash, scopes, k.Prefix, k.CreatorUserID).Scan(&inserted)
+	}
 	if err == nil {
+		if tx != nil {
+			return tx.Commit(ctx)
+		}
 		return nil
 	}
 	// 并发插入同一 ID 时守卫查不到、主键约束兜住 —— 仍是 ErrConflict。
@@ -186,7 +205,7 @@ func scanAPIKey(row rowScanner) (*APIKey, error) {
 		prefix string
 	)
 
-	if err := row.Scan(&k.ID, &k.TenantID, &k.Name, &hashed, &scopes, &prefix, &k.LastUsedAt, &k.RevokedAt); err != nil {
+	if err := row.Scan(&k.ID, &k.TenantID, &k.Name, &hashed, &scopes, &prefix, &k.LastUsedAt, &k.RevokedAt, &k.CreatorUserID); err != nil {
 		return nil, err
 	}
 
@@ -211,4 +230,18 @@ func marshalScopes(scopes []string) ([]byte, error) {
 		return nil, nil
 	}
 	return json.Marshal(scopes)
+}
+
+// CheckOwner preserves historical unknown-owner reads but rejects revoked live
+// identity or membership for a key with a verified creator.
+func (s *PGStore) CheckOwner(ctx context.Context, key *APIKey) error {
+	var valid bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN tenant_members m ON m.user_id=u.id WHERE u.id=$1 AND u.status='active' AND m.tenant_id=$2)`, key.CreatorUserID, key.TenantID).Scan(&valid)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return pkgerrors.ErrUnauthorized
+	}
+	return nil
 }

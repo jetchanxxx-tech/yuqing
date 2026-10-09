@@ -243,7 +243,7 @@ func TestContract_adminUsers_onlyPlatformAdminsCanManageAccounts(t *testing.T) {
 			}), http.StatusForbidden)
 		}
 	}
-	_, key, err := deps.APIKey.CreateKey(context.Background(), "t_contract", "account-admin-boundary", nil)
+	_, key, err := deps.APIKey.CreateKey(context.Background(), "t_contract", "u_contract", "account-admin-boundary", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

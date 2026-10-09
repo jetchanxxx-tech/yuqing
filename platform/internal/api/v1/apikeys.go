@@ -40,6 +40,11 @@ func (s *Services) handleCreateAPIKey(c *gin.Context) {
 		unauthorized(c)
 		return
 	}
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
 	var req createAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "invalid JSON body: "+err.Error())
@@ -49,7 +54,7 @@ func (s *Services) handleCreateAPIKey(c *gin.Context) {
 		badRequest(c, "name is required")
 		return
 	}
-	key, raw, err := s.APIKey.CreateKey(c.Request.Context(), p.TenantID, req.Name, req.Scopes)
+	key, raw, err := s.APIKey.CreateKey(c.Request.Context(), p.TenantID, actor.UserID, req.Name, req.Scopes)
 	if err != nil {
 		respondError(c, err)
 		return

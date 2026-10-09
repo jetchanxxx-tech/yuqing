@@ -827,7 +827,7 @@ func TestAccountAdminPGAdminPermissionsExcludeMemberRolesAndAPIKeys(t *testing.T
 			}), http.StatusForbidden)
 		}
 	}
-	_, key, err := e.deps.APIKey.CreateKey(context.Background(), member.TenantID, "admin-boundary", nil)
+	_, key, err := e.deps.APIKey.CreateKey(context.Background(), member.TenantID, member.ID, "admin-boundary", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

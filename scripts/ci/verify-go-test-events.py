@@ -29,6 +29,8 @@ REQUIRED_TESTS = {
         "TestReportCenterMigration/hotfixed_v7",
         "TestAccountAdminSecurityMigration",
     ),
+    "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
+    "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
         "TestAuthStore_PG_satisfiesContract",
         "TestAuthStore_PG_survivesNewInstance",

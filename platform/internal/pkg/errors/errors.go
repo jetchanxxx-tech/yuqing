@@ -9,16 +9,18 @@ import (
 
 // Sentinel errors for mapping to API error codes.
 var (
-	ErrBudgetExceeded     = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
-	ErrQuotaExceeded      = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
-	ErrNoCredits          = newSentinel("NO_CREDITS", http.StatusPaymentRequired)
-	ErrTenantSuspended    = newSentinel("TENANT_SUSPENDED", http.StatusForbidden)
-	ErrNotFound           = newSentinel("NOT_FOUND", http.StatusNotFound)
-	ErrForbidden          = newSentinel("FORBIDDEN", http.StatusForbidden)
-	ErrUnauthorized       = newSentinel("UNAUTHORIZED", http.StatusUnauthorized)
-	ErrConflict           = newSentinel("CONFLICT", http.StatusConflict)
-	ErrInternal           = newSentinel("INTERNAL", http.StatusInternalServerError)
-	ErrServiceUnavailable = newSentinel("SERVICE_UNAVAILABLE", http.StatusServiceUnavailable)
+	ErrBudgetExceeded        = newSentinel("BUDGET_EXCEEDED", http.StatusTooManyRequests)
+	ErrQuotaExceeded         = newSentinel("QUOTA_EXCEEDED", http.StatusTooManyRequests)
+	ErrAPIKeyOwnerUnverified = newSentinel("API_KEY_OWNER_UNVERIFIED", http.StatusForbidden)
+	ErrTokenQuotaExceeded    = newSentinel("TOKEN_QUOTA_EXCEEDED", http.StatusPaymentRequired)
+	ErrNoCredits             = newSentinel("NO_CREDITS", http.StatusPaymentRequired)
+	ErrTenantSuspended       = newSentinel("TENANT_SUSPENDED", http.StatusForbidden)
+	ErrNotFound              = newSentinel("NOT_FOUND", http.StatusNotFound)
+	ErrForbidden             = newSentinel("FORBIDDEN", http.StatusForbidden)
+	ErrUnauthorized          = newSentinel("UNAUTHORIZED", http.StatusUnauthorized)
+	ErrConflict              = newSentinel("CONFLICT", http.StatusConflict)
+	ErrInternal              = newSentinel("INTERNAL", http.StatusInternalServerError)
+	ErrServiceUnavailable    = newSentinel("SERVICE_UNAVAILABLE", http.StatusServiceUnavailable)
 )
 
 // sentinelError is an error with an API code and HTTP status.

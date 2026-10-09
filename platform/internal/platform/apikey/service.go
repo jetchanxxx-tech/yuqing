@@ -25,14 +25,15 @@ const displayPrefixLen = len(KeyPrefix) + 6
 // APIKey is one machine credential. The secret itself is never held on the
 // struct — only its hash (unexported, never serialized) and a display prefix.
 type APIKey struct {
-	ID         string     `json:"id"`
-	TenantID   string     `json:"tenant_id"`
-	Name       string     `json:"name"`
-	Scopes     []string   `json:"scopes"`
-	Prefix     string     `json:"prefix"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	ID            string     `json:"id"`
+	CreatorUserID string     `json:"creator_user_id"`
+	TenantID      string     `json:"tenant_id"`
+	Name          string     `json:"name"`
+	Scopes        []string   `json:"scopes"`
+	Prefix        string     `json:"prefix"`
+	CreatedAt     time.Time  `json:"created_at"`
+	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
+	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
 
 	keyHash string // SHA-256 hex of the raw key; never exposed via JSON
 }
@@ -74,7 +75,10 @@ func hashKey(raw string) string {
 
 // CreateKey mints a new API key and returns its metadata plus the RAW KEY —
 // the only moment the secret is ever available. The store holds just the hash.
-func (s *Service) CreateKey(ctx context.Context, tenantID, name string, scopes []string) (*APIKey, string, error) {
+func (s *Service) CreateKey(ctx context.Context, tenantID, creatorUserID, name string, scopes []string) (*APIKey, string, error) {
+	if strings.TrimSpace(creatorUserID) == "" {
+		return nil, "", pkgerrors.ErrAPIKeyOwnerUnverified
+	}
 	if strings.TrimSpace(tenantID) == "" {
 		return nil, "", fmt.Errorf("apikey: tenant_id is required")
 	}
@@ -85,13 +89,14 @@ func (s *Service) CreateKey(ctx context.Context, tenantID, name string, scopes [
 	raw := KeyPrefix + id.New()
 	now := time.Now().UTC()
 	key := &APIKey{
-		ID:        id.New(),
-		TenantID:  tenantID,
-		Name:      name,
-		Scopes:    scopes,
-		Prefix:    raw[:displayPrefixLen],
-		CreatedAt: now,
-		keyHash:   hashKey(raw),
+		ID:            id.New(),
+		TenantID:      tenantID,
+		CreatorUserID: creatorUserID,
+		Name:          name,
+		Scopes:        scopes,
+		Prefix:        raw[:displayPrefixLen],
+		CreatedAt:     now,
+		keyHash:       hashKey(raw),
 	}
 	if err := s.store.Create(ctx, key); err != nil {
 		return nil, "", err
@@ -113,6 +118,15 @@ func (s *Service) ValidateKey(ctx context.Context, raw string) (*APIKey, error) 
 			return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid api key")
 		}
 		return nil, err
+	}
+	if key.CreatorUserID != "" {
+		if checker, ok := s.store.(interface {
+			CheckOwner(context.Context, *APIKey) error
+		}); ok {
+			if err := checker.CheckOwner(ctx, key); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if key.IsRevoked() {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "api key has been revoked")
