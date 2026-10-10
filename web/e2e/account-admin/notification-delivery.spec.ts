@@ -28,8 +28,8 @@ async function account(request: APIRequestContext, administrator = false) {
   if (administrator) sql("INSERT INTO platform_user_roles(user_id,role) VALUES(:'uid','platform_admin');", { uid: session.user.user_id });
   return { ...session, email };
 }
-async function mode(request: APIRequestContext, value: string) {
-  expect((await request.post(`${control}/mode`, { headers, data: { mode: value } })).status()).toBe(200);
+async function mode(request: APIRequestContext, value: string, target?: string) {
+  expect((await request.post(`${control}/mode`, { headers, data: { mode: value, target_hash: target ? hash(target) : '' } })).status()).toBe(200);
 }
 async function inbox(request: APIRequestContext): Promise<Acceptance[]> {
   const response = await request.get(`${control}/messages`, { headers }); expect(response.status()).toBe(200); return response.json();
@@ -83,7 +83,7 @@ test('K6b actual Resend verification and reset are explicitly delivered and cons
   expect((await request.post(`${api}/auth/password-reset/confirm`, { data: { token: payload.token, new_password: nextPassword } })).status()).toBe(400);
   await page.goto(payload.link!); await expect(page).toHaveURL(/\/verify-email$/); await expect(page.getByText('邮箱验证成功', { exact: true })).toBeVisible();
   expect(sql("SELECT (email_verified_at IS NOT NULL)::text FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe('true');
-  expect((await request.post(`${api}/auth/verify-email`, { data: { token: payload.token } })).status()).toBe(400);
+  expect((await request.post(`${api}/auth/verify-email`, { data: { token: payload.token } })).status()).toBe(404);
   await page.goto('/forgot-password'); await page.getByLabel('邮箱', { exact: true }).fill(a.email);
   const resetting = page.waitForResponse(response => response.url().endsWith('/auth/password-reset/request')); await page.getByRole('button', { name: '请求重置链接', exact: true }).click(); expect((await resetting).status()).toBe(202);
   await expect(page.getByRole('alert').filter({ hasText: '请求已受理' })).toContainText('送达尚未确认');
@@ -99,7 +99,7 @@ test('K6b actual email change notice retries and Aliyun bind login reset consume
   await page.getByLabel('当前密码', { exact: true }).fill(password); await page.getByLabel('新邮箱', { exact: true }).fill(changed);
   const sending = page.waitForResponse(response => response.url().endsWith('/user/email-change/request')); await page.getByRole('button', { name: '请求更换邮箱', exact: true }).click(); expect((await sending).status()).toBe(202);
   const change = await accepted(request, 'email_change', changed); receipt(a.user.user_id, 'email_change', change); const payload = await deliver(request, change);
-  await mode(request, 'reject'); await page.goto(payload.link!); await expect(page).toHaveURL(/\/email-change$/); await page.getByRole('button', { name: '确认更换邮箱', exact: true }).click();
+  await mode(request, 'reject', a.email); await page.goto(payload.link!); await expect(page).toHaveURL(/\/email-change$/); await page.getByRole('button', { name: '确认更换邮箱', exact: true }).click();
   await expect(page.getByText('邮箱已更换，请重新登录', { exact: true })).toBeVisible();
   await expect.poll(() => sql("SELECT notice_state FROM verification_tokens WHERE user_id=:'uid' AND purpose='email_change' ORDER BY created_at DESC LIMIT 1;", { uid: a.user.user_id }), { timeout: 30000 }).toBe('failed');
   expect(sql("SELECT email||':'||token_version FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe(`${changed}:1`);
@@ -135,19 +135,25 @@ test('K6b activation works after SDK receipt succeeds but dispatch-attempt final
     await expect(dialog.getByRole('alert')).toContainText('发送结果待确认'); expect(sql("SELECT state FROM account_notification_attempts WHERE user_id=:'uid';", { uid: created.user_id })).toBe('pending');
   } finally { sql('DROP TRIGGER k6b_attempt_failure ON account_notification_attempts; DROP FUNCTION k6b_attempt_failure();'); }
   const activation = await accepted(request, 'set_password', email); receipt(created!.user_id, 'set_password', activation); const payload = await deliver(request, activation); await submitPassword(page, payload, true);
-  expect((await request.post(`${api}/auth/activation/confirm`, { data: { token: payload.token, new_password: nextPassword } })).status()).toBe(400);
+  expect((await request.post(`${api}/auth/activation/confirm`, { data: { token: payload.token, new_password: nextPassword } })).status()).toBe(401);
   expect(sql("SELECT status||':'||token_version FROM users WHERE id=:'uid';", { uid: created!.user_id })).toBe('active:1'); await login(page, email, nextPassword);
 });
 
 test('K6b rejected malformed timeout receipts and persistence failure never become consumable delivery', async ({ page, request }) => {
   test.setTimeout(120000);
-  for (const failure of ['reject', 'malformed', 'timeout']) {
-    const a = await account(request); await mode(request, failure);
-    expect((await request.post(`${api}/auth/password-reset/request`, { data: { email: a.email } })).status()).toBe(202);
+  for (const [index, failure] of ['reject', 'malformed', 'timeout'].entries()) {
+    const a = await account(request); await mode(request, failure, a.email);
+    expect((await request.post(`${api}/auth/password-reset/request`, { data: { email: a.email }, timeout: 20000 })).status()).toBe(202);
     const messages = (await inbox(request)).filter(message => message.target_hash === hash(a.email) && message.purpose === 'password_reset'); expect(messages).toHaveLength(1); expect(messages[0].accepted).toBe(false);
     expect((await request.post(`${control}/deliver`, { headers, data: { id: messages[0].id } })).status()).toBe(409);
     expect(sql("SELECT delivery_status||':'||(used_at IS NOT NULL)::text FROM verification_tokens WHERE user_id=:'uid' AND purpose='password_reset';", { uid: a.user.user_id })).toBe('rejected:true');
     expect(sql("SELECT token_version FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe('0');
+    const phone = `1390000601${index}`;
+    sql("UPDATE users SET phone=:'phone',phone_verified_at=now() WHERE id=:'uid';", { phone, uid: a.user.user_id });
+    await mode(request, failure, phone);
+    expect((await request.post(`${api}/auth/phone/send-code`, { data: { phone }, timeout: 20000 })).status()).toBe(202);
+    const sms = (await inbox(request)).filter(message => message.target_hash === hash(phone) && message.purpose === 'phone_login'); expect(sms.length).toBeGreaterThan(0); expect(sms.every(message => !message.accepted)).toBe(true);
+    expect(sql("SELECT delivery_status||':'||(used_at IS NOT NULL)::text FROM sms_verification_codes WHERE user_id=:'uid' AND purpose='phone_login';", { uid: a.user.user_id })).toBe('rejected:true');
   }
   await mode(request, 'accept'); const a = await account(request);
   sql("CREATE FUNCTION k6b_receipt_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.delivery_status='accepted' AND NEW.user_id=" + "'" + a.user.user_id + "'" + " THEN RAISE EXCEPTION 'isolated receipt failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER k6b_receipt_failure BEFORE UPDATE ON verification_tokens FOR EACH ROW EXECUTE FUNCTION k6b_receipt_failure();");
@@ -161,5 +167,16 @@ test('K6b rejected malformed timeout receipts and persistence failure never beco
   expect(sql("SELECT count(*) FROM users WHERE email=:'email';", { email: unknown })).toBe('0');
   const expired = await account(request); expect((await request.post(`${api}/auth/send-verification-email`, { headers: { Authorization: `Bearer ${expired.access_token}` } })).status()).toBe(200);
   const expiredPayload = await deliver(request, await accepted(request, 'email_verify', expired.email)); sql("UPDATE verification_tokens SET expires_at=now()-interval '1 second' WHERE user_id=:'uid' AND purpose='email_verify';", { uid: expired.user.user_id });
-  expect((await request.post(`${api}/auth/verify-email`, { data: { token: expiredPayload.token } })).status()).toBe(400);
+  expect((await request.post(`${api}/auth/verify-email`, { data: { token: expiredPayload.token } })).status()).toBe(404);
+});
+
+test('K6b switching the recovery form submits its visible phone to the actual SMS SDK', async ({ page, request }) => {
+  const a = await account(request); const phone = '13900006020';
+  sql("UPDATE users SET phone=:'phone',phone_verified_at=now() WHERE id=:'uid';", { phone, uid: a.user.user_id });
+  await page.goto('/forgot-password'); await page.getByRole('tab', { name: '手机找回', exact: true }).click();
+  await page.getByLabel('手机号', { exact: true }).fill(phone); await expect(page.getByLabel('手机号', { exact: true })).toHaveValue(phone);
+  const sending = page.waitForResponse(response => response.url().endsWith('/auth/password-reset/request'));
+  await page.getByRole('button', { name: '请求短信验证码', exact: true }).click(); const response = await sending;
+  expect(response.request().postDataJSON()).toEqual({ phone }); expect(response.status()).toBe(202);
+  receipt(a.user.user_id, 'phone_reset', await accepted(request, 'phone_reset', phone));
 });
