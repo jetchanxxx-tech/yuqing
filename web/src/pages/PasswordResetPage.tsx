@@ -28,7 +28,7 @@ export default function PasswordResetPage() {
     setError(''); setBusy(true);
     try {
       if (isActivation) {
-        await activateAccount({ email: values.email || '', token, new_password: values.new_password });
+        await activateAccount({ token, new_password: values.new_password });
       } else {
         await resetPassword({ ...(isLink ? { token } : { phone: values.phone, code: values.code }), new_password: values.new_password });
       }
@@ -39,15 +39,15 @@ export default function PasswordResetPage() {
   const fields = <>
     <Form.Item name="new_password" label="新密码" rules={passwordRules}><Input.Password autoComplete="new-password" /></Form.Item>
     <Form.Item name="confirm" label="确认新密码" dependencies={['new_password']} rules={[{ required: true, message: '请再次输入新密码' }, ({ getFieldValue }) => ({ validator(_, value) { return value === getFieldValue('new_password') ? Promise.resolve() : Promise.reject(new Error('两次密码不一致')); } })]}><Input.Password autoComplete="new-password" /></Form.Item>
-    <Button type="primary" htmlType="submit" loading={busy}>确认重置密码</Button>
+    <Button type="primary" htmlType="submit" loading={busy}>{isActivation ? '激活并设置密码' : '确认重置密码'}</Button>
   </>;
   return <div style={{ maxWidth: 440, margin: '64px auto', padding: 16 }}>
     <Card>
       <Typography.Title level={3}>{isActivation ? '激活账户' : '找回密码'}</Typography.Title>
-      {success ? <Result status="success" title="密码已重置，请重新登录" extra={<Link to="/login">返回登录</Link>} /> : <>
+      {success ? <Result status="success" title={isActivation ? '账号已激活，请登录' : '密码已重置，请重新登录'} extra={<Link to="/login">返回登录</Link>} /> : <>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
         {accepted && <Alert type="info" showIcon message={acceptedMessage} style={{ marginBottom: 16 }} />}
-        {isLink ? token ? <Form layout="vertical" onFinish={confirm}>{isActivation && <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入管理员发送到的邮箱' }]}><Input autoComplete="email" /> </Form.Item>}{fields}</Form> : <Alert type="error" message="链接无效，请重新申请重置链接" action={<Link to="/forgot-password">重新申请</Link>} /> : <>
+        {isLink ? token ? <Form layout="vertical" onFinish={confirm}>{fields}</Form> : <Alert type="error" message={isActivation ? '激活链接无效，请联系管理员重发激活邮件' : '链接无效，请重新申请重置链接'} action={isActivation ? undefined : <Link to="/forgot-password">重新申请</Link>} /> : <>
           <Tabs activeKey={method} onChange={(v) => { setMethod(v); setError(''); setAccepted(false); }} items={[{ key: 'email', label: '邮箱找回' }, { key: 'phone', label: '手机找回' }]} />
           {method === 'email' ? <Form layout="vertical" onFinish={request}>
             <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入邮箱' }]}><Input autoComplete="email" /></Form.Item>

@@ -4,11 +4,12 @@ import { Alert, App, Button, Descriptions, Form, Input, Modal, Select, Space, Ta
 import type { ColumnsType } from 'antd/es/table';
 import {
   adminErrorMessage, adminErrorStatus, adminStatusLabel, changeMemberRole, changePlatformRole,
-  changeUserStatus, getAdminUser, type AuditEntry, type MemberRole, type Membership,
+  changeUserStatus, getAdminUser, sendAdminVerification, type AuditEntry, type MemberRole, type Membership,
 } from '../../api/admin';
 import { useAuth } from '../../stores/auth';
 import { useDateTime } from '../../lib/format';
 import { ErrorBlock, LoadingBlock } from '../../components/PageState';
+import NicknameDialog from './NicknameDialog';
 
 export interface AdminAction {
   title: string;
@@ -86,6 +87,9 @@ export default function UserDetail({ userID, onClose }: { userID: string; onClos
   const { reloadIdentity } = useAuth();
   const [action, setAction] = useState<AdminAction | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [nickname, setNickname] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [dispatchMessage, setDispatchMessage] = useState('');
   const detail = useQuery({ queryKey: ['admin', 'user', userID], queryFn: ({ signal }) => getAdminUser(userID, signal) });
   const user = detail.data;
   const refresh = async () => {
@@ -100,6 +104,13 @@ export default function UserDetail({ userID, onClose }: { userID: string; onClos
     setAction(null);
     if (adminErrorStatus(failure) === 409) void refresh();
     if (adminErrorStatus(failure) === 403) void reloadIdentity().catch(() => {});
+  };
+  const send = async (purpose: 'set_password' | 'password_reset') => {
+    if (!user) return;
+    setSending(true); setError(null); setDispatchMessage('');
+    try { await sendAdminVerification(user.id, purpose); setDispatchMessage(purpose === 'set_password' ? '激活邮件已受理，送达尚未确认。' : '密码重置邮件已受理，送达尚未确认。用户完成重置后需重新登录。'); }
+    catch (failure) { setError(failure); }
+    finally { setSending(false); await refresh(); }
   };
   const begin = (next: AdminAction) => { setError(null); setAction(next); };
   const statusAction = () => {
@@ -139,6 +150,7 @@ export default function UserDetail({ userID, onClose }: { userID: string; onClos
   return <>
     <Modal open title="用户详情" width={1100} onCancel={onClose} footer={<Button onClick={onClose} autoInsertSpace={false}>关闭</Button>}>
       <MutationErrorAlert error={error} onRefresh={() => void refresh()} />
+      {dispatchMessage && <Alert type="info" showIcon message={dispatchMessage} style={{ marginBottom: 16 }} />}
       {detail.isLoading ? <LoadingBlock rows={8} /> : detail.isError ? <ErrorBlock description={adminErrorMessage(detail.error)} onRetry={() => void detail.refetch()} /> : user && <>
         <Descriptions bordered size="small" column={2} items={[
           { key: 'id', label: '用户 ID', children: <Typography.Text code>{user.id}</Typography.Text> },
@@ -153,7 +165,10 @@ export default function UserDetail({ userID, onClose }: { userID: string; onClos
           { key: 'login', label: '最后成功登录', children: formatDateTime(user.last_login_at) },
           { key: 'version', label: '账号版本', children: user.row_version },
         ]} />
-        <Space style={{ marginTop: 16 }}>
+        <Space wrap style={{ marginTop: 16 }}>
+          <Button onClick={() => setNickname(true)}>修改昵称</Button>
+          {user.status === 'pending_activation' && <Button loading={sending} onClick={() => void send('set_password')}>重发激活邮件</Button>}
+          {user.status === 'active' && <Button loading={sending} onClick={() => void send('password_reset')}>发送密码重置邮件</Button>}
           {['active', 'disabled'].includes(user.status) && <Button danger={user.status === 'active'} onClick={statusAction}>{user.status === 'active' ? '禁用账号' : '启用账号'}</Button>}
           <Button onClick={() => void refresh()} loading={detail.isFetching}>刷新详情</Button>
         </Space>
@@ -163,10 +178,18 @@ export default function UserDetail({ userID, onClose }: { userID: string; onClos
         </Space>
         <Typography.Title level={5}>团队成员角色</Typography.Title>
         <Table<Membership> rowKey="tenant_id" columns={memberships} dataSource={user.memberships} size="small" pagination={false} scroll={{ x: 900 }} locale={{ emptyText: '暂无团队成员关系' }} />
+        <Typography.Title level={5}>激活与重置发送记录</Typography.Title>
+        <Table rowKey="id" size="small" dataSource={user.notifications ?? []} pagination={false} columns={[
+          { title: '时间', dataIndex: 'created_at', render: formatDateTime },
+          { title: '用途', dataIndex: 'purpose', render: (purpose: string) => purpose === 'set_password' ? '账号激活' : '密码重置' },
+          { title: '发送状态', dataIndex: 'state', render: (state: string) => state === 'accepted' ? '已受理，送达未确认' : state === 'failed' ? '发送失败，可重试' : '发送结果待确认' },
+          { title: '错误代码', dataIndex: 'error_code' },
+        ]} locale={{ emptyText: '暂无发送记录' }} />
         <Typography.Title level={5}>操作审计</Typography.Title>
         <AuditTable entries={user.audit_logs} />
       </>}
     </Modal>
+    {nickname && user && <NicknameDialog user={user} onClose={() => setNickname(false)} onSuccess={success} />}
     {action && <AdminActionDialog action={action} onClose={() => setAction(null)} onSuccess={success} onError={failed} />}
   </>;
 }

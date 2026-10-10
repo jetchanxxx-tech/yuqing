@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Card, Form, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { adminErrorMessage, adminStatusLabel, listUsers, type AdminQuery, type AdminUser } from '../../api/admin';
 import { useAuth } from '../../stores/auth';
 import { useDateTime, calendarDateRange, DEFAULT_TIMEZONE } from '../../lib/format';
 import UserDetail from './UserDetail';
+import CreateAccountDialog from './CreateAccountDialog';
 
 export default function UsersTab() {
   const formatDateTime = useDateTime();
+  const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
   const { principal } = useAuth();
   const { message } = App.useApp();
   const timezone = principal?.timezone || DEFAULT_TIMEZONE;
@@ -32,7 +35,7 @@ export default function UsersTab() {
     { title: '操作', fixed: 'right', width: 110, render: (_, user) => <Button size="small" onClick={() => setSelected(user.id)}>查看详情</Button> },
   ];
   return <>
-    <Card>
+    <Card extra={<Button type="primary" onClick={() => setCreating(true)}>新建账号</Button>}>
       <Form form={form} layout="inline" onFinish={(values: Omit<AdminQuery, 'page' | 'page_size'> & { from_day?: string; through_day?: string }) => {
         const { from_day, through_day, ...filters } = values;
         try { setQuery({ ...filters, ...calendarDateRange(from_day, through_day, timezone), q: values.q?.trim(), page: 1, page_size: 20 }); }
@@ -52,6 +55,7 @@ export default function UsersTab() {
       {users.isError && <Alert type="error" showIcon message={adminErrorMessage(users.error)} action={<Button onClick={() => void users.refetch()}>重试</Button>} style={{ marginBottom: 16 }} />}
       <Table<AdminUser> rowKey="id" columns={columns} dataSource={users.data?.items ?? []} loading={users.isLoading} scroll={{ x: 1700 }} locale={{ emptyText: users.isError ? '用户列表加载失败' : '暂无符合条件的用户' }} pagination={{ current: query.page, pageSize: 20, total: users.data?.total ?? 0, showSizeChanger: false, showTotal: (total) => `共 ${total} 条`, onChange: (page) => setQuery((previous) => ({ ...previous, page })) }} />
     </Card>
+    {creating && <CreateAccountDialog onClose={() => setCreating(false)} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ['admin'] }); }} onOpen={(id) => { setCreating(false); setSelected(id); }} />}
     {selected && <UserDetail key={selected} userID={selected} onClose={() => setSelected(null)} />}
   </>;
 }

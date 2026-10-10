@@ -48,7 +48,7 @@ export interface CreditsInfo {
 export interface CreditTransaction {
   id: string;
   delta: number;
-  reason: 'trial' | 'grant' | 'purchase' | 'consume' | 'refund';
+  reason: 'trial' | 'grant' | 'purchase' | 'consume' | 'refund' | 'admin_adjust';
   analysis_id?: string;
   order_id?: string;
   balance_after: number;

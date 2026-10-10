@@ -7,12 +7,14 @@ import type { Order } from '../../api/billing';
 import { useAuth } from '../../stores/auth';
 import { formatCents, useDateTime } from '../../lib/format';
 import { ErrorBlock, LoadingBlock } from '../../components/PageState';
+import CreditAdjustmentDialog from './CreditAdjustmentDialog';
 import { AdminActionDialog, AuditTable, MutationErrorAlert, type AdminAction } from './UserDetail';
 
 export default function TenantDetail({ tenantID, onClose }: { tenantID: string; onClose: () => void }) {
   const formatDateTime = useDateTime();
   const queryClient = useQueryClient();
   const { reloadIdentity } = useAuth();
+  const [adjusting, setAdjusting] = useState(false);
   const [action, setAction] = useState<AdminAction | null>(null);
   const [error, setError] = useState<unknown>(null);
   const detail = useQuery({ queryKey: ['admin', 'tenant', tenantID], queryFn: ({ signal }) => getAdminTenant(tenantID, signal) });
@@ -78,17 +80,26 @@ export default function TenantDetail({ tenantID, onClose }: { tenantID: string; 
           { key: 'version', label: '租户版本', children: tenant.row_version },
         ]} />
         <Space style={{ marginTop: 16 }}>
+          <Button onClick={() => setAdjusting(true)}>调整报告额度</Button>
           {['active', 'suspended'].includes(tenant.status) && <Button danger={tenant.status === 'active'} onClick={statusAction}>{tenant.status === 'active' ? '挂起租户' : '恢复租户'}</Button>}
           <Button onClick={() => void refresh()} loading={detail.isFetching}>刷新详情</Button>
         </Space>
         <Typography.Title level={5}>现有团队成员</Typography.Title>
         <Table<TenantMember> rowKey="user_id" columns={members} dataSource={tenant.members} size="small" pagination={false} scroll={{ x: 1000 }} locale={{ emptyText: '暂无团队成员' }} />
+        <Typography.Title level={5}>报告额度流水</Typography.Title>
+        <Table rowKey="id" size="small" dataSource={tenant.credit_transactions ?? []} scroll={{ x: 1100 }} pagination={{ pageSize: 5, hideOnSinglePage: true }} columns={[
+          { title: '时间', dataIndex: 'created_at', render: formatDateTime },
+          { title: '变动', dataIndex: 'delta' }, { title: '变动后余额', dataIndex: 'balance_after' },
+          { title: '类型', dataIndex: 'reason' }, { title: '原因', dataIndex: 'reason_detail' },
+          { title: '操作人', dataIndex: 'actor_id' }, { title: '操作编号', dataIndex: 'idempotency_key' },
+        ]} locale={{ emptyText: '暂无额度流水' }} />
         <Typography.Title level={5}>历史订单</Typography.Title>
         <Table<Order> rowKey="id" columns={orders} dataSource={tenant.orders} size="small" pagination={{ pageSize: 5, hideOnSinglePage: true, showSizeChanger: false }} scroll={{ x: 1100 }} locale={{ emptyText: '暂无订单记录' }} />
         <Typography.Title level={5}>操作审计</Typography.Title>
         <AuditTable entries={tenant.audit_logs} />
       </>}
     </Modal>
+    {adjusting && tenant && <CreditAdjustmentDialog tenantID={tenant.id} tenantName={tenant.name} balance={tenant.credit?.balance ?? 0} version={tenant.credit?.version ?? 0} onClose={() => setAdjusting(false)} onSuccess={refresh} />}
     {action && <AdminActionDialog action={action} onClose={() => setAction(null)} onSuccess={success} onError={failed} />}
   </>;
 }

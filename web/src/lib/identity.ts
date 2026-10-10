@@ -12,7 +12,7 @@ export function identityError(error: unknown): string {
   if (!error.response || status === 503) return '服务暂时不可用，请稍后重试；已填写的信息会保留';
   if (status === 409) {
     if (error.config?.url?.includes('/phone/')) return '手机号已被占用或操作发生冲突，请核对后重试';
-    if (error.config?.url?.includes('password-reset')) return '新密码需至少 8 位，并同时包含字母和数字';
+    if ((error.config?.url?.includes('password-reset') || error.config?.url?.includes('activation'))) return '新密码需至少 8 位，并同时包含字母和数字';
     return '目标邮箱已被占用或操作发生冲突，请核对后重试';
   }
   if (status === 401) return '密码、验证码不正确，或凭据已失效，请核对后重试';

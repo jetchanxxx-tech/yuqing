@@ -203,7 +203,7 @@ func (p *PGStore) Adjust(ctx context.Context, a Adjustment) (*Transaction, error
 		return nil, err
 	}
 	var existing Transaction
-	err = tx.QueryRow(ctx, `SELECT id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,expected_version,created_at FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key=$2`, a.TenantID, a.IdempotencyKey).Scan(&existing.ID, &existing.TenantID, &existing.Delta, &existing.Reason, &existing.ReasonDetail, &existing.ActorID, &existing.IdempotencyKey, &existing.BalanceAfter, &existing.Version, &existing.ExpectedVersion, &existing.CreatedAt)
+	err = tx.QueryRow(ctx, `SELECT id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,COALESCE(expected_version,-1),created_at FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key=$2`, a.TenantID, a.IdempotencyKey).Scan(&existing.ID, &existing.TenantID, &existing.Delta, &existing.Reason, &existing.ReasonDetail, &existing.ActorID, &existing.IdempotencyKey, &existing.BalanceAfter, &existing.Version, &existing.ExpectedVersion, &existing.CreatedAt)
 	if err == nil {
 		if existing.Reason != ReasonAdjust || existing.Delta != a.Delta || existing.ReasonDetail != a.ReasonDetail || existing.ActorID != a.ActorID || existing.ExpectedVersion != a.ExpectedVersion {
 			return nil, pkgerrors.ErrConflict

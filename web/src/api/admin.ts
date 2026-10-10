@@ -1,6 +1,6 @@
 import client from './client';
 import { readEnvelope } from './error';
-import type { CreditsInfo, Order } from './billing';
+import type { CreditTransaction, Order } from './billing';
 
 export interface AdminPage<T> { items: T[]; total: number; page: number; page_size: number; }
 export interface AdminQuery {
@@ -21,13 +21,17 @@ export interface AuditEntry {
   tenant_id: string; reason: string; before: Record<string, unknown>; after: Record<string, unknown>;
   request_id: string; created_at: string;
 }
-export interface AdminUserDetail extends AdminUser { memberships: Membership[]; audit_logs: AuditEntry[]; }
+export interface NotificationAttempt { id: string; purpose: 'set_password' | 'password_reset'; state: 'pending' | 'accepted' | 'failed'; error_code?: string; created_at: string; }
+export interface AdminUserDetail extends AdminUser { memberships: Membership[]; audit_logs: AuditEntry[]; notifications: NotificationAttempt[]; }
+export interface CreatedAccount { user_id: string; tenant_id: string; status: 'pending_activation'; row_version: number; activation: NotificationAttempt; }
+export interface CreditAdjustment { delta: number; reason: string; idempotency_key: string; expected_version: number; }
+export interface AdminCreditTransaction extends CreditTransaction { reason_detail?: string; actor_id?: string; idempotency_key?: string; version?: number; }
 export interface Tenant {
   id: string; name: string; slug: string; plan_code: string; status: string; created_at: string;
   row_version: number; user_count: number; effective_plan_code: string; plan_source: string;
 }
 export interface TenantMember { user_id: string; name: string; email: string; role: string; row_version: number; }
-export interface AdminTenantDetail extends Tenant { members: TenantMember[]; credit: CreditsInfo | null; orders: Order[]; audit_logs: AuditEntry[]; }
+export interface AdminTenantDetail extends Tenant { members: TenantMember[]; credit: { balance: number; plan_code: string; version: number } | null; orders: Order[]; audit_logs: AuditEntry[]; credit_transactions: AdminCreditTransaction[]; }
 export interface AdminChange { reason: string; expected_version: number; }
 export type MemberRole = 'tenant_admin' | 'analyst' | 'viewer';
 
@@ -61,6 +65,9 @@ export function adminErrorStatus(error: unknown): number {
 export function adminErrorMessage(error: unknown): string {
   const reason = readEnvelope(error)?.message;
   switch (adminErrorStatus(error)) {
+    case 429: return `操作过于频繁，请在 ${(error as { response?: { headers?: Record<string, string> } }).response?.headers?.['retry-after'] || '60'} 秒后重试。`;
+    case 402: return '调整后额度不能为负，请核对当前余额和调整数量。';
+    case 503: return '服务暂时不可用，请稍后重试。';
     case 403: return `无操作权限：${reason ?? '当前账号不是平台管理员，请重新确认登录状态。'}`;
     case 409: return `操作冲突：数据版本或状态已更新，或违反最后管理员保护。${reason ?? ''} 请刷新最新数据后重新确认。`;
     case 401: return '登录凭据已失效，请重新登录。';
@@ -95,4 +102,17 @@ export async function updateAdminSettings(
 ): Promise<AdminSettings> {
   const { data } = await client.put<{ settings: AdminSettings }>('/admin/settings', patch);
   return data.settings ?? {};
+}
+
+export async function createAdminUser(input: { email: string; name: string; tenant_name?: string }): Promise<CreatedAccount> {
+  return (await client.post('/admin/users', input)).data;
+}
+export async function updateAdminNickname(id: string, input: AdminChange & { name: string }): Promise<void> {
+  await client.patch(`/admin/users/${encodeURIComponent(id)}`, input);
+}
+export async function sendAdminVerification(id: string, purpose: 'set_password' | 'password_reset'): Promise<void> {
+  await client.post(`/admin/users/${encodeURIComponent(id)}/${purpose === 'set_password' ? 'activation-resend' : 'password-reset'}`);
+}
+export async function adjustAdminCredit(id: string, input: CreditAdjustment): Promise<AdminCreditTransaction> {
+  return (await client.post(`/admin/tenants/${encodeURIComponent(id)}/credit-adjustments`, input)).data;
 }

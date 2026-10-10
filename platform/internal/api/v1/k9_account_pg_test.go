@@ -2,6 +2,7 @@ package v1_test
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -431,4 +432,67 @@ func TestK9PGSameKeyConcurrentReplayAndNonAdminBalanceVersion(t *testing.T) {
 	if k9Count(t, e, `SELECT balance FROM report_credits WHERE tenant_id=$1`, tid) != 5 || k9Count(t, e, `SELECT count(*) FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key='concurrent-same'`, tid) != 1 || k9Count(t, e, `SELECT count(*) FROM audit_logs WHERE tenant_id=$1 AND action='credit.adjustment'`, tid) != 1 {
 		t.Fatal("duplicate replay changed ledger/audit/balance")
 	}
+}
+
+func TestK9PGActivationRejectsInvalidBeforeKDFAndSharesWorkCeiling(t *testing.T) {
+	e, box, access, _ := k9Env(t)
+	k9SeedPending(t, e, "kdf-pending", "kdf-pending@example.invalid")
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/admin/users/kdf-pending/activation-resend", access, nil), 202)
+	value := box.delivered(t)
+	observer := &passwordHashObserver{base: rand.Reader}
+	rand.Reader = observer
+	defer func() { rand.Reader = observer.base }()
+	for i := 0; i < 20; i++ {
+		body, _ := json.Marshal(map[string]string{"token": fmt.Sprintf("invalid-%d", i), "new_password": "StrongPassword123"})
+		w := identityRequest(t, e, "/auth/activation/confirm", string(body), i)
+		if w.Code != 401 {
+			t.Fatalf("invalid status=%d", w.Code)
+		}
+	}
+	if observer.calls.Load() != 0 {
+		t.Fatal("invalid activation entered Argon2")
+	}
+	body, _ := json.Marshal(map[string]string{"token": value, "new_password": "StrongPassword123"})
+	if w := identityRequest(t, e, "/auth/activation/confirm", string(body), 99); w.Code != 429 {
+		t.Fatal("known token bypassed exhausted socket")
+	}
+	// A fresh socket and valid pending target is a positive KDF control.
+	w := doReq(t, e.router, "POST", "/api/v1/auth/activation/confirm", "", map[string]string{"token": value, "new_password": "StrongPassword123"})
+	if w.Code != 500 || observer.calls.Load() != 1 {
+		t.Fatal("valid activation did not enter observed KDF")
+	}
+	assertHashBudgetStateUnchanged(t, e, "kdf-pending")
+	release := make(chan struct{})
+	observer.release = release
+	observer.entered = make(chan int64, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		wg.Wait()
+	}()
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			doReq(t, e.router, "POST", "/api/v1/auth/activation/confirm", "", map[string]string{"token": value, "new_password": "StrongPassword123"})
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-observer.entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("valid activation did not occupy hash slot")
+		}
+	}
+	w = doReq(t, e.router, "POST", "/api/v1/auth/activation/confirm", "", map[string]string{"token": value, "new_password": "StrongPassword123"})
+	if w.Code != 429 || observer.calls.Load() != 3 {
+		t.Error("third activation bypassed two-slot KDF guard")
+	}
+	close(release)
+	released = true
+	wg.Wait()
+	assertHashBudgetStateUnchanged(t, e, "kdf-pending")
 }

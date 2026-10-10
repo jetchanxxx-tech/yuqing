@@ -12,7 +12,7 @@ CREATE UNIQUE INDEX credit_transactions_admin_key
 
 ALTER TABLE credit_transactions ADD COLUMN expected_version BIGINT;
 ALTER TABLE report_credits ADD CONSTRAINT report_credit_version_nonnegative CHECK(version>=0);
-ALTER TABLE credit_transactions ADD CONSTRAINT admin_adjustment_intent CHECK(reason <> 'admin_adjust' OR (delta<>0 AND length(btrim(reason_detail))>0 AND actor_id IS NOT NULL AND length(idempotency_key) BETWEEN 1 AND 128 AND expected_version>=0 AND version>0));
+ALTER TABLE credit_transactions ADD CONSTRAINT admin_adjustment_intent CHECK(reason <> 'admin_adjust' OR (delta<>0 AND length(btrim(reason_detail))>0 AND actor_id IS NOT NULL AND length(actor_id)>0 AND idempotency_key IS NOT NULL AND length(idempotency_key) BETWEEN 1 AND 128 AND expected_version IS NOT NULL AND expected_version>=0 AND version>0));
 -- Every balance/plan writer, including the accepted K4 atomic run path,
 -- advances the same CAS version. No K4 transaction or lock order is changed.
 -- +goose StatementBegin
