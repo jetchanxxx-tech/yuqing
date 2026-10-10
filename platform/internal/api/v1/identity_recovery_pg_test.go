@@ -366,3 +366,57 @@ func TestIdentityPGHTTPQueuedEmailRequestRetainsOriginalActorVersion(t *testing.
 		t.Fatal("revoked actor issued a credential")
 	}
 }
+
+func TestIdentityPGHTTPPhoneBindRebindRequiresPasswordAndVerifiedEmailForUnbind(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	box := &identitySandbox{}
+	configureIdentity(e, box)
+	token, _, u := mustRegister(t, e.router, "phone-owner@example.invalid", "Phone owner")
+	_, _, other := mustRegister(t, e.router, "phone-other@example.invalid", "Phone other")
+	for _, phone := range []string{"13900000781", "13900000782"} {
+		for _, password := range []string{"", "wrong"} {
+			adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/send-code", token, map[string]string{"phone": phone, "password": password}), 401)
+		}
+		adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/send-code", token, map[string]string{"phone": phone, "password": "password-123456"}), 200)
+		code := box.delivered(t)
+		otherToken, _ := adminContractLogin(t, e.router, "phone-other@example.invalid")
+		adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/bind", otherToken, map[string]string{"phone": phone, "code": code}), 401)
+		adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/bind", token, map[string]string{"phone": phone, "code": code}), 200)
+		adminContractResponse(t, doReq(t, e.router, "GET", "/api/v1/auth/me", token, nil), 401)
+		token, _ = adminContractLogin(t, e.router, "phone-owner@example.invalid")
+	}
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/unbind", token, map[string]string{"password": "password-123456"}), 409)
+	if _, err := e.pool.Exec(context.Background(), `UPDATE users SET email_verified_at=now() WHERE id=$1`, u["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/phone/unbind", token, map[string]string{"password": "password-123456"}), 200)
+	var untouched bool
+	if err := e.pool.QueryRow(context.Background(), `SELECT phone IS NULL AND token_version=0 FROM users WHERE id=$1`, other["user_id"]).Scan(&untouched); err != nil {
+		t.Fatal(err)
+	}
+	if !untouched {
+		t.Fatal("issuer-bound credential changed another user")
+	}
+}
+
+func TestIdentityPGHTTPEmailConfirmationRejectsForeignPurposeOwnerAndAPIKey(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	box := &identitySandbox{}
+	configureIdentity(e, box)
+	token, _, _ := mustRegister(t, e.router, "purpose-owner@example.invalid", "Owner")
+	otherToken, _, _ := mustRegister(t, e.router, "purpose-other@example.invalid", "Other")
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/request", token, map[string]string{"password": "password-123456", "new_email": "new-purpose@example.invalid"}), 202)
+	change := box.delivered(t)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", otherToken, map[string]string{"token": change}), 400)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", "", map[string]string{"token": change}), 401)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", "pangu_test_synthetic_key", map[string]string{"token": change}), 403)
+	if w := identityRequest(t, e, "/auth/password-reset/request", `{"email":"purpose-owner@example.invalid"}`, 1); w.Code != 202 {
+		t.Fatal(w.Code)
+	}
+	reset := box.delivered(t)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", token, map[string]string{"token": reset}), 400)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/send-verification-email", token, nil), 200)
+	verify := box.delivered(t)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", token, map[string]string{"token": verify}), 400)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", token, map[string]string{"token": change}), 200)
+}

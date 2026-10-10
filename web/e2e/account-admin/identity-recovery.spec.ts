@@ -134,3 +134,58 @@ test('forgot password is reachable and unavailable channel preserves the request
   await expect(page.getByRole('alert').filter({ hasText: '暂时不可用' }).first()).toBeVisible();
   await expect(page.getByLabel('邮箱', { exact: true })).toHaveValue('unknown-k7@example.invalid');
 });
+
+test('isolated rebind browser consumption preserves intent on real 503 then revokes old phone and cached identity', async ({ page, request }) => {
+  const a = await account(request);
+  const oldPhone = '13900000761'; const newPhone = '13900000762';
+  sql("UPDATE users SET phone=:'phone',phone_verified_at=now(),email_verified_at=now() WHERE id=:'uid';", { uid: a.user.user_id, phone: oldPhone });
+  await login(page, a.email);
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
+  await expect(page.getByText('139****0761', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '更换手机号', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('手机号', { exact: true }).fill(newPhone);
+  await dialog.getByLabel('当前密码', { exact: true }).fill(password);
+  const failed = page.waitForResponse(r => r.url().endsWith('/user/phone/send-code'));
+  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+  expect((await failed).status()).toBe(503);
+  await expect(dialog.getByRole('alert')).toContainText('暂时不可用');
+  await expect(dialog.getByLabel('手机号', { exact: true })).toHaveValue(newPhone);
+  await expect(dialog.getByLabel('当前密码', { exact: true })).toHaveValue(password);
+  expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+  const code = credential(a.user.user_id, 'phone_bind', newPhone);
+  // Explicit sandbox acknowledgement only: actual Go Inbox issuance is tested
+  // in PG HTTP contracts; this fixture isolates real browser/HTTP consumption.
+  await page.route('**/user/phone/send-code', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"message":"sandbox request accepted; delivery unconfirmed","expires_in":300}' }));
+  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+  await dialog.getByLabel('验证码', { exact: true }).fill(code);
+  const bound = page.waitForResponse(r => r.url().endsWith('/user/phone/bind'));
+  await dialog.getByRole('button', { name: '确认绑定', exact: true }).click();
+  expect((await bound).status()).toBe(200);
+  await expect(page).toHaveURL(/\/login$/);
+  await cleared(page);
+  expect(sql("SELECT phone || ':' || token_version FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe(`${newPhone}:1`);
+  await login(page, a.email);
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
+  await expect(page.getByText('139****0762', { exact: true })).toBeVisible();
+  await expect(page.getByText('139****0761', { exact: true })).toHaveCount(0);
+});
+
+test('email change settings request reports unavailable channel and preserves form and session', async ({ page, request }) => {
+  const a = await account(request);
+  await login(page, a.email);
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: '账户安全', exact: true }).click();
+  await page.getByLabel('当前密码', { exact: true }).fill(password);
+  await page.getByLabel('新邮箱', { exact: true }).fill('new-intent@example.invalid');
+  const attempted = page.waitForResponse(r => r.url().endsWith('/user/email-change/request'));
+  await page.getByRole('button', { name: '请求更换邮箱', exact: true }).click();
+  expect((await attempted).status()).toBe(503);
+  await expect(page.getByRole('alert').filter({ hasText: '暂时不可用' }).first()).toBeVisible();
+  await expect(page.getByLabel('当前密码', { exact: true })).toHaveValue(password);
+  await expect(page.getByLabel('新邮箱', { exact: true })).toHaveValue('new-intent@example.invalid');
+  expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+  expect(sql("SELECT email FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe(a.email);
+});

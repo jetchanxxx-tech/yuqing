@@ -21,6 +21,8 @@ REQUIRED_TESTS = {
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestIdentityPGHTTPPhoneBindRebindRequiresPasswordAndVerifiedEmailForUnbind",
+        "TestIdentityPGHTTPEmailConfirmationRejectsForeignPurposeOwnerAndAPIKey",
         "TestIdentityPGHTTPUniformRequestsAndSocketIPGate",
         "TestIdentityPGHTTPPublicUnavailableRejectedAndUnknownRemainUniform",
         "TestIdentityPGHTTPRecoveryAndPhoneLoginRevokeAndReconstruct",
