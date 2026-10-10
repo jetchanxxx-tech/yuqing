@@ -12,11 +12,14 @@ func TestProfileSourcePrecisionPGHTTP(t *testing.T) {
 	token, _, u := mustRegister(t, e.router, "source-time@example.invalid", "Source time")
 	ctx := context.Background()
 	tid, uid := u["tenant_id"].(string), u["user_id"].(string)
-	if _, err := e.pool.Exec(ctx, `INSERT INTO analyses(id,tenant_id,created_by,name,state) VALUES ('source-time-analysis',$1,$2,'Source precision','completed')`, tid, uid); err != nil {
+	if _, err := e.pool.Exec(ctx, `INSERT INTO analyses(id,tenant_id,created_by,name,state) VALUES ('source-time-analysis',$1,$2,'Source precision','queued')`, tid, uid); err != nil {
 		t.Fatal(err)
 	}
 	docs := []analysis.Document{{ID: "date-only", Title: "Only date", PublishedAt: "2026-03-08"}, {ID: "unknown-zone", Title: "Unknown zone", PublishedAt: "2026-03-08 01:30:00"}, {ID: "instant", Title: "Known instant", PublishedAt: "2026-03-08T07:00:00Z"}}
 	if err := e.deps.Analysis.SaveDocuments(ctx, tid, "source-time-analysis", docs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE analyses SET state='completed' WHERE id='source-time-analysis'`); err != nil {
 		t.Fatal(err)
 	}
 	e.rebuild()
