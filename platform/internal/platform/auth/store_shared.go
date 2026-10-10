@@ -109,3 +109,36 @@ func (s *SharedTenantStore) GetUserTenant(ctx context.Context, userID string) (*
 		PlanCode: t.PlanCode,
 	}, nil
 }
+
+// RegisterAdminAccount holds the identity boundary across validation, trial
+// preparation and the infallible memory commit. It never seeds platform roles.
+func (s *SharedTenantStore) RegisterAdminAccount(ctx context.Context, actor Principal, user User, t Tenant, member Member, trial func() error) error {
+	if err := validateRegistration(user, t, member); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ctx.Err() != nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	current := s.usersByID[actor.UserID]
+	admin := false
+	for _, role := range s.platformRolesByUser[actor.UserID] {
+		if role == rolePlatformAdmin {
+			admin = true
+		}
+	}
+	if current == nil || current.Status != "active" || current.TokenVersion != actor.TokenVersion || !admin {
+		return pkgerrors.ErrConflict
+	}
+	if err := s.checkUserMemberLocked(user, member); err != nil {
+		return err
+	}
+	return s.tenants.CreateWithProvision(ctx, tenant.Tenant{ID: t.ID, Name: t.Name, Slug: t.Slug, DBName: t.DBName, Status: tenant.Status(t.Status), PlanCode: t.PlanCode}, func() error {
+		if err := trial(); err != nil {
+			return err
+		}
+		s.commitAccountLocked(user, member, false)
+		return nil
+	})
+}

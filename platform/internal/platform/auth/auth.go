@@ -196,7 +196,7 @@ var rolePermissions = map[string][]string{
 		"billing:read", "billing:manage",
 		"admin:tenants:list", "admin:tenants:suspend", "admin:tenants:provision",
 		"admin:plans:manage",
-		"admin:users:read", "admin:users:manage", "admin:roles:manage",
+		"admin:users:read", "admin:users:manage", "admin:roles:manage", "admin:credits:manage",
 		"admin:tenants:read", "admin:tenants:manage", "admin:members:manage",
 		"apikeys:manage",
 	},

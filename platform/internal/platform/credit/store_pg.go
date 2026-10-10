@@ -2,7 +2,10 @@ package credit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/auth"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -166,37 +169,82 @@ func (p *PGStore) Transactions(ctx context.Context, tenantID string, limit int) 
 	return out, rows.Err()
 }
 
+// Adjust revalidates the original actor and serializes administrative intent
+// before locking the shared credit pool. Balance, intent ledger and audit have
+// one commit; the key lookup precedes CAS so a retry returns its original row.
 func (p *PGStore) Adjust(ctx context.Context, a Adjustment) (*Transaction, error) {
 	tx, err := p.pool.Begin(ctx)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,741915))`, a.TenantID); err != nil {
+		return nil, err
+	}
+	var status string
+	var version int64
+	var admin bool
+	err = tx.QueryRow(ctx, `SELECT u.status,u.token_version,EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=u.id AND role='platform_admin') FROM users u WHERE u.id=$1 FOR SHARE OF u`, a.ActorID).Scan(&status, &version, &admin)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, pkgerrors.ErrConflict
+	}
+	if err != nil {
+		return nil, err
+	}
+	if status != "active" || version != a.ActorTokenVersion || !admin {
+		return nil, pkgerrors.ErrConflict
+	}
+	if err = tx.QueryRow(ctx, `SELECT status FROM tenants WHERE id=$1 FOR SHARE`, a.TenantID).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
+		return nil, pkgerrors.ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
 	var existing Transaction
-	err = tx.QueryRow(ctx, `SELECT id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,created_at FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key=$2 FOR UPDATE`, a.TenantID, a.IdempotencyKey).Scan(&existing.ID, &existing.Delta, &existing.Reason, &existing.ReasonDetail, &existing.ActorID, &existing.IdempotencyKey, &existing.BalanceAfter, &existing.Version, &existing.CreatedAt)
+	err = tx.QueryRow(ctx, `SELECT id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,expected_version,created_at FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key=$2`, a.TenantID, a.IdempotencyKey).Scan(&existing.ID, &existing.TenantID, &existing.Delta, &existing.Reason, &existing.ReasonDetail, &existing.ActorID, &existing.IdempotencyKey, &existing.BalanceAfter, &existing.Version, &existing.ExpectedVersion, &existing.CreatedAt)
 	if err == nil {
-		if existing.Delta != a.Delta || existing.ReasonDetail != a.ReasonDetail || existing.ActorID != a.ActorID { return nil, errors.New("credit: idempotency key intent conflict") }
+		if existing.Reason != ReasonAdjust || existing.Delta != a.Delta || existing.ReasonDetail != a.ReasonDetail || existing.ActorID != a.ActorID || existing.ExpectedVersion != a.ExpectedVersion {
+			return nil, pkgerrors.ErrConflict
+		}
 		return &existing, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) { return nil, err }
-	var version int64
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO report_credits(tenant_id,balance) VALUES($1,0) ON CONFLICT(tenant_id) DO NOTHING`, a.TenantID); err != nil {
+		return nil, err
+	}
 	var balance int
-	err = tx.QueryRow(ctx, `SELECT version,balance FROM report_credits WHERE tenant_id=$1 FOR UPDATE`, a.TenantID).Scan(&version, &balance)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if a.ExpectedVersion != 0 { return nil, errors.New("credit: expected version conflict") }
-		if _, err = tx.Exec(ctx, `INSERT INTO report_credits(tenant_id,balance,version) VALUES($1,0,0)`, a.TenantID); err != nil { return nil, err }
-		version, balance = 0, 0
-	} else if err != nil { return nil, err }
-	if version != int64(a.ExpectedVersion) { return nil, errors.New("credit: expected version conflict") }
-	if balance+a.Delta < 0 { return nil, ErrInsufficientCredits }
-	version++
-	balance += a.Delta
-	if _, err = tx.Exec(ctx, `UPDATE report_credits SET balance=$2,version=$3,updated_at=now() WHERE tenant_id=$1`, a.TenantID, balance, version); err != nil { return nil, err }
-	result := &Transaction{ID:newTxID(), TenantID:a.TenantID, Delta:a.Delta, Reason:ReasonGrant, ReasonDetail:a.ReasonDetail, ActorID:a.ActorID, IdempotencyKey:a.IdempotencyKey, BalanceAfter:balance, Version:version, CreatedAt:time.Now().UTC()}
-	_, err = tx.Exec(ctx, `INSERT INTO credit_transactions(id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, result.ID,a.TenantID,a.Delta,result.Reason,a.ReasonDetail,a.ActorID,a.IdempotencyKey,balance,version,result.CreatedAt)
-	if err != nil { return nil, err }
-	_, err = tx.Exec(ctx, `INSERT INTO audit_logs(tenant_id,actor_id,action,resource,details_json) VALUES($1,$2,'credit.adjustment','tenant',jsonb_build_object('target_type','tenant','target_id',$1,'reason',$3,'delta',$4,'idempotency_key',$5,'version',$6))`, a.TenantID,a.ActorID,a.ReasonDetail,a.Delta,a.IdempotencyKey,version)
-	if err != nil { return nil, err }
-	if err = tx.Commit(ctx); err != nil { return nil, err }
-	return result,nil
+	if err = tx.QueryRow(ctx, `SELECT version,balance FROM report_credits WHERE tenant_id=$1 FOR UPDATE`, a.TenantID).Scan(&version, &balance); err != nil {
+		return nil, err
+	}
+	if version != a.ExpectedVersion {
+		return nil, pkgerrors.ErrConflict
+	}
+	if int64(balance)+int64(a.Delta) < 0 {
+		return nil, ErrInsufficientCredits
+	}
+	if int64(balance)+int64(a.Delta) > 2147483647 {
+		return nil, pkgerrors.ErrConflict
+	}
+	before := balance
+	if err = tx.QueryRow(ctx, `UPDATE report_credits SET balance=balance+$2,updated_at=now() WHERE tenant_id=$1 RETURNING balance,version`, a.TenantID, a.Delta).Scan(&balance, &version); err != nil {
+		return nil, err
+	}
+	result := &Transaction{ID: newTxID(), TenantID: a.TenantID, Delta: a.Delta, Reason: ReasonAdjust, ReasonDetail: a.ReasonDetail, ActorID: a.ActorID, IdempotencyKey: a.IdempotencyKey, BalanceAfter: balance, Version: version, ExpectedVersion: a.ExpectedVersion}
+	if err = tx.QueryRow(ctx, `INSERT INTO credit_transactions(id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,expected_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING created_at`, result.ID, a.TenantID, a.Delta, ReasonAdjust, a.ReasonDetail, a.ActorID, a.IdempotencyKey, balance, version, a.ExpectedVersion).Scan(&result.CreatedAt); err != nil {
+		return nil, err
+	}
+	details, _ := json.Marshal(map[string]any{"target_type": "tenant", "target_id": a.TenantID, "reason": a.ReasonDetail, "request_id": a.RequestID, "idempotency_key": a.IdempotencyKey, "ledger_id": result.ID, "before": map[string]any{"balance": before, "version": a.ExpectedVersion}, "after": map[string]any{"balance": balance, "version": version}})
+	if _, err = tx.Exec(ctx, `INSERT INTO audit_logs(tenant_id,actor_id,action,resource,details_json) VALUES($1,$2,'credit.adjustment','tenant',$3::jsonb)`, a.TenantID, a.ActorID, details); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // isUniqueViolation 判断 pgx 错误是否为唯一约束冲突（SQLSTATE 23505）。

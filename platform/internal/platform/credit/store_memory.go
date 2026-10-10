@@ -3,6 +3,7 @@ package credit
 import (
 	"context"
 	"errors"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ type MemoryStore struct {
 	mu       sync.Mutex
 	balances map[string]int
 	plans    map[string]string
+	versions map[string]int64
 	txs      []Transaction
 }
 
@@ -25,6 +27,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		balances: map[string]int{},
 		plans:    map[string]string{},
+		versions: map[string]int64{},
 	}
 }
 
@@ -46,11 +49,7 @@ func (m *MemoryStore) Snapshot(_ context.Context, tenantID string) (*Snapshot, e
 	if !hasPlan {
 		plan = "free"
 	}
-	var version int64
-	for _, tx := range m.txs {
-		if tx.TenantID == tenantID && tx.Version > version { version = tx.Version }
-	}
-	return &Snapshot{Balance: bal, PlanCode: plan, Version: version}, nil
+	return &Snapshot{Balance: bal, PlanCode: plan, Version: m.versions[tenantID]}, nil
 }
 
 func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, tx Transaction) (int, error) {
@@ -75,9 +74,8 @@ func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, 
 	bal += delta
 	m.balances[tenantID] = bal
 
-	var version int64
-	for _, existing := range m.txs { if existing.TenantID == tenantID && existing.Version > version { version = existing.Version } }
-	version++
+	m.versions[tenantID]++
+	version := m.versions[tenantID]
 	m.txs = append(m.txs, Transaction{
 		ID: newTxID(), TenantID: tenantID, Delta: delta,
 		Reason: tx.Reason, ReasonDetail: tx.ReasonDetail, ActorID: tx.ActorID, IdempotencyKey: tx.IdempotencyKey, AnalysisID: tx.AnalysisID,
@@ -118,6 +116,7 @@ func (m *MemoryStore) SetPlanCode(_ context.Context, tenantID, planCode string) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.plans[tenantID] = planCode
+	m.versions[tenantID]++
 	return nil
 }
 
@@ -144,34 +143,32 @@ func (m *MemoryStore) Transactions(_ context.Context, tenantID string, limit int
 	return out, nil
 }
 
-func (m *MemoryStore) Adjust(_ context.Context, a Adjustment) (*Transaction, error) {
+func (m *MemoryStore) Adjust(ctx context.Context, a Adjustment) (*Transaction, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i := range m.txs {
-		t := m.txs[i]
+	if ctx.Err() != nil {
+		return nil, pkgerrors.ErrServiceUnavailable
+	}
+	for _, t := range m.txs {
 		if t.TenantID == a.TenantID && t.IdempotencyKey == a.IdempotencyKey {
-			if t.Delta != a.Delta || t.ReasonDetail != a.ReasonDetail || t.ActorID != a.ActorID {
-				return nil, errors.New("credit: idempotency key intent conflict")
+			if t.Reason != ReasonAdjust || t.Delta != a.Delta || t.ReasonDetail != a.ReasonDetail || t.ActorID != a.ActorID || t.ExpectedVersion != a.ExpectedVersion {
+				return nil, pkgerrors.ErrConflict
 			}
-			cp := t
-			return &cp, nil
+			return &t, nil
 		}
 	}
-	version := int64(0)
-	for i := range m.txs {
-		if m.txs[i].TenantID == a.TenantID && m.txs[i].Version > version {
-			version = m.txs[i].Version
-		}
-	}
-	if version != int64(a.ExpectedVersion) {
-		return nil, errors.New("credit: expected version conflict")
+	if m.versions[a.TenantID] != a.ExpectedVersion {
+		return nil, pkgerrors.ErrConflict
 	}
 	bal := m.balances[a.TenantID]
-	if bal+a.Delta < 0 {
+	if int64(bal)+int64(a.Delta) < 0 {
 		return nil, ErrInsufficientCredits
 	}
-	version++
-	t := Transaction{ID: newTxID(), TenantID: a.TenantID, Delta: a.Delta, Reason: ReasonGrant, ReasonDetail: a.ReasonDetail, ActorID: a.ActorID, IdempotencyKey: a.IdempotencyKey, BalanceAfter: bal + a.Delta, Version: version, CreatedAt: time.Now().UTC()}
+	if int64(bal)+int64(a.Delta) > 2147483647 {
+		return nil, pkgerrors.ErrConflict
+	}
+	m.versions[a.TenantID]++
+	t := Transaction{ID: newTxID(), TenantID: a.TenantID, Delta: a.Delta, Reason: ReasonAdjust, ReasonDetail: a.ReasonDetail, ActorID: a.ActorID, IdempotencyKey: a.IdempotencyKey, BalanceAfter: bal + a.Delta, Version: m.versions[a.TenantID], ExpectedVersion: a.ExpectedVersion, CreatedAt: time.Now().UTC()}
 	m.balances[a.TenantID] = t.BalanceAfter
 	m.txs = append(m.txs, t)
 	return &t, nil

@@ -8,46 +8,106 @@ import (
 	"sync"
 	"time"
 
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/id"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
 	"github.com/yuqing/platform/internal/platform/tenant"
-	"github.com/yuqing/platform/internal/pkg/id"
-	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // MemoryStore adapts the exact identity and tenant stores used by the service
 // graph. It keeps only audit history; account and membership state stays in auth.
 type MemoryStore struct {
-	mu       sync.Mutex
-	accounts *auth.SharedTenantStore
-	tenants  *tenant.MemoryStore
-	credits  *credit.Service
-	payments *payment.Service
-	audits   []Audit
+	mu            sync.Mutex
+	accounts      *auth.SharedTenantStore
+	tenants       *tenant.MemoryStore
+	credits       *credit.Service
+	payments      *payment.Service
+	audits        []Audit
+	notifications map[string]memoryNotification
 }
 
 func NewMemoryStore(accounts *auth.SharedTenantStore, tenants *tenant.MemoryStore, credits *credit.Service, payments *payment.Service) *MemoryStore {
-	return &MemoryStore{accounts: accounts, tenants: tenants, credits: credits, payments: payments, audits: []Audit{}}
+	store := &MemoryStore{accounts: accounts, tenants: tenants, credits: credits, payments: payments, audits: []Audit{}, notifications: map[string]memoryNotification{}}
+	if credits != nil {
+		credits.SetAdjustmentGuard(store.adjustCredits)
+	}
+	return store
 }
 
 var _ Store = (*MemoryStore)(nil)
 
+type memoryNotification struct {
+	NotificationAttempt
+	UserID, ActorID string
+	ActorVersion    int64
+}
+
 func (s *MemoryStore) CreatePending(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	if err := validateCreation(&req); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	uid, tid := id.New(), id.New()
-	name := req.Name
-	if req.TenantName != "" { name = req.TenantName }
+	err := s.accounts.RegisterAdminAccount(ctx, auth.Principal{UserID: req.ActorID, TokenVersion: req.ActorTokenVersion}, auth.User{ID: uid, Email: req.Email, Name: req.Name, PasswordHash: "!pending-activation", Status: "pending_activation"}, auth.Tenant{ID: tid, Name: req.TenantName, Slug: "t-" + strings.ToLower(tid), DBName: "yuqing_" + strings.ToLower(tid), Status: "active", PlanCode: "free"}, auth.Member{TenantID: tid, UserID: uid, Role: "tenant_admin"}, func() error {
+		if s.credits == nil {
+			return pkgerrors.ErrServiceUnavailable
+		}
+		return s.credits.GrantTrial(ctx, tid, credit.TrialCredits)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.audits = append(s.audits, Audit{ID: int64(len(s.audits) + 1), ActorID: req.ActorID, Action: "account.create", TargetType: "user", TargetID: uid, TenantID: tid, Reason: "administrator account creation", RequestID: req.RequestID, CreatedAt: time.Now().UTC(), Before: map[string]any{}, After: map[string]any{"status": "pending_activation", "tenant_id": tid, "trial_credits": credit.TrialCredits}})
+	return &CreateResult{UserID: uid, TenantID: tid, Status: "pending_activation"}, nil
+}
+func memoryAdmin(state *auth.AdministrationState, actorID string, version int64) error {
+	actor, ok := state.Users[actorID]
+	if !ok || actor.Status != "active" || actor.TokenVersion != version || !hasAdmin(state.PlatformRoles[actorID]) {
+		return conflict()
+	}
+	return nil
+}
+func (s *MemoryStore) StartNotification(ctx context.Context, actorID, targetID, purpose string, version int64) (*NotificationAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := NotificationAttempt{ID: id.New(), Purpose: purpose, State: "pending", CreatedAt: time.Now().UTC()}
 	err := s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
-		u, ok := state.Users[req.ActorID]
-		if !ok || u.Status != "active" || u.TokenVersion != req.ActorTokenVersion || !hasAdmin(state.PlatformRoles[req.ActorID]) { return conflict() }
+		if err := memoryAdmin(state, actorID, version); err != nil {
+			return err
+		}
+		target, ok := state.Users[targetID]
+		if !ok {
+			return missing()
+		}
+		if (purpose == auth.SetPassword && target.Status != "pending_activation") || (purpose == auth.PasswordReset && target.Status != "active") {
+			return conflict()
+		}
+		s.notifications[n.ID] = memoryNotification{NotificationAttempt: n, UserID: targetID, ActorID: actorID, ActorVersion: version}
 		return nil
 	})
-	if err != nil { return nil, err }
-	err = s.accounts.RegisterAccount(ctx, auth.User{ID:uid,Email:req.Email,Name:req.Name,PasswordHash:"$pending$"+uid,Status:"pending_activation",CreatedAt:time.Now().UTC()}, auth.Tenant{ID:tid,Name:name,Slug:"t-"+strings.ToLower(tid),DBName:"yuqing_"+strings.ToLower(tid),Status:"active",PlanCode:"free"}, auth.Member{TenantID:tid,UserID:uid,Role:"tenant_admin"}, false)
-	if err != nil { return nil, err }
-	if s.credits != nil { if err := s.credits.GrantTrial(ctx, tid, credit.TrialCredits); err != nil { return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "trial grant failed") } }
-	s.audits = append(s.audits, Audit{ID:int64(len(s.audits)+1),ActorID:req.ActorID,Action:"account.create",TargetType:"user",TargetID:uid,TenantID:tid,Reason:"administrator account creation",CreatedAt:time.Now().UTC(),Before:map[string]any{},After:map[string]any{"status":"pending_activation","tenant_id":tid}})
-	return &CreateResult{UserID:uid,TenantID:tid,Status:"pending_activation"}, nil
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+func (s *MemoryStore) FinishNotification(ctx context.Context, attemptID, actorID string, version int64, status, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
+		if err := memoryAdmin(state, actorID, version); err != nil {
+			return err
+		}
+		n, ok := s.notifications[attemptID]
+		if !ok || n.ActorID != actorID || n.ActorVersion != version || n.State != "pending" {
+			return conflict()
+		}
+		n.State, n.ErrorCode = status, code
+		s.notifications[attemptID] = n
+		return nil
+	})
 }
 
 func memoryUser(u auth.AdministrationUser, state *auth.AdministrationState) UserRow {
@@ -106,7 +166,13 @@ func (s *MemoryStore) auditRows(targetType, targetID, tenantID string) []Audit {
 func (s *MemoryStore) User(ctx context.Context, id string) (*UserDetail, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := &UserDetail{Memberships: []Membership{}, AuditLogs: s.auditRows("user", id, "")}
+	result := &UserDetail{Memberships: []Membership{}, AuditLogs: s.auditRows("user", id, ""), Notifications: []NotificationAttempt{}}
+	for _, n := range s.notifications {
+		if n.UserID == id {
+			result.Notifications = append(result.Notifications, n.NotificationAttempt)
+		}
+	}
+	sort.Slice(result.Notifications, func(i, j int) bool { return result.Notifications[i].CreatedAt.After(result.Notifications[j].CreatedAt) })
 	err := s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
 		u, ok := state.Users[id]
 		if !ok {
@@ -187,7 +253,16 @@ func (s *MemoryStore) ListTenants(ctx context.Context, q Query) ([]TenantRow, in
 func (s *MemoryStore) Tenant(ctx context.Context, id string) (*TenantDetail, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := &TenantDetail{Members: []TenantMember{}, Orders: []*payment.Order{}, AuditLogs: s.auditRows("tenant", id, id)}
+	result := &TenantDetail{Members: []TenantMember{}, Orders: []*payment.Order{}, AuditLogs: s.auditRows("tenant", id, id), CreditTransactions: []credit.Transaction{}}
+	if s.credits != nil {
+		ledger, err := s.credits.Transactions(ctx, id, 50)
+		if err != nil {
+			return nil, err
+		}
+		if ledger != nil {
+			result.CreditTransactions = ledger
+		}
+	}
 	err := s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
 		t, err := s.tenants.Get(ctx, id)
 		if err != nil {
@@ -282,12 +357,16 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 				result.Status = u.Status
 				result.RowVersion = u.RowVersion
 			case "user.nickname":
-				if u.RowVersion != m.ExpectedVersion { return conflict() }
-				audit.Before = map[string]any{"name":u.Name,"row_version":u.RowVersion}
-				u.Name = m.Role
+				if u.RowVersion != m.ExpectedVersion {
+					return conflict()
+				}
+				audit.Before = map[string]any{"name": u.Name, "row_version": u.RowVersion}
+				u.Name = m.Name
 				u.RowVersion++
-				audit.After = map[string]any{"name":u.Name,"row_version":u.RowVersion}
-				result.ID=u.ID; result.Status=u.Status; result.RowVersion=u.RowVersion
+				audit.After = map[string]any{"name": u.Name, "row_version": u.RowVersion}
+				result.ID = u.ID
+				result.Status = u.Status
+				result.RowVersion = u.RowVersion
 			case "user.platform_role":
 				roles := state.PlatformRoles[u.ID]
 				if u.RowVersion != m.ExpectedVersion || hasAdmin(roles) == m.PlatformAdmin {
@@ -367,4 +446,31 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	}
 	s.audits = append(s.audits, audit)
 	return result, nil
+}
+
+func (s *MemoryStore) adjustCredits(ctx context.Context, a credit.Adjustment, commit func() (*credit.Transaction, error)) (*credit.Transaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result *credit.Transaction
+	err := s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
+		if err := memoryAdmin(state, a.ActorID, a.ActorTokenVersion); err != nil {
+			return err
+		}
+		if _, err := s.tenants.Get(ctx, a.TenantID); err != nil {
+			return err
+		}
+		var err error
+		result, err = commit()
+		if err != nil {
+			return err
+		}
+		for _, audit := range s.audits {
+			if audit.Action == "credit.adjustment" && audit.After["ledger_id"] == result.ID {
+				return nil
+			}
+		}
+		s.audits = append(s.audits, Audit{ID: int64(len(s.audits) + 1), ActorID: a.ActorID, Action: "credit.adjustment", TargetType: "tenant", TargetID: a.TenantID, TenantID: a.TenantID, Reason: a.ReasonDetail, RequestID: a.RequestID, CreatedAt: result.CreatedAt, Before: map[string]any{"balance": result.BalanceAfter - a.Delta, "version": a.ExpectedVersion}, After: map[string]any{"balance": result.BalanceAfter, "version": result.Version, "ledger_id": result.ID}})
+		return nil
+	})
+	return result, err
 }

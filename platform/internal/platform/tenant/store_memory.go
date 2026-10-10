@@ -97,3 +97,25 @@ func (m *MemoryStore) UpdateStatus(_ context.Context, id string, status Status) 
 	t.Status = status
 	return nil
 }
+
+// CreateWithProvision commits a new row only after its provision callback
+// succeeds. Callers hold identity before this tenant lock, then credit locks.
+func (m *MemoryStore) CreateWithProvision(ctx context.Context, t Tenant, provision func() error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctx.Err() != nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	for _, existing := range m.byID {
+		if existing.ID == t.ID || existing.Slug == t.Slug || existing.DBName == t.DBName {
+			return pkgerrors.ErrConflict
+		}
+	}
+	if err := provision(); err != nil {
+		return err
+	}
+	t.CreatedAt = time.Now().UTC().Truncate(time.Microsecond)
+	m.byID[t.ID] = &t
+	m.order = append(m.order, t.ID)
+	return nil
+}

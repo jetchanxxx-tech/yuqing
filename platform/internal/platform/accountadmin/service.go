@@ -2,12 +2,14 @@ package accountadmin
 
 import (
 	"context"
+	"net/mail"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
-	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/auth"
+	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
 )
 
@@ -58,8 +60,9 @@ type Audit struct {
 
 type UserDetail struct {
 	UserRow
-	Memberships []Membership `json:"memberships"`
-	AuditLogs   []Audit      `json:"audit_logs"`
+	Memberships   []Membership          `json:"memberships"`
+	AuditLogs     []Audit               `json:"audit_logs"`
+	Notifications []NotificationAttempt `json:"notifications"`
 }
 
 type TenantRow struct {
@@ -85,10 +88,11 @@ type TenantMember struct {
 
 type TenantDetail struct {
 	TenantRow
-	Members   []TenantMember   `json:"members"`
-	Credit    *credit.Snapshot `json:"credit"`
-	Orders    []*payment.Order `json:"orders"`
-	AuditLogs []Audit          `json:"audit_logs"`
+	Members            []TenantMember       `json:"members"`
+	Credit             *credit.Snapshot     `json:"credit"`
+	Orders             []*payment.Order     `json:"orders"`
+	AuditLogs          []Audit              `json:"audit_logs"`
+	CreditTransactions []credit.Transaction `json:"credit_transactions"`
 }
 
 // Mutation carries only explicitly validated administrative intent. ActorID
@@ -100,15 +104,26 @@ type Mutation struct {
 	ActorTokenVersion                                      int64
 	PlatformAdmin                                          bool
 	Role                                                   string
+	Name                                                   string
 }
 
 type CreateRequest struct {
-	ActorID, Email, Name, TenantName string
-	ActorTokenVersion int64
+	ActorID, Email, Name, TenantName, RequestID string
+	ActorTokenVersion                           int64
+}
+type NotificationAttempt struct {
+	ID        string    `json:"id"`
+	Purpose   string    `json:"purpose"`
+	State     string    `json:"state"`
+	ErrorCode string    `json:"error_code,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 type CreateResult struct {
-	UserID, TenantID, Status string
-	RowVersion int64 `json:"row_version"`
+	UserID     string              `json:"user_id"`
+	TenantID   string              `json:"tenant_id"`
+	Status     string              `json:"status"`
+	RowVersion int64               `json:"row_version"`
+	Activation NotificationAttempt `json:"activation"`
 }
 
 type Result struct {
@@ -128,31 +143,84 @@ type Store interface {
 	Tenant(context.Context, string) (*TenantDetail, error)
 	Change(context.Context, Mutation) (*Result, error)
 	CreatePending(context.Context, CreateRequest) (*CreateResult, error)
+	StartNotification(context.Context, string, string, string, int64) (*NotificationAttempt, error)
+	FinishNotification(context.Context, string, string, int64, string, string) error
 }
 
 type Service struct {
-	store Store
+	store              Store
 	verificationSender func(context.Context, string, string, string, int64) error
 }
 
 func NewService(store Store) *Service { return &Service{store: store} }
-func (s *Service) SetVerificationSender(sender func(context.Context, string, string, string, int64) error) { s.verificationSender = sender }
+func (s *Service) SetVerificationSender(sender func(context.Context, string, string, string, int64) error) {
+	s.verificationSender = sender
+}
+func validateCreation(req *CreateRequest) error {
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Name = strings.TrimSpace(req.Name)
+	req.TenantName = strings.TrimSpace(req.TenantName)
+	address, err := mail.ParseAddress(req.Email)
+	if err != nil || address.Address != req.Email || len(req.Email) > 254 || req.ActorID == "" || req.ActorTokenVersion < 0 || req.Name == "" || utf8.RuneCountInString(req.Name) > 100 || utf8.RuneCountInString(req.TenantName) > 100 {
+		return pkgerrors.ErrBadRequest
+	}
+	if req.TenantName == "" {
+		req.TenantName = req.Name + "的团队"
+	}
+	return nil
+}
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*CreateResult, error) {
-	if req.ActorID == "" || req.ActorTokenVersion < 0 || strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Name) == "" { return nil, pkgerrors.ErrBadRequest }
+	if err := validateCreation(&req); err != nil {
+		return nil, err
+	}
 	result, err := s.store.CreatePending(ctx, req)
-	if err != nil { return nil, err }
-	if s.verificationSender == nil { return result, pkgerrors.ErrServiceUnavailable }
-	if err := s.verificationSender(ctx, req.ActorID, result.UserID, auth.SetPassword, req.ActorTokenVersion); err != nil { return result, err }
+	if err != nil {
+		return nil, err
+	}
+	// Account creation has already committed. Dispatch failure must preserve and
+	// return its IDs so retrying delivery never repeats provisioning or trial.
+	attempt, sendErr := s.dispatch(ctx, req.ActorID, result.UserID, auth.SetPassword, req.ActorTokenVersion)
+	if attempt != nil {
+		result.Activation = *attempt
+	} else {
+		code, _ := pkgerrors.CodeFor(sendErr)
+		if code == "" {
+			code = "SERVICE_UNAVAILABLE"
+		}
+		result.Activation = NotificationAttempt{Purpose: auth.SetPassword, State: "failed", ErrorCode: code}
+	}
 	return result, nil
 }
-func (s *Service) ResendActivation(ctx context.Context, actorID, targetID string, actorVersion int64) error {
-	if s.verificationSender == nil { return pkgerrors.ErrServiceUnavailable }
-	return s.verificationSender(ctx, actorID, targetID, auth.SetPassword, actorVersion)
+func (s *Service) dispatch(ctx context.Context, actorID, targetID, purpose string, version int64) (*NotificationAttempt, error) {
+	if purpose != auth.SetPassword && purpose != auth.PasswordReset {
+		return nil, pkgerrors.ErrBadRequest
+	}
+	attempt, err := s.store.StartNotification(ctx, actorID, targetID, purpose, version)
+	if err != nil {
+		return nil, err
+	}
+	err = pkgerrors.ErrServiceUnavailable
+	if s.verificationSender != nil {
+		err = s.verificationSender(ctx, actorID, targetID, purpose, version)
+	}
+	state, code := "accepted", ""
+	if err != nil {
+		state = "failed"
+		code, _ = pkgerrors.CodeFor(err)
+		if code == "" {
+			code = "SERVICE_UNAVAILABLE"
+		}
+	}
+	if finishErr := s.store.FinishNotification(ctx, attempt.ID, actorID, version, state, code); finishErr != nil {
+		attempt.ErrorCode = "SERVICE_UNAVAILABLE"
+		return attempt, finishErr
+	}
+	attempt.State, attempt.ErrorCode = state, code
+	return attempt, err
 }
-func (s *Service) SendVerification(ctx context.Context, actorID, targetID, purpose string, actorVersion int64) error {
-	if purpose != auth.SetPassword && purpose != auth.PasswordReset { return pkgerrors.ErrBadRequest }
-	if s.verificationSender == nil { return pkgerrors.ErrServiceUnavailable }
-	return s.verificationSender(ctx, actorID, targetID, purpose, actorVersion)
+func (s *Service) SendVerification(ctx context.Context, actorID, targetID, purpose string, version int64) error {
+	_, err := s.dispatch(ctx, actorID, targetID, purpose, version)
+	return err
 }
 func (s *Service) ListUsers(ctx context.Context, q Query) ([]UserRow, int, error) {
 	return s.store.ListUsers(ctx, q)
@@ -167,6 +235,12 @@ func (s *Service) Tenant(ctx context.Context, id string) (*TenantDetail, error) 
 	return s.store.Tenant(ctx, id)
 }
 func (s *Service) Change(ctx context.Context, m Mutation) (*Result, error) {
+	if m.Action == "user.nickname" {
+		m.Name = strings.TrimSpace(m.Name)
+		if m.Name == "" || utf8.RuneCountInString(m.Name) > 100 {
+			return nil, pkgerrors.ErrBadRequest
+		}
+	}
 	return s.store.Change(ctx, m)
 }
 

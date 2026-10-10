@@ -13,8 +13,8 @@ import (
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/auth"
-	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/tenant"
 )
 
@@ -133,42 +133,89 @@ type adminMemberRoleRequest struct {
 	Role string `json:"role"`
 }
 
-type adminCreateUserRequest struct { Email string `json:"email"`; Name string `json:"name"`; TenantName string `json:"tenant_name"` }
-type adminNicknameRequest struct { Name string `json:"name"`; ExpectedVersion *int64 `json:"expected_version"`; Reason string `json:"reason"` }
-type adminCreditAdjustmentRequest struct { Delta int `json:"delta"`; Reason string `json:"reason"`; IdempotencyKey string `json:"idempotency_key"`; ExpectedVersion *int64 `json:"expected_version"` }
+type adminCreateUserRequest struct {
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	TenantName string `json:"tenant_name"`
+}
+type adminNicknameRequest struct {
+	Name            string `json:"name"`
+	ExpectedVersion *int64 `json:"expected_version"`
+	Reason          string `json:"reason"`
+}
+type adminCreditAdjustmentRequest struct {
+	Delta           int    `json:"delta"`
+	Reason          string `json:"reason"`
+	IdempotencyKey  string `json:"idempotency_key"`
+	ExpectedVersion *int64 `json:"expected_version"`
+}
 
 func (s *Services) handleCreateAdminUser(c *gin.Context) {
 	var req adminCreateUserRequest
-	if !decodeAdmin(c, &req) || strings.TrimSpace(req.Email)=="" || strings.TrimSpace(req.Name)=="" { adminBadRequest(c); return }
+	if !decodeAdmin(c, &req) {
+		return
+	}
+	if !emailRe.MatchString(strings.ToLower(strings.TrimSpace(req.Email))) || strings.TrimSpace(req.Name) == "" {
+		adminBadRequest(c)
+		return
+	}
 	p := middleware.GetPrincipal(c)
-	result, err := s.AccountAdmin.Create(c.Request.Context(), accountadmin.CreateRequest{ActorID:p.UserID,ActorTokenVersion:p.TokenVersion,Email:strings.ToLower(strings.TrimSpace(req.Email)),Name:strings.TrimSpace(req.Name),TenantName:strings.TrimSpace(req.TenantName)})
-	if err != nil { respondError(c, err); return }
-	c.JSON(http.StatusAccepted, result)
+	result, err := s.AccountAdmin.Create(c.Request.Context(), accountadmin.CreateRequest{ActorID: p.UserID, ActorTokenVersion: p.TokenVersion, Email: strings.ToLower(strings.TrimSpace(req.Email)), Name: strings.TrimSpace(req.Name), TenantName: strings.TrimSpace(req.TenantName), RequestID: requestID(c)})
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusCreated, result)
 }
 func (s *Services) handlePatchAdminUser(c *gin.Context) {
 	var req adminNicknameRequest
-	if !decodeAdmin(c, &req) || req.ExpectedVersion == nil || *req.ExpectedVersion < 0 || strings.TrimSpace(req.Name)=="" || strings.TrimSpace(req.Reason)=="" { adminBadRequest(c); return }
-	p:=middleware.GetPrincipal(c)
-	s.respondAdminMutation(c, accountadmin.Mutation{ActorID:p.UserID,ActorTokenVersion:p.TokenVersion,TargetID:c.Param("id"),Action:"user.nickname",Reason:strings.TrimSpace(req.Reason),ExpectedVersion:*req.ExpectedVersion,RequestID:requestID(c),Role:strings.TrimSpace(req.Name)})
+	if !decodeAdmin(c, &req) {
+		return
+	}
+	if req.ExpectedVersion == nil || *req.ExpectedVersion < 0 || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Reason) == "" {
+		adminBadRequest(c)
+		return
+	}
+	p := middleware.GetPrincipal(c)
+	s.respondAdminMutation(c, accountadmin.Mutation{ActorID: p.UserID, ActorTokenVersion: p.TokenVersion, TargetID: c.Param("id"), Action: "user.nickname", Reason: strings.TrimSpace(req.Reason), ExpectedVersion: *req.ExpectedVersion, RequestID: requestID(c), Name: strings.TrimSpace(req.Name)})
 }
 func (s *Services) handleResendActivation(c *gin.Context) {
-	p:=middleware.GetPrincipal(c)
-	if err:=s.AccountAdmin.SendVerification(c.Request.Context(),p.UserID,c.Param("id"),auth.SetPassword,p.TokenVersion); err!=nil { respondError(c,err); return }
-	c.JSON(http.StatusAccepted,gin.H{"message":"activation request accepted; delivery unconfirmed"})
+	p := middleware.GetPrincipal(c)
+	if err := s.AccountAdmin.SendVerification(c.Request.Context(), p.UserID, c.Param("id"), auth.SetPassword, p.TokenVersion); err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"message": "activation request accepted; delivery unconfirmed"})
 }
 func (s *Services) handleAdminPasswordReset(c *gin.Context) {
-	p:=middleware.GetPrincipal(c)
-	if err:=s.AccountAdmin.SendVerification(c.Request.Context(),p.UserID,c.Param("id"),auth.PasswordReset,p.TokenVersion); err!=nil { respondError(c,err); return }
-	c.JSON(http.StatusAccepted,gin.H{"message":"password reset request accepted; delivery unconfirmed"})
+	p := middleware.GetPrincipal(c)
+	if err := s.AccountAdmin.SendVerification(c.Request.Context(), p.UserID, c.Param("id"), auth.PasswordReset, p.TokenVersion); err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"message": "password reset request accepted; delivery unconfirmed"})
 }
 func (s *Services) handleCreditAdjustment(c *gin.Context) {
 	var req adminCreditAdjustmentRequest
-	if !decodeAdmin(c,&req) || req.ExpectedVersion==nil || *req.ExpectedVersion<0 || req.Delta==0 || strings.TrimSpace(req.Reason)=="" || strings.TrimSpace(req.IdempotencyKey)=="" { adminBadRequest(c); return }
-	p:=middleware.GetPrincipal(c)
-	if s.Credits==nil { respondError(c,pkgerrors.ErrServiceUnavailable); return }
-	result,err:=s.Credits.Adjust(c.Request.Context(),credit.Adjustment{TenantID:c.Param("id"),ActorID:p.UserID,Delta:req.Delta,ReasonDetail:strings.TrimSpace(req.Reason),IdempotencyKey:strings.TrimSpace(req.IdempotencyKey),ExpectedVersion:*req.ExpectedVersion})
-	if err!=nil { respondError(c,err); return }
-	c.JSON(http.StatusOK,result)
+	if !decodeAdmin(c, &req) {
+		return
+	}
+	if req.ExpectedVersion == nil || *req.ExpectedVersion < 0 || req.Delta == 0 || strings.TrimSpace(req.Reason) == "" || strings.TrimSpace(req.IdempotencyKey) == "" {
+		adminBadRequest(c)
+		return
+	}
+	p := middleware.GetPrincipal(c)
+	if s.Credits == nil {
+		respondError(c, pkgerrors.ErrServiceUnavailable)
+		return
+	}
+	result, err := s.Credits.Adjust(c.Request.Context(), credit.Adjustment{TenantID: c.Param("id"), ActorID: p.UserID, ActorTokenVersion: p.TokenVersion, RequestID: requestID(c), Delta: req.Delta, ReasonDetail: strings.TrimSpace(req.Reason), IdempotencyKey: strings.TrimSpace(req.IdempotencyKey), ExpectedVersion: *req.ExpectedVersion})
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // decodeAdmin accepts one JSON object, rejects unknown properties/trailing
