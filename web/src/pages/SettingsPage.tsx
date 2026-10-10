@@ -425,7 +425,7 @@ function PhoneTab() {
         ),
       }]} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        已验证手机号可用于登录和找回密码；绑定或更换后需要重新登录
+        已验证手机号可用于登录和找回密码；绑定或更换后需要重新登录。支付验证暂未开放
       </Typography.Paragraph>
       {bound ? (
         <Space><Button onClick={() => setBindOpen(true)}>更换手机号</Button><Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button></Space>

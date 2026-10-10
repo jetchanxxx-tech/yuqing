@@ -162,7 +162,8 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone stri
 	return s.userStore.UpdateProfile(ctx, userID, name, "", timezone)
 }
 
-// SendPhoneCode preserves the existing first-bind service entry point.
+// SendPhoneCode preserves the legacy internal first-bind contract.
+// Deprecated: production issuance must use SendPhoneCodeWithPassword.
 func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string, versions ...int64) error {
 	return s.sendPhoneCode(ctx, userID, phone, "", versions)
 }

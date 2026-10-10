@@ -74,7 +74,7 @@ test('Settings describes actual Pro retention and only connected verification ca
   await expect.soft(page.getByText('验证邮箱后可解锁全部功能', { exact: false })).toHaveCount(0);
   await expect.soft(page.getByText('验证用于确认邮箱归属；功能与额度以当前套餐为准。', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
-  await expect.soft(page.getByText('手机号登录、找回密码与支付验证暂未开放', { exact: true })).toBeVisible();
+  await expect.soft(page.getByText('已验证手机号可用于登录和找回密码；绑定或更换后需要重新登录。支付验证暂未开放', { exact: true })).toBeVisible();
 });
 
 test('Settings rejects stale cached credit values after a real database read failure and retries', async ({ page, request }) => {

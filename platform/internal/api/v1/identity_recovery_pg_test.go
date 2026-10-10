@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yuqing/platform/internal/api"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,6 +102,10 @@ func TestIdentityPGHTTPUniformRequestsAndSocketIPGate(t *testing.T) {
 	if _, err := e.pool.Exec(context.Background(), `UPDATE users SET phone='13900000701',phone_verified_at=now() WHERE id=$1`, u["user_id"]); err != nil {
 		t.Fatal(err)
 	}
+	tracked := &identityLookupStore{PGStore: auth.NewPGStore(e.pool)}
+	e.deps.Auth = auth.NewService(tracked, testJWTSecret, "15m", "720h")
+	e.deps.Auth.EnableUserCenter(tracked, auth.NewPGVerificationStore(e.pool), identitySMS{box}, box, "https://example.invalid")
+	e.router = api.NewRouter(e.cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), e.deps)
 	var accepted string
 	for i := 0; i < 20; i++ {
 		path := "/auth/phone/send-code"
@@ -123,6 +131,7 @@ func TestIdentityPGHTTPUniformRequestsAndSocketIPGate(t *testing.T) {
 	}
 	// A known unused email and unknown phone have new target keys. Their shared
 	// socket is exhausted despite distinct body/XFF/X-Real-IP values.
+	lookupsBefore := tracked.lookups.Load()
 	for i, body := range []string{`{"email":"gate-known@example.invalid","ip":"198.51.100.201"}`, `{"phone":"13900000999","ip":"198.51.100.202"}`} {
 		path := "/auth/password-reset/request"
 		if i == 1 {
@@ -132,6 +141,9 @@ func TestIdentityPGHTTPUniformRequestsAndSocketIPGate(t *testing.T) {
 		if w.Code != 429 || w.Header().Get("Retry-After") == "" {
 			t.Fatalf("spoofed IP escaped aggregate gate: %d", w.Code)
 		}
+	}
+	if tracked.lookups.Load() != lookupsBefore {
+		t.Fatal("rate limited target reached identity lookup")
 	}
 	if box.count() != 1 {
 		t.Fatal("rate limited target reached supplier")
@@ -419,4 +431,18 @@ func TestIdentityPGHTTPEmailConfirmationRejectsForeignPurposeOwnerAndAPIKey(t *t
 	verify := box.delivered(t)
 	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", token, map[string]string{"token": verify}), 400)
 	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/email-change/confirm", token, map[string]string{"token": change}), 200)
+}
+
+type identityLookupStore struct {
+	*auth.PGStore
+	lookups atomic.Int64
+}
+
+func (s *identityLookupStore) GetByPhone(ctx context.Context, phone string) (*auth.User, error) {
+	s.lookups.Add(1)
+	return s.PGStore.GetByPhone(ctx, phone)
+}
+func (s *identityLookupStore) GetUserByEmail(ctx context.Context, email string) (*auth.User, error) {
+	s.lookups.Add(1)
+	return s.PGStore.GetUserByEmail(ctx, email)
 }

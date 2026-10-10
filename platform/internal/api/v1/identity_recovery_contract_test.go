@@ -1,6 +1,7 @@
 package v1_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,11 @@ func TestIdentityHTTPFirstBindRequiresCurrentPassword(t *testing.T) {
 	s.Auth.EnableUserCenter(contractFixture(t).store, auth.NewMemoryVerificationStore(), sms, nil, "https://example.invalid")
 	for _, password := range []string{"", "wrong-password"} {
 		w := doReq(t, r, "POST", "/api/v1/user/phone/send-code", token, map[string]string{"phone": "13900000701", "password": password})
-		if w.Code != 401 || sms.code != "" {
+		var envelope map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != 401 || sms.code != "" || envelope["code"] != "IDENTITY_CHECK_FAILED" {
 			t.Fatalf("first binding accepted without current password: status=%d issued=%v", w.Code, sms.code != "")
 		}
 	}

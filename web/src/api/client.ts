@@ -92,7 +92,8 @@ client.interceptors.response.use(
     }
     const url = config?.url ?? '';
     const publicAuth = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/phone/login', '/auth/phone/send-code', '/auth/password-reset/request', '/auth/password-reset/confirm', '/auth/verify-email'].includes(url);
-    if (config && !publicAuth && error.response?.status === 401) {
+    const identityInputRejected = error.response?.data?.code === 'IDENTITY_CHECK_FAILED';
+    if (config && !publicAuth && !identityInputRejected && error.response?.status === 401) {
       if (config._retry) { clearSession(); return Promise.reject(error); }
       config._retry = true;
       // Delayed expired-token responses retry the already refreshed credential.

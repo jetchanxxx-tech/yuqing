@@ -25,7 +25,7 @@ export default function EmailChangePage() {
     {success ? <Result status="success" title="邮箱已更换，请重新登录" extra={<Link to="/login">返回登录</Link>} /> : <>
       {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
       {!token ? <Alert type="error" message="链接无效，请回用户中心重新申请" action={<Link to="/settings">用户中心</Link>} /> : sessionError ? <Alert type="error" message={sessionError} action={<Button loading={loading} onClick={() => void reloadIdentity().catch(() => {})}>重试登录状态</Button>} /> : principal ? <>
-        <Typography.Paragraph>当前账户：{principal.email}。确认后将更换登录邮箱，并退出当前登录。原邮箱会收到安全通知。</Typography.Paragraph>
+        <Typography.Paragraph>当前账户：{principal.email}。确认后将更换登录邮箱，并退出当前登录。系统将向原邮箱请求发送安全通知，送达尚未确认。</Typography.Paragraph>
         <Button type="primary" onClick={() => void confirm()} loading={busy}>确认更换邮箱</Button>
       </> : <Form layout="vertical" onFinish={async (v: { email: string; password: string }) => {
         setError(''); try { await login(v.email, v.password); } catch (e) { setError(identityError(e)); }

@@ -126,13 +126,23 @@ for (const state of ['expired', 'used'] as const) test(`password reset shows an 
   await expect(page.getByRole('alert').filter({ hasText: state === 'expired' ? '链接已过期' : '链接已使用' }).first()).toBeVisible();
 });
 
-test('forgot password is reachable and unavailable channel preserves the requested email', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByRole('link', { name: '忘记密码' }).click();
-  await page.getByLabel('邮箱', { exact: true }).fill('unknown-k7@example.invalid');
+test('forgot password preserves input on unavailable channel and shows admission without delivery claim', async ({ page }) => {
+  // Earlier configuration tests deliberately configure the isolated Resend key.
+  // Temporarily remove only the provider selection to exercise global503.
+  const provider = sql("SELECT value FROM platform_settings WHERE key='email_provider';");
+  sql("UPDATE platform_settings SET value='' WHERE key='email_provider';");
+  try {
+    await page.goto('/login');
+    await page.getByRole('link', { name: '忘记密码' }).click();
+    await page.getByLabel('邮箱', { exact: true }).fill('unknown-k7@example.invalid');
+    await page.getByRole('button', { name: '请求重置链接' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: '暂时不可用' }).first()).toBeVisible();
+    await expect(page.getByLabel('邮箱', { exact: true })).toHaveValue('unknown-k7@example.invalid');
+  } finally { sql("UPDATE platform_settings SET value=:'provider' WHERE key='email_provider';", { provider }); }
+  // The target is unknown, so the configured channel is checked but no outbound
+  // provider request or new account is made; this is admission, not delivery.
   await page.getByRole('button', { name: '请求重置链接' }).click();
-  await expect(page.getByRole('alert').filter({ hasText: '暂时不可用' }).first()).toBeVisible();
-  await expect(page.getByLabel('邮箱', { exact: true })).toHaveValue('unknown-k7@example.invalid');
+  await expect(page.getByRole('alert').filter({ hasText: '请求已受理' }).first()).toContainText('送达尚未确认');
 });
 
 test('isolated rebind browser consumption preserves intent on real 503 then revokes old phone and cached identity', async ({ page, request }) => {
@@ -208,4 +218,37 @@ test('wrong current password on phone binding is one attempt and preserves the v
   expect(calls.filter(url => url.endsWith('/user/phone/send-code'))).toHaveLength(1);
   expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(0);
   expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+});
+
+test('one wrong bind code spends one attempt while genuine revocation still logs out and clears identity', async ({ page, request }) => {
+  const a = await account(request);
+  const phone = '13900000793';
+  const code = credential(a.user.user_id, 'phone_bind', phone);
+  await login(page, a.email);
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
+  await page.getByRole('button', { name: '绑定手机号', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('手机号', { exact: true }).fill(phone);
+  await dialog.getByLabel('当前密码', { exact: true }).fill(password);
+  // Only the delivered fixture's acknowledgement is synthetic; consumption,
+  // attempts, revocation, refresh and subsequent session clearing are real.
+  await page.route('**/user/phone/send-code', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"message":"sandbox request accepted; delivery unconfirmed","expires_in":300}' }));
+  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+  await dialog.getByLabel('验证码', { exact: true }).fill('000000');
+  const calls: string[] = [];
+  page.on('request', r => { if (r.url().endsWith('/user/phone/bind') || r.url().endsWith('/auth/refresh')) calls.push(r.url()); });
+  await dialog.getByRole('button', { name: '确认绑定', exact: true }).click();
+  await expect(dialog.getByRole('alert').filter({ hasText: '密码、验证码不正确' })).toBeVisible();
+  await expect(dialog.getByLabel('验证码', { exact: true })).toHaveValue('000000');
+  expect(calls.filter(url => url.endsWith('/user/phone/bind'))).toHaveLength(1);
+  expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(0);
+  expect(sql("SELECT attempts FROM sms_verification_codes WHERE user_id=:'uid' AND purpose='phone_bind';", { uid: a.user.user_id })).toBe('1');
+  sql("UPDATE users SET token_version=token_version+1 WHERE id=:'uid';", { uid: a.user.user_id });
+  await dialog.getByLabel('验证码', { exact: true }).fill(code);
+  await dialog.getByRole('button', { name: '确认绑定', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await cleared(page);
+  expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(1);
+  expect(sql("SELECT (phone IS NULL)::text FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe('true');
 });

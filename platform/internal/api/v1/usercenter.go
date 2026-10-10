@@ -171,7 +171,7 @@ func (s *Services) handleSendPhoneCode(c *gin.Context) {
 		return
 	}
 	if err := s.Auth.SendPhoneCodeWithPassword(c.Request.Context(), userID, strings.TrimSpace(req.Phone), req.Password, middleware.GetPrincipal(c).TokenVersion); err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "verification code accepted; delivery unconfirmed", "expires_in": 300})
@@ -192,12 +192,12 @@ func (s *Services) handleBindPhone(c *gin.Context) {
 		return
 	}
 	if err := s.Auth.BindPhone(c.Request.Context(), userID, req.Phone, req.Code, middleware.GetPrincipal(c).TokenVersion); err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	profile, err := s.Auth.GetProfile(c.Request.Context(), userID)
 	if err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	profile["requires_relogin"] = true
@@ -218,7 +218,7 @@ func (s *Services) handleUnbindPhone(c *gin.Context) {
 		return
 	}
 	if err := s.Auth.UnbindPhone(c.Request.Context(), userID, req.Password, middleware.GetPrincipal(c).TokenVersion); err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "phone unbound; please log in again"})

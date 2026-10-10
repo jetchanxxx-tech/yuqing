@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuqing/platform/internal/api/middleware"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/auth"
 )
 
@@ -132,7 +133,7 @@ func (s *Services) handleEmailChangeRequest(c *gin.Context) {
 		return
 	}
 	if err := s.Auth.RequestEmailChange(c.Request.Context(), *p, req.Password, req.NewEmail); err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	identityAccepted(c)
@@ -153,8 +154,19 @@ func (s *Services) handleEmailChangeConfirm(c *gin.Context) {
 	}
 	u, err := s.Auth.ConfirmEmailChange(c.Request.Context(), *p, req.Token)
 	if err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"email": u.Email, "requires_relogin": true, "message": "email changed; please log in again"})
+}
+
+// An authenticated password/code rejection is not an expired bearer token.
+// Keeping it distinct prevents automatic refresh from replaying a mutation or
+// spending a second code attempt. Middleware failures never use this code.
+func respondIdentityError(c *gin.Context, err error) {
+	if middleware.GetPrincipal(c) != nil && pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "IDENTITY_CHECK_FAILED", "message": "identity check rejected; check the password or verification credential, or log in again", "request_id": requestID(c)})
+		return
+	}
+	respondError(c, err)
 }
