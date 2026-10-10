@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,7 +76,11 @@ func respondError(c *gin.Context, err error) {
 		status = http.StatusInternalServerError
 	}
 	if status == http.StatusTooManyRequests {
-		c.Header("Retry-After", "60")
+		retry := 60
+		if limited, ok := err.(interface{ RetryAfterSeconds() int }); ok && limited.RetryAfterSeconds() > 0 {
+			retry = limited.RetryAfterSeconds()
+		}
+		c.Header("Retry-After", strconv.Itoa(retry))
 	}
 	c.JSON(status, pkgerrors.ToEnvelope(err, requestID(c)))
 }

@@ -21,6 +21,8 @@ REQUIRED_TESTS = {
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestIdentityHashBudgetPGPersistsAcrossPurposesRestartAndWindow",
+        "TestIdentityHashBudgetPGWrongCodeCountsOnceAndUnavailableStateNeverHashes",
         "TestIdentityHashBudgetPGInvalidRotatingCredentialsRejectBeforeKDF",
         "TestIdentityHashBudgetPGConcurrentWorkIsBoundedAndCancellationCannotFreeLiveHash",
         "TestIdentityPGHTTPPhoneBindRebindRequiresPasswordAndVerifiedEmailForUnbind",
@@ -67,6 +69,7 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestPasswordConfirmationMemoryAdmissionAndPreflight",
         "TestIdentityPGEmailChangePersistsOldAddressNotice",
         "TestIdentityPGEmailNoticeFailureRollsBackWholeMutation",
         "TestIdentityPGNoticeFailedSendPersistsAndRetryNeverResendsAccepted",

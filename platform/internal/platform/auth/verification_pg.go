@@ -188,6 +188,9 @@ func (s *PGVerificationStore) RecordReceipt(ctx context.Context, id string, r no
 	return verificationInvalid()
 }
 func (s *PGVerificationStore) Consume(ctx context.Context, a VerificationAttempt) (*User, error) {
+	return s.consumeVerification(ctx, a, false)
+}
+func (s *PGVerificationStore) consumeVerification(ctx context.Context, a VerificationAttempt, preflight bool) (*User, error) {
 	// A preliminary lookup discovers only the immutable owner. The authoritative
 	// credential is re-read under lock after locking that user.
 	table, hash, target := verificationTable(a.Purpose)
@@ -233,6 +236,9 @@ func (s *PGVerificationStore) Consume(ctx context.Context, a VerificationAttempt
 			return nil, pkgerrors.ErrNotFound
 		}
 		return nil, verificationInvalid()
+	}
+	if preflight {
+		return u, nil
 	}
 	originalVersion := u.TokenVersion
 	originalEmail := u.Email

@@ -130,7 +130,10 @@ func (m *MemoryVerificationStore) RecordReceipt(_ context.Context, id string, r 
 	m.credentials[id] = c
 	return nil
 }
-func (m *MemoryVerificationStore) Consume(_ context.Context, a VerificationAttempt) (*User, error) {
+func (m *MemoryVerificationStore) Consume(ctx context.Context, a VerificationAttempt) (*User, error) {
+	return m.consumeVerification(ctx, a, false)
+}
+func (m *MemoryVerificationStore) consumeVerification(_ context.Context, a VerificationAttempt, preflight bool) (*User, error) {
 	if m.users == nil {
 		return nil, pkgerrors.ErrServiceUnavailable
 	}
@@ -167,6 +170,9 @@ func (m *MemoryVerificationStore) Consume(_ context.Context, a VerificationAttem
 		return nil, verificationInvalid()
 	}
 	u := *stored
+	if preflight {
+		return &u, nil
+	}
 	if err := applyVerification(&u, c, a, now); err != nil {
 		return nil, err
 	}

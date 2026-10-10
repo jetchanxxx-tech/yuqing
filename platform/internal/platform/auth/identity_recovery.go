@@ -10,12 +10,12 @@ import (
 
 // ResetPassword consumes only the public reset purposes. Activation remains the
 // separate K9 SetPassword contract and cannot be reached by recovery.
-func (s *Service) ResetPassword(ctx context.Context, token, phone, code, password string) error {
+func (s *Service) ResetPassword(ctx context.Context, token, phone, code, password string, sourceIP ...string) error {
 	purpose, target, value := PasswordReset, "", token
 	if phone != "" {
 		purpose, target, value = PhoneReset, phone, code
 	}
-	_, err := s.ConfirmVerification(ctx, purpose, target, value, password, nil)
+	_, err := s.ConfirmVerification(ctx, purpose, target, value, password, nil, sourceIP...)
 	if purpose == PasswordReset {
 		return s.identityLinkError(ctx, purpose, value, "", err)
 	}

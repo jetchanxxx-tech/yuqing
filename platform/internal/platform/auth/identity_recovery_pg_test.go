@@ -199,7 +199,7 @@ func TestIdentityPGConcurrentPasswordResetOnlyOneCommit(t *testing.T) {
 	s.EnableUserCenter(users, v, nil, nil, "")
 	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
-		go func() { errs <- s.ResetPassword(ctx, "reset-concurrency", "", "", "ConcurrentReset123") }()
+		go func() { errs <- s.ResetPassword(ctx, "reset-concurrency", "", "", "ConcurrentReset123", "192.0.2.5") }()
 	}
 	successes := 0
 	for i := 0; i < 2; i++ {

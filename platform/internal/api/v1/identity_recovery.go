@@ -75,7 +75,11 @@ func (s *Services) handlePasswordResetConfirm(c *gin.Context) {
 		badRequest(c, "provide one reset credential")
 		return
 	}
-	if err := s.Auth.ResetPassword(c.Request.Context(), req.Token, req.Phone, req.Code, req.NewPassword); err != nil {
+	ip, ok := identityPeer(c)
+	if !ok {
+		return
+	}
+	if err := s.Auth.ResetPassword(c.Request.Context(), req.Token, req.Phone, req.Code, req.NewPassword, ip); err != nil {
 		respondError(c, err)
 		return
 	}

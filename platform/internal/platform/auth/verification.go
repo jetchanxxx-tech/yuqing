@@ -341,8 +341,9 @@ func (s *Service) RequestPublicVerification(ctx context.Context, purpose, target
 }
 
 // ConfirmVerification is the frozen K7/K9 consumption port. It never returns
-// tokens or grants credit. Future phone login must resolve normal authorization.
-func (s *Service) ConfirmVerification(ctx context.Context, purpose, target, value, newPassword string, actor *Principal) (*User, error) {
+// tokens or grants credit. PasswordReset/PhoneReset/SetPassword require one
+// canonical trusted socket IP; missing source cannot bypass shared hash admission.
+func (s *Service) ConfirmVerification(ctx context.Context, purpose, target, value, newPassword string, actor *Principal, sourceIP ...string) (*User, error) {
 	if s.verifications == nil || s.secret == "" {
 		return nil, pkgerrors.ErrServiceUnavailable
 	}
@@ -367,12 +368,20 @@ func (s *Service) ConfirmVerification(ctx context.Context, purpose, target, valu
 		a.UserID = actor.UserID
 		a.ExpectedVersion = &actor.TokenVersion
 	}
-	if purpose == PasswordReset || purpose == PhoneReset || purpose == SetPassword {
+	if passwordConfirmationPurpose(purpose) {
 		if !isStrongPassword(newPassword) {
 			return nil, pkgerrors.Wrap(pkgerrors.ErrConflict, "password must be 8+ characters with letters and digits")
 		}
+		release, err := s.beginPasswordConfirmation(ctx, a, sourceIP)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
 		hash, err := HashPassword(newPassword)
 		if err != nil {
+			return nil, pkgerrors.ErrServiceUnavailable
+		}
+		if ctx.Err() != nil {
 			return nil, pkgerrors.ErrServiceUnavailable
 		}
 		a.PasswordHash = hash

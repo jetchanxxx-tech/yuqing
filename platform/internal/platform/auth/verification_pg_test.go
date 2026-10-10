@@ -459,7 +459,7 @@ func TestVerificationPGPublicCodeFailuresStayUniform(t *testing.T) {
 					if purpose == PhoneLogin {
 						_, _, err = s.LoginWithPhoneCode(ctx, target, "wrong")
 					} else {
-						_, err = s.ConfirmVerification(ctx, purpose, target, "wrong", "Recovery-pass9", nil)
+						_, err = s.ConfirmVerification(ctx, purpose, target, "wrong", "Recovery-pass9", nil, "192.0.2.5")
 					}
 					if !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
 						t.Fatalf("public failure differed at attempt %d: %v", i+1, err)
