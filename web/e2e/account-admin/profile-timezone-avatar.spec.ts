@@ -25,7 +25,8 @@ async function login(page: Page, email: string) {
 async function timezone(page: Page, zone: string) {
   await page.goto('/settings');
   await page.getByRole('tab', { name: '个人资料' }).click();
-  await page.getByLabel('时区', { exact: true }).click();
+  await page.getByLabel('时区', { exact: true }).focus();
+  await page.getByLabel('时区', { exact: true }).press('ArrowDown');
   await page.getByText(zone, { exact: true }).last().click();
   await page.getByRole('button', { name: '保存更改' }).click();
   await expect(page.getByText('资料已保存', { exact: true })).toBeVisible();
