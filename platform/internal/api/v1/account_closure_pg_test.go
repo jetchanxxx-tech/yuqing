@@ -23,7 +23,7 @@ func TestClosurePGPendingPasswordLoginIsRestricted(t *testing.T) {
 		method, path string
 		body         any
 	}{
-		{"GET", "/api/v1/credits/balance", nil},
+		{"GET", "/api/v1/billing/credits", nil},
 		{"GET", "/api/v1/admin/users", nil},
 		{"PUT", "/api/v1/user/profile", map[string]string{"name": "Forbidden"}},
 		{"PUT", "/api/v1/auth/password", map[string]string{"old_password": "password-123456", "new_password": "ForbiddenPassword123"}},
