@@ -198,6 +198,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify administrator bootstrap on the prebuilt CLI
         run: python3 scripts/ci/verify-admin-bootstrap.py
+      - name: Prepare isolated notification provider transport
+        run: python3 scripts/ci/prepare-notification-sandbox.py
       - name: Run the isolated account and administrator suite
         working-directory: web
         run: npx playwright test --config e2e/account-admin.config.ts

@@ -82,6 +82,10 @@ copyFileSync(cliBinary, isolatedCLIBinary);
 chmodSync(isolatedServerBinary, 0o755);
 chmodSync(isolatedCLIBinary, 0o755);
 const backendConfig = join(configDirectory, 'backend.json');
+const notificationDirectory = process.env.YUQING_NOTIFICATION_SANDBOX_DIR;
+if (!notificationDirectory || !notificationDirectory.startsWith('/tmp/yuqing-notification-ci-') || realpathSync(notificationDirectory) !== notificationDirectory) {
+  throw new Error('Hosted notification sandbox directory required.');
+}
 writeFileSync(backendConfig, JSON.stringify({
   server: { addr: '127.0.0.1:8080', env: 'test' },
   store: { driver: 'postgres' },
@@ -117,6 +121,7 @@ const backendEnvironment = [
   'PATH=/usr/bin:/bin',
   `YUQING_CONFIG=${shellQuote(backendConfig)}`,
   `YUQING_PUBLIC_BASE_URL=${shellQuote(frontendURL)}`,
+  `SSL_CERT_FILE=${shellQuote(join(notificationDirectory, 'certificate.pem'))}`,
 ].join(' ');
 const backendCommand = `
 set -euo pipefail
@@ -155,6 +160,13 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
+    {
+      command: `${shellQuote(process.execPath)} ${shellQuote(join(workspace, 'scripts/ci/notification-sandbox.mjs'))}`,
+      cwd: workspace,
+      url: 'http://127.0.0.1:9081/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
     {
       command: `bash -c ${shellQuote(backendCommand)}`,
       cwd: configDirectory,
