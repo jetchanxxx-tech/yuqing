@@ -9,7 +9,7 @@ import {
   createOrder, getCredits, getCatalog, getOrder, getCreditTransactions,
   type CreditTransaction, type Order, type Plan, type SKU,
 } from '../api/billing';
-import { formatCents, formatDateTime } from '../lib/format';
+import { formatCents, useDateTime } from '../lib/format';
 import { ErrorBlock, LoadingBlock } from '../components/PageState';
 
 /** 套餐权益文案（按 code 静态补充，与后端目录语义一致） */
@@ -291,6 +291,7 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 function TransactionsTable() {
+  const formatDateTime = useDateTime();
   const txQ = useQuery({ queryKey: ['billing', 'transactions'], queryFn: getCreditTransactions });
 
   if (txQ.isLoading) return <LoadingBlock rows={3} />;

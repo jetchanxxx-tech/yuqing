@@ -29,6 +29,7 @@ import (
 	"github.com/yuqing/platform/internal/config"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/llm"
+	"github.com/yuqing/platform/internal/pkg/storage"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
@@ -78,6 +79,7 @@ func newContractEnvWithConfig(t *testing.T, cfg *config.Config) (*gin.Engine, *v
 	})
 	deps.Auth.EnableUserCenter(store, auth.NewMemoryVerificationStore(),
 		app.NewSettingsSMS(deps.Settings), app.NewSettingsMailer(deps.Settings), "")
+	deps.Auth.EnableAvatarStorage(storage.NewLocalAvatar(t.TempDir()))
 	contractAccountFixtures.Store(t.Name(), &contractAccountFixture{store: store, deps: deps})
 	t.Cleanup(func() { contractAccountFixtures.Delete(t.Name()) })
 	return api.NewRouter(cfg, logger, deps), deps

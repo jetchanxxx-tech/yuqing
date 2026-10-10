@@ -62,7 +62,7 @@ import {
   type AnalysisState,
   type SentimentKey,
 } from '../lib/constants';
-import { formatDateTime, formatNum } from '../lib/format';
+import { useDateTime, formatNum } from '../lib/format';
 
 const RUNNING_HINTS: Partial<Record<AnalysisState, string>> = {
   queued: '任务已进入队列，等待调度执行（全流程预计 5-10 分钟）',
@@ -79,6 +79,7 @@ const TREND_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function AnalysisDetailPage() {
+  const formatDateTime = useDateTime();
   const { id } = useParams<{ id: string }>();
   const [timelineCursor, setTimelineCursor] = useState('');
   const { message } = App.useApp();
@@ -321,6 +322,7 @@ export default function AnalysisDetailPage() {
 }
 
 function EventEvidenceTimeline({ data, onNext }: { data: EventTimelineResponse; onNext: (cursor: string) => void }) {
+  const formatDateTime = useDateTime();
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Alert type="info" showIcon message="仅按本次分析采集范围内原文所记载的发表时间排序，未独立核验来源时间；不代表全网首发。" />
@@ -426,6 +428,7 @@ interface ResultTabsProps {
 }
 
 function ResultTabs({ result, resultLoading, resultError, onRetryResult, relatedReports, reportsLoading }: ResultTabsProps) {
+  const formatDateTime = useDateTime();
   if (resultError) {
     return <ErrorBlock description="结果数据加载失败" onRetry={onRetryResult} />;
   }

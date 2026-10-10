@@ -20,6 +20,8 @@ func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
 	r.POST("/user/email-change/confirm", svcs.handleEmailChangeConfirm)
 
 	// 个人资料
+	r.POST("/user/avatar", svcs.handleUploadAvatar)
+	r.DELETE("/user/avatar", svcs.handleRemoveAvatar)
 	r.GET("/user/profile", svcs.handleGetProfile)
 	r.PUT("/user/profile", svcs.handleUpdateProfile)
 
@@ -144,7 +146,7 @@ func (s *Services) handleUpdateProfile(c *gin.Context) {
 		badRequest(c, "name is required")
 		return
 	}
-	if err := s.Auth.UpdateProfile(c.Request.Context(), userID, req.Name, req.Timezone); err != nil {
+	if err := s.Auth.UpdateProfile(c.Request.Context(), userID, req.Name, req.Timezone, middleware.GetPrincipal(c).TokenVersion); err != nil {
 		respondError(c, err)
 		return
 	}

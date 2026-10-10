@@ -6,6 +6,7 @@ export interface AdminPage<T> { items: T[]; total: number; page: number; page_si
 export interface AdminQuery {
   page: number; page_size: number; q?: string; status?: string;
   platform_role?: string; verified?: string; plan_code?: string;
+  created_from?: string; created_to?: string;
 }
 export interface AdminUser {
   id: string; name: string; email: string; phone_masked: string; status: string;

@@ -21,6 +21,7 @@ import type { FormInstance } from 'antd';
 import { LogoutOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
+import { useDateTime } from '../lib/format';
 import { acceptedMessage, identityError } from '../lib/identity';
 import { getCredits, getPlans } from '../api/billing';
 import {
@@ -32,6 +33,8 @@ import {
   requestEmailChange,
   unbindPhone,
   updateProfile,
+  uploadAvatar,
+  removeAvatar,
   type UserProfile,
 } from '../api/user';
 
@@ -185,6 +188,7 @@ function OverviewTab() {
 // ════════════════════════════════════════════════════════════
 
 function ProfileTab() {
+  const { reloadIdentity } = useAuth();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
@@ -205,7 +209,8 @@ function ProfileTab() {
 
   const saveM = useMutation({
     mutationFn: (v: { name: string; timezone: string }) => updateProfile(v),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await reloadIdentity();
       message.success('资料已保存');
       queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
     },
@@ -261,6 +266,7 @@ function ProfileForm({
 }) {
   return (
     <Card style={{ borderRadius: 16 }}>
+      <AvatarControls profile={profile} />
       <Form form={form} layout="vertical" onFinish={onSave}>
         <Form.Item
           label="昵称"
@@ -284,7 +290,7 @@ function ProfileForm({
           </Space>
         </Form.Item>
         <Form.Item label="时区" name="timezone">
-          <Select options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} />
+          <Select showSearch options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={saving}>
           保存更改
@@ -299,6 +305,7 @@ function ProfileForm({
 // ════════════════════════════════════════════════════════════
 
 function SecurityTab() {
+  const formatDateTime = useDateTime();
   const { message } = App.useApp();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -327,7 +334,7 @@ function SecurityTab() {
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             {profileQ.data?.password_changed_at
-              ? `上次修改：${new Date(profileQ.data.password_changed_at).toLocaleString()}`
+              ? `上次修改：${formatDateTime(profileQ.data.password_changed_at)}`
               : '从未修改过密码'}
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
@@ -625,4 +632,31 @@ function EmailChangeForm() {
       <Button type="primary" htmlType="submit" loading={busy}>请求更换邮箱</Button>
     </Form>
   </>;
+}
+
+function AvatarControls({ profile }: { profile?: UserProfile }) {
+  const { reloadIdentity } = useAuth();
+  const queryClient = useQueryClient();
+  const { message } = App.useApp();
+  const [error, setError] = useState('');
+  const mutation = useMutation({
+    mutationFn: (file: File | null) => file ? uploadAvatar(file) : removeAvatar(),
+    onSuccess: async (value) => {
+      queryClient.setQueryData(['user', 'profile'], value);
+      await reloadIdentity(); setError(''); message.success('头像已更新');
+    },
+    onError: () => setError('头像更新失败，请检查文件格式和大小后重试。'),
+  });
+  return <Space direction="vertical" style={{ marginBottom: 24 }}>
+    {profile?.avatar_url && <img src={profile.avatar_url} alt="个人头像" width={80} height={80} style={{ borderRadius: '50%', objectFit: 'cover' }} />}
+    <label>上传头像 <input aria-label="上传头像" type="file" accept="image/png,image/jpeg,image/webp" disabled={mutation.isPending || !profile} onChange={(event) => {
+      const file = event.target.files?.[0]; event.target.value = '';
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { setError('头像大小不能超过 2 MiB'); return; }
+      mutation.mutate(file);
+    }} /></label>
+    <Typography.Text type="secondary">支持 PNG、JPEG、WebP；最大 2 MiB，宽高不超过 4096 像素。</Typography.Text>
+    {profile?.avatar_url && <Button loading={mutation.isPending} onClick={() => mutation.mutate(null)}>移除头像</Button>}
+    {error && <Alert type="error" showIcon message={error} />}
+  </Space>;
 }

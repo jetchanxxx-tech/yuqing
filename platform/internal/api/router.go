@@ -36,6 +36,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, deps *v1.Services) *gin.Eng
 	rateLimit := middleware.RateLimit(middleware.RateLimiterConfig{Enabled: cfg.RateLimit.Enabled})
 
 	v1.RegisterInternalBillingRoutes(r, deps)
+	v1.RegisterAvatarRoutes(r, deps)
 
 	// Health check (unauthenticated).
 	r.GET("/api/v1/health", func(c *gin.Context) {

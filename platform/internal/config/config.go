@@ -90,7 +90,8 @@ type ModelConfig struct {
 
 // StorageConfig holds object storage settings.
 type StorageConfig struct {
-	Driver string `yaml:"driver"` // local | s3
+	Driver     string `yaml:"driver"`     // local | s3
+	AvatarRoot string `yaml:"avatarRoot"` // persistent private directory, default data/avatars
 }
 
 // SearchConfig holds full-text search settings.

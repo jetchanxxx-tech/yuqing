@@ -154,3 +154,26 @@ func (s *PGStore) execUserUpdate(ctx context.Context, q string, args ...any) err
 	}
 	return nil
 }
+
+// PostgreSQL rechecks these predicates after waiting for a concurrent row
+// update, so queued requests cannot adopt a revoked actor's newer version.
+func (s *PGStore) UpdateOwnProfile(ctx context.Context, actor Principal, name, timezone string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET name=CASE WHEN $3='' THEN name ELSE $3 END,timezone=$4,row_version=row_version+1 WHERE id=$1 AND status='active' AND token_version=$2`, actor.UserID, actor.TokenVersion, name, timezone)
+	if err != nil {
+		return wrapDB(err, "update own profile")
+	}
+	if tag.RowsAffected() != 1 {
+		return pkgerrors.ErrUnauthorized
+	}
+	return nil
+}
+func (s *PGStore) ReplaceOwnAvatar(ctx context.Context, actor Principal, previous, next string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET avatar_url=$4,row_version=row_version+1 WHERE id=$1 AND status='active' AND token_version=$2 AND COALESCE(avatar_url,'')=$3`, actor.UserID, actor.TokenVersion, previous, next)
+	if err != nil {
+		return wrapDB(err, "replace own avatar")
+	}
+	if tag.RowsAffected() != 1 {
+		return pkgerrors.ErrConflict
+	}
+	return nil
+}

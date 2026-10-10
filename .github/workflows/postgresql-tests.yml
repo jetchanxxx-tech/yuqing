@@ -78,6 +78,7 @@ jobs:
             ./internal/app \
             ./internal/platform/auth \
             ./internal/platform/settings \
+            ./internal/pkg/storage \
             ./internal/pkg/email \
             ./internal/pkg/sms \
             ./internal/platform/apikey \

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { TimezoneContext, DEFAULT_TIMEZONE } from '../lib/format';
 import { useQueryClient } from '@tanstack/react-query';
 import client, {
   AUTH_CLEARED_EVENT, AUTH_CONFIRMED_EVENT, AUTH_PENDING_EVENT, AUTH_UNAVAILABLE_EVENT,
@@ -12,6 +13,9 @@ interface Principal {
   roles: string[];
   plan_code: string;
   tenant_status: string;
+  timezone: string;
+  avatar_url: string;
+  name: string;
 }
 interface AuthState {
   principal: Principal | null;
@@ -104,5 +108,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback((email: string, password: string, name: string) => authenticate('/auth/register', { email, password, name }), [authenticate]);
   const logout = useCallback(() => clearSession(), []);
 
-  return <AuthContext.Provider value={{ principal, loading, identityError, reloadIdentity, login, loginPhone, register, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ principal, loading, identityError, reloadIdentity, login, loginPhone, register, logout }}><TimezoneContext.Provider value={principal?.timezone || DEFAULT_TIMEZONE}>{children}</TimezoneContext.Provider></AuthContext.Provider>;
 }

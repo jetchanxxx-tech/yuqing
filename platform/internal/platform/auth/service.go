@@ -92,6 +92,7 @@ type Service struct {
 	postRegister func(ctx context.Context, tenantID string) error
 
 	// ── 用户中心 P0 依赖（组合根装配；nil = 功能未启用，fail-closed）──
+	avatars       AvatarStorage
 	userStore     UserStore         // 用户中心存储
 	verifications VerificationStore // 验证码/验证 token 存储
 	smsSender     SMSProvider       // 短信发送

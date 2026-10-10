@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -51,7 +52,8 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 	if r, _ := s.store.List(ctx, tenantID, Filter{AnalysisID: analysisID, Limit: 0}); len(r) > 0 {
 		version = len(r) + 1
 	}
-	rp := Report{
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	rp := Report{CreatedAt: &createdAt,
 		ID:            reportID,
 		AnalysisID:    analysisID,
 		Format:        format,
@@ -93,7 +95,8 @@ func (s *Service) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysis
 	if err != nil {
 		return nil, err
 	}
-	rp := Report{ID: reportID, AnalysisID: analysisID, Format: format, Status: statusCompleted,
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	rp := Report{CreatedAt: &createdAt, ID: reportID, AnalysisID: analysisID, Format: format, Status: statusCompleted,
 		FileKey: fmt.Sprintf("reports/%s.%s", reportID, format), ReportVersion: len(previous) + 1, CreatedBy: createdBy}
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		if errors.Is(err, pkgerrors.ErrConflict) {

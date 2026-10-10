@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuqing/platform/internal/api/middleware"
@@ -40,6 +41,25 @@ func adminQuery(c *gin.Context, users bool) (accountadmin.Query, bool) {
 	}
 	valid := true
 	if users {
+		for name, target := range map[string]**time.Time{"created_from": &q.CreatedFrom, "created_to": &q.CreatedTo} {
+			if values, present := c.Request.URL.Query()[name]; present {
+				if len(values) != 1 {
+					adminBadRequest(c)
+					return q, false
+				}
+				instant, err := time.Parse(time.RFC3339, values[0])
+				if err != nil {
+					adminBadRequest(c)
+					return q, false
+				}
+				utc := instant.UTC()
+				*target = &utc
+			}
+		}
+		if q.CreatedFrom != nil && q.CreatedTo != nil && !q.CreatedFrom.Before(*q.CreatedTo) {
+			adminBadRequest(c)
+			return q, false
+		}
 		if q.Status != "" {
 			switch q.Status {
 			case "active", "disabled", "pending_activation", "closure_pending", "closed":

@@ -140,7 +140,7 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (map[string]any
 		"email":               u.Email,
 		"name":                u.Name,
 		"avatar_url":          u.AvatarURL,
-		"timezone":            u.Timezone,
+		"timezone":            profileTimezone(u.Timezone),
 		"phone":               maskPhone(u.Phone),
 		"email_verified":      u.EmailVerifiedAt != nil,
 		"phone_verified":      u.PhoneVerifiedAt != nil,
@@ -150,7 +150,7 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (map[string]any
 }
 
 // UpdateProfile 更新昵称/时区（头像走 UpdateAvatar）。
-func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone string) error {
+func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone string, versions ...int64) error {
 	if err := s.requireDeps(); err != nil {
 		return err
 	}
@@ -159,7 +159,25 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone stri
 	if n := len([]rune(name)); name != "" && (n < 2 || n > 20) {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "name must be 2-20 characters")
 	}
-	return s.userStore.UpdateProfile(ctx, userID, name, "", timezone)
+	if timezone == "" {
+		timezone = DefaultTimezone
+	}
+	if !validTimezone(timezone) {
+		return pkgerrors.Wrap(pkgerrors.ErrBadRequest, "timezone must be an IANA identifier")
+	}
+	u, err := s.verificationUser(ctx, userID, versions)
+	if err != nil {
+		return err
+	}
+	version := u.TokenVersion
+	if len(versions) > 0 {
+		version = versions[0]
+	}
+	store, ok := s.userStore.(ProfileStore)
+	if !ok {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	return store.UpdateOwnProfile(ctx, Principal{UserID: userID, TokenVersion: version}, name, timezone)
 }
 
 // SendPhoneCode preserves the legacy internal first-bind contract.

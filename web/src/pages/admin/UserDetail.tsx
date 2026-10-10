@@ -7,7 +7,7 @@ import {
   changeUserStatus, getAdminUser, type AuditEntry, type MemberRole, type Membership,
 } from '../../api/admin';
 import { useAuth } from '../../stores/auth';
-import { formatDateTime } from '../../lib/format';
+import { useDateTime } from '../../lib/format';
 import { ErrorBlock, LoadingBlock } from '../../components/PageState';
 
 export interface AdminAction {
@@ -67,6 +67,7 @@ export function MutationErrorAlert({ error, onRefresh }: { error: unknown; onRef
 }
 
 export function AuditTable({ entries }: { entries: AuditEntry[] }) {
+  const formatDateTime = useDateTime();
   const columns: ColumnsType<AuditEntry> = [
     { title: '时间', dataIndex: 'created_at', render: formatDateTime, width: 175 },
     { title: '操作', dataIndex: 'action' },
@@ -80,6 +81,7 @@ export function AuditTable({ entries }: { entries: AuditEntry[] }) {
 }
 
 export default function UserDetail({ userID, onClose }: { userID: string; onClose: () => void }) {
+  const formatDateTime = useDateTime();
   const queryClient = useQueryClient();
   const { reloadIdentity } = useAuth();
   const [action, setAction] = useState<AdminAction | null>(null);

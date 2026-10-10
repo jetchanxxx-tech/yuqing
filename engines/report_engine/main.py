@@ -6,7 +6,7 @@ AI 研判段落替换为「AI 研判不可用」提示 —— 结果呈现优于
 import io
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from string import Template
 from typing import Literal
@@ -504,7 +504,7 @@ def _dimensions_section(dimensions: list[dict]) -> str:
 def _render(req: GenerateRequest, insight: dict | None) -> str:
     """渲染完整 HTML 报告。insight 为 None 时降级为纯数据报告。"""
     stats = _sentiment_stats(req.sentiments)
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     title = _esc(req.title)
     template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
 
@@ -589,7 +589,7 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
 
     doc = Document()
     stats = _sentiment_stats(req.sentiments)
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # 标题
     title_para = doc.add_heading(req.title, level=1)

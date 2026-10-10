@@ -140,3 +140,29 @@ func (m *MemoryStore) GetByPhone(_ context.Context, phone string) (*User, error)
 	}
 	return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 }
+
+func (m *MemoryStore) UpdateOwnProfile(_ context.Context, actor Principal, name, timezone string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.usersByID[actor.UserID]
+	if !ok || u.Status != "active" || u.TokenVersion != actor.TokenVersion {
+		return pkgerrors.ErrUnauthorized
+	}
+	if name != "" {
+		u.Name = name
+	}
+	u.Timezone = timezone
+	u.RowVersion++
+	return nil
+}
+func (m *MemoryStore) ReplaceOwnAvatar(_ context.Context, actor Principal, previous, next string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.usersByID[actor.UserID]
+	if !ok || u.Status != "active" || u.TokenVersion != actor.TokenVersion || u.AvatarURL != previous {
+		return pkgerrors.ErrConflict
+	}
+	u.AvatarURL = next
+	u.RowVersion++
+	return nil
+}

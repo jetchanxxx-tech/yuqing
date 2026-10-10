@@ -21,7 +21,7 @@ export default function UsagePage() {
       <Typography.Title level={4}>用量概览</Typography.Title>
       <Typography.Paragraph type="secondary">
         {usage.cycle_status === 'configured' && usage.period_start && usage.period_end
-          ? `统计周期：${usage.period_start.slice(0, 10)} 至 ${usage.period_end.slice(0, 10)}`
+          ? `统计周期（UTC）：${usage.period_start.slice(0, 10)} 至 ${usage.period_end.slice(0, 10)}`
           : '统计周期未配置，当前按累计用量统计'}
       </Typography.Paragraph>
       {limited && percent >= 100 && <Alert type="warning" showIcon message="Token 配额已用尽，新的模型调用将暂停" description="可购买更高配额的套餐；已发生的用量仍会完整记录。" style={{ marginBottom: 16 }} />}

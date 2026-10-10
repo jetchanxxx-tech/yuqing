@@ -17,10 +17,14 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
+    "internal/pkg/storage": ("TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
     "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline", "TestSMTPCancelledContextCannotDial"),
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestProfileReportTimestampPGProjection",
+        "TestProfileDatesPGUserListBounds",
+        "TestProfileAvatarPGHTTPBoundaries",
         "TestIdentityHashBudgetPGPersistsAcrossPurposesRestartAndWindow",
         "TestIdentityHashBudgetPGWrongCodeCountsOnceAndUnavailableStateNeverHashes",
         "TestIdentityHashBudgetPGInvalidRotatingCredentialsRejectBeforeKDF",
@@ -69,6 +73,10 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestProfileTimezonePG",
+        "TestProfileAvatarPGReferenceRollbackAndPersistence",
+        "TestProfileAvatarPGQueuedInvalidation",
+        "TestProfileAvatarPGConcurrentReplacementKeepsWinner",
         "TestPasswordConfirmationMemoryAdmissionAndPreflight",
         "TestIdentityPGEmailChangePersistsOldAddressNotice",
         "TestIdentityPGEmailNoticeFailureRollsBackWholeMutation",

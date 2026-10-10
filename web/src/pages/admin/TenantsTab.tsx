@@ -4,10 +4,11 @@ import { Alert, Button, Card, Form, Input, Select, Table, Tag, Typography } from
 import type { ColumnsType } from 'antd/es/table';
 import { adminErrorMessage, adminStatusLabel, listTenants, type AdminQuery, type Tenant } from '../../api/admin';
 import { getPlans } from '../../api/billing';
-import { formatDateTime } from '../../lib/format';
+import { useDateTime } from '../../lib/format';
 import TenantDetail from './TenantDetail';
 
 export default function TenantsTab() {
+  const formatDateTime = useDateTime();
   const [form] = Form.useForm();
   const [query, setQuery] = useState<AdminQuery>({ page: 1, page_size: 20 });
   const [selected, setSelected] = useState<string | null>(null);

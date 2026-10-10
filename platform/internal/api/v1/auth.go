@@ -37,6 +37,9 @@ func RegisterSessionRoutes(r *gin.RouterGroup, svcs *Services) {
 // userDTO is the wire shape frontend stores as the session principal
 // (see Principal in web/src/stores/auth.tsx).
 type userDTO struct {
+	Name         string   `json:"name"`
+	Timezone     string   `json:"timezone"`
+	AvatarURL    string   `json:"avatar_url"`
 	UserID       string   `json:"user_id"`
 	TenantID     string   `json:"tenant_id"`
 	Email        string   `json:"email"`
@@ -166,7 +169,16 @@ func (s *Services) handleMe(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "authentication required"})
 		return
 	}
-	c.JSON(http.StatusOK, userFromPrincipal(p))
+	profile, err := s.Auth.GetProfile(c.Request.Context(), p.UserID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	result := userFromPrincipal(p)
+	result.Name, _ = profile["name"].(string)
+	result.Timezone, _ = profile["timezone"].(string)
+	result.AvatarURL, _ = profile["avatar_url"].(string)
+	c.JSON(http.StatusOK, result)
 }
 
 // handleLogout is a stateless-JWT no-op: the client discards its local token

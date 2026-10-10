@@ -13,6 +13,7 @@ import (
 // Query is validated by the HTTP boundary before reaching a store. Stores apply
 // filters and pagination before returning data, in created_at/id order.
 type Query struct {
+	CreatedFrom, CreatedTo                      *time.Time
 	Page, PageSize                              int
 	Q, Status, PlatformRole, Verified, PlanCode string
 }
@@ -165,6 +166,9 @@ func MaskPhone(phone string) string {
 	return strings.Repeat("*", len(r))
 }
 func userMatches(u UserRow, q Query) bool {
+	if (q.CreatedFrom != nil && u.CreatedAt.Before(*q.CreatedFrom)) || (q.CreatedTo != nil && !u.CreatedAt.Before(*q.CreatedTo)) {
+		return false
+	}
 	needle := strings.ToLower(q.Q)
 	if needle != "" && !strings.Contains(strings.ToLower(u.ID), needle) && !strings.Contains(strings.ToLower(u.Name), needle) && !strings.Contains(strings.ToLower(u.Email), needle) {
 		return false

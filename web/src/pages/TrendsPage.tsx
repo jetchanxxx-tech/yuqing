@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { getTrends, type TrendItem, type TrendPlatform } from '../api/trends';
-import { formatDateTime } from '../lib/format';
+import { useDateTime } from '../lib/format';
 import { LoadingBlock } from '../components/PageState';
 
 const STATUS_TAG: Record<string, { color: string; text: string }> = {
@@ -223,6 +223,7 @@ function HitsTable({ hits }: { hits: HitItem[] }) {
 }
 
 function PlatformFeed({ platform }: { platform: TrendPlatform }) {
+  const formatDateTime = useDateTime();
   if (platform.status === 'error') {
     return (
       <Alert

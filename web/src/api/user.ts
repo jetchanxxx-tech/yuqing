@@ -95,3 +95,11 @@ export async function requestEmailChange(password: string, newEmail: string) {
 export async function confirmEmailChange(token: string) {
   return client.post('/user/email-change/confirm', { token });
 }
+
+export async function uploadAvatar(file: File) {
+  const body = new FormData(); body.append('avatar', file);
+  return (await client.post<UserProfile>('/user/avatar', body)).data;
+}
+export async function removeAvatar() {
+  return (await client.delete<UserProfile>('/user/avatar')).data;
+}

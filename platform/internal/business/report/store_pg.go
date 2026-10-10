@@ -32,7 +32,7 @@ var _ Store = (*PGStore)(nil)
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 // reportColumns 是读路径的列清单（含迁移 0008 新增列）。
-const reportColumns = `id, analysis_id, format, status, file_key, created_by, report_version`
+const reportColumns = `id, analysis_id, format, status, file_key, created_by, report_version, created_at`
 
 // Create 插入一条报告记录（含迁移 0008 新增列）。
 func (s *PGStore) Create(ctx context.Context, tenantID, createdBy string, r Report) error {
@@ -53,13 +53,13 @@ func (s *PGStore) Create(ctx context.Context, tenantID, createdBy string, r Repo
 		if current != runID || state != "completed" {
 			return pkgerrors.ErrConflict
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion)
+		_, err = tx.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()))`,
+			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion, r.CreatedAt)
 	} else {
-		_, err = s.pool.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion)
+		_, err = s.pool.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()))`,
+			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion, r.CreatedAt)
 	}
 
 	if err != nil {
@@ -79,7 +79,7 @@ func (s *PGStore) Get(ctx context.Context, tenantID, reportID string) (*Report, 
 	var r Report
 	err := s.pool.QueryRow(ctx,
 		`SELECT `+reportColumns+` FROM reports WHERE id = $1 AND tenant_id = $2`,
-		reportID, tenantID).Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion)
+		reportID, tenantID).Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt)
 	if err != nil {
 		return nil, notFoundOrInternal(err, "report not found")
 	}
@@ -120,7 +120,7 @@ func (s *PGStore) List(ctx context.Context, tenantID string, f Filter) ([]Report
 	out := make([]Report, 0)
 	for rows.Next() {
 		var r Report
-		if err := rows.Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion); err != nil {
+		if err := rows.Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt); err != nil {
 			return nil, pgInternal(err)
 		}
 		out = append(out, r)

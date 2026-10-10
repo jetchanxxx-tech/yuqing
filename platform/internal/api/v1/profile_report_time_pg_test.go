@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestProfileReportTimestampPGProjection(t *testing.T) {
@@ -23,4 +24,15 @@ func TestProfileReportTimestampPGProjection(t *testing.T) {
 	if len(reports) != 1 || reports[0].(map[string]any)["created_at"] != "2026-03-08T07:00:00Z" {
 		t.Fatalf("report timestamp unavailable to saved-timezone UI: %s", w.Body.String())
 	}
+	// A newly created response and subsequent DB read expose the same persisted
+	// instant (PostgreSQL stores microsecond precision).
+	created, err := e.deps.Report.CreateFromAnalysis(context.Background(), u["tenant_id"].(string), "k8-time-analysis", "html", u["user_id"].(string))
+	if err != nil || created.CreatedAt == nil {
+		t.Fatalf("new report missing creation instant: %v", err)
+	}
+	loaded, err := e.deps.Report.Get(context.Background(), u["tenant_id"].(string), created.ID)
+	if err != nil || loaded.CreatedAt == nil || !loaded.CreatedAt.Equal(created.CreatedAt.Truncate(time.Microsecond)) {
+		t.Fatalf("response differs from persisted instant: %v", err)
+	}
+
 }

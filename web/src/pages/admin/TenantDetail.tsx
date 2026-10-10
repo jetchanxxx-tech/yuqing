@@ -5,11 +5,12 @@ import type { ColumnsType } from 'antd/es/table';
 import { adminErrorMessage, adminErrorStatus, adminStatusLabel, changeMemberRole, changeTenantStatus, getAdminTenant, type TenantMember } from '../../api/admin';
 import type { Order } from '../../api/billing';
 import { useAuth } from '../../stores/auth';
-import { formatCents, formatDateTime } from '../../lib/format';
+import { formatCents, useDateTime } from '../../lib/format';
 import { ErrorBlock, LoadingBlock } from '../../components/PageState';
 import { AdminActionDialog, AuditTable, MutationErrorAlert, type AdminAction } from './UserDetail';
 
 export default function TenantDetail({ tenantID, onClose }: { tenantID: string; onClose: () => void }) {
+  const formatDateTime = useDateTime();
   const queryClient = useQueryClient();
   const { reloadIdentity } = useAuth();
   const [action, setAction] = useState<AdminAction | null>(null);

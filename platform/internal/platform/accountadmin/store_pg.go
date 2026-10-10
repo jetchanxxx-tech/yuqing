@@ -26,7 +26,9 @@ const userFilter = `WHERE ($1='' OR strpos(lower(u.id),lower($1))>0 OR strpos(lo
 	AND ($2='' OR u.status=$2)
 	AND ($3='' OR EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=u.id AND role=$3))
 	AND ($4='' OR ($4='email' AND u.email_verified_at IS NOT NULL) OR ($4='phone' AND u.phone_verified_at IS NOT NULL)
-	OR ($4='none' AND u.email_verified_at IS NULL AND u.phone_verified_at IS NULL))`
+	OR ($4='none' AND u.email_verified_at IS NULL AND u.phone_verified_at IS NULL))
+ AND ($5::timestamptz IS NULL OR u.created_at >= $5)
+ AND ($6::timestamptz IS NULL OR u.created_at < $6)`
 
 func scanUser(row pgx.Row) (UserRow, error) {
 	u := UserRow{}
@@ -40,14 +42,14 @@ func scanUser(row pgx.Row) (UserRow, error) {
 }
 
 func (s *PGStore) ListUsers(ctx context.Context, q Query) ([]UserRow, int, error) {
-	args := []any{q.Q, q.Status, q.PlatformRole, q.Verified}
+	args := []any{q.Q, q.Status, q.PlatformRole, q.Verified, q.CreatedFrom, q.CreatedTo}
 	total := 0
 	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users u `+userFilter, args...).Scan(&total); err != nil {
 		return nil, 0, internal(err)
 	}
 	start, _ := pageBounds(total, q)
 	args = append(args, q.PageSize, start)
-	rows, err := s.pool.Query(ctx, `SELECT `+userProjection+` FROM users u `+userFilter+` ORDER BY u.created_at,u.id LIMIT $5 OFFSET $6`, args...)
+	rows, err := s.pool.Query(ctx, `SELECT `+userProjection+` FROM users u `+userFilter+` ORDER BY u.created_at,u.id LIMIT $7 OFFSET $8`, args...)
 	if err != nil {
 		return nil, 0, internal(err)
 	}

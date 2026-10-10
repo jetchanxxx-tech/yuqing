@@ -27,6 +27,7 @@ import (
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/pkg/db"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/pkg/storage"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
@@ -155,6 +156,12 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		NewSettingsMailer(platformSettings),
 		os.Getenv("YUQING_PUBLIC_BASE_URL"),
 	)
+
+	avatarRoot := cfg.Storage.AvatarRoot
+	if avatarRoot == "" {
+		avatarRoot = "data/avatars"
+	}
+	authSvc.EnableAvatarStorage(storage.NewLocalAvatar(avatarRoot))
 
 	tenantSvc := tenant.NewService(tenantStore)
 

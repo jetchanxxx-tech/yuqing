@@ -1,12 +1,55 @@
 /** 展示层格式化工具 */
 
-/** 2006-01-02T15:04:05Z / 2006-01-02 15:04:05 / 时间戳 → 本地可读时间 */
-export function formatDateTime(value?: string | number | null): string {
+import { createContext, useCallback, useContext } from 'react';
+
+export const DEFAULT_TIMEZONE = 'Asia/Shanghai';
+export const TimezoneContext = createContext(DEFAULT_TIMEZONE);
+export function useDateTime() {
+  const timezone = useContext(TimezoneContext);
+  return useCallback((value?: string | number | null) => formatDateTime(value, timezone), [timezone]);
+}
+
+/** Only explicit instants are shifted. Source dates/unknown-zone text retain precision. */
+export function formatDateTime(value?: string | number | null, timezone = DEFAULT_TIMEZONE): string {
   if (value === undefined || value === null || value === '') return '-';
-  const t = typeof value === 'number' || /^\d{10,13}$/.test(String(value)) ? Number(value) : String(value);
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString('zh-CN', { hour12: false });
+  const raw = String(value);
+  if (typeof value === 'string' && !/^\d{10}(?:\d{3})?$/.test(raw) && !/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(raw)) {
+    return `${raw} (${ /^\d{4}-\d{2}-\d{2}$/.test(raw) ? '仅日期' : '来源时区未知' })`;
+  }
+  const numeric = typeof value === 'number' || /^\d{10}(?:\d{3})?$/.test(raw);
+  const instant = new Date(numeric ? (Math.abs(Number(value)) < 1e11 ? Number(value) * 1000 : Number(value)) : raw);
+  if (Number.isNaN(instant.getTime())) return raw;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant);
+  const p = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second} (${timezone})`;
+}
+
+/** Find the first UTC instant on a saved-zone calendar day. Binary search also
+ * handles zones with midnight transitions, and rejects entirely skipped days. */
+export function calendarDayStart(date: string, timezone: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('日期无效');
+  const center = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(center) || new Date(center).toISOString().slice(0, 10) !== date) throw new Error('日期无效');
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const day = (ms: number) => {
+    const p = Object.fromEntries(formatter.formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+    return `${p.year}-${p.month}-${p.day}`;
+  };
+  let low = center - 36 * 3600000, high = center + 36 * 3600000;
+  while (low < high) { const mid = Math.floor((low + high) / 2); if (day(mid) < date) low = mid + 1; else high = mid; }
+  if (day(low) !== date) throw new Error('所选时区不存在该日期');
+  return new Date(low).toISOString();
+}
+export function calendarDateRange(from: string | undefined, through: string | undefined, timezone: string) {
+  const created_from = from ? calendarDayStart(from, timezone) : undefined;
+  let created_to: string | undefined;
+  if (through) {
+    calendarDayStart(through, timezone);
+    const next = new Date(`${through}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+    created_to = calendarDayStart(next.toISOString().slice(0, 10), timezone);
+  }
+  if (created_from && created_to && created_from >= created_to) throw new Error('开始日期不能晚于结束日期');
+  return { created_from, created_to };
 }
 
 /** 金额（元）→ ¥xx.xx；未提供返回 - */
