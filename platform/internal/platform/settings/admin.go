@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 )
 
@@ -17,22 +18,46 @@ type AdminStore interface {
 
 func secretKey(k string) bool {
 	k = strings.ToLower(k)
-	return strings.Contains(k, "secret") || strings.Contains(k, "password") || strings.Contains(k, "private_key") || strings.Contains(k, "certificate") || strings.HasSuffix(k, "api_key") || strings.HasSuffix(k, "access_key_id") || strings.HasSuffix(k, "token") || k == "cert_pfx"
+	return strings.Contains(k, "secret") || strings.Contains(k, "password") || strings.Contains(k, "private_key") || strings.Contains(k, "certificate") || strings.HasSuffix(k, "api_key") || strings.HasSuffix(k, "access_key_id") || strings.HasSuffix(k, "token") || strings.HasSuffix(k, "cert_pfx") || k == "api_v3_key" || k == "alipay_public_key"
+}
+func decodeConfig(v string) (map[string]any, bool) {
+	d := json.NewDecoder(strings.NewReader(v))
+	d.UseNumber()
+	var obj map[string]any
+	if d.Decode(&obj) != nil || obj == nil {
+		return nil, false
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
+		return nil, false
+	}
+	return obj, true
+}
+func redactJSON(k string, v any) any {
+	if secretKey(k) && v != nil && v != "" {
+		return SecretMask
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		for key, value := range x {
+			x[key] = redactJSON(key, value)
+		}
+	case []any:
+		for i, value := range x {
+			x[i] = redactJSON("", value)
+		}
+	}
+	return v
 }
 func redactValue(k, v string) string {
 	if secretKey(k) && v != "" {
 		return SecretMask
 	}
 	if strings.HasPrefix(k, "payment_") {
-		var obj map[string]string
-		if json.Unmarshal([]byte(v), &obj) == nil {
-			for key, value := range obj {
-				obj[key] = redactValue(key, value)
-			}
-			b, _ := json.Marshal(obj)
+		if obj, ok := decodeConfig(v); ok {
+			b, _ := json.Marshal(redactJSON("", obj))
 			return string(b)
 		}
-		// Malformed provider configuration is never echoed to clients.
 		if v != "" {
 			return SecretMask
 		}
@@ -46,20 +71,36 @@ func Redact(values map[string]string) map[string]string {
 	}
 	return out
 }
+func preserveJSON(next, old any) any {
+	if text, ok := next.(string); ok && text == SecretMask {
+		return old
+	}
+	switch n := next.(type) {
+	case map[string]any:
+		o, _ := old.(map[string]any)
+		for k, v := range n {
+			n[k] = preserveJSON(v, o[k])
+		}
+	case []any:
+		o, _ := old.([]any)
+		for i, v := range n {
+			var prior any
+			if i < len(o) {
+				prior = o[i]
+			}
+			n[i] = preserveJSON(v, prior)
+		}
+	}
+	return next
+}
 func preserveSecret(k, v, old string) string {
 	if v == SecretMask {
 		return old
 	}
 	if strings.HasPrefix(k, "payment_") {
-		var next, previous map[string]string
-		if json.Unmarshal([]byte(v), &next) == nil {
-			_ = json.Unmarshal([]byte(old), &previous)
-			for key, value := range next {
-				if value == SecretMask {
-					next[key] = previous[key]
-				}
-			}
-			b, _ := json.Marshal(next)
+		if next, ok := decodeConfig(v); ok {
+			previous, _ := decodeConfig(old)
+			b, _ := json.Marshal(preserveJSON(next, previous))
 			return string(b)
 		}
 	}

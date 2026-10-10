@@ -58,20 +58,26 @@ func TestAliyunSandboxRequestReceiptAndSimulatedDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.client.HttpClient = aliyunSandboxClient(func(r *http.Request) (*http.Response, error) {
-		if err := r.ParseForm(); err != nil {
-			t.Fatal(err)
+		// The pinned RPC SDK puts SendSms fields in the signed query and
+		// may intentionally leave the POST body nil.
+		form := r.URL.Query()
+		if r.Body != nil {
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			form = r.Form
 		}
-		if r.Form.Get("PhoneNumbers") != "13800000000" || r.Form.Get("SignName") != "sandbox-sign" || r.Form.Get("TemplateCode") != "sandbox-login" {
+		if form.Get("PhoneNumbers") != "13800000000" || form.Get("SignName") != "sandbox-sign" || form.Get("TemplateCode") != "sandbox-login" {
 			t.Fatalf("SMS request routing fields differ: method=%s", r.Method)
 		}
 		var params map[string]string
-		if json.Unmarshal([]byte(r.Form.Get("TemplateParam")), &params) != nil || params["code"] != "12\"34\\56\n" {
+		if json.Unmarshal([]byte(form.Get("TemplateParam")), &params) != nil || params["code"] != "12\"34\\56\n" {
 			t.Fatal("SDK body changed template JSON")
 		}
-		if r.Header.Get("Authorization") == "" && r.Form.Get("Signature") == "" {
+		if r.Header.Get("Authorization") == "" && form.Get("Signature") == "" {
 			t.Fatal("SDK request is unsigned")
 		}
-		inbox.Accept(r.Form.Get("PhoneNumbers"), "phone_login", params["code"])
+		inbox.Accept(form.Get("PhoneNumbers"), "phone_login", params["code"])
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"Code":"OK","BizId":"sandbox-sms-1","RequestId":"sandbox-request-1"}`))}, nil
 	})
 	receipt, err := p.SendReceipt(context.Background(), "13800000000", "sandbox-login", map[string]string{"code": "12\"34\\56\n"})

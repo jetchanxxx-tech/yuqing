@@ -17,8 +17,8 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
-    "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline"),
-    "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline"),
+    "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline", "TestSMTPCancelledContextCannotDial"),
+    "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
         "TestNotificationSettingsPGSecretsStayServerSide",

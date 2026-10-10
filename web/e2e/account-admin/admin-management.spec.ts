@@ -451,3 +451,31 @@ test('a real notification settings load outage shows failure and recovers throug
   await expect(page.getByRole('alert').filter({ hasText: /配置加载失败|加载失败/ })).toHaveCount(0);
   expect(snapshot()).toBe(before);
 });
+
+test('notification configuration returns server masks and clearly distinguishes sandbox acceptance', async ({ page, request }) => {
+  const fakeKey = 'k6a-isolated-resend-key';
+  const updated = await request.put(`${apiURL}/admin/settings`, { headers: { Authorization: `Bearer ${admin.access_token}` }, data: {
+    email_provider: 'resend', email_from_address: 'sender@example.invalid', resend_api_key: fakeKey,
+  } });
+  expect(updated.status()).toBe(200);
+  const saved = await updated.json();
+  expect(saved.settings.resend_api_key).toBe('********');
+  expect(JSON.stringify(saved)).not.toContain(fakeKey);
+  await signIn(page);
+  const loaded = page.waitForResponse(r => r.url().endsWith('/admin/settings') && r.request().method() === 'GET');
+  await page.getByRole('tab', { name: '通知服务', exact: true }).click();
+  expect((await loaded).status()).toBe(200);
+  await expect(page.getByText(/本轮验收仅使用隔离沙箱/)).toBeVisible();
+  await expect(page.getByText(fakeKey, { exact: true })).toHaveCount(0);
+  await page.getByPlaceholder('发件人名称（盘古舆情）').fill('K6a sandbox');
+  const savedResponse = page.waitForResponse(r => r.url().endsWith('/admin/settings') && r.request().method() === 'PUT');
+  await page.getByRole('button', { name: /保存邮件配置/ }).click();
+  expect((await savedResponse).status()).toBe(200);
+  const current = await api(request, '/admin/settings');
+  expect((await current.json()).settings.resend_api_key).toBe('********');
+  requireRunner();
+  const retained = execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', '-A', '-t', '-c',
+    "SELECT (value='k6a-isolated-resend-key')::text FROM platform_settings WHERE key='resend_api_key'",
+  ], { encoding: 'utf8', stdio: 'pipe', timeout: 30_000 }).trim();
+  expect(retained).toBe('true');
+});

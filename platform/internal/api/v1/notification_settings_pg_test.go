@@ -173,7 +173,7 @@ func TestNotificationSettingsPGSharedPaymentJSONPreservesTypesAndMasks(t *testin
 		t.Fatal(err)
 	}
 	path := "/api/v1/admin/settings"
-	original := `{"enabled":true,"private_key":"fake-private","api_v3_key":"fake-v3","sign_cert_pfx":"fake-pfx","sign_cert_password":"fake-pass","appid":"sandbox-app"}`
+	original := `{"enabled":true,"private_key":"fake-private","api_v3_key":"fake-v3","sign_cert_pfx":"fake-pfx","sign_cert_password":"fake-pass","appid":"sandbox-app","attempts":12,"nested":{"enabled":false,"private_key":"fake-nested","items":[{"secret":"fake-array","weight":2.5}]}}`
 	data := adminContractResponse(t, doReq(t, e.router, http.MethodPut, path, token, map[string]any{"payment_wechat": original}), http.StatusOK)["settings"].(map[string]any)
 	var masked map[string]any
 	if err := json.Unmarshal([]byte(data["payment_wechat"].(string)), &masked); err != nil {
@@ -187,6 +187,14 @@ func TestNotificationSettingsPGSharedPaymentJSONPreservesTypesAndMasks(t *testin
 			t.Fatalf("unredacted credential field %s", key)
 		}
 	}
+	nested := masked["nested"].(map[string]any)
+	if masked["attempts"] != float64(12) || nested["enabled"] != false || nested["private_key"] != "********" {
+		t.Fatal("nested typed config lost or secret unmasked")
+	}
+	item := nested["items"].([]any)[0].(map[string]any)
+	if item["secret"] != "********" || item["weight"] != 2.5 {
+		t.Fatal("array secret or number changed")
+	}
 	masked["enabled"] = false
 	patch, _ := json.Marshal(masked)
 	adminContractResponse(t, doReq(t, e.router, http.MethodPut, path, token, map[string]any{"payment_wechat": string(patch)}), http.StatusOK)
@@ -198,4 +206,9 @@ func TestNotificationSettingsPGSharedPaymentJSONPreservesTypesAndMasks(t *testin
 	if json.Unmarshal([]byte(raw), &stored) != nil || stored["enabled"] != false || stored["private_key"] != "fake-private" || stored["api_v3_key"] != "fake-v3" || stored["sign_cert_pfx"] != "fake-pfx" {
 		t.Fatal("saving returned masks lost usable structured secrets")
 	}
+	storedNested := stored["nested"].(map[string]any)
+	if storedNested["private_key"] != "fake-nested" || storedNested["items"].([]any)[0].(map[string]any)["secret"] != "fake-array" {
+		t.Fatal("nested secret placeholders overwrote credentials")
+	}
+
 }
