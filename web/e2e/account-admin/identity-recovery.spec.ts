@@ -189,3 +189,23 @@ test('email change settings request reports unavailable channel and preserves fo
   expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
   expect(sql("SELECT email FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe(a.email);
 });
+
+test('wrong current password on phone binding is one attempt and preserves the valid session and form', async ({ page, request }) => {
+  const a = await account(request);
+  await login(page, a.email);
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
+  await page.getByRole('button', { name: '绑定手机号', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('手机号', { exact: true }).fill('13900000791');
+  await dialog.getByLabel('当前密码', { exact: true }).fill('incorrect-password-123');
+  const calls: string[] = [];
+  page.on('request', r => { if (r.url().endsWith('/user/phone/send-code') || r.url().endsWith('/auth/refresh')) calls.push(r.url()); });
+  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('密码、验证码不正确');
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(dialog.getByLabel('当前密码', { exact: true })).toHaveValue('incorrect-password-123');
+  expect(calls.filter(url => url.endsWith('/user/phone/send-code'))).toHaveLength(1);
+  expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(0);
+  expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+});
