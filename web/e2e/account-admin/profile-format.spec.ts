@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { calendarDateRange, formatDateTime } from '../../src/lib/format';
+import { calendarDateRange, formatDateTime, formatSourceTime } from '../../src/lib/format';
 
 test('timezone formatting preserves source precision and UTC instants across spring and fall DST', () => {
   expect(formatDateTime('2026-03-08', 'America/New_York')).toBe('2026-03-08 (仅日期)');
@@ -10,6 +10,7 @@ test('timezone formatting preserves source precision and UTC instants across spr
   expect(formatDateTime('2026-11-01T06:00:00Z', 'America/New_York')).toBe('2026-11-01 01:00:00 (America/New_York)');
   expect(formatDateTime('2026-03-08T00:30:00Z', 'America/New_York')).toBe('2026-03-07 19:30:00 (America/New_York)');
   expect(formatDateTime('2026-03-08T00:30:00Z', 'Asia/Shanghai')).toBe('2026-03-08 08:30:00 (Asia/Shanghai)');
+  expect(formatSourceTime('1772345678')).toBe('1772345678 (来源时区未知)');
   expect(formatDateTime(0, 'UTC')).toBe('1970-01-01 00:00:00 (UTC)');
 });
 test('saved-zone date ranges use next calendar midnight for 23 and 25 hour days', () => {

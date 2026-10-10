@@ -62,7 +62,7 @@ import {
   type AnalysisState,
   type SentimentKey,
 } from '../lib/constants';
-import { useDateTime, formatNum } from '../lib/format';
+import { useDateTime, formatNum, formatSourceTime } from '../lib/format';
 
 const RUNNING_HINTS: Partial<Record<AnalysisState, string>> = {
   queued: '任务已进入队列，等待调度执行（全流程预计 5-10 分钟）',
@@ -497,7 +497,7 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
                         <>
                           <div style={{ color: 'rgba(0,0,0,0.45)', marginBottom: 8 }}>
                             {doc.source_name ?? ''}
-                            {doc.published_at ? ` · ${formatDateTime(doc.published_at)}` : ''}
+                            {doc.published_at ? ` · ${formatDateTime(doc.published_at)}` : doc.source_published_at ? ` · ${formatSourceTime(doc.source_published_at)}` : ''}
                           </div>
                           <Typography.Paragraph
                             style={{ marginBottom: 0, fontSize: 13 }}

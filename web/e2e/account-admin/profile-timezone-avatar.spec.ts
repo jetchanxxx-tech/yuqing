@@ -42,6 +42,7 @@ test('saved timezone controls actual analysis report order and security timestam
        INSERT INTO reports(id,tenant_id,created_by,analysis_id,format,status,created_at) VALUES (:'rid',:'tid',:'uid',:'aid','html','completed',:'after');
        UPDATE users SET password_changed_at=:'day' WHERE id=:'uid';`, { uid, tid, aid: `k8-a-${uid}`, rid: `k8-r-${uid}`, at: before, after, day });
   sql("INSERT INTO orders(id,tenant_id,sku_code,kind,credits,amount_cents,channel,state,expires_at,created_at) VALUES (:'id',:'tid','lite','plan',10,1000,'alipay','closed',:'at',:'at');", { id: `k8-o-${uid}`, tid, at: day });
+  sql("INSERT INTO raw_documents(id,tenant_id,analysis_id,title,source_published_at) VALUES ('date-only',:'tid',:'aid','原始日期','2026-03-08'),('unknown-zone',:'tid',:'aid','未注明时区','2026-03-08 01:30:00');", { tid, aid: `k8-a-${uid}` });
   await login(page, a.email);
   await timezone(page, 'America/New_York');
   await page.reload();
@@ -50,6 +51,10 @@ test('saved timezone controls actual analysis report order and security timestam
   await expect(page.getByText('2026-03-08 01:59:59 (America/New_York)', { exact: true })).toBeVisible();
   await page.goto('/reports');
   await expect(page.getByText('2026-03-08 03:00:00 (America/New_York)', { exact: true })).toBeVisible();
+  await page.goto(`/analyses/k8-a-${uid}`);
+  await page.getByRole('tab', { name: '文档列表（2）' }).click();
+  await expect(page.getByText('2026-03-08 (仅日期)', { exact: false })).toBeVisible();
+  await expect(page.getByText('2026-03-08 01:30:00 (来源时区未知)', { exact: false })).toBeVisible();
   await page.goto('/admin');
   await page.getByRole('tab', { name: '租户与套餐管理' }).click();
   await page.getByLabel('搜索租户', { exact: true }).fill(tid);

@@ -39,19 +39,19 @@ const (
 	// 幂等，跨租户/跨分析互不冲突 —— 两个租户抓到同一篇内容都能入库。
 	insertDocumentSQL = `INSERT INTO raw_documents (
 	id, tenant_id, analysis_id, title, url, content, author,
-	source_type, source_name, published_at, content_hash
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	source_type, source_name, published_at, content_hash, source_published_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (tenant_id, analysis_id, id) DO NOTHING`
 
 	selectDocumentsSQL = `SELECT id, title, url, content, author, source_type, source_name,
-	published_at, content_hash
+	published_at, content_hash, COALESCE(source_published_at,'')
 FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2
 ORDER BY id`
 
 	countDocumentsSQL = `SELECT count(*) FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2`
 
 	listByTenantSQL = `SELECT id, title, url, content, author, source_type, source_name,
-	published_at, content_hash
+	published_at, content_hash, COALESCE(source_published_at,'')
 	FROM raw_documents WHERE tenant_id = $1
 	ORDER BY published_at DESC NULLS LAST, id`
 
@@ -95,7 +95,7 @@ func (d *pgDocumentStore) list(ctx context.Context, tenantID, analysisID string)
 			publishedAt *time.Time
 		)
 		if err := rows.Scan(&doc.ID, &doc.Title, &doc.URL, &doc.Content, &doc.Author,
-			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash); err != nil {
+			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt); err != nil {
 			return nil, pgInternal(err)
 		}
 		// TIMESTAMPTZ → RFC3339（不带小数秒）。写入时按 RFC3339 解析、
@@ -135,7 +135,7 @@ func (d *pgDocumentStore) ListByTenant(ctx context.Context, tenantID string) ([]
 			publishedAt *time.Time
 		)
 		if err := rows.Scan(&doc.ID, &doc.Title, &doc.URL, &doc.Content, &doc.Author,
-			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash); err != nil {
+			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt); err != nil {
 			return nil, pgInternal(err)
 		}
 		if publishedAt != nil {
@@ -158,14 +158,14 @@ func documentArgs(tenantID, analysisID string, doc Document) []any {
 	}
 	return []any{
 		docID, tenantID, analysisID, doc.Title, doc.URL, doc.Content, doc.Author,
-		doc.SourceType, doc.SourceName, nullablePublishedAt(doc.PublishedAt), doc.ContentHash,
+		doc.SourceType, doc.SourceName, nullablePublishedAt(doc.PublishedAt), doc.ContentHash, sourcePublishedAt(doc),
 	}
 }
 
 // nullablePublishedAt 把 Go 侧的字符串时间写进 TIMESTAMPTZ 列。
 //
 // 引擎产出的是 RFC3339（Bocha/Scrapling），能解析就存；解析失败或为空则存
-// NULL，读回为空串 —— TIMESTAMPTZ 无法无损容纳任意时间串，宁可标空也不写错值
+// NULL，canonical 字段读回为空串；原始文本单独保存在 source_published_at
 // （Document.PublishedAt 只用于展示，不是排序或去重键）。
 func nullablePublishedAt(s string) any {
 	if s == "" {
@@ -183,6 +183,17 @@ func (d *pgDocumentStore) clear(ctx context.Context, tenantID, analysisID string
 	_, err := d.pool.Exec(ctx, deleteDocumentsSQL, tenantID, analysisID)
 	if err != nil {
 		return pgInternal(err)
+	}
+	return nil
+}
+
+// Source text never becomes aggregation input or a guessed UTC timestamp.
+func sourcePublishedAt(doc Document) any {
+	if doc.PublishedAt != "" && nullablePublishedAt(doc.PublishedAt) == nil {
+		return doc.PublishedAt
+	}
+	if doc.SourcePublishedAt != "" {
+		return doc.SourcePublishedAt
 	}
 	return nil
 }

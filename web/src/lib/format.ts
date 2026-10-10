@@ -9,12 +9,17 @@ export function useDateTime() {
   return useCallback((value?: string | number | null) => formatDateTime(value, timezone), [timezone]);
 }
 
+/** Original source text is displayed literally, even when it resembles an epoch. */
+export function formatSourceTime(value: string): string {
+  return `${value} (${/^\d{4}-\d{2}-\d{2}$/.test(value) ? '仅日期' : '来源时区未知'})`;
+}
+
 /** Only explicit instants are shifted. Source dates/unknown-zone text retain precision. */
 export function formatDateTime(value?: string | number | null, timezone = DEFAULT_TIMEZONE): string {
   if (value === undefined || value === null || value === '') return '-';
   const raw = String(value);
   if (typeof value === 'string' && !/^\d{10}(?:\d{3})?$/.test(raw) && !/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(raw)) {
-    return `${raw} (${ /^\d{4}-\d{2}-\d{2}$/.test(raw) ? '仅日期' : '来源时区未知' })`;
+    return formatSourceTime(raw);
   }
   const numeric = typeof value === 'number' || /^\d{10}(?:\d{3})?$/.test(raw);
   const instant = new Date(numeric ? (Math.abs(Number(value)) < 1e11 ? Number(value) * 1000 : Number(value)) : raw);
