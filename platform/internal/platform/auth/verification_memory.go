@@ -20,11 +20,12 @@ type MemoryVerificationStore struct {
 	users       *MemoryStore
 	credentials map[string]VerificationCredential
 	gates       map[string]verificationGate
+	notices     map[string]memoryIdentityNotice
 }
 
 func (m *MemoryStore) verificationUsers() *MemoryStore { return m }
 func NewMemoryVerificationStore() *MemoryVerificationStore {
-	return &MemoryVerificationStore{credentials: map[string]VerificationCredential{}, gates: map[string]verificationGate{}}
+	return &MemoryVerificationStore{credentials: map[string]VerificationCredential{}, gates: map[string]verificationGate{}, notices: map[string]memoryIdentityNotice{}}
 }
 func (m *MemoryVerificationStore) ReserveSend(_ context.Context, purpose, target, ip string, limits VerificationLimits) error {
 	if _, err := verificationTarget(purpose, target); err != nil {
@@ -173,6 +174,9 @@ func (m *MemoryVerificationStore) Consume(_ context.Context, a VerificationAttem
 		if uid != u.ID && ((u.Phone != "" && u.Phone == other.Phone) || strings.EqualFold(u.Email, other.Email)) {
 			return nil, pkgerrors.ErrConflict
 		}
+	}
+	if c.Purpose == EmailChange {
+		m.notices[c.ID] = memoryIdentityNotice{IdentityNotice: IdentityNotice{ID: c.ID, Recipient: stored.Email}, State: "pending", Next: now}
 	}
 	if u.Email != stored.Email {
 		delete(m.users.usersByEmail, stored.Email)

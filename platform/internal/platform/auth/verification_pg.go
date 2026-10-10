@@ -235,12 +235,18 @@ func (s *PGVerificationStore) Consume(ctx context.Context, a VerificationAttempt
 		return nil, verificationInvalid()
 	}
 	originalVersion := u.TokenVersion
+	originalEmail := u.Email
 	if err = applyVerification(u, c, a, now); err != nil {
 		return nil, err
 	}
 	if c.Purpose != PhoneLogin {
 		_, err = tx.Exec(ctx, `UPDATE users SET email=$2,phone=NULLIF($3,''),email_verified_at=$4,phone_verified_at=$5,password_hash=$6,password_changed_at=$7,status=$8,token_version=$9,row_version=$10 WHERE id=$1`, u.ID, u.Email, u.Phone, u.EmailVerifiedAt, u.PhoneVerifiedAt, u.PasswordHash, u.PasswordChangedAt, u.Status, u.TokenVersion, u.RowVersion)
 		if err != nil {
+			return nil, verificationStorageError(err)
+		}
+	}
+	if c.Purpose == EmailChange {
+		if _, err = tx.Exec(ctx, `UPDATE verification_tokens SET notice_target=$2,notice_state='pending',notice_next_attempt=now() WHERE id=$1`, c.ID, originalEmail); err != nil {
 			return nil, verificationStorageError(err)
 		}
 	}

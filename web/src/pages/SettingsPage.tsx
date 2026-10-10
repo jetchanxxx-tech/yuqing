@@ -21,6 +21,7 @@ import type { FormInstance } from 'antd';
 import { LogoutOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
+import { acceptedMessage, identityError } from '../lib/identity';
 import { getCredits, getPlans } from '../api/billing';
 import {
   bindPhone,
@@ -28,6 +29,7 @@ import {
   getProfile,
   sendPhoneCode,
   sendVerificationEmail,
+  requestEmailChange,
   unbindPhone,
   updateProfile,
   type UserProfile,
@@ -212,7 +214,7 @@ function ProfileTab() {
   const sendM = useMutation({
     mutationFn: sendVerificationEmail,
     onSuccess: (msg) => {
-      message.success(msg || '验证邮件已发送，请查收');
+      message.success(msg || '验证邮件请求已受理，送达尚未确认');
       setSendCountdown(60);
     },
   });
@@ -387,6 +389,8 @@ function SecurityTab() {
           </Form.Item>
         </Form>
       </Modal>
+      <Divider />
+      <EmailChangeForm />
     </Card>
   );
 }
@@ -421,16 +425,17 @@ function PhoneTab() {
         ),
       }]} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        手机号登录、找回密码与支付验证暂未开放
+        已验证手机号可用于登录和找回密码；绑定或更换后需要重新登录
       </Typography.Paragraph>
       {bound ? (
-        <Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button>
+        <Space><Button onClick={() => setBindOpen(true)}>更换手机号</Button><Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button></Space>
       ) : (
         <Button type="primary" onClick={() => setBindOpen(true)}>绑定手机号</Button>
       )}
 
       <BindPhoneModal
         open={bindOpen}
+        rebinding={bound}
         onClose={() => setBindOpen(false)}
         onBound={() => {
           setBindOpen(false);
@@ -452,18 +457,22 @@ function PhoneTab() {
   );
 }
 
-function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: () => void; onBound: () => void }) {
+function BindPhoneModal({ open, rebinding, onClose, onBound }: { open: boolean; rebinding: boolean; onClose: () => void; onBound: () => void }) {
   const { message } = App.useApp();
   const [step, setStep] = useState<1 | 2>(1);
   const [phone, setPhone] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) {
       setStep(1);
       setPhone('');
       setCode('');
+      setPassword('');
+      setError('');
       setCountdown(0);
     }
   }, [open]);
@@ -475,7 +484,8 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
   }, [countdown]);
 
   const sendM = useMutation({
-    mutationFn: () => sendPhoneCode(phone),
+    mutationFn: () => { setError(''); return sendPhoneCode(phone, password); },
+    onError: e => setError(identityError(e)),
     onSuccess: () => {
       message.success('验证码发送已受理，送达待确认');
       setCountdown(60);
@@ -484,34 +494,39 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
   });
 
   const bindM = useMutation({
-    mutationFn: () => bindPhone(phone, code),
+    mutationFn: () => { setError(''); return bindPhone(phone, code); },
+    onError: e => setError(identityError(e)),
     onSuccess: onBound,
   });
 
   return (
     <Modal
-      title={`绑定手机号${step === 2 ? '（步骤 2/2）' : ''}`}
+      title={`${rebinding ? '更换' : '绑定'}手机号${step === 2 ? '（步骤 2/2）' : ''}`}
       open={open}
       onCancel={onClose}
       footer={null}
       destroyOnHidden
     >
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
+      {rebinding && <Typography.Paragraph>新手机号验证成功后将替换原绑定，并要求重新登录。</Typography.Paragraph>}
       {step === 1 ? (
         <>
           <Form layout="vertical">
             <Form.Item label="手机号" required>
               <Input
+                aria-label="手机号"
                 placeholder="11 位手机号"
                 value={phone}
                 maxLength={11}
                 onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
               />
             </Form.Item>
+            <Form.Item label="当前密码" required><Input.Password aria-label="当前密码" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></Form.Item>
           </Form>
           <Button
             type="primary"
             block
-            disabled={!/^1[3-9]\d{9}$/.test(phone)}
+            disabled={!/^1[3-9]\d{9}$/.test(phone) || !password}
             loading={sendM.isPending}
             onClick={() => sendM.mutate()}
           >
@@ -528,6 +543,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
                 : <Button type="link" size="small" style={{ padding: 0 }} onClick={() => sendM.mutate()}>重新发送</Button>
             }>
               <Input
+                aria-label="验证码"
                 placeholder="6 位验证码"
                 value={code}
                 maxLength={6}
@@ -542,7 +558,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
             </Button>
           </Space>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-            绑定仅用于验证并保存手机号联系方式
+            确认后将更新已验证的手机号，并撤销旧登录凭据
           </Typography.Paragraph>
         </>
       )}
@@ -589,4 +605,24 @@ function UnbindPhoneModal({ open, phone, onClose, onUnbound }: { open: boolean; 
       </Form>
     </Modal>
   );
+}
+
+function EmailChangeForm() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [accepted, setAccepted] = useState(false);
+  return <>
+    <Typography.Title level={5}>更换登录邮箱</Typography.Title>
+    <Typography.Paragraph type="secondary">确认新邮箱之前，原邮箱仍可登录。确认后需重新登录，并通知原邮箱。</Typography.Paragraph>
+    {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
+    {accepted && <Alert type="info" message={acceptedMessage} showIcon style={{ marginBottom: 16 }} />}
+    <Form layout="vertical" onFinish={async (v: { password: string; new_email: string }) => {
+      setError(''); setAccepted(false); setBusy(true);
+      try { await requestEmailChange(v.password, v.new_email); setAccepted(true); } catch (e) { setError(identityError(e)); } finally { setBusy(false); }
+    }}>
+      <Form.Item label="当前密码" name="password" rules={[{ required: true, message: '请输入当前密码' }]}><Input.Password autoComplete="current-password" /></Form.Item>
+      <Form.Item label="新邮箱" name="new_email" rules={[{ required: true, type: 'email', message: '请输入新邮箱' }]}><Input autoComplete="email" /></Form.Item>
+      <Button type="primary" htmlType="submit" loading={busy}>请求更换邮箱</Button>
+    </Form>
+  </>;
 }

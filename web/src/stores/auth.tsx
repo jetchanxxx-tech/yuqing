@@ -19,6 +19,7 @@ interface AuthState {
   identityError: string | null;
   reloadIdentity: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  loginPhone: (phone: string, code: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
 }
@@ -90,17 +91,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient, reloadIdentity]);
 
   const authenticate = useCallback(async (path: string, body: Record<string, string>) => {
-    clearSession();
     setLoading(true);
     try {
       const { data } = await client.post(path, body);
+      clearSession();
       storeSessionTokens(data.access_token, data.refresh_token);
       await reloadIdentity();
     } finally { setLoading(false); }
   }, [reloadIdentity]);
   const login = useCallback((email: string, password: string) => authenticate('/auth/login', { email, password }), [authenticate]);
+  const loginPhone = useCallback((phone: string, code: string) => authenticate('/auth/phone/login', { phone, code }), [authenticate]);
   const register = useCallback((email: string, password: string, name: string) => authenticate('/auth/register', { email, password, name }), [authenticate]);
   const logout = useCallback(() => clearSession(), []);
 
-  return <AuthContext.Provider value={{ principal, loading, identityError, reloadIdentity, login, register, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ principal, loading, identityError, reloadIdentity, login, loginPhone, register, logout }}>{children}</AuthContext.Provider>;
 }

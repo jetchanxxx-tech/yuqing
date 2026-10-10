@@ -16,6 +16,9 @@ func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
 	r.PUT("/auth/password", svcs.handleChangePassword)
 	r.POST("/auth/send-verification-email", svcs.handleSendVerificationEmail)
 
+	r.POST("/user/email-change/request", svcs.handleEmailChangeRequest)
+	r.POST("/user/email-change/confirm", svcs.handleEmailChangeConfirm)
+
 	// 个人资料
 	r.GET("/user/profile", svcs.handleGetProfile)
 	r.PUT("/user/profile", svcs.handleUpdateProfile)

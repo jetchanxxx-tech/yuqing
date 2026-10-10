@@ -21,6 +21,12 @@ REQUIRED_TESTS = {
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestIdentityPGHTTPUniformRequestsAndSocketIPGate",
+        "TestIdentityPGHTTPPublicUnavailableRejectedAndUnknownRemainUniform",
+        "TestIdentityPGHTTPRecoveryAndPhoneLoginRevokeAndReconstruct",
+        "TestIdentityPGHTTPInactiveRecoveryCannotActivate",
+        "TestIdentityPGHTTPEmailChangeSuspendedTenantUniqueRollback",
+        "TestIdentityPGHTTPQueuedEmailRequestRetainsOriginalActorVersion",
         "TestIdentityHTTPFirstBindRequiresCurrentPassword",
         "TestIdentityHTTPForgedIPCannotBypassAggregateSendGate",
         "TestNotificationSettingsPGSecretsStayServerSide",
@@ -58,6 +64,9 @@ REQUIRED_TESTS = {
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
         "TestIdentityPGEmailChangePersistsOldAddressNotice",
+        "TestIdentityPGEmailNoticeFailureRollsBackWholeMutation",
+        "TestIdentityPGNoticeFailedSendPersistsAndRetryNeverResendsAccepted",
+        "TestIdentityPGConcurrentPasswordResetOnlyOneCommit",
         "TestNotificationReceiptPGPersistsWithoutCredentialPayload",
         "TestNotificationReceiptPGAllPurposesAndRejectedState",
         "TestNotificationReceiptPGWriteFailureCannotAcceptCredential",

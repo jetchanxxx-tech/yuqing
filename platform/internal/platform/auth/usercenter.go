@@ -167,9 +167,16 @@ func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string, versi
 	return s.sendPhoneCode(ctx, userID, phone, "", versions)
 }
 
-// SendPhoneCodeWithPassword permits changing an existing binding only after
-// checking the password and retaining the original authenticated version.
+// SendPhoneCodeWithPassword is the production issuance entry point. Both first
+// binding and rebinding require the current password and original JWT version.
 func (s *Service) SendPhoneCodeWithPassword(ctx context.Context, userID, phone, password string, version int64) error {
+	u, err := s.verificationUser(ctx, userID, []int64{version})
+	if err != nil {
+		return err
+	}
+	if !VerifyPassword(u.PasswordHash, password) {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "current password required to bind phone")
+	}
 	return s.sendPhoneCode(ctx, userID, phone, password, []int64{version})
 }
 func (s *Service) sendPhoneCode(ctx context.Context, userID, phone, password string, versions []int64) error {

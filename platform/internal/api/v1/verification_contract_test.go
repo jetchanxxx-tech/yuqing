@@ -73,7 +73,7 @@ func TestVerificationHTTPPhoneBindingRevokesOriginalSession(t *testing.T) {
 	fixture := contractFixture(t)
 	sms := &verificationSandboxSMS{}
 	s.Auth.EnableUserCenter(fixture.store, auth.NewMemoryVerificationStore(), sms, nil, "https://trusted.example.com")
-	sent := doReq(t, r, "POST", "/api/v1/user/phone/send-code", token, map[string]string{"phone": "13800138000"})
+	sent := doReq(t, r, "POST", "/api/v1/user/phone/send-code", token, map[string]string{"phone": "13800138000", "password": "password-123456"})
 	if sent.Code != 200 || sms.template != "SMS_BIND_PHONE" {
 		t.Fatalf("purpose-specific sandbox send failed: %d", sent.Code)
 	}

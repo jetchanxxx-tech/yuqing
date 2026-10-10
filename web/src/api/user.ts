@@ -42,10 +42,10 @@ export async function verifyEmailByToken(token: string) {
   return data.message;
 }
 
-export async function sendPhoneCode(phone: string) {
+export async function sendPhoneCode(phone: string, password: string) {
   const { data } = await client.post<{ message: string; expires_in: number }>(
     '/user/phone/send-code',
-    { phone },
+    { phone, password },
   );
   return data;
 }
@@ -79,3 +79,19 @@ export const NOTIFY_SETTINGS_KEYS = [
   'sms_phone_reset_template_code',
   'sms_sdk_app_id',
 ] as const;
+
+export async function requestPasswordReset(target: { email?: string; phone?: string }) {
+  return client.post('/auth/password-reset/request', target);
+}
+export async function resetPassword(body: { token?: string; phone?: string; code?: string; new_password: string }) {
+  return client.post('/auth/password-reset/confirm', body);
+}
+export async function requestPhoneLogin(phone: string) {
+  return client.post('/auth/phone/send-code', { phone });
+}
+export async function requestEmailChange(password: string, newEmail: string) {
+  return client.post('/user/email-change/request', { password, new_email: newEmail });
+}
+export async function confirmEmailChange(token: string) {
+  return client.post('/user/email-change/confirm', { token });
+}
