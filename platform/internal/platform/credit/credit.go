@@ -111,7 +111,7 @@ func (s *Service) GrantPurchase(ctx context.Context, tenantID, orderID string, c
 
 // AdminAdjust 运营手工调整（正负皆可）。
 func (s *Service) AdminAdjust(ctx context.Context, tenantID string, delta int, note string) error {
-	_, err := s.Adjust(ctx, Adjustment{TenantID: tenantID, Delta: delta, ReasonDetail: note, IdempotencyKey: id.New()})
+	_, err := s.store.ApplyDelta(ctx, tenantID, delta, Transaction{Reason: ReasonGrant, ReasonDetail: note, ActorID: "legacy-admin", IdempotencyKey: id.New()})
 	return err
 }
 

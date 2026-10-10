@@ -46,6 +46,7 @@ func (s *MemoryStore) CreatePending(ctx context.Context, req CreateRequest) (*Cr
 	err = s.accounts.RegisterAccount(ctx, auth.User{ID:uid,Email:req.Email,Name:req.Name,PasswordHash:"$pending$"+uid,Status:"pending_activation",CreatedAt:time.Now().UTC()}, auth.Tenant{ID:tid,Name:name,Slug:"t-"+strings.ToLower(tid),DBName:"yuqing_"+strings.ToLower(tid),Status:"active",PlanCode:"free"}, auth.Member{TenantID:tid,UserID:uid,Role:"tenant_admin"}, false)
 	if err != nil { return nil, err }
 	if s.credits != nil { if err := s.credits.GrantTrial(ctx, tid, credit.TrialCredits); err != nil { return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "trial grant failed") } }
+	s.audits = append(s.audits, Audit{ID:int64(len(s.audits)+1),ActorID:req.ActorID,Action:"account.create",TargetType:"user",TargetID:uid,TenantID:tid,Reason:"administrator account creation",CreatedAt:time.Now().UTC(),Before:map[string]any{},After:map[string]any{"status":"pending_activation","tenant_id":tid}})
 	return &CreateResult{UserID:uid,TenantID:tid,Status:"pending_activation"}, nil
 }
 

@@ -80,7 +80,7 @@ func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, 
 	version++
 	m.txs = append(m.txs, Transaction{
 		ID: newTxID(), TenantID: tenantID, Delta: delta,
-		Reason: tx.Reason, AnalysisID: tx.AnalysisID,
+		Reason: tx.Reason, ReasonDetail: tx.ReasonDetail, ActorID: tx.ActorID, IdempotencyKey: tx.IdempotencyKey, AnalysisID: tx.AnalysisID,
 		OrderID: tx.OrderID, ConsumeTxID: tx.ConsumeTxID,
 		BalanceAfter: bal, Version: version, CreatedAt: time.Now().UTC(),
 	})

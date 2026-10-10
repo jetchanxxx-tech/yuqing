@@ -73,10 +73,10 @@ func (p *PGStore) ApplyDelta(ctx context.Context, tenantID string, delta int, tx
 
 	_, err = db.Exec(ctx,
 		`INSERT INTO credit_transactions
-		   (id, tenant_id, delta, reason, analysis_id, order_id, consume_tx_id, balance_after, version, created_at)
-		 VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''), NULLIF($7,''), $8, $9, $10)`,
+		   (id, tenant_id, delta, reason, analysis_id, order_id, consume_tx_id, reason_detail, actor_id, idempotency_key, balance_after, version, created_at)
+		 VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''), NULLIF($7,''), $8, NULLIF($9,''), NULLIF($10,''), $11, $12, $13)`,
 		newTxID(), tenantID, delta, tx.Reason,
-		tx.AnalysisID, tx.OrderID, tx.ConsumeTxID, bal, version, time.Now().UTC())
+		tx.AnalysisID, tx.OrderID, tx.ConsumeTxID, tx.ReasonDetail, tx.ActorID, tx.IdempotencyKey, bal, version, time.Now().UTC())
 	if isUniqueViolation(err) {
 		// 幂等命中：同订单重复入账 / 同消费重复回补 —— 回滚余额变更，
 		// 以内部信号告知 Service 层这是良性重放。
