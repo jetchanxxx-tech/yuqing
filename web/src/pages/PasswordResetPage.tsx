@@ -39,7 +39,7 @@ export default function PasswordResetPage() {
   const fields = <>
     <Form.Item name="new_password" label="新密码" rules={passwordRules}><Input.Password autoComplete="new-password" /></Form.Item>
     <Form.Item name="confirm" label="确认新密码" dependencies={['new_password']} rules={[{ required: true, message: '请再次输入新密码' }, ({ getFieldValue }) => ({ validator(_, value) { return value === getFieldValue('new_password') ? Promise.resolve() : Promise.reject(new Error('两次密码不一致')); } })]}><Input.Password autoComplete="new-password" /></Form.Item>
-    <Button type="primary" htmlType="submit" loading={busy}>{isActivation ? '激活并设置密码' : '确认重置密码'}</Button>
+    <Button type="primary" htmlType="submit" aria-label={isActivation ? '激活并设置密码' : '确认重置密码'} aria-busy={busy} disabled={busy} loading={busy}>{isActivation ? '激活并设置密码' : '确认重置密码'}</Button>
   </>;
   return <div style={{ maxWidth: 440, margin: '64px auto', padding: 16 }}>
     <Card>
@@ -55,7 +55,7 @@ export default function PasswordResetPage() {
           </Form> : <Form key="phone-recovery" form={phoneForm} layout="vertical" onFinish={confirm}>
             <Typography.Paragraph type="secondary">仅支持已验证绑定的手机号，不会创建新账户。</Typography.Paragraph>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入 11 位手机号' }]}><Input autoComplete="tel" /></Form.Item>
-            <Button loading={busy} onClick={() => { void phoneForm.validateFields(['phone']).then(v => request({ phone: v.phone })).catch(() => {}); }}>请求短信验证码</Button>
+            <Button aria-label="请求短信验证码" aria-busy={busy} disabled={busy} loading={busy} onClick={() => { void phoneForm.validateFields(['phone']).then(v => request({ phone: v.phone })).catch(() => {}); }}>请求短信验证码</Button>
             <Form.Item name="code" label="验证码" rules={[{ required: true, pattern: /^\d{6}$/, message: '请输入 6 位验证码' }]}><Input autoComplete="one-time-code" /></Form.Item>
             {fields}
           </Form>}
