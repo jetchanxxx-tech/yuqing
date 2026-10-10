@@ -43,6 +43,6 @@ export default function CreditAdjustmentDialog({ tenantID, tenantName, balance, 
       <Form.Item name="delta" label="调整数量" rules={[{ required: true, message: '请输入非零整数' }, { validator: (_, value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value !== 0 ? Promise.resolve() : Promise.reject(new Error('请输入非零整数')) }]}><InputNumber min={-2147483647} max={2147483647} precision={0} style={{ width: '100%' }} /></Form.Item>
       <Form.Item name="reason" label="操作原因" rules={[{ required: true, whitespace: true, message: '请输入原因' }]}><Input.TextArea maxLength={2000} rows={3} /></Form.Item>
     </Form>
-    <Button type="primary" danger={Boolean((intent?.delta ?? delta ?? 0) < 0)} loading={busy} disabled={canRevise} onClick={() => { if (intent) void submit({ delta: intent.delta, reason: intent.reason }); else form.submit(); }}>确认额度调整</Button>
+    <Button type="primary" aria-label="确认额度调整" aria-busy={busy} danger={Boolean((intent?.delta ?? delta ?? 0) < 0)} loading={busy} disabled={busy || canRevise} onClick={() => { if (intent) void submit({ delta: intent.delta, reason: intent.reason }); else form.submit(); }}>确认额度调整</Button>
   </Modal>;
 }
