@@ -43,6 +43,7 @@ async function accepted(request: APIRequestContext, purpose: string, target: str
 async function deliver(request: APIRequestContext, message: Acceptance): Promise<Payload> {
   const response = await request.post(`${control}/deliver`, { headers, data: { id: message.id } }); expect(response.status()).toBe(200);
   expect((await inbox(request)).find(item => item.id === message.id)?.delivered).toBe(true);
+  console.log(`K6b ${message.purpose}: explicit sandbox delivery completed.`);
   return response.json();
 }
 function receipt(uid: string, purpose: string, message: Acceptance) {
@@ -50,7 +51,7 @@ function receipt(uid: string, purpose: string, message: Acceptance) {
   const raw = sql(`SELECT delivery_receipt::text FROM ${table} WHERE user_id=:'uid' AND purpose=:'purpose' ORDER BY created_at DESC LIMIT 1;`, { uid, purpose });
   const value = JSON.parse(raw); expect(value.provider).toBe(message.vendor); expect(value.purpose).toBe(purpose); expect(value.state).toBe('accepted'); expect(value.provider_id).toBe(`sha256:${message.provider_id}`);
   expect(value).not.toHaveProperty('recipient'); expect(value).not.toHaveProperty('payload'); expect(value).not.toHaveProperty('token'); expect(value).not.toHaveProperty('code');
-  console.log(`K6b ${purpose}: actual ${message.vendor} SDK accepted, payload-free receipt verified, explicit simulated delivery.`);
+  console.log(`K6b ${purpose}: actual ${message.vendor} SDK accepted, payload-free receipt verified.`);
 }
 async function login(page: Page, email: string, currentPassword = password) {
   await page.goto('/login'); await page.getByLabel('邮箱', { exact: true }).fill(email); await page.getByLabel('密码', { exact: true }).fill(currentPassword);
