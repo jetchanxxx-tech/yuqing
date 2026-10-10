@@ -38,15 +38,14 @@ type Config struct {
 
 // NewProvider 根据配置创建邮件服务提供商
 func NewProvider(cfg Config) (Provider, error) {
-	if cfg.Provider == "resend" && cfg.ResendAPIKey != "" {
+	switch cfg.Provider {
+	case "resend":
 		return NewResendProvider(cfg)
-	}
-
-	if cfg.SMTPHost != "" {
+	case "smtp":
 		return NewSMTPProvider(cfg)
+	default:
+		return nil, fmt.Errorf("no selected email provider configured")
 	}
-
-	return nil, fmt.Errorf("no email provider configured")
 }
 
 // 邮件模板

@@ -145,3 +145,22 @@ func TestNotificationSettingsPGMaskPreserveAndAuditAtomicity(t *testing.T) {
 		t.Fatal("audit failure did not roll back configuration")
 	}
 }
+
+func TestNotificationSettingsPGUnauthorizedReadAndRevokedRole(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	token, _, u := mustRegister(t, e.router, "denied-notify@example.invalid", "reader")
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/settings", "", nil), http.StatusUnauthorized)
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/settings", token, nil), http.StatusForbidden)
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, u["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodPut, "/api/v1/admin/settings", token, map[string]any{"resend_api_key": "fake-private-config", "smtp_password": "", "sms_access_key_id": "fake-identifier"}), http.StatusOK)
+	data := adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/settings", token, nil), http.StatusOK)["settings"].(map[string]any)
+	if data["resend_api_key"] != "********" || data["sms_access_key_id"] != "********" || data["smtp_password"] != "" {
+		t.Fatal("configured state lost or secret exposed")
+	}
+	if _, err := e.pool.Exec(context.Background(), `DELETE FROM platform_user_roles WHERE user_id=$1`, u["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/settings", token, nil), http.StatusForbidden)
+}

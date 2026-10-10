@@ -1,6 +1,8 @@
 package v1
 
 import (
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/settings"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -149,12 +151,19 @@ func sortedPlans() []*billing.Plan {
 
 // handleGetSettings returns all platform settings visible to admins.
 func (s *Services) handleGetSettings(c *gin.Context) {
-	all, err := s.Settings.All(c.Request.Context())
+	p := middleware.GetPrincipal(c)
+	var all map[string]string
+	var err error
+	if store, ok := s.Settings.(settings.AdminStore); ok {
+		all, err = store.AdminAll(c.Request.Context(), p.UserID, p.TokenVersion)
+	} else {
+		err = s.Auth.WithCurrentAdministrator(c.Request.Context(), *p, func() error { var e error; all, e = s.Settings.All(c.Request.Context()); return e })
+	}
 	if err != nil {
 		respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"settings": all})
+	c.JSON(http.StatusOK, gin.H{"settings": settings.Redact(all)})
 }
 
 // handleUpdateSettings merges new values into platform settings.
@@ -167,11 +176,23 @@ func (s *Services) handleUpdateSettings(c *gin.Context) {
 		})
 		return
 	}
-	for k, v := range req {
-		if err := s.Settings.Set(c.Request.Context(), k, v); err != nil {
-			respondError(c, err)
-			return
-		}
+	p := middleware.GetPrincipal(c)
+	var err error
+	if store, ok := s.Settings.(settings.AdminStore); ok {
+		err = store.AdminPatch(c.Request.Context(), p.UserID, p.TokenVersion, req)
+	} else {
+		err = s.Auth.WithCurrentAdministrator(c.Request.Context(), *p, func() error {
+			store, ok := s.Settings.(*settings.MemoryStore)
+			if !ok {
+				return pkgerrors.ErrServiceUnavailable
+			}
+			store.Patch(req)
+			return nil
+		})
 	}
-	s.handleGetSettings(c) // return updated settings
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	s.handleGetSettings(c)
 }

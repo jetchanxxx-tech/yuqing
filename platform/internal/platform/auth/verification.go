@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/notification"
 	"io"
 	"math/big"
 	"net"
@@ -41,6 +42,7 @@ type VerificationCredential struct {
 	ExpiresAt                                       time.Time
 	Attempts                                        int
 	Accepted                                        bool
+	Receipt                                         notification.Receipt
 	UsedAt                                          *time.Time
 }
 
@@ -231,8 +233,15 @@ func (s *Service) issueVerificationAs(ctx context.Context, u *User, purpose, tar
 	if err = s.verifications.Issue(ctx, c); err != nil {
 		return err
 	}
+	receipt := notification.Receipt{Provider: "custom", State: "rejected"}
 	if verificationSMS(purpose) {
-		err = s.smsSender.Send(ctx, target, verificationTemplate(purpose), map[string]string{"code": value})
+		if sender, ok := s.smsSender.(interface {
+			SendReceipt(context.Context, string, string, map[string]string) (notification.Receipt, error)
+		}); ok {
+			receipt, err = sender.SendReceipt(ctx, target, verificationTemplate(purpose), map[string]string{"code": value})
+		} else {
+			err = s.smsSender.Send(ctx, target, verificationTemplate(purpose), map[string]string{"code": value})
+		}
 	} else {
 		origin, _ := validVerificationOrigin(s.verifyBaseURL)
 		path := "/verify-email"
@@ -250,10 +259,37 @@ func (s *Service) issueVerificationAs(ctx context.Context, u *User, purpose, tar
 		if purpose != EmailVerify {
 			body = "<p>请在 30 分钟内打开安全链接完成操作：</p><p><a href=\"" + link + "\">完成验证</a></p>"
 		}
-		err = s.emailSender.Send(ctx, target, "账户验证 - 盘古舆情", body)
+		subjects := map[string]string{EmailVerify: "验证邮箱", PasswordReset: "重置密码", EmailChange: "确认更换邮箱", SetPassword: "激活账户并设置密码"}
+		subject := subjects[purpose] + " - 盘古舆情"
+		if sender, ok := s.emailSender.(interface {
+			SendReceipt(context.Context, string, string, string) (notification.Receipt, error)
+		}); ok {
+			receipt, err = sender.SendReceipt(ctx, target, subject, body)
+		} else {
+			err = s.emailSender.Send(ctx, target, subject, body)
+		}
 	}
 	accepted := err == nil
-	if persistErr := s.verifications.RecordDelivery(ctx, c.ID, accepted); persistErr != nil {
+	if accepted && receipt.Provider == "custom" {
+		receipt.State = "accepted"
+		receipt.AcceptedAt = time.Now().UTC()
+	}
+	if !accepted {
+		provider := receipt.Provider
+		if provider == "" {
+			provider = "custom"
+		}
+		receipt = notification.Receipt{Provider: provider, State: "rejected"}
+	}
+	var persistErr error
+	if store, ok := s.verifications.(interface {
+		RecordReceipt(context.Context, string, notification.Receipt) error
+	}); ok {
+		persistErr = store.RecordReceipt(ctx, c.ID, receipt)
+	} else {
+		persistErr = s.verifications.RecordDelivery(ctx, c.ID, accepted)
+	}
+	if persistErr != nil {
 		return persistErr
 	}
 	if !accepted {

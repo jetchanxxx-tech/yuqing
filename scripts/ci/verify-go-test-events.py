@@ -16,12 +16,13 @@ import sys
 MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
-    "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
-    "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend"),
-    "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError"),
+    "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
+    "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline"),
+    "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
         "TestNotificationSettingsPGSecretsStayServerSide",
+        "TestNotificationSettingsPGUnauthorizedReadAndRevokedRole",
         "TestNotificationSettingsPGQueuedActorCannotCommit",
         "TestNotificationSettingsPGMaskPreserveAndAuditAtomicity",
         "TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders",
@@ -54,6 +55,8 @@ REQUIRED_TESTS = {
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
         "TestNotificationReceiptPGPersistsWithoutCredentialPayload",
+        "TestNotificationReceiptPGAllPurposesAndRejectedState",
+        "TestNotificationReceiptPGWriteFailureCannotAcceptCredential",
         "TestVerificationPGSupplierFailureInvalidatesCredentialKeepsGate",
         "TestVerificationPGPublicRequestsHaveMatchingDurableAdmission",
         "TestVerificationPGPhoneLoginCannotUpgradeConsumedVersion",

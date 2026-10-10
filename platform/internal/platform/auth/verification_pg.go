@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
+	"github.com/yuqing/platform/internal/pkg/notification"
 	"sort"
 	"time"
 
@@ -158,12 +160,24 @@ func (s *PGVerificationStore) Issue(ctx context.Context, c VerificationCredentia
 	return nil
 }
 func (s *PGVerificationStore) RecordDelivery(ctx context.Context, id string, accepted bool) error {
-	status := "rejected"
+	r := notification.Receipt{Provider: "custom", State: "rejected"}
 	if accepted {
-		status = "accepted"
+		r.State = "accepted"
+		r.AcceptedAt = time.Now().UTC()
+	}
+	return s.RecordReceipt(ctx, id, r)
+}
+func (s *PGVerificationStore) RecordReceipt(ctx context.Context, id string, r notification.Receipt) error {
+	r, err := notification.Normalize(r, "")
+	if err != nil {
+		return verificationInvalid()
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		return verificationInvalid()
 	}
 	for _, table := range []string{"verification_tokens", "sms_verification_codes"} {
-		tag, err := s.pool.Exec(ctx, `UPDATE `+table+` SET delivery_status=$2,used_at=CASE WHEN $2='rejected' THEN now() ELSE used_at END WHERE id=$1 AND delivery_status='pending' AND used_at IS NULL`, id, status)
+		tag, err := s.pool.Exec(ctx, `UPDATE `+table+` SET delivery_status=$2,delivery_receipt=$3::jsonb || jsonb_build_object('purpose',purpose),used_at=CASE WHEN $2='rejected' THEN now() ELSE used_at END WHERE id=$1 AND delivery_status='pending' AND used_at IS NULL`, id, r.State, data)
 		if err != nil {
 			return verificationStorageError(err)
 		}

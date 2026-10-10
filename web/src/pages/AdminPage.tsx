@@ -428,8 +428,8 @@ function NotifyTab() {
   const s = settingsQ.data ?? {};
   const emailReady =
     (s.email_provider === 'resend' && !!s.resend_api_key && !!s.email_from_address) ||
-    (s.email_provider === 'smtp' && !!s.smtp_host && !!s.email_from_address);
-  const smsReady = !!s.sms_access_key_id && !!s.sms_bind_phone_template_code;
+    (s.email_provider === 'smtp' && !!s.smtp_host && !!s.smtp_username && !!s.smtp_password && !!s.email_from_address);
+  const smsReady = ['aliyun', 'tencent'].includes(s.sms_provider ?? '') && !!s.sms_access_key_id && !!s.sms_access_key_secret && !!s.sms_sign_name && !!s.sms_bind_phone_template_code && !!s.sms_phone_login_template_code && !!s.sms_phone_reset_template_code && (s.sms_provider !== 'tencent' || !!s.sms_sdk_app_id);
 
   if (settingsQ.isLoading) return <Card style={{ borderRadius: 16 }}><LoadingBlock rows={8} /></Card>;
   if (settingsQ.isError) return (
@@ -446,7 +446,7 @@ function NotifyTab() {
         type="info"
         showIcon
         message="邮件与短信通道（独立部署各环境自行配置）"
-        description="邮箱验证、找回密码、告警通知走邮件通道；手机号绑定与后续手机号登录走短信通道。密钥保存在平台配置中，保存后即刻生效、无需重启。"
+        description="邮箱验证、重置密码、换邮箱和激活使用各自用途；短信绑定、登录和找回使用独立模板。本轮验收仅使用隔离沙箱，供应商受理与模拟送达分别验证；真实邮件／短信送达尚未验收。保存配置不会发送测试消息。"
       />
 
       {/* ── 邮件服务 ── */}

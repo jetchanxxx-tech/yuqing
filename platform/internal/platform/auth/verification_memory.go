@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
+	"github.com/yuqing/platform/internal/pkg/notification"
 	"strings"
 	"sync"
 	"time"
@@ -99,13 +100,27 @@ func (m *MemoryVerificationStore) Issue(_ context.Context, c VerificationCredent
 	m.credentials[c.ID] = c
 	return nil
 }
-func (m *MemoryVerificationStore) RecordDelivery(_ context.Context, id string, accepted bool) error {
+func (m *MemoryVerificationStore) RecordDelivery(ctx context.Context, id string, accepted bool) error {
+	r := notification.Receipt{Provider: "custom", State: "rejected"}
+	if accepted {
+		r.State = "accepted"
+		r.AcceptedAt = time.Now().UTC()
+	}
+	return m.RecordReceipt(ctx, id, r)
+}
+func (m *MemoryVerificationStore) RecordReceipt(_ context.Context, id string, r notification.Receipt) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c, ok := m.credentials[id]
 	if !ok || c.UsedAt != nil || c.Accepted {
 		return verificationInvalid()
 	}
+	r, err := notification.Normalize(r, c.Purpose)
+	if err != nil {
+		return verificationInvalid()
+	}
+	c.Receipt = r
+	accepted := r.State == "accepted"
 	c.Accepted = accepted
 	if !accepted {
 		now := time.Now()
