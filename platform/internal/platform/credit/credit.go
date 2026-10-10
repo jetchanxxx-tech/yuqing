@@ -43,6 +43,18 @@ type Transaction struct {
 	ConsumeTxID  string    `json:"consume_tx_id,omitempty"`
 	BalanceAfter int       `json:"balance_after"`
 	CreatedAt    time.Time `json:"created_at"`
+	ReasonDetail string    `json:"reason_detail,omitempty"`
+	ActorID      string    `json:"actor_id,omitempty"`
+	IdempotencyKey string  `json:"idempotency_key,omitempty"`
+	Version      int64     `json:"version,omitempty"`
+}
+
+// Adjustment is an authenticated administrative balance mutation. ExpectedVersion
+// is checked in the same transaction as the balance and ledger write.
+type Adjustment struct {
+	TenantID, ActorID, ReasonDetail, IdempotencyKey string
+	Delta int
+	ExpectedVersion int64
 }
 
 // Store 是额度持久化契约：内存（测试/开发）与 PostgreSQL（生产）双实现。
@@ -58,6 +70,7 @@ type Store interface {
 	SetPlanCode(ctx context.Context, tenantID, planCode string) error
 	PlanCode(ctx context.Context, tenantID string) (string, error)
 	Transactions(ctx context.Context, tenantID string, limit int) ([]Transaction, error)
+	Adjust(ctx context.Context, adjustment Adjustment) (*Transaction, error)
 }
 
 // Service 是额度业务入口。
@@ -98,9 +111,17 @@ func (s *Service) GrantPurchase(ctx context.Context, tenantID, orderID string, c
 
 // AdminAdjust 运营手工调整（正负皆可）。
 func (s *Service) AdminAdjust(ctx context.Context, tenantID string, delta int, note string) error {
-	_, err := s.store.ApplyDelta(ctx, tenantID, delta, Transaction{Reason: ReasonGrant})
-	_ = note // 备注暂不落库（流水 reason 已区分），P1 扩展 transactions.note 列
+	_, err := s.Adjust(ctx, Adjustment{TenantID: tenantID, Delta: delta, ReasonDetail: note, IdempotencyKey: id.New()})
 	return err
+}
+
+// Adjust performs the administrator-only credit mutation. The HTTP layer
+// supplies actor/expected-version/idempotency data; storage rechecks all of it.
+func (s *Service) Adjust(ctx context.Context, a Adjustment) (*Transaction, error) {
+	if a.TenantID == "" || a.ActorID == "" || a.Delta == 0 || a.ExpectedVersion < 0 || a.IdempotencyKey == "" || len(a.ReasonDetail) == 0 || len(a.ReasonDetail) > 2000 {
+		return nil, pkgerrors.ErrBadRequest
+	}
+	return s.store.Adjust(ctx, a)
 }
 
 // RefundByAnalysis 回补分析失败消耗的额度（管线 markFailed 调用）。

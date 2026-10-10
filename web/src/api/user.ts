@@ -86,6 +86,9 @@ export async function requestPasswordReset(target: { email?: string; phone?: str
 export async function resetPassword(body: { token?: string; phone?: string; code?: string; new_password: string }) {
   return client.post('/auth/password-reset/confirm', body);
 }
+export async function activateAccount(body: { email: string; token: string; new_password: string }) {
+  return client.post('/auth/activation/confirm', body);
+}
 export async function requestPhoneLogin(phone: string) {
   return client.post('/auth/phone/send-code', { phone });
 }

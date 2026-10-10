@@ -90,6 +90,7 @@ export default function App() {
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/forgot-password" element={<PasswordResetPage />} />
                   <Route path="/reset-password" element={<PasswordResetPage />} />
+                  <Route path="/activate" element={<PasswordResetPage />} />
                   <Route path="/email-change" element={<EmailChangePage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/verify-email" element={<VerifyEmailPage />} />

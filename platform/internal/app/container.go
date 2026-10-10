@@ -261,6 +261,12 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	} else {
 		paymentStore = payment.NewMemoryStore()
 	}
+	accountAdminSvc := accountadmin.NewService(accountAdminStore)
+	accountAdminSvc.SetVerificationSender(func(ctx context.Context, actorID, userID, purpose string, actorVersion int64) error {
+		// The authenticated actor identity is captured by the admin handler and
+		// checked again by SendAccountVerification before issuance.
+		return authSvc.SendAccountVerification(ctx, auth.Principal{UserID: actorID, TokenVersion: actorVersion}, userID, purpose)
+	})
 	initialProviders, _ := paymentRegistry.Resolve(context.Background())
 	paymentSvc := payment.NewService(paymentStore, creditSvc, initialProviders, logger)
 	paymentSvc.SetProviderReload(paymentRegistry.Resolve)
@@ -292,7 +298,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	return &v1.Services{
 		LLMCalls:        llmCalls,
 		Auth:            authSvc,
-		AccountAdmin:    accountadmin.NewService(accountAdminStore),
+		AccountAdmin:    accountAdminSvc,
 		Analysis:        analysisSvc,
 		MonitorPlans:    monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
 		Dashboard:       dashboardSvc,

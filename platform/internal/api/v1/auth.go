@@ -23,6 +23,7 @@ func RegisterAuthRoutes(r *gin.RouterGroup, svcs *Services) {
 	r.POST("/refresh", svcs.handleRefresh)
 	r.POST("/password-reset/request", svcs.handlePasswordResetRequest)
 	r.POST("/password-reset/confirm", svcs.handlePasswordResetConfirm)
+	r.POST("/activation/confirm", svcs.handleActivationConfirm)
 	r.POST("/phone/send-code", svcs.handlePhoneLoginCode)
 	r.POST("/phone/login", svcs.handlePhoneLogin)
 }

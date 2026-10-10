@@ -46,7 +46,11 @@ func (m *MemoryStore) Snapshot(_ context.Context, tenantID string) (*Snapshot, e
 	if !hasPlan {
 		plan = "free"
 	}
-	return &Snapshot{Balance: bal, PlanCode: plan}, nil
+	var version int64
+	for _, tx := range m.txs {
+		if tx.TenantID == tenantID && tx.Version > version { version = tx.Version }
+	}
+	return &Snapshot{Balance: bal, PlanCode: plan, Version: version}, nil
 }
 
 func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, tx Transaction) (int, error) {
@@ -71,11 +75,14 @@ func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, 
 	bal += delta
 	m.balances[tenantID] = bal
 
+	var version int64
+	for _, existing := range m.txs { if existing.TenantID == tenantID && existing.Version > version { version = existing.Version } }
+	version++
 	m.txs = append(m.txs, Transaction{
 		ID: newTxID(), TenantID: tenantID, Delta: delta,
 		Reason: tx.Reason, AnalysisID: tx.AnalysisID,
 		OrderID: tx.OrderID, ConsumeTxID: tx.ConsumeTxID,
-		BalanceAfter: bal, CreatedAt: time.Now().UTC(),
+		BalanceAfter: bal, Version: version, CreatedAt: time.Now().UTC(),
 	})
 	return bal, nil
 }
@@ -135,4 +142,37 @@ func (m *MemoryStore) Transactions(_ context.Context, tenantID string, limit int
 		}
 	}
 	return out, nil
+}
+
+func (m *MemoryStore) Adjust(_ context.Context, a Adjustment) (*Transaction, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.txs {
+		t := m.txs[i]
+		if t.TenantID == a.TenantID && t.IdempotencyKey == a.IdempotencyKey {
+			if t.Delta != a.Delta || t.ReasonDetail != a.ReasonDetail || t.ActorID != a.ActorID {
+				return nil, errors.New("credit: idempotency key intent conflict")
+			}
+			cp := t
+			return &cp, nil
+		}
+	}
+	version := int64(0)
+	for i := range m.txs {
+		if m.txs[i].TenantID == a.TenantID && m.txs[i].Version > version {
+			version = m.txs[i].Version
+		}
+	}
+	if version != int64(a.ExpectedVersion) {
+		return nil, errors.New("credit: expected version conflict")
+	}
+	bal := m.balances[a.TenantID]
+	if bal+a.Delta < 0 {
+		return nil, ErrInsufficientCredits
+	}
+	version++
+	t := Transaction{ID: newTxID(), TenantID: a.TenantID, Delta: a.Delta, Reason: ReasonGrant, ReasonDetail: a.ReasonDetail, ActorID: a.ActorID, IdempotencyKey: a.IdempotencyKey, BalanceAfter: bal + a.Delta, Version: version, CreatedAt: time.Now().UTC()}
+	m.balances[a.TenantID] = t.BalanceAfter
+	m.txs = append(m.txs, t)
+	return &t, nil
 }

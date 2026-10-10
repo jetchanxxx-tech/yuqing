@@ -91,7 +91,7 @@ client.interceptors.response.use(
       return Promise.reject(new axios.CanceledError('Session changed'));
     }
     const url = config?.url ?? '';
-    const publicAuth = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/phone/login', '/auth/phone/send-code', '/auth/password-reset/request', '/auth/password-reset/confirm', '/auth/verify-email'].includes(url);
+    const publicAuth = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/phone/login', '/auth/phone/send-code', '/auth/password-reset/request', '/auth/password-reset/confirm', '/auth/activation/confirm', '/auth/verify-email'].includes(url);
     const identityInputRejected = error.response?.data?.code === 'IDENTITY_CHECK_FAILED';
     if (config && !publicAuth && !identityInputRejected && error.response?.status === 401) {
       if (config._retry) { clearSession(); return Promise.reject(error); }

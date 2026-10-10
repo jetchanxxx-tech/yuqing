@@ -7,6 +7,7 @@ import (
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/credit"
+	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/payment"
 )
 
@@ -101,6 +102,15 @@ type Mutation struct {
 	Role                                                   string
 }
 
+type CreateRequest struct {
+	ActorID, Email, Name, TenantName string
+	ActorTokenVersion int64
+}
+type CreateResult struct {
+	UserID, TenantID, Status string
+	RowVersion int64 `json:"row_version"`
+}
+
 type Result struct {
 	ID            string    `json:"id,omitempty"`
 	TenantID      string    `json:"tenant_id,omitempty"`
@@ -117,11 +127,33 @@ type Store interface {
 	ListTenants(context.Context, Query) ([]TenantRow, int, error)
 	Tenant(context.Context, string) (*TenantDetail, error)
 	Change(context.Context, Mutation) (*Result, error)
+	CreatePending(context.Context, CreateRequest) (*CreateResult, error)
 }
 
-type Service struct{ store Store }
+type Service struct {
+	store Store
+	verificationSender func(context.Context, string, string, string, int64) error
+}
 
 func NewService(store Store) *Service { return &Service{store: store} }
+func (s *Service) SetVerificationSender(sender func(context.Context, string, string, string, int64) error) { s.verificationSender = sender }
+func (s *Service) Create(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	if req.ActorID == "" || req.ActorTokenVersion < 0 || strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Name) == "" { return nil, pkgerrors.ErrBadRequest }
+	result, err := s.store.CreatePending(ctx, req)
+	if err != nil { return nil, err }
+	if s.verificationSender == nil { return result, pkgerrors.ErrServiceUnavailable }
+	if err := s.verificationSender(ctx, req.ActorID, result.UserID, auth.SetPassword, req.ActorTokenVersion); err != nil { return result, err }
+	return result, nil
+}
+func (s *Service) ResendActivation(ctx context.Context, actorID, targetID string, actorVersion int64) error {
+	if s.verificationSender == nil { return pkgerrors.ErrServiceUnavailable }
+	return s.verificationSender(ctx, actorID, targetID, auth.SetPassword, actorVersion)
+}
+func (s *Service) SendVerification(ctx context.Context, actorID, targetID, purpose string, actorVersion int64) error {
+	if purpose != auth.SetPassword && purpose != auth.PasswordReset { return pkgerrors.ErrBadRequest }
+	if s.verificationSender == nil { return pkgerrors.ErrServiceUnavailable }
+	return s.verificationSender(ctx, actorID, targetID, purpose, actorVersion)
+}
 func (s *Service) ListUsers(ctx context.Context, q Query) ([]UserRow, int, error) {
 	return s.store.ListUsers(ctx, q)
 }

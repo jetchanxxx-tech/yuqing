@@ -73,6 +73,7 @@ func (m *MemoryStore) UpdateAdministration(_ context.Context, change func(*Admin
 			continue
 		}
 		m.usersByID[id].Status = u.Status
+		m.usersByID[id].Name = u.Name
 		m.usersByID[id].RowVersion = u.RowVersion
 		m.usersByID[id].TokenVersion = u.TokenVersion
 		m.platformRolesByUser[id] = append([]string{}, s.PlatformRoles[id]...)

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, Result, Tabs, Typography } from 'antd';
 import { Link, useLocation } from 'react-router-dom';
-import { requestPasswordReset, resetPassword } from '../api/user';
+import { activateAccount, requestPasswordReset, resetPassword } from '../api/user';
 import { useAuth } from '../stores/auth';
 import { acceptedMessage, identityError, passwordRules } from '../lib/identity';
 
 export default function PasswordResetPage() {
   const location = useLocation();
-  const isLink = location.pathname === '/reset-password';
+  const isActivation = location.pathname === '/activate';
+  const isLink = isActivation || location.pathname === '/reset-password';
   const [token] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('token') || '');
   const [method, setMethod] = useState('email');
   const [error, setError] = useState('');
@@ -23,10 +24,14 @@ export default function PasswordResetPage() {
     catch (e) { setError(identityError(e)); }
     finally { setBusy(false); }
   };
-  const confirm = async (values: { phone?: string; code?: string; new_password: string }) => {
+  const confirm = async (values: { email?: string; phone?: string; code?: string; new_password: string }) => {
     setError(''); setBusy(true);
     try {
-      await resetPassword({ ...(isLink ? { token } : { phone: values.phone, code: values.code }), new_password: values.new_password });
+      if (isActivation) {
+        await activateAccount({ email: values.email || '', token, new_password: values.new_password });
+      } else {
+        await resetPassword({ ...(isLink ? { token } : { phone: values.phone, code: values.code }), new_password: values.new_password });
+      }
       logout(); setSuccess(true);
     } catch (e) { setError(identityError(e)); }
     finally { setBusy(false); }
@@ -38,11 +43,11 @@ export default function PasswordResetPage() {
   </>;
   return <div style={{ maxWidth: 440, margin: '64px auto', padding: 16 }}>
     <Card>
-      <Typography.Title level={3}>找回密码</Typography.Title>
+      <Typography.Title level={3}>{isActivation ? '激活账户' : '找回密码'}</Typography.Title>
       {success ? <Result status="success" title="密码已重置，请重新登录" extra={<Link to="/login">返回登录</Link>} /> : <>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
         {accepted && <Alert type="info" showIcon message={acceptedMessage} style={{ marginBottom: 16 }} />}
-        {isLink ? token ? <Form layout="vertical" onFinish={confirm}>{fields}</Form> : <Alert type="error" message="链接无效，请重新申请重置链接" action={<Link to="/forgot-password">重新申请</Link>} /> : <>
+        {isLink ? token ? <Form layout="vertical" onFinish={confirm}>{isActivation && <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入管理员发送到的邮箱' }]}><Input autoComplete="email" /> </Form.Item>}{fields}</Form> : <Alert type="error" message="链接无效，请重新申请重置链接" action={<Link to="/forgot-password">重新申请</Link>} /> : <>
           <Tabs activeKey={method} onChange={(v) => { setMethod(v); setError(''); setAccepted(false); }} items={[{ key: 'email', label: '邮箱找回' }, { key: 'phone', label: '手机找回' }]} />
           {method === 'email' ? <Form layout="vertical" onFinish={request}>
             <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入邮箱' }]}><Input autoComplete="email" /></Form.Item>

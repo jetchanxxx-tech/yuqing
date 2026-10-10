@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
 	"github.com/yuqing/platform/internal/platform/tenant"
+	"github.com/yuqing/platform/internal/pkg/id"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // MemoryStore adapts the exact identity and tenant stores used by the service
@@ -29,6 +32,22 @@ func NewMemoryStore(accounts *auth.SharedTenantStore, tenants *tenant.MemoryStor
 }
 
 var _ Store = (*MemoryStore)(nil)
+
+func (s *MemoryStore) CreatePending(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	uid, tid := id.New(), id.New()
+	name := req.Name
+	if req.TenantName != "" { name = req.TenantName }
+	err := s.accounts.ReadAdministration(ctx, func(state *auth.AdministrationState) error {
+		u, ok := state.Users[req.ActorID]
+		if !ok || u.Status != "active" || u.TokenVersion != req.ActorTokenVersion || !hasAdmin(state.PlatformRoles[req.ActorID]) { return conflict() }
+		return nil
+	})
+	if err != nil { return nil, err }
+	err = s.accounts.RegisterAccount(ctx, auth.User{ID:uid,Email:req.Email,Name:req.Name,PasswordHash:"$pending$"+uid,Status:"pending_activation",CreatedAt:time.Now().UTC()}, auth.Tenant{ID:tid,Name:name,Slug:"t-"+strings.ToLower(tid),DBName:"yuqing_"+strings.ToLower(tid),Status:"active",PlanCode:"free"}, auth.Member{TenantID:tid,UserID:uid,Role:"tenant_admin"}, false)
+	if err != nil { return nil, err }
+	if s.credits != nil { if err := s.credits.GrantTrial(ctx, tid, credit.TrialCredits); err != nil { return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "trial grant failed") } }
+	return &CreateResult{UserID:uid,TenantID:tid,Status:"pending_activation"}, nil
+}
 
 func memoryUser(u auth.AdministrationUser, state *auth.AdministrationState) UserRow {
 	count := 0
@@ -261,6 +280,13 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 				result.ID = u.ID
 				result.Status = u.Status
 				result.RowVersion = u.RowVersion
+			case "user.nickname":
+				if u.RowVersion != m.ExpectedVersion { return conflict() }
+				audit.Before = map[string]any{"name":u.Name,"row_version":u.RowVersion}
+				u.Name = m.Role
+				u.RowVersion++
+				audit.After = map[string]any{"name":u.Name,"row_version":u.RowVersion}
+				result.ID=u.ID; result.Status=u.Status; result.RowVersion=u.RowVersion
 			case "user.platform_role":
 				roles := state.PlatformRoles[u.ID]
 				if u.RowVersion != m.ExpectedVersion || hasAdmin(roles) == m.PlatformAdmin {

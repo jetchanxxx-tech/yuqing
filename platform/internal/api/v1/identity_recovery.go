@@ -85,6 +85,15 @@ func (s *Services) handlePasswordResetConfirm(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "password reset; please log in again", "requires_relogin": true})
 }
+
+func (s *Services) handleActivationConfirm(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	var req struct { Token string `json:"token"`; Email string `json:"email"`; NewPassword string `json:"new_password"` }
+	if c.ShouldBindJSON(&req) != nil || req.Token == "" || !emailRe.MatchString(strings.ToLower(strings.TrimSpace(req.Email))) { badRequest(c,"activation token, email and new_password required"); return }
+	ip, ok := identityPeer(c); if !ok { return }
+	if _, err := s.Auth.ConfirmVerification(c.Request.Context(), auth.SetPassword, strings.ToLower(strings.TrimSpace(req.Email)), req.Token, req.NewPassword, nil, ip); err != nil { respondError(c,err); return }
+	c.JSON(http.StatusOK, gin.H{"message":"account activated; please log in","requires_relogin":true})
+}
 func (s *Services) handlePhoneLoginCode(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	var req struct {

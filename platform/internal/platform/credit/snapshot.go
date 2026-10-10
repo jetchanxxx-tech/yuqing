@@ -10,6 +10,7 @@ import (
 type Snapshot struct {
 	Balance  int    `json:"balance"`
 	PlanCode string `json:"plan_code"`
+	Version  int64  `json:"version"`
 }
 type snapshotStore interface {
 	Snapshot(context.Context, string) (*Snapshot, error)

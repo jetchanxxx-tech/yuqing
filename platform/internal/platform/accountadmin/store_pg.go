@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
+	"github.com/yuqing/platform/internal/pkg/id"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 type PGStore struct{ pool *pgxpool.Pool }
@@ -17,6 +21,28 @@ type PGStore struct{ pool *pgxpool.Pool }
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 var _ Store = (*PGStore)(nil)
+
+func (s *PGStore) CreatePending(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil { return nil, internal(err) }
+	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID); err != nil { return nil, internal(err) }
+	var status string; var version int64; var admin bool
+	if err = tx.QueryRow(ctx, `SELECT status,token_version,EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=$1 AND role='platform_admin') FROM users WHERE id=$1 FOR SHARE`, req.ActorID).Scan(&status,&version,&admin); err != nil { if errors.Is(err, pgx.ErrNoRows) { return nil, conflict() }; return nil, internal(err) }
+	if status != "active" || version != req.ActorTokenVersion || !admin { return nil, conflict() }
+	email := strings.ToLower(strings.TrimSpace(req.Email)); name := strings.TrimSpace(req.Name)
+	uid, tid := id.New(), id.New()
+	if _, err = tx.Exec(ctx, `INSERT INTO users(id,email,password_hash,name,status,created_at,token_version,row_version) VALUES($1,$2,$3,$4,'pending_activation',now(),0,0)`, uid,email,"$pending$"+uid,name); err != nil { return nil, mapDBCreateError(err) }
+	if _, err = tx.Exec(ctx, `INSERT INTO tenants(id,name,slug,db_name,status,plan_code) VALUES($1,$2,$3,$4,'active','free')`, tid, strings.TrimSpace(req.TenantName), "t-"+strings.ToLower(tid), "yuqing_"+strings.ToLower(tid)); err != nil { return nil, mapDBCreateError(err) }
+	if _, err = tx.Exec(ctx, `INSERT INTO tenant_members(tenant_id,user_id,role) VALUES($1,$2,'tenant_admin')`, tid,uid); err != nil { return nil, mapDBCreateError(err) }
+	if _, err = tx.Exec(ctx, `INSERT INTO report_credits(tenant_id,balance,plan_code,version) VALUES($1,$2,'free',1)`, tid,credit.TrialCredits); err != nil { return nil, mapDBCreateError(err) }
+	if _, err = tx.Exec(ctx, `INSERT INTO credit_transactions(id,tenant_id,delta,reason,reason_detail,actor_id,idempotency_key,balance_after,version,created_at) VALUES($1,$2,$3,'trial','administrator account creation',$4,$5,$3,1,$6)`, id.New(),tid,credit.TrialCredits,req.ActorID,"account-create:"+uid,time.Now().UTC()); err != nil { return nil, mapDBCreateError(err) }
+	if _, err = tx.Exec(ctx, `INSERT INTO audit_logs(tenant_id,actor_id,action,resource,details_json) VALUES($1,$2,'account.create','user',jsonb_build_object('target_type','user','target_id',$3,'reason','administrator account creation'))`, tid,req.ActorID,uid); err != nil { return nil, mapDBCreateError(err) }
+	if err = tx.Commit(ctx); err != nil { return nil, internal(err) }
+	return &CreateResult{UserID:uid,TenantID:tid,Status:"pending_activation",RowVersion:0}, nil
+}
+
+func mapDBCreateError(err error) error { if errors.Is(err, pkgerrors.ErrConflict) { return err }; return internal(err) }
 
 const userProjection = `u.id,COALESCE(u.name,''),u.email,COALESCE(u.phone,''),u.status,
 	u.email_verified_at IS NOT NULL,u.phone_verified_at IS NOT NULL,
@@ -239,7 +265,7 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 		return nil, internal(err)
 	}
 	defer tx.Rollback(context.Background())
-	platform := m.Action == "user.disable" || m.Action == "user.enable" || m.Action == "user.platform_role"
+	platform := m.Action == "user.disable" || m.Action == "user.enable" || m.Action == "user.platform_role" || m.Action == "user.nickname"
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID); err != nil {
 		return nil, internal(err)
 	}
@@ -275,6 +301,13 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 	after := map[string]any{}
 	targetType, tenantID := "user", m.TenantID
 	switch m.Action {
+	case "user.nickname":
+		var name string; var version int64
+		if err = tx.QueryRow(ctx, `SELECT name,row_version FROM users WHERE id=$1 FOR UPDATE`, m.TargetID).Scan(&name,&version); errors.Is(err,pgx.ErrNoRows) { return nil, missing() } else if err != nil { return nil, internal(err) }
+		if version != m.ExpectedVersion || strings.TrimSpace(m.Role)=="" { return nil, conflict() }
+		before=map[string]any{"name":name,"row_version":version}; name=strings.TrimSpace(m.Role); after=map[string]any{"name":name,"row_version":version+1}
+		if _,err=tx.Exec(ctx,`UPDATE users SET name=$2,row_version=row_version+1 WHERE id=$1`,m.TargetID,name); err!=nil{return nil,internal(err)}
+		result.ID=m.TargetID; result.Status="active"; result.RowVersion=version+1
 	case "user.disable", "user.enable", "user.platform_role":
 		var status string
 		var version int64
