@@ -160,7 +160,7 @@ func (m *MemoryStore) ReplaceOwnAvatar(_ context.Context, actor Principal, previ
 	defer m.mu.Unlock()
 	u, ok := m.usersByID[actor.UserID]
 	if !ok || u.Status != "active" || u.TokenVersion != actor.TokenVersion || u.AvatarURL != previous {
-		return pkgerrors.ErrConflict
+		return &avatarWriteNotCommitted{cause: pkgerrors.ErrConflict}
 	}
 	u.AvatarURL = next
 	u.RowVersion++

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"time"
@@ -28,10 +29,20 @@ func profileTimezone(zone string) string {
 
 // ProfileStore checks the original authenticated identity in the same lock or
 // statement as the write. Avatar replacement is CAS, including explicit removal.
+// ReplaceOwnAvatar must mark only definitive non-commit errors with
+// avatarWriteNotCommitted. All other failures may still commit after return.
 type ProfileStore interface {
 	UpdateOwnProfile(context.Context, Principal, string, string) error
 	ReplaceOwnAvatar(context.Context, Principal, string, string) error
 }
+
+// avatarWriteNotCommitted is evidence from the write adapter, not a later read.
+// Completed zero-row CAS and confirmed integrity rejections establish noncommit;
+// connection errors, cancellation and unknown server failures do not.
+type avatarWriteNotCommitted struct{ cause error }
+
+func (e *avatarWriteNotCommitted) Error() string { return e.cause.Error() }
+func (e *avatarWriteNotCommitted) Unwrap() error { return e.cause }
 
 // AvatarStorage is an owned-object port; auth rules never use filesystem paths.
 // Put validates and reencodes content, returns a new never-reused site reference.
@@ -62,12 +73,10 @@ func (s *Service) UpdateAvatar(ctx context.Context, actor Principal, content io.
 		return err
 	}
 	if err = store.ReplaceOwnAvatar(ctx, actor, u.AvatarURL, next); err != nil {
-		// A transport failure can hide a committed UPDATE. Keep the new file if
-		// reference readback is unavailable or confirms it; never break that commit.
-		readContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		current, readErr := s.userStore.GetByID(readContext, actor.UserID)
-		cancel()
-		if readErr == nil && current.AvatarURL != next {
+		// An old reference read can race a still-running UPDATE. Retain both
+		// objects for unknown finality; only the write adapter can prove reject.
+		var rejected *avatarWriteNotCommitted
+		if errors.As(err, &rejected) {
 			s.cleanupAvatar(actor.UserID, next)
 		}
 		return err

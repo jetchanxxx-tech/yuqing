@@ -76,8 +76,15 @@ func (a *LocalAvatar) Put(ctx context.Context, uid string, reader io.Reader) (st
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > AvatarMaxDimension || cfg.Height > AvatarMaxDimension || (format != "png" && format != "jpeg" && format != "webp") {
 		return "", pkgerrors.ErrBadRequest
 	}
+	if format == "webp" && !validAvatarWebPFrames(data, cfg) {
+		return "", pkgerrors.ErrBadRequest
+	}
 	picture, actual, err := image.Decode(bytes.NewReader(data))
-	if err != nil || actual != format {
+	if err != nil || actual != format || picture == nil {
+		return "", pkgerrors.ErrBadRequest
+	}
+	bounds := picture.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 || bounds.Dx() > AvatarMaxDimension || bounds.Dy() > AvatarMaxDimension || bounds.Dx() != cfg.Width || bounds.Dy() != cfg.Height {
 		return "", pkgerrors.ErrBadRequest
 	}
 	if err = ctx.Err(); err != nil {

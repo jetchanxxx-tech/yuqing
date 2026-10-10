@@ -17,7 +17,7 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
-    "internal/pkg/storage": ("TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
+    "internal/pkg/storage": ("TestLocalAvatarWebPCanvasCannotHideFrameBounds", "TestLocalAvatarWebPLossyCanvasConsistency", "TestLocalAvatarWebPVerticalFrameLimit", "TestLocalAvatarWebPLossyAlphaRemainsSupported", "TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
     "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline", "TestSMTPCancelledContextCannotDial"),
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
@@ -75,6 +75,7 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestProfileAvatarPGAmbiguousLateCommitKeepsCurrentFile",
         "TestProfileTimezonePG",
         "TestProfileAvatarPGReferenceRollbackAndPersistence",
         "TestProfileAvatarPGQueuedInvalidation",

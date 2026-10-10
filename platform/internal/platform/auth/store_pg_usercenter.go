@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/yuqing/platform/internal/pkg/db"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -170,10 +171,21 @@ func (s *PGStore) UpdateOwnProfile(ctx context.Context, actor Principal, name, t
 func (s *PGStore) ReplaceOwnAvatar(ctx context.Context, actor Principal, previous, next string) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET avatar_url=$4,row_version=row_version+1 WHERE id=$1 AND status='active' AND token_version=$2 AND COALESCE(avatar_url,'')=$3`, actor.UserID, actor.TokenVersion, previous, next)
 	if err != nil {
-		return wrapDB(err, "replace own avatar")
+		cause := wrapDB(err, "replace own avatar")
+		var serverError *pgconn.PgError
+		// Only confirmed integrity-constraint rejection proves this autocommit
+		// statement rolled back. Transport, cancellation and uncertain SQLSTATEs
+		// retain their staged object; wrapping INTERNAL alone proves nothing.
+		if errors.As(err, &serverError) && (serverError.Severity == "ERROR" || serverError.SeverityUnlocalized == "ERROR") && len(serverError.Code) == 5 && serverError.Code[:2] == "23" {
+			return &avatarWriteNotCommitted{cause: cause}
+		}
+		return cause
+	}
+	if tag.RowsAffected() == 0 {
+		return &avatarWriteNotCommitted{cause: pkgerrors.ErrConflict}
 	}
 	if tag.RowsAffected() != 1 {
-		return pkgerrors.ErrConflict
+		return pkgerrors.ErrInternal
 	}
 	return nil
 }

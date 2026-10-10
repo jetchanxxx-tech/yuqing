@@ -191,3 +191,62 @@ func TestLocalAvatarWebPLossyCanvasConsistency(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalAvatarWebPVerticalFrameLimit(t *testing.T) {
+	payload := webpWithFrame("VP8L", solidVP8L(1, 4097), 1, 1)
+	assertWebPFixture(t, payload, 1, 1, 4097)
+	if _, err := NewLocalAvatar(t.TempDir()).Put(context.Background(), "owner", bytes.NewReader(payload)); err == nil {
+		t.Fatal("avatar accepted hidden oversized frame height")
+	}
+}
+
+func TestLocalAvatarWebPLossyAlphaRemainsSupported(t *testing.T) {
+	encoded, err := os.ReadFile("testdata/blue-purple-pink.lossy.webp.base64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(original))
+	if err != nil || cfg.Width*cfg.Height > 65536 {
+		t.Fatal("bounded lossy fixture invalid")
+	}
+	// Preserve its actual VP8 frame and attach a correctly sized raw ALPH plane.
+	// VP8X is 18 bytes after the RIFF/WEBP prefix; the matching canvas is checked
+	// against the frame before either alpha or color pixels can be allocated.
+	if len(original) < 20 || string(original[12:16]) != "VP8 " {
+		t.Fatal("pinned fixture must contain one simple VP8 frame")
+	}
+	frameSize := int(binary.LittleEndian.Uint32(original[16:20]))
+	if frameSize < 10 || frameSize > len(original)-20 {
+		t.Fatal("pinned frame length invalid")
+	}
+	payload := webpWithFrame("VP8 ", original[20:20+frameSize], cfg.Width, cfg.Height)
+	payload[20] = 16
+	alpha := append([]byte{0}, bytes.Repeat([]byte{127}, cfg.Width*cfg.Height)...)
+	beforeFrame := append([]byte{}, payload[:30]...)
+	beforeFrame = append(beforeFrame, webpChunk("ALPH", alpha)...)
+	payload = append(beforeFrame, payload[30:]...)
+	binary.LittleEndian.PutUint32(payload[4:8], uint32(len(payload)-8))
+	assertWebPFixture(t, payload, cfg.Width, cfg.Width, cfg.Height)
+	a := NewLocalAvatar(t.TempDir())
+	ref, err := a.Put(context.Background(), "owner", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("valid VP8 alpha rejected: %v", err)
+	}
+	r, _, _, err := a.Open(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	out, err := png.Decode(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, alphaValue := out.At(0, 0).RGBA()
+	if alphaValue != 127*257 {
+		t.Fatalf("decoded alpha changed: %d", alphaValue)
+	}
+}
