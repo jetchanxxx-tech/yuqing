@@ -261,12 +261,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	} else {
 		paymentStore = payment.NewMemoryStore()
 	}
-	accountAdminSvc := accountadmin.NewService(accountAdminStore)
-	accountAdminSvc.SetVerificationSender(func(ctx context.Context, actorID, userID, purpose string, actorVersion int64) error {
-		// The authenticated actor identity is captured by the admin handler and
-		// checked again by SendAccountVerification before issuance.
-		return authSvc.SendAccountVerification(ctx, auth.Principal{UserID: actorID, TokenVersion: actorVersion}, userID, purpose)
-	})
 	initialProviders, _ := paymentRegistry.Resolve(context.Background())
 	paymentSvc := payment.NewService(paymentStore, creditSvc, initialProviders, logger)
 	paymentSvc.SetProviderReload(paymentRegistry.Resolve)
@@ -287,6 +281,10 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	} else {
 		accountAdminStore = accountadmin.NewMemoryStore(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore), creditSvc, paymentSvc)
 	}
+	accountAdminSvc := accountadmin.NewService(accountAdminStore)
+	accountAdminSvc.SetVerificationSender(func(ctx context.Context, actorID, userID, purpose string, actorVersion int64) error {
+		return authSvc.SendAccountVerification(ctx, auth.Principal{UserID: actorID, TokenVersion: actorVersion}, userID, purpose)
+	})
 	var llmCalls *usage.CallService
 	if platformPool != nil {
 		priceVersion := os.Getenv("YUQING_PROVIDER_PRICE_VERSION")
