@@ -61,7 +61,7 @@ func TestClosurePGRequestWithdrawalAndFreshOrderBlockers(t *testing.T) {
 	}
 	login = adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/login", "", map[string]string{"email": "closure-request@example.invalid", "password": "password-123456"}), 200)
 	access := login["access_token"].(string)
-	k9Exec(t, e, `INSERT INTO orders(id,tenant_id,sku_code,amount_cents,credits,state,channel) VALUES('closure-unsettled',$1,'free',1,1,'pending','test')`, tid)
+	k9Exec(t, e, `INSERT INTO orders(id,tenant_id,sku_code,kind,amount_cents,credits,state,channel,expires_at) VALUES('closure-unsettled',$1,'free','plan',1,1,'pending','test',now()+interval '1 hour')`, tid)
 	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/user/account-closure", access, input), 409)
 	if k9Count(t, e, `SELECT count(*) FROM users WHERE id=$1 AND status='active' AND token_version=2`, uid) != 1 {
 		t.Fatal("blocked request changed identity")

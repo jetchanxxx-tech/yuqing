@@ -12,6 +12,10 @@ import (
 
 // RegisterUserCenterRoutes mounts authenticated user-center endpoints.
 func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
+	r.GET("/user/account-closure/preview", svcs.handleClosurePreview)
+	r.GET("/user/account-closure/status", svcs.handleClosureStatus)
+	r.POST("/user/account-closure", svcs.handleClosureRequest)
+	r.POST("/user/account-closure/cancel", svcs.handleClosureCancel)
 	// 账户安全
 	r.PUT("/auth/password", svcs.handleChangePassword)
 	r.POST("/auth/send-verification-email", svcs.handleSendVerificationEmail)

@@ -11,6 +11,7 @@ import (
 	"github.com/yuqing/platform/internal/api/middleware"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
+	"github.com/yuqing/platform/internal/platform/accountclosure"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
@@ -33,6 +34,7 @@ import (
 type Services struct {
 	Auth         *auth.Service
 	AccountAdmin *accountadmin.Service
+	Closure      *accountclosure.Service
 	Analysis     *analysis.Service
 	MonitorPlans *monitorplan.Service
 	Dashboard    *dashboard.Service

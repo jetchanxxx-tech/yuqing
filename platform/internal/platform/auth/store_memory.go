@@ -148,7 +148,7 @@ func (m *MemoryStore) RecordSuccessfulLogin(_ context.Context, userID string, ve
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u := m.usersByID[userID]
-	if u == nil || u.Status != "active" || u.TokenVersion != version {
+	if u == nil || (u.Status != "active" && u.Status != "closure_pending") || u.TokenVersion != version {
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account or credential revoked")
 	}
 	now := time.Now()

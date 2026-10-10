@@ -29,6 +29,7 @@ import (
 	"github.com/yuqing/platform/internal/pkg/queue"
 	"github.com/yuqing/platform/internal/pkg/storage"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
+	"github.com/yuqing/platform/internal/platform/accountclosure"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
@@ -293,7 +294,12 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		}
 		llmCalls = usage.NewCallService(platformPool, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), priceVersion, cfg.LLM.Models)
 	}
+	var closureService *accountclosure.Service
+	if platformPool != nil {
+		closureService = accountclosure.NewService(accountclosure.NewPGStore(platformPool))
+	}
 	return &v1.Services{
+		Closure:         closureService,
 		LLMCalls:        llmCalls,
 		Auth:            authSvc,
 		AccountAdmin:    accountAdminSvc,

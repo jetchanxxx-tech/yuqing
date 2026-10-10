@@ -38,6 +38,7 @@ func RegisterSessionRoutes(r *gin.RouterGroup, svcs *Services) {
 // userDTO is the wire shape frontend stores as the session principal
 // (see Principal in web/src/stores/auth.tsx).
 type userDTO struct {
+	UserStatus   string   `json:"user_status"`
 	Name         string   `json:"name"`
 	Timezone     string   `json:"timezone"`
 	AvatarURL    string   `json:"avatar_url"`
@@ -53,11 +54,12 @@ type userDTO struct {
 
 func userFromPrincipal(p *auth.Principal) userDTO {
 	return userDTO{
-		UserID:   p.UserID,
-		TenantID: p.TenantID,
-		Email:    p.Email,
-		Roles:    p.Roles,
-		PlanCode: p.PlanCode, PlanStatus: p.PlanStatus, PlanSource: p.PlanSource,
+		UserStatus: p.UserStatus,
+		UserID:     p.UserID,
+		TenantID:   p.TenantID,
+		Email:      p.Email,
+		Roles:      p.Roles,
+		PlanCode:   p.PlanCode, PlanStatus: p.PlanStatus, PlanSource: p.PlanSource,
 		TenantStatus: p.TenantStatus,
 	}
 }

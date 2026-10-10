@@ -53,17 +53,20 @@ func (s *Service) loadPrincipal(ctx context.Context, userID, tenantID string, ve
 		return nil, err
 	}
 	if state == nil || state.UserID != userID || state.TenantID != tenantID ||
-		state.UserStatus != "active" || state.TokenVersion != version {
+		(state.UserStatus != "active" && state.UserStatus != "closure_pending") || state.TokenVersion != version {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account or credential revoked")
 	}
 	roles := make([]string, 0, len(state.PlatformRoles)+1)
-	if state.MemberExists {
+	if state.MemberExists && state.UserStatus == "active" {
 		switch state.MemberRole {
 		case "tenant_admin", "analyst", "viewer":
 			roles = append(roles, state.MemberRole)
 		}
 	}
 	for _, role := range state.PlatformRoles {
+		if state.UserStatus != "active" {
+			break
+		}
 		if role == rolePlatformAdmin {
 			roles = append(roles, role)
 		}

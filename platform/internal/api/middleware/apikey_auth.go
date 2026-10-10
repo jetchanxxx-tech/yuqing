@@ -59,15 +59,24 @@ func authenticateJWT(c *gin.Context, cfg AuthConfig, token string) {
 		}
 		return
 	}
-	if p == nil || p.UserID == "" || p.AuthType != "jwt" || p.UserStatus != "active" {
+	if p == nil || p.UserID == "" || p.AuthType != "jwt" || (p.UserStatus != "active" && p.UserStatus != "closure_pending") {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"code": "UNAUTHORIZED", "message": "invalid or expired token",
 			"request_id": c.GetString(string(CtxRequestID)),
 		})
 		return
 	}
+	if p.UserStatus == "closure_pending" && !restrictedClosurePath(c.Request.Method, c.Request.URL.Path) {
+		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.Wrap(pkgerrors.ErrForbidden, "account closure permits status and withdrawal only"), c.GetString(string(CtxRequestID))))
+		return
+	}
 	c.Set(string(CtxPrincipal), p)
 	c.Next()
+}
+
+func restrictedClosurePath(method, path string) bool {
+	return method == http.MethodGet && (path == "/api/v1/auth/me" || path == "/api/v1/user/account-closure/status") ||
+		method == http.MethodPost && (path == "/api/v1/user/account-closure/cancel" || path == "/api/v1/auth/logout")
 }
 
 func abortAuthorizationUnavailable(c *gin.Context) {

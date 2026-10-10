@@ -219,7 +219,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*Principal
 		}
 		return nil, nil, err
 	}
-	if u.Status != "active" || !VerifyPassword(u.PasswordHash, password) {
+	if (u.Status != "active" && u.Status != "closure_pending") || !VerifyPassword(u.PasswordHash, password) {
 		return nil, nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid email or password")
 	}
 

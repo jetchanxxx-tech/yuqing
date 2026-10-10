@@ -108,7 +108,7 @@ func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID s
 
 func (s *PGStore) RecordSuccessfulLogin(ctx context.Context, userID string, version int64) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET last_login_at = now()
-		WHERE id = $1 AND status = 'active' AND token_version = $2`, userID, version)
+		WHERE id = $1 AND status IN ('active','closure_pending') AND token_version = $2`, userID, version)
 	if err != nil {
 		return wrapDB(err, "record successful login")
 	}
