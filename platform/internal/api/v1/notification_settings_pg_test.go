@@ -2,6 +2,7 @@ package v1_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,4 +164,38 @@ func TestNotificationSettingsPGUnauthorizedReadAndRevokedRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/settings", token, nil), http.StatusForbidden)
+}
+
+func TestNotificationSettingsPGSharedPaymentJSONPreservesTypesAndMasks(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	token, _, u := mustRegister(t, e.router, "structured-settings@example.invalid", "admin")
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, u["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/admin/settings"
+	original := `{"enabled":true,"private_key":"fake-private","api_v3_key":"fake-v3","sign_cert_pfx":"fake-pfx","sign_cert_password":"fake-pass","appid":"sandbox-app"}`
+	data := adminContractResponse(t, doReq(t, e.router, http.MethodPut, path, token, map[string]any{"payment_wechat": original}), http.StatusOK)["settings"].(map[string]any)
+	var masked map[string]any
+	if err := json.Unmarshal([]byte(data["payment_wechat"].(string)), &masked); err != nil {
+		t.Fatal("redaction destroyed structured configuration")
+	}
+	if masked["enabled"] != true || masked["appid"] != "sandbox-app" {
+		t.Fatal("nonsecret typed configuration changed")
+	}
+	for _, key := range []string{"private_key", "api_v3_key", "sign_cert_pfx", "sign_cert_password"} {
+		if masked[key] != "********" {
+			t.Fatalf("unredacted credential field %s", key)
+		}
+	}
+	masked["enabled"] = false
+	patch, _ := json.Marshal(masked)
+	adminContractResponse(t, doReq(t, e.router, http.MethodPut, path, token, map[string]any{"payment_wechat": string(patch)}), http.StatusOK)
+	raw, err := e.deps.Settings.Get(context.Background(), "payment_wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if json.Unmarshal([]byte(raw), &stored) != nil || stored["enabled"] != false || stored["private_key"] != "fake-private" || stored["api_v3_key"] != "fake-v3" || stored["sign_cert_pfx"] != "fake-pfx" {
+		t.Fatal("saving returned masks lost usable structured secrets")
+	}
 }

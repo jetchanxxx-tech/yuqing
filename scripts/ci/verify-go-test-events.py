@@ -23,6 +23,7 @@ REQUIRED_TESTS = {
     "internal/api/v1": (
         "TestNotificationSettingsPGSecretsStayServerSide",
         "TestNotificationSettingsPGUnauthorizedReadAndRevokedRole",
+        "TestNotificationSettingsPGSharedPaymentJSONPreservesTypesAndMasks",
         "TestNotificationSettingsPGQueuedActorCannotCommit",
         "TestNotificationSettingsPGMaskPreserveAndAuditAtomicity",
         "TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders",
