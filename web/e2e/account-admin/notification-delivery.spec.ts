@@ -106,6 +106,8 @@ test('K6b actual email change notice retries and Aliyun bind login reset consume
   await mode(request, 'accept'); sql("UPDATE verification_tokens SET notice_next_attempt=now() WHERE user_id=:'uid' AND purpose='email_change' AND notice_state='failed';", { uid: a.user.user_id });
   await expect.poll(() => sql("SELECT notice_state||':'||notice_target FROM verification_tokens WHERE user_id=:'uid' AND purpose='email_change' ORDER BY created_at DESC LIMIT 1;", { uid: a.user.user_id }), { timeout: 30000 }).toBe('accepted:');
   const notice = await accepted(request, 'email_changed_notice', a.email); await deliver(request, notice);
+  const noticeReceipt = JSON.parse(sql("SELECT notice_receipt::text FROM verification_tokens WHERE user_id=:'uid' AND purpose='email_change' ORDER BY created_at DESC LIMIT 1;", { uid: a.user.user_id }));
+  expect(noticeReceipt.provider).toBe('resend'); expect(noticeReceipt.purpose).toBe('email_changed_notice'); expect(noticeReceipt.state).toBe('accepted'); expect(noticeReceipt.provider_id).toBe(`sha256:${notice.provider_id}`);
   const acceptedAt = Date.now();
   await login(page, changed); await page.goto('/settings'); await page.getByRole('tab', { name: '手机绑定', exact: true }).click(); await page.getByRole('button', { name: '绑定手机号', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '绑定手机号', exact: true }); await dialog.getByLabel('手机号', { exact: true }).fill(phone); await dialog.getByLabel('当前密码', { exact: true }).fill(password);
@@ -165,6 +167,8 @@ test('K6b rejected malformed timeout receipts and persistence failure never beco
   const unknown = `k6b-unknown-${randomBytes(6).toString('hex')}@example.invalid`;
   expect((await request.post(`${api}/auth/password-reset/request`, { data: { email: unknown } })).status()).toBe(202); expect((await inbox(request)).filter(message => message.target_hash === hash(unknown))).toHaveLength(0);
   expect(sql("SELECT count(*) FROM users WHERE email=:'email';", { email: unknown })).toBe('0');
+  const unknownPhone = '13900006999'; expect((await request.post(`${api}/auth/phone/send-code`, { data: { phone: unknownPhone } })).status()).toBe(202);
+  expect((await inbox(request)).filter(message => message.target_hash === hash(unknownPhone))).toHaveLength(0); expect(sql("SELECT count(*) FROM users WHERE phone=:'phone';", { phone: unknownPhone })).toBe('0');
   const expired = await account(request); expect((await request.post(`${api}/auth/send-verification-email`, { headers: { Authorization: `Bearer ${expired.access_token}` } })).status()).toBe(200);
   const expiredPayload = await deliver(request, await accepted(request, 'email_verify', expired.email)); sql("UPDATE verification_tokens SET expires_at=now()-interval '1 second' WHERE user_id=:'uid' AND purpose='email_verify';", { uid: expired.user.user_id });
   expect((await request.post(`${api}/auth/verify-email`, { data: { token: expiredPayload.token } })).status()).toBe(404);

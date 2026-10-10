@@ -49,10 +49,10 @@ export default function PasswordResetPage() {
         {accepted && <Alert type="info" showIcon message={acceptedMessage} style={{ marginBottom: 16 }} />}
         {isLink ? token ? <Form layout="vertical" onFinish={confirm}>{fields}</Form> : <Alert type="error" message={isActivation ? '激活链接无效，请联系管理员重发激活邮件' : '链接无效，请重新申请重置链接'} action={isActivation ? undefined : <Link to="/forgot-password">重新申请</Link>} /> : <>
           <Tabs activeKey={method} onChange={(v) => { setMethod(v); setError(''); setAccepted(false); }} items={[{ key: 'email', label: '邮箱找回' }, { key: 'phone', label: '手机找回' }]} />
-          {method === 'email' ? <Form layout="vertical" onFinish={request}>
+          {method === 'email' ? <Form key="email-recovery" layout="vertical" onFinish={request}>
             <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入邮箱' }]}><Input autoComplete="email" /></Form.Item>
             <Button type="primary" htmlType="submit" loading={busy}>请求重置链接</Button>
-          </Form> : <Form form={phoneForm} layout="vertical" onFinish={confirm}>
+          </Form> : <Form key="phone-recovery" form={phoneForm} layout="vertical" onFinish={confirm}>
             <Typography.Paragraph type="secondary">仅支持已验证绑定的手机号，不会创建新账户。</Typography.Paragraph>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入 11 位手机号' }]}><Input autoComplete="tel" /></Form.Item>
             <Button loading={busy} onClick={() => { void phoneForm.validateFields(['phone']).then(v => request({ phone: v.phone })).catch(() => {}); }}>请求短信验证码</Button>

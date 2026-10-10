@@ -46,7 +46,7 @@ export default function LoginPage() {
         <Tabs activeKey={method} onChange={v => { setMethod(v); setError(''); setAccepted(false); }} items={[{ key: 'email', label: '邮箱登录' }, { key: 'phone', label: '手机号登录' }]} />
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         {accepted && <Alert type="info" message={acceptedMessage} showIcon style={{ marginBottom: 16 }} />}
-        {method === 'email' ? <Form onFinish={onFinish} layout="vertical" size="large">
+        {method === 'email' ? <Form key="email-login" onFinish={onFinish} layout="vertical" size="large">
           <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入正确的邮箱' }]}>
             <Input placeholder="you@example.com" autoComplete="email" />
           </Form.Item>
@@ -58,7 +58,7 @@ export default function LoginPage() {
               登录
             </Button>
           </Form.Item>
-        </Form> : <Form form={phoneForm} layout="vertical" onFinish={async (v: { phone: string; code: string }) => {
+        </Form> : <Form key="phone-login" form={phoneForm} layout="vertical" onFinish={async (v: { phone: string; code: string }) => {
           setError(''); try { await loginPhone(v.phone, v.code); navigate('/dashboard', { replace: true }); } catch (e) { setError(identityError(e)); }
         }}>
           <Form.Item name="phone" label="手机号" rules={[{ required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入已绑定手机号' }]}><Input autoComplete="tel" /></Form.Item>

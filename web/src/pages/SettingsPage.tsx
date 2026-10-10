@@ -560,7 +560,7 @@ function BindPhoneModal({ open, rebinding, onClose, onBound }: { open: boolean; 
           </Form>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setStep(1)}>上一步</Button>
-            <Button type="primary" disabled={code.length !== 6} loading={bindM.isPending} onClick={() => bindM.mutate()}>
+            <Button type="primary" aria-label="确认绑定" aria-busy={bindM.isPending} disabled={code.length !== 6 || bindM.isPending} loading={bindM.isPending} onClick={() => bindM.mutate()}>
               确认绑定
             </Button>
           </Space>
