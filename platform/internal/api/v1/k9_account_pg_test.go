@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yuqing/platform/internal/platform/auth"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/credit"
 )
 
@@ -77,7 +77,7 @@ func TestK9PGCreateActivationAndTrialReplay(t *testing.T) {
 	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/login", "", map[string]string{"email": "k9-created@example.invalid", "password": "StrongPassword123"}), 401)
 	value := box.delivered(t)
 	confirmation := map[string]string{"token": value, "new_password": "StrongPassword123"}
-	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/password-reset/confirm", "", confirmation), 401)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/password-reset/confirm", "", confirmation), 400)
 	confirmed := adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/auth/activation/confirm", "", confirmation), 200)
 	if confirmed["requires_relogin"] != true || len(confirmed) != 2 {
 		t.Fatalf("activation must return no identity or credential: %v", confirmed)
@@ -234,8 +234,8 @@ func TestK9PGCreditDirectRejectsRevokedActor(t *testing.T) {
 	e, _, _, admin := k9Env(t)
 	k9Exec(t, e, `DELETE FROM platform_user_roles WHERE user_id=$1`, admin["user_id"])
 	_, err := e.deps.Credits.Adjust(context.Background(), credit.Adjustment{TenantID: admin["tenant_id"].(string), ActorID: admin["user_id"].(string), Delta: 1, ReasonDetail: "revoked", IdempotencyKey: "revoked", ExpectedVersion: 1})
-	if err == nil {
-		t.Fatal("credit storage trusted revoked actor")
+	if !pkgerrors.Is(err, pkgerrors.ErrConflict) {
+		t.Fatalf("credit storage must reject revoked actor with CONFLICT, got %v", err)
 	}
 	if k9Count(t, e, `SELECT balance FROM report_credits WHERE tenant_id=$1`, admin["tenant_id"]) != 1 {
 		t.Fatal("revoked actor mutated balance")
@@ -372,5 +372,63 @@ func TestK9PGActivationSocketBudgetAndStrictInput(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatal("invalid socket source accepted")
 	}
-	_ = auth.SetPassword
+}
+
+func TestK9PGNicknameOnlyAndCreditAuthorization(t *testing.T) {
+	e, _, access, admin := k9Env(t)
+	ordinary, _, target := mustRegister(t, e.router, "k9-ordinary@example.invalid", "Original")
+	uid, tid := target["user_id"].(string), target["tenant_id"].(string)
+	path := "/api/v1/admin/users/" + uid
+	for _, extra := range []string{"email", "status", "phone", "platform_admin", "password"} {
+		body := map[string]any{"name": "Changed", "reason": "profile", "expected_version": 0, extra: "forbidden"}
+		adminContractResponse(t, doReq(t, e.router, "PATCH", path, access, body), 400)
+	}
+	adminContractResponse(t, doReq(t, e.router, "PATCH", path, access, map[string]any{"name": "Updated nickname", "reason": "support correction", "expected_version": 0}), 200)
+	adminContractResponse(t, doReq(t, e.router, "PATCH", path, access, map[string]any{"name": "Stale", "reason": "stale", "expected_version": 0}), 409)
+	if k9Count(t, e, `SELECT count(*) FROM users WHERE id=$1 AND name='Updated nickname' AND row_version=1 AND token_version=0 AND status='active' AND email='k9-ordinary@example.invalid'`, uid) != 1 {
+		t.Fatal("nickname changed identity or failed CAS")
+	}
+	adminContractResponse(t, doReq(t, e.router, "GET", "/api/v1/auth/me", ordinary, nil), 200)
+	body := map[string]any{"delta": 1, "reason": "unauthorized", "idempotency_key": "no-permission", "expected_version": 1}
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/admin/tenants/"+tid+"/credit-adjustments", ordinary, body), 403)
+	adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/admin/users", ordinary, map[string]string{"email": "illegal@example.invalid", "name": "Illegal"}), 403)
+	for _, delta := range []int{0, 2147483648, -2147483648} {
+		body["delta"] = delta
+		adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/admin/tenants/"+tid+"/credit-adjustments", access, body), 400)
+	}
+	_ = admin
+}
+func TestK9PGSameKeyConcurrentReplayAndNonAdminBalanceVersion(t *testing.T) {
+	e, _, access, admin := k9Env(t)
+	tid := admin["tenant_id"].(string)
+	path := "/api/v1/admin/tenants/" + tid + "/credit-adjustments"
+	// A non-admin balance mutation must advance the exact version used by the
+	// adjustment UI, including K4's direct transactional balance writes.
+	before := k9Count(t, e, `SELECT version FROM report_credits WHERE tenant_id=$1`, tid)
+	k9Exec(t, e, `UPDATE report_credits SET balance=balance+2 WHERE tenant_id=$1`, tid)
+	if k9Count(t, e, `SELECT version FROM report_credits WHERE tenant_id=$1`, tid) != before+1 {
+		t.Fatal("nonadmin writer left stale CAS version")
+	}
+	body := map[string]any{"delta": 2, "reason": "same intent", "idempotency_key": "concurrent-same", "expected_version": before + 1}
+	out := make(chan *httptest.ResponseRecorder, 4)
+	for i := 0; i < 4; i++ {
+		go func() { out <- doReq(t, e.router, "POST", path, access, body) }()
+	}
+	var first map[string]any
+	for i := 0; i < 4; i++ {
+		r := adminContractResponse(t, <-out, 200)
+		if first == nil {
+			first = r
+		} else if !reflect.DeepEqual(first, r) {
+			t.Fatal("concurrent replay changed original result")
+		}
+	}
+	e.rebuild()
+	r := adminContractResponse(t, doReq(t, e.router, "POST", path, access, body), 200)
+	if !reflect.DeepEqual(first, r) {
+		t.Fatal("reconstructed retry changed original result")
+	}
+	if k9Count(t, e, `SELECT balance FROM report_credits WHERE tenant_id=$1`, tid) != 5 || k9Count(t, e, `SELECT count(*) FROM credit_transactions WHERE tenant_id=$1 AND idempotency_key='concurrent-same'`, tid) != 1 || k9Count(t, e, `SELECT count(*) FROM audit_logs WHERE tenant_id=$1 AND action='credit.adjustment'`, tid) != 1 {
+		t.Fatal("duplicate replay changed ledger/audit/balance")
+	}
 }

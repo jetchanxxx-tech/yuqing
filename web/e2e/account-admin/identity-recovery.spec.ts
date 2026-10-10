@@ -134,8 +134,12 @@ test('forgot password preserves input on unavailable channel and shows admission
   try {
     await page.goto('/login');
     await page.getByRole('link', { name: '忘记密码' }).click();
+    await expect(page).toHaveURL(/\/forgot-password$/);
+    await expect(page.getByRole('heading', { name: '找回密码', exact: true })).toBeVisible();
     await page.getByLabel('邮箱', { exact: true }).fill('unknown-k7@example.invalid');
+    const unavailable = page.waitForResponse(r => r.url().endsWith('/auth/password-reset/request'));
     await page.getByRole('button', { name: '请求重置链接' }).click();
+    expect((await unavailable).status()).toBe(503);
     await expect(page.getByRole('alert').filter({ hasText: '暂时不可用' }).first()).toBeVisible();
     await expect(page.getByLabel('邮箱', { exact: true })).toHaveValue('unknown-k7@example.invalid');
   } finally { sql("UPDATE platform_settings SET value=:'provider' WHERE key='email_provider';", { provider }); }
