@@ -233,7 +233,8 @@ func TestK11PGTaskNoticeReceiptFailureRetainsUnknownProcessing(t *testing.T) {
 	if _, err := closing.Request(context.Background(), accountclosure.Actor{UserID: uid, PasswordHash: hash}, []string{tid}); err != nil {
 		t.Fatal(err)
 	}
-	k9Exec(t, e, `UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second' WHERE user_id=$1; UPDATE account_notification_events SET next_attempt_at=now()-interval '1 second' WHERE user_id=$1`, uid)
+	k9Exec(t, e, `UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second' WHERE user_id=$1`, uid)
+	k9Exec(t, e, `UPDATE account_notification_events SET next_attempt_at=now()-interval '1 second' WHERE user_id=$1`, uid)
 	if err := port.Dispatch(context.Background(), 25); err != nil || box.count() != 1 {
 		t.Fatal("closing identity retried an unresolved old processing lease")
 	}

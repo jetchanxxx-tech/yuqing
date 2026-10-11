@@ -97,6 +97,7 @@ REQUIRED_TESTS = {
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
+        "TestK11MigrationPreservesHistoricalEntitlementsAndDoesNotInventEvents",
         "TestClosureMigrationPreservesAccountsFinancialFactsAndNotificationIntent",
         "TestAdminCreditMigrationPreservesLedgerAndVersions",
         "TestDocumentSourceTimeMigrationPreservesKnownAndUnknown",
