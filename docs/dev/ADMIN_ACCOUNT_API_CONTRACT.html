@@ -22,7 +22,7 @@
   credit:null|{balance,plan_code},orders:[],audit_logs:[]}
 审计摘要：{id,actor_id,action,target_type,target_id,tenant_id,reason,
   before,after,request_id,created_at}</pre>
-<p>手机号仅返回脱敏 <code>phone_masked</code>（中国 11 位示例 <code>138****0011</code>），无绑定返回空字符串。不能返回密码散列、JWT、验证码或原始手机号。平台角色与团队成员角色分别返回。<code>tenant_count</code>／<code>user_count</code> 为实际成员关系计数，不能假定一用户一租户。有效套餐采用 report_credits.plan_code（plan_source=report_credits），与报告权限来源一致；无额度池时 effective_plan_code 为空字符串、plan_source=unknown，继续适用报告模块的最严格限制。tenants.plan_code 只显示历史字段，不据此补造有效权益。订单只读既有 orders，无购买记录不得造 paid 订单。</p>
+<p>手机号仅返回脱敏 <code>phone_masked</code>（中国 11 位示例 <code>138****0011</code>），无绑定返回空字符串。不能返回密码散列、JWT、验证码或原始手机号。平台角色与团队成员角色分别返回。<code>tenant_count</code>／<code>user_count</code> 为实际成员关系计数，不能假定一用户一租户。有效套餐采用 report_credits.plan_code，plan_source 来自持久记录：report_credits 表示历史／通用额度来源，manual 表示带原因审计的人工权益，purchase 仅由实际验签购买的原子发放产生；不得由历史余额推断已付款。与报告权限来源一致；无额度池时 effective_plan_code 为空字符串、plan_source=unknown，继续适用报告模块的最严格限制。tenants.plan_code 只显示历史字段，不据此补造有效权益。订单只读既有 orders，无购买记录不得造 paid 订单。</p>
 <h2>状态、角色与并发</h2>
 <table><thead><tr><th>路径</th><th>请求与权限</th><th>成功响应</th></tr></thead><tbody>
 <tr><td>POST /admin/users/:id/disable<br>POST /admin/users/:id/enable</td><td>{reason,expected_version}；admin:users:manage</td><td>{id,status,row_version}</td></tr>
@@ -41,3 +41,7 @@
 <p>真实 router memory HTTP 用例验证 DTO、权限、白名单和撤旧 token；GitHub hosted PostgreSQL 用例验证并发最后管理员、CAS、成员范围、审计事务回滚、重新装配持久、多人计数、同时间分页与套餐来源。使用 pgtest 独占 schema；不发送邮件／短信，不运行生产支付，编译与执行仅由批准的 GitHub 工作流完成。云端失败、成功 run 的准确 commit 及结果由主执行者记录到交付状态页。</p>
 <small>冻结契约可供 K3 前端实现；实施状态以 GitHub 验收证据和交付状态页为准。</small>
 </html>
+
+<h2>K11 人工权益与接线通知</h2>
+<p><code>POST /admin/tenants/:id/plan-change</code> 只接受现有 <code>plan_code</code>、原因与 <code>expected_version</code>；版本取详情 <code>credit.version</code>，不能用租户 row_version 替代。原始管理员身份／凭据版本、当前权限、CAS、manual 来源与审计同一事务。余额、收费流水及真实订单／购买周期不由人工套餐变更补造；额度调整仍为单独审计动作。<code>POST /admin/plans</code> 仍返回 501。</p>
+<p><code>GET /user/notification-preferences</code>／<code>PUT /user/notification-preferences</code> 只开放 <code>task_completed</code> 布尔值；不接收未接线偏好，必要身份安全通知独立。实际任务完成产生去重意图，当前已验证收件人、偏好、租户／成员及注销状态在领取时核对，回执持久受理不等于实际送达。云端沙箱验收与保留限制见交付记录。</p>
