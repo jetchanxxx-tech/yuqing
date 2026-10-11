@@ -172,7 +172,7 @@ test('isolated rebind browser consumption preserves intent on real 503 then revo
   // Explicit sandbox acknowledgement only: actual Go Inbox issuance is tested
   // in PG HTTP contracts; this fixture isolates real browser/HTTP consumption.
   await page.route('**/user/phone/send-code', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"message":"sandbox request accepted; delivery unconfirmed","expires_in":300}' }));
-  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+  await dialog.getByRole('button', { name: /发送验证码$/ }).click();
   await dialog.getByLabel('验证码', { exact: true }).fill(code);
   const bound = page.waitForResponse(r => r.url().endsWith('/user/phone/bind'));
   await dialog.getByRole('button', { name: '确认绑定', exact: true }).click();
@@ -204,24 +204,41 @@ test('email change settings request reports unavailable channel and preserves fo
   expect(sql("SELECT email FROM users WHERE id=:'uid';", { uid: a.user.user_id })).toBe(a.email);
 });
 
+async function withReadyPhoneSandbox(work: () => Promise<void>) {
+  // Wrong-password behavior requires a ready channel: missing global settings
+  // must return503 before any KDF. Every vendor request stays in the runner's
+  // intercepted SDK sandbox; restore the exact prior settings after this case.
+  const channel = { sms_provider: 'aliyun', sms_access_key_id: 'sandbox-aliyun-ci', sms_access_key_secret: 'sandbox-aliyun-secret', sms_sign_name: 'CI Sandbox', sms_bind_phone_template_code: 'CI_BIND' };
+  const keys = Object.keys(channel);
+  const previous = sql("SELECT COALESCE(jsonb_object_agg(key,value),'{}'::jsonb)::text FROM platform_settings WHERE key IN (SELECT jsonb_array_elements_text(:'keys'::jsonb));", { keys: JSON.stringify(keys) });
+  sql("INSERT INTO platform_settings(key,value) SELECT key,value FROM jsonb_each_text(:'settings'::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;", { settings: JSON.stringify(channel) });
+  try { await work(); } finally {
+    sql("DELETE FROM platform_settings WHERE key IN (SELECT jsonb_array_elements_text(:'keys'::jsonb)); INSERT INTO platform_settings(key,value) SELECT key,value FROM jsonb_each_text(:'previous'::jsonb);", { keys: JSON.stringify(keys), previous });
+  }
+}
+
 test('wrong current password on phone binding is one attempt and preserves the valid session and form', async ({ page, request }) => {
-  const a = await account(request);
-  await login(page, a.email);
-  await page.goto('/settings');
-  await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
-  await page.getByRole('button', { name: '绑定手机号', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('手机号', { exact: true }).fill('13900000791');
-  await dialog.getByLabel('当前密码', { exact: true }).fill('incorrect-password-123');
-  const calls: string[] = [];
-  page.on('request', r => { if (r.url().endsWith('/user/phone/send-code') || r.url().endsWith('/auth/refresh')) calls.push(r.url()); });
-  await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('密码、验证码不正确');
-  await expect(page).toHaveURL(/\/settings$/);
-  await expect(dialog.getByLabel('当前密码', { exact: true })).toHaveValue('incorrect-password-123');
-  expect(calls.filter(url => url.endsWith('/user/phone/send-code'))).toHaveLength(1);
-  expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(0);
-  expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+  await withReadyPhoneSandbox(async () => {
+    const a = await account(request);
+    await login(page, a.email);
+    await page.goto('/settings');
+    await page.getByRole('tab', { name: '手机绑定', exact: true }).click();
+    await page.getByRole('button', { name: '绑定手机号', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('手机号', { exact: true }).fill('13900000791');
+    await dialog.getByLabel('当前密码', { exact: true }).fill('incorrect-password-123');
+    const calls: string[] = [];
+    page.on('request', r => { if (r.url().endsWith('/user/phone/send-code') || r.url().endsWith('/auth/refresh')) calls.push(r.url()); });
+    await dialog.getByRole('button', { name: '发送验证码', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('密码、验证码不正确');
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(dialog.getByLabel('当前密码', { exact: true })).toHaveValue('incorrect-password-123');
+    expect(calls.filter(url => url.endsWith('/user/phone/send-code'))).toHaveLength(1);
+    expect(calls.filter(url => url.endsWith('/auth/refresh'))).toHaveLength(0);
+    expect(await page.evaluate(() => localStorage.getItem('access_token'))).toBeTruthy();
+    expect(sql("SELECT sends FROM verification_send_gates WHERE gate_key=:'gate';", { gate: `confirm:uid:${a.user.user_id}` })).toBe('1');
+    expect(sql("SELECT count(*) FROM sms_verification_codes WHERE user_id=:'uid';", { uid: a.user.user_id })).toBe('0');
+  });
 });
 
 test('one wrong bind code spends one attempt while genuine revocation still logs out and clears identity', async ({ page, request }) => {
