@@ -17,11 +17,14 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
-    "internal/pkg/storage": ("TestAvatarClosureSealAndBoundedOwnershipReconciliation", "TestAvatarClosureFenceStopsPreviouslyAdmittedLateFileCreation", "TestLocalAvatarWebPCanvasCannotHideFrameBounds", "TestLocalAvatarWebPLossyCanvasConsistency", "TestLocalAvatarWebPVerticalFrameLimit", "TestLocalAvatarWebPLossyAlphaRemainsSupported", "TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
+    "internal/pkg/storage": ("TestAvatarClosureLargeDirectoryCookiesDoNotSkipOwnedFiles", "TestAvatarClosureSealAndBoundedOwnershipReconciliation", "TestAvatarClosureFenceStopsPreviouslyAdmittedLateFileCreation", "TestLocalAvatarWebPCanvasCannotHideFrameBounds", "TestLocalAvatarWebPLossyCanvasConsistency", "TestLocalAvatarWebPVerticalFrameLimit", "TestLocalAvatarWebPLossyAlphaRemainsSupported", "TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
     "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline", "TestSMTPCancelledContextCannotDial"),
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestClosurePGQueuedOrderRetainsOriginalActorInSharedTenant",
+        "TestClosurePGQueuedOrderRetainsOriginalActorInSharedTenant/password",
+        "TestClosurePGQueuedOrderRetainsOriginalActorInSharedTenant/closure_pending",
         "TestClosurePGPasswordUsesDurableSocketAdmission",
         "TestClosurePGAdministratorCannotReidentifyClosedTombstone",
         "TestClosurePGPendingPasswordLoginIsRestricted",
@@ -81,6 +84,7 @@ REQUIRED_TESTS = {
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
+        "TestClosureMigrationPreservesAccountsFinancialFactsAndNotificationIntent",
         "TestAdminCreditMigrationPreservesLedgerAndVersions",
         "TestDocumentSourceTimeMigrationPreservesKnownAndUnknown",
         "TestIdentityVerificationMigrationInvalidatesPlaintextPreservesUsers",
@@ -94,6 +98,7 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestClosureMemoryCompletionRetriesBusinessRetentionAfterAnonymization",
         "TestProfileAvatarPGAmbiguousLateCommitKeepsCurrentFile",
         "TestProfileTimezonePG",
         "TestProfileAvatarPGReferenceRollbackAndPersistence",
@@ -139,7 +144,8 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_satisfiesContract",
         "TestTenantStore_PG_survivesNewInstance",
     ),
-    "internal/platform/accountclosure": ("TestClosurePGResumesAnonymizationAndRetainsFinancialAndSharedAssets", "TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
+    "internal/business/monitorplan": ("TestClosureMemoryMonitorRetentionAndWriteFence",),
+    "internal/platform/accountclosure": ("TestClosurePGCatalogRetentionPreservesRunFactsAndOtherTenants", "TestClosurePGResumesAnonymizationAndRetainsFinancialAndSharedAssets", "TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
     "internal/platform/accountadmin": (
         "TestAccountAdminPGBootstrapSerializesInitialGrant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit",
@@ -170,7 +176,7 @@ REQUIRED_TESTS = {
     ),
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
     "internal/platform/payment": ("TestPaymentPGRecordsPendingOrderBeforeSupplierAndKeepsUnknownOutcome", "TestPaymentPGClosureFenceRejectsLateOrderButKeepsSettlement", "TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
-    "internal/business/analysis": (
+    "internal/business/analysis": ("TestClosureMemoryAnalysisRetentionAndLateDocumentFence", 
         "TestK4PGFixedExemptionCannotBypassQueuedUserOrTenantSuspension",
         "TestK4PGAcceptedRunRefundStillSettlesAfterActorDisabled",
         "TestK4PGSlowReportCannotOverwriteOrFailNewRerun",
@@ -215,7 +221,7 @@ REQUIRED_TESTS = {
         "TestDocumentStore_isolatedByTenantAndAnalysis/postgres",
         "TestDocumentStore_publishedAtRoundTrip/postgres",
     ),
-    "internal/business/report": (
+    "internal/business/report": ("TestClosureMemoryReportRetentionPreservesOtherTenantAndRejectsLateCreate", 
         "TestPGReportStore_requiresExistingCreator",
         "TestPGReportCreateOnceRedeliveryAndRerun",
         "TestPGReportStore_titleAndSummaryNotPersisted",
@@ -224,7 +230,7 @@ REQUIRED_TESTS = {
         "TestReportStore_listFiltersAndPaginates/postgres",
         "TestReportStore_updateStatus/postgres",
     ),
-    "internal/business/alert": (
+    "internal/business/alert": ("TestClosureMemoryAlertRetentionAndWriteFence", 
         "TestAlertStore_PG_satisfiesContract",
         "TestAlertStore_PG_listRejectsForeignTenant",
         "TestAlertStore_PG_createdAtIsNotPersisted",

@@ -90,6 +90,7 @@ jobs:
             ./internal/platform/credit \
             ./internal/platform/payment \
             ./internal/business/analysis \
+            ./internal/business/monitorplan \
             ./internal/business/report \
             ./internal/business/alert 2>&1 | tee "$event_log"
           test_pipeline_status=("${PIPESTATUS[@]}")
