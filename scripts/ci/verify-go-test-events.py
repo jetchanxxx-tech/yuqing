@@ -101,6 +101,9 @@ REQUIRED_TESTS = {
     "internal/platform/billingpolicy": ("TestExemptionDoesNotFollowRoleTenantOrTokenEmail",),
     "internal/platform/apikey": ("TestAPIKeyStore_PG_satisfiesContract", "TestAPIKeyStore_PG_survivesNewInstance"),
     "internal/platform/auth": (
+        "TestIdentityPGNoticeClaimPreservesDisabledSecurityButRejectsClosure",
+        "TestClosurePGFailedInflightNoticeCannotBeReclaimedAfterRequest",
+        "TestClosurePGPersonalPagePreservesNoticeThatWinsRowLock",
         "TestClosureMemoryCompletionRetriesBusinessRetentionAfterAnonymization",
         "TestProfileAvatarPGAmbiguousLateCommitKeepsCurrentFile",
         "TestProfileTimezonePG",
