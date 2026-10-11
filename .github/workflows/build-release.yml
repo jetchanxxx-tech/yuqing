@@ -236,7 +236,12 @@ jobs:
           release_dir="${RUNNER_TEMP}/yuqing-release"
           mkdir -p "$release_dir" release-artifacts
           git archive "$GITHUB_SHA" | tar -x -C "$release_dir"
-          mkdir -p "$release_dir/platform/bin" "$release_dir/web/dist"
+          mkdir -p "$release_dir/platform/bin" "$release_dir/web/dist" "$release_dir/deployment-wheels"
+          # Production already supplies lxml/typing_extensions. Ship the missing
+          # pure Python DOCX wheel from the hosted runner; deployment is offline
+          # and never compiles dependencies on the server.
+          python3 -m pip download --only-binary=:all: --no-deps \
+            --dest "$release_dir/deployment-wheels" 'python-docx==1.2.0'
           cp -a platform/bin/. "$release_dir/platform/bin/"
           cp -a web/dist/. "$release_dir/web/dist/"
           chmod 755 "$release_dir/platform/bin/yuqing-"*
