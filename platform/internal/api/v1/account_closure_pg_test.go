@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestClosurePGPreviewShowsActualBalanceAssetsAndUnknownPolicy(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	access, _, u := mustRegister(t, e.router, "closure-impact@example.invalid", "Owner")
+	tid := u["tenant_id"].(string)
+	p := adminContractResponse(t, doReq(t, e.router, "GET", "/api/v1/user/account-closure/preview", access, nil), 200)
+	impact := p["tenants"].([]any)[0].(map[string]any)
+	if impact["credit_balance"] != float64(1) || impact["reports"] != float64(0) || impact["analyses"] != float64(0) || impact["orders"] != float64(0) {
+		t.Fatalf("closure omitted actual financial/asset impact: %v", impact)
+	}
+	k9Exec(t, e, `DELETE FROM report_credits WHERE tenant_id=$1`, tid)
+	p = adminContractResponse(t, doReq(t, e.router, "GET", "/api/v1/user/account-closure/preview", access, nil), 200)
+	impact = p["tenants"].([]any)[0].(map[string]any)
+	if impact["credit_balance"] != nil || impact["retention_days"] != nil || impact["plan_code"] != "unknown" {
+		t.Fatalf("closure invented a policy for an absent credit/plan row: %v", impact)
+	}
+}
+
 func TestClosurePGPasswordUsesDurableSocketAdmission(t *testing.T) {
 	e := newBillingActorPGEnv(t)
 	access, _, u := mustRegister(t, e.router, "closure-budget@example.invalid", "Owner")
