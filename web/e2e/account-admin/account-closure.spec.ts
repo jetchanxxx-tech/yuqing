@@ -55,7 +55,7 @@ test('prebuilt closure CLI rechecks deadline and blockers then anonymizes withou
 
 test('prebuilt closure CLI refuses a replacement avatar root and retries the verified storage',async({request})=>{
   const a=await account(request);const uid=a.user.user_id,tid=a.user.tenant_id;const headers={Authorization:`Bearer ${a.access_token}`};
-  const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==','base64');
+  const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAADklEQVR4nGP4DwUMMAYAj4IP8TylVlEAAAAASUVORK5CYII=','base64');
   expect((await request.post(`${api}/user/avatar`,{headers,multipart:{avatar:{name:'avatar.png',mimeType:'image/png',buffer:picture}}})).status()).toBe(200);
   const reference=sql("SELECT avatar_url FROM users WHERE id=:'uid';",{uid});const name=reference.split('/').at(-1)!;
   const config=JSON.parse(readFileSync(process.env.YUQING_E2E_CONFIG!,'utf8'));const root=config.storage.avatarRoot;

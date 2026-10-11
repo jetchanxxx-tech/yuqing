@@ -10,6 +10,8 @@ export interface ClosureStatus {
   id: string; state: 'pending' | 'cancelled' | 'finalizing' | 'completed';
   requested_at: string; withdraw_until: string; completed_at: string | null;
   cleanup_status: string; error_code?: string;
+  avatar_deleted: number; audit_processed: number; business_remaining: number;
+  cleanup_completed_at: string | null; next_attempt_at: string | null;
 }
 export async function previewClosure() { return (await client.get<ClosurePreview>('/user/account-closure/preview')).data; }
 export async function requestClosure(password: string, tenants: string[]) {

@@ -126,11 +126,11 @@ func (s *PGStore) Preview(ctx context.Context, uid string, version int64) (*Prev
 	return preview(ctx, tx, uid, false)
 }
 
-const projection = `id,state,requested_at,withdraw_until,completed_at,cleanup_status,last_error,avatar_deleted,attempts`
+const projection = `id,state,requested_at,withdraw_until,completed_at,cleanup_status,last_error,avatar_deleted,attempts,audit_processed,business_remaining,cleanup_completed_at,next_attempt_at`
 
 func scan(row pgx.Row) (*Status, error) {
 	r := &Status{}
-	err := row.Scan(&r.ID, &r.State, &r.RequestedAt, &r.WithdrawUntil, &r.CompletedAt, &r.CleanupStatus, &r.LastError, &r.AvatarDeleted, &r.Attempts)
+	err := row.Scan(&r.ID, &r.State, &r.RequestedAt, &r.WithdrawUntil, &r.CompletedAt, &r.CleanupStatus, &r.LastError, &r.AvatarDeleted, &r.Attempts, &r.AuditProcessed, &r.BusinessRemaining, &r.CleanupCompletedAt, &r.NextAttemptAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.ErrNotFound
 	}
@@ -145,6 +145,16 @@ func audit(ctx context.Context, tx pgx.Tx, actor Actor, action string) error {
 	return err
 }
 func (s *PGStore) Request(ctx context.Context, actor Actor, confirmed []string) (*Status, error) {
+	storageID := ""
+	if storage, ok := s.avatars.(interface {
+		RootIdentity(context.Context) (string, error)
+	}); ok {
+		var err error
+		storageID, err = storage.RootIdentity(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	tx, err := begin(ctx, s.pool)
 	if err != nil {
 		return nil, err
@@ -178,6 +188,9 @@ func (s *PGStore) Request(ctx context.Context, actor Actor, confirmed []string) 
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	r := &Status{ID: id.New(), State: "pending", RequestedAt: now, WithdrawUntil: now.Add(168 * time.Hour), CleanupStatus: "pending"}
 	if _, err = tx.Exec(ctx, `INSERT INTO account_closures(id,user_id,state,requested_at,withdraw_until,actor_version,avatar_ref) SELECT $1,id,'pending',$3,$4,token_version+1,COALESCE(avatar_url,'') FROM users WHERE id=$2`, r.ID, actor.UserID, now, r.WithdrawUntil); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE account_closures SET avatar_storage_id=$2,next_attempt_at=withdraw_until WHERE id=$1`, r.ID, storageID); err != nil {
 		return nil, err
 	}
 	for _, t := range p.Tenants {

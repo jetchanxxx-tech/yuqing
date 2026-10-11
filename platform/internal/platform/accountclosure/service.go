@@ -31,15 +31,19 @@ type Preview struct {
 	Blockers       []string       `json:"blockers"`
 }
 type Status struct {
-	ID            string     `json:"id"`
-	State         string     `json:"state"`
-	RequestedAt   time.Time  `json:"requested_at"`
-	WithdrawUntil time.Time  `json:"withdraw_until"`
-	CompletedAt   *time.Time `json:"completed_at"`
-	CleanupStatus string     `json:"cleanup_status"`
-	LastError     string     `json:"error_code,omitempty"`
-	AvatarDeleted int64      `json:"avatar_deleted"`
-	Attempts      int64      `json:"attempts"`
+	ID                 string     `json:"id"`
+	State              string     `json:"state"`
+	RequestedAt        time.Time  `json:"requested_at"`
+	WithdrawUntil      time.Time  `json:"withdraw_until"`
+	CompletedAt        *time.Time `json:"completed_at"`
+	CleanupStatus      string     `json:"cleanup_status"`
+	LastError          string     `json:"error_code,omitempty"`
+	AvatarDeleted      int64      `json:"avatar_deleted"`
+	Attempts           int64      `json:"attempts"`
+	AuditProcessed     int64      `json:"audit_processed"`
+	BusinessRemaining  int64      `json:"business_remaining"`
+	CleanupCompletedAt *time.Time `json:"cleanup_completed_at"`
+	NextAttemptAt      *time.Time `json:"next_attempt_at"`
 }
 type AvatarLifecycle = interface {
 	Seal(context.Context, string) error
@@ -48,6 +52,35 @@ type AvatarLifecycle = interface {
 type ExecutionStore interface {
 	Process(context.Context, string, int) (*Status, error)
 }
+type DueStore interface {
+	Due(context.Context, int) ([]string, error)
+}
+
+func (s *Service) AdvanceDue(ctx context.Context, owners, objects int) (int, error) {
+	if s == nil || owners < 1 || owners > 25 || objects < 1 || objects > 1000 {
+		return 0, pkgerrors.ErrBadRequest
+	}
+	store, ok := s.store.(DueStore)
+	if !ok {
+		return 0, pkgerrors.ErrServiceUnavailable
+	}
+	ids, err := store.Due(ctx, owners)
+	if err != nil {
+		return 0, err
+	}
+	advanced := 0
+	for _, uid := range ids {
+		step, cancel := context.WithTimeout(ctx, 30*time.Second)
+		_, err = s.Process(step, uid, objects)
+		cancel()
+		if err != nil {
+			return advanced, err
+		}
+		advanced++
+	}
+	return advanced, nil
+}
+
 type Store interface {
 	Preview(context.Context, string, int64) (*Preview, error)
 	Request(context.Context, Actor, []string) (*Status, error)

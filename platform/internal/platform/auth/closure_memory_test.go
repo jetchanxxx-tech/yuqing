@@ -17,8 +17,8 @@ func TestClosureMemoryCompletionRetriesBusinessRetentionAfterAnonymization(t *te
 	if err := users.RegisterAccount(ctx, User{ID: "closing", Email: "closing@example.invalid", PasswordHash: "hash", Name: "Private"}, Tenant{ID: "sole", Name: "Private Team", Slug: "sole", DBName: "sole", Status: "active", PlanCode: "free"}, Member{TenantID: "sole", UserID: "closing", Role: "tenant_admin"}, false); err != nil {
 		t.Fatal(err)
 	}
-	m := NewMemoryClosureStore(users, v, func(_ context.Context, _ string, _ bool, fn func(func([]string)) error) error {
-		return fn(func([]string) {})
+	m := NewMemoryClosureStore(users, v, func(_ context.Context, _ string, _ bool, fn func(func([]string, int) (bool, int64)) error) error {
+		return fn(func([]string, int) (bool, int64) { return true, 0 })
 	}, func(context.Context, string) (string, []string, error) { return "free", nil, nil }, func(string, []string, bool) {}, storage.NewLocalAvatar(t.TempDir()))
 	now := time.Now().UTC()
 	m.now = func() time.Time { return now }

@@ -2,7 +2,6 @@ package accountclosure
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -57,6 +56,23 @@ func (s *PGStore) Process(ctx context.Context, uid string, limit int) (*Status, 
 	if s.avatars == nil {
 		return s.failStep(ctx, r, "AVATAR_STORAGE_UNAVAILABLE")
 	}
+	identity, ok := s.avatars.(interface {
+		RootIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		return s.failStep(ctx, r, "AVATAR_STORAGE_UNVERIFIED")
+	}
+	actual, err := identity.RootIdentity(ctx)
+	if err != nil {
+		return s.failStep(ctx, r, "AVATAR_STORAGE_UNAVAILABLE")
+	}
+	var expected string
+	if err = s.pool.QueryRow(ctx, `SELECT avatar_storage_id FROM account_closures WHERE id=$1`, r.ID).Scan(&expected); err != nil {
+		return nil, err
+	}
+	if expected == "" || expected != actual {
+		return s.failStep(ctx, r, "AVATAR_STORAGE_MISMATCH")
+	}
 	if err = s.avatars.Seal(ctx, uid); err != nil {
 		return s.failStep(ctx, r, "AVATAR_CLEANUP_FAILED")
 	}
@@ -71,6 +87,13 @@ func (s *PGStore) Process(ctx context.Context, uid string, limit int) (*Status, 
 	if !done {
 		return s.Status(ctx, uid)
 	}
+	redacted, err := s.redactAuditPage(ctx, uid, r.ID, limit)
+	if err != nil {
+		return s.failStep(ctx, r, "ANONYMIZATION_FAILED")
+	}
+	if !redacted {
+		return s.Status(ctx, uid)
+	}
 	if err = s.anonymize(ctx, uid, r.ID); err != nil {
 		return s.failStep(ctx, r, "ANONYMIZATION_FAILED")
 	}
@@ -82,7 +105,7 @@ func (s *PGStore) Process(ctx context.Context, uid string, limit int) (*Status, 
 }
 
 func (s *PGStore) failStep(ctx context.Context, r *Status, code string) (*Status, error) {
-	_, err := s.pool.Exec(ctx, `UPDATE account_closures SET last_error=$2 WHERE id=$1`, r.ID, code)
+	_, err := s.pool.Exec(ctx, `UPDATE account_closures SET last_error=$2,next_attempt_at=now()+interval '5 minutes' WHERE id=$1`, r.ID, code)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +179,7 @@ func (s *PGStore) claim(ctx context.Context, conn interface {
 		code = "FINANCIAL_ARTIFACT_REVIEW_REQUIRED"
 	}
 	if code != "" {
-		if _, err = tx.Exec(ctx, `UPDATE account_closures SET last_error=$2,attempts=attempts+1,last_attempt_at=now() WHERE id=$1`, r.ID, code); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE account_closures SET last_error=$2,attempts=attempts+1,last_attempt_at=now(),next_attempt_at=now()+interval '5 minutes' WHERE id=$1`, r.ID, code); err != nil {
 			return nil, 0, err
 		}
 		r.LastError = code
@@ -178,44 +201,13 @@ func (s *PGStore) claim(ctx context.Context, conn interface {
 			return nil, 0, err
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE account_closures SET state='finalizing',cleanup_status='avatars',last_error='',attempts=attempts+1,last_attempt_at=now(),avatar_ref=$2 WHERE id=$1`, r.ID, ref); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE account_closures SET state='finalizing',cleanup_status=CASE WHEN state='pending' THEN 'avatars' ELSE cleanup_status END,last_error='',attempts=attempts+1,last_attempt_at=now(),avatar_ref=$2,next_attempt_at=now()+interval '20 seconds' WHERE id=$1`, r.ID, ref); err != nil {
 		return nil, 0, err
 	}
 	r.State = "finalizing"
 	r.CleanupStatus = "avatars"
 	r.LastError = ""
 	return r, cursor, tx.Commit(ctx)
-}
-
-// Keep only typed financial facts in audit JSON. Free-form reasons, names,
-// arbitrary strings and request metadata cannot carry personal identifiers.
-func scrubAudit(value any) any {
-	switch v := value.(type) {
-	case map[string]any:
-		out := map[string]any{}
-		for k, x := range v {
-			switch x.(type) {
-			case float64, bool, nil:
-				out[k] = x
-			case map[string]any, []any:
-				out[k] = scrubAudit(x)
-			}
-		}
-		out["anonymized"] = true
-		return out
-	case []any:
-		out := make([]any, 0, len(v))
-		for _, x := range v {
-			switch x.(type) {
-			case float64, bool, nil, map[string]any, []any:
-				out = append(out, scrubAudit(x))
-			}
-		}
-		return out
-	case float64, bool, nil:
-		return v
-	}
-	return nil
 }
 
 func (s *PGStore) anonymize(ctx context.Context, uid, cid string) error {
@@ -261,39 +253,15 @@ func (s *PGStore) anonymize(ctx context.Context, uid, cid string) error {
 	if _, err = tx.Exec(ctx, `UPDATE credit_transactions SET reason_detail='已注销账号（原因脱敏）',idempotency_key=CASE WHEN idempotency_key IS NULL THEN NULL ELSE 'anonymized:'||id END WHERE run_id IS NULL AND (actor_id=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member))`, uid, cid); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT id,details_json FROM audit_logs WHERE actor_id=$1 OR resource=$1 OR details_json->>'target_id'=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member) ORDER BY id`, uid, cid)
-	if err != nil {
+	var unseen bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audit_logs WHERE id>(SELECT audit_cursor FROM account_closures WHERE id=$2) AND (actor_id=$1 OR resource=$1 OR details_json->>'target_id'=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member)))`, uid, cid).Scan(&unseen); err != nil {
 		return err
 	}
-	type auditRow struct {
-		id   int64
-		data []byte
+	if unseen {
+		return pkgerrors.ErrConflict
 	}
-	var audits []auditRow
-	for rows.Next() {
-		var a auditRow
-		if err = rows.Scan(&a.id, &a.data); err != nil {
-			rows.Close()
-			return err
-		}
-		audits = append(audits, a)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if err = scopeMatches(ctx, tx, uid, cid); err != nil {
 		return err
-	}
-	for _, a := range audits {
-		var v any
-		if len(a.data) > 0 {
-			if err = json.Unmarshal(a.data, &v); err != nil {
-				return err
-			}
-		}
-		data, _ := json.Marshal(scrubAudit(v))
-		if _, err = tx.Exec(ctx, `UPDATE audit_logs SET details_json=$2::jsonb,resource='anonymized' WHERE id=$1`, a.id, data); err != nil {
-			return err
-		}
 	}
 	if _, err = tx.Exec(ctx, `UPDATE tenants SET status='closed',name='已注销团队',slug='closed-'||id,settings_json='{}',row_version=row_version+1 WHERE id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$1 AND sole_member)`, cid); err != nil {
 		return err
@@ -347,9 +315,13 @@ func (s *PGStore) cleanupBusiness(ctx context.Context, r *Status, limit int) (*S
 	}
 	allDone := true
 	lastError := ""
+	remainingTotal := int64(0)
+	var nextAttempt *time.Time
 	for _, t := range impacts {
 		state := "retention_pending"
 		code := ""
+		remaining := 0
+		due := time.Now().UTC().Add(24 * time.Hour)
 		if t.days == nil || *t.days < 1 {
 			code = "RETENTION_POLICY_UNVERIFIED"
 		} else {
@@ -376,23 +348,46 @@ func (s *PGStore) cleanupBusiness(ctx context.Context, r *Status, limit int) (*S
 				if _, err = tx.Exec(ctx, `DELETE FROM alerts WHERE tenant_id=$1 AND id IN (SELECT id FROM alerts WHERE tenant_id=$1 AND created_at<=$2 ORDER BY created_at,id LIMIT $3)`, t.id, cutoff, limit); err != nil {
 					return nil, err
 				}
-				var remaining int
 				if err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM analyses WHERE tenant_id=$1 AND closure_purged_at IS NULL)+(SELECT count(*) FROM reports WHERE tenant_id=$1)+(SELECT count(*) FROM raw_documents WHERE tenant_id=$1)+(SELECT count(*) FROM monitor_plans WHERE tenant_id=$1)+(SELECT count(*) FROM alerts WHERE tenant_id=$1)`, t.id).Scan(&remaining); err != nil {
 					return nil, err
 				}
 				if remaining == 0 {
 					state = "complete"
+				} else {
+					var oldest *time.Time
+					if err = tx.QueryRow(ctx, `SELECT min(created_at)+$2::integer*interval '24 hours' FROM (SELECT created_at FROM analyses WHERE tenant_id=$1 AND closure_purged_at IS NULL UNION ALL SELECT created_at FROM reports WHERE tenant_id=$1 UNION ALL SELECT a.created_at FROM raw_documents d JOIN analyses a ON a.id=d.analysis_id AND a.tenant_id=d.tenant_id WHERE d.tenant_id=$1 UNION ALL SELECT created_at FROM monitor_plans WHERE tenant_id=$1 UNION ALL SELECT created_at FROM alerts WHERE tenant_id=$1) pending`, t.id, *t.days).Scan(&oldest); err != nil {
+						return nil, err
+					}
+					if oldest != nil {
+						due = *oldest
+						if !due.After(time.Now().UTC()) {
+							due = time.Now().UTC().Add(20 * time.Second)
+						}
+					}
 				}
 			}
 		}
 		if code != "" {
 			state = "pending_cleanup"
 			lastError = code
+			if err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM analyses WHERE tenant_id=$1 AND closure_purged_at IS NULL)+(SELECT count(*) FROM reports WHERE tenant_id=$1)+(SELECT count(*) FROM raw_documents WHERE tenant_id=$1)+(SELECT count(*) FROM monitor_plans WHERE tenant_id=$1)+(SELECT count(*) FROM alerts WHERE tenant_id=$1)`, t.id).Scan(&remaining); err != nil {
+				return nil, err
+			}
 		}
 		if state != "complete" {
 			allDone = false
+			if nextAttempt == nil || due.Before(*nextAttempt) {
+				v := due
+				nextAttempt = &v
+			}
 		}
-		if _, err = tx.Exec(ctx, `UPDATE account_closure_tenants SET cleanup_status=$3,cleanup_due=CASE WHEN $4::integer IS NULL THEN NULL ELSE (SELECT requested_at FROM account_closures WHERE id=$1)+$4::integer*interval '24 hours' END WHERE closure_id=$1 AND tenant_id=$2`, r.ID, t.id, state, t.days); err != nil {
+		remainingTotal += int64(remaining)
+		var tenantDue *time.Time
+		if state != "complete" {
+			v := due
+			tenantDue = &v
+		}
+		if _, err = tx.Exec(ctx, `UPDATE account_closure_tenants SET cleanup_status=$3,cleanup_due=$4 WHERE closure_id=$1 AND tenant_id=$2`, r.ID, t.id, state, tenantDue); err != nil {
 			return nil, err
 		}
 	}
@@ -403,13 +398,11 @@ func (s *PGStore) cleanupBusiness(ctx context.Context, r *Status, limit int) (*S
 	if lastError != "" {
 		state = "pending_cleanup"
 	}
-	if _, err = tx.Exec(ctx, `UPDATE account_closures SET cleanup_status=$2,last_error=$3 WHERE id=$1`, r.ID, state, lastError); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE account_closures SET cleanup_status=$2,last_error=$3,business_remaining=$4,next_attempt_at=$5,cleanup_completed_at=CASE WHEN $2='complete' THEN COALESCE(cleanup_completed_at,now()) ELSE NULL END WHERE id=$1`, r.ID, state, lastError, remainingTotal, nextAttempt); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	r.CleanupStatus = state
-	r.LastError = lastError
-	return r, nil
+	return scan(s.pool.QueryRow(ctx, `SELECT `+projection+` FROM account_closures WHERE id=$1`, r.ID))
 }

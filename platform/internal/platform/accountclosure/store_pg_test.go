@@ -57,6 +57,7 @@ INSERT INTO account_notification_attempts(id,user_id,actor_id,actor_version,purp
 		t.Fatal(err)
 	}
 	s := NewPGStore(pool)
+	s.SetAvatarStorage(avatar)
 	if _, err = s.Request(ctx, Actor{UserID: "closing", PasswordHash: "original"}, []string{"sole"}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ INSERT INTO account_notification_attempts(id,user_id,actor_id,actor_version,purp
 	if _, err = pool.Exec(ctx, `UPDATE account_notification_attempts SET state='failed' WHERE id='attempt'`); err != nil {
 		t.Fatal(err)
 	}
-	p.SetAvatarStorage(&brokenClosureStorage{})
+	p.SetAvatarStorage(&brokenClosureStorage{real: real})
 	r, err := p.Process(ctx, "closing", 1)
 	if err != nil || r.State != "finalizing" || r.LastError != "AVATAR_CLEANUP_FAILED" {
 		t.Fatalf("failed cleanup claimed completion: %+v %v", r, err)
@@ -128,7 +129,13 @@ INSERT INTO account_notification_attempts(id,user_id,actor_id,actor_version,purp
 	}
 }
 
-type brokenClosureStorage struct{}
+type brokenClosureStorage struct{ real avatarCompletionPort }
+
+func (s *brokenClosureStorage) RootIdentity(ctx context.Context) (string, error) {
+	return s.real.(interface {
+		RootIdentity(context.Context) (string, error)
+	}).RootIdentity(ctx)
+}
 
 func (*brokenClosureStorage) Seal(context.Context, string) error {
 	return errors.New("fixture disk failure")

@@ -103,7 +103,12 @@ func (p *PGStore) List(ctx context.Context, tenantID string, limit int) ([]*Orde
 
 func (p *PGStore) ClaimPaid(ctx context.Context, orderID, providerTxnID string) (bool, error) {
 	// 条件原子跃迁：仅 pending 可 paid；渠道流水号唯一（空串视为无流水号）。
-	tag, err := p.pool.Exec(ctx,
+	tx, err := p.financialTx(ctx, orderID)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(context.Background())
+	tag, err := tx.Exec(ctx,
 		`UPDATE orders SET state = $2, provider_txn_id = NULLIF($3,''),
 		        paid_at = now(), updated_at = now()
 		 WHERE id = $1 AND state = $4
@@ -111,6 +116,9 @@ func (p *PGStore) ClaimPaid(ctx context.Context, orderID, providerTxnID string) 
 		        SELECT 1 FROM orders o2 WHERE o2.provider_txn_id = $3 AND o2.id <> $1))`,
 		orderID, StatePaid, providerTxnID, StatePending)
 	if err != nil {
+		return false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
@@ -125,9 +133,17 @@ func (p *PGStore) MarkRefundNeeded(ctx context.Context, orderID string) error {
 }
 
 func (p *PGStore) MarkGranted(ctx context.Context, orderID string) error {
-	_, err := p.pool.Exec(ctx,
+	tx, err := p.financialTx(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	_, err = tx.Exec(ctx,
 		`UPDATE orders SET granted = TRUE, updated_at = now() WHERE id = $1`, orderID)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (p *PGStore) SaveChannelMeta(ctx context.Context, orderID, providerTxnID, txnTime string) error {
@@ -138,9 +154,38 @@ func (p *PGStore) SaveChannelMeta(ctx context.Context, orderID, providerTxnID, t
 }
 
 func (p *PGStore) markState(ctx context.Context, orderID, to string) error {
-	_, err := p.pool.Exec(ctx,
+	tx, err := p.financialTx(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	_, err = tx.Exec(ctx,
 		`UPDATE orders SET state = $2, updated_at = now() WHERE id = $1`, orderID, to)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// Provider facts remain admissible for restricted/closed users. The shared
+// administration/tenant boundary only serializes final closure decisions.
+func (p *PGStore) financialTx(ctx context.Context, oid string) (pgx.Tx, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fail := func(e error) (pgx.Tx, error) { tx.Rollback(context.Background()); return nil, e }
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(741914)`); err != nil {
+		return fail(err)
+	}
+	var tid string
+	if err = tx.QueryRow(ctx, `SELECT tenant_id FROM orders WHERE id=$1`, oid).Scan(&tid); err != nil {
+		return fail(err)
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,741915))`, tid); err != nil {
+		return fail(err)
+	}
+	return tx, nil
 }
 
 const orderSelect = `SELECT id, tenant_id, sku_code, kind, credits, amount_cents,

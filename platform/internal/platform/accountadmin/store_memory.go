@@ -10,6 +10,7 @@ import (
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/accountclosure"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
 	"github.com/yuqing/platform/internal/platform/payment"
@@ -19,13 +20,14 @@ import (
 // MemoryStore adapts the exact identity and tenant stores used by the service
 // graph. It keeps only audit history; account and membership state stays in auth.
 type MemoryStore struct {
-	mu            sync.Mutex
-	accounts      *auth.SharedTenantStore
-	tenants       *tenant.MemoryStore
-	credits       *credit.Service
-	payments      *payment.Service
-	audits        []Audit
-	notifications map[string]memoryNotification
+	mu                  sync.Mutex
+	accounts            *auth.SharedTenantStore
+	tenants             *tenant.MemoryStore
+	credits             *credit.Service
+	payments            *payment.Service
+	audits              []Audit
+	notifications       map[string]memoryNotification
+	closureAuditCursors map[string]int
 }
 
 func NewMemoryStore(accounts *auth.SharedTenantStore, tenants *tenant.MemoryStore, credits *credit.Service, payments *payment.Service) *MemoryStore {
@@ -38,7 +40,7 @@ func NewMemoryStore(accounts *auth.SharedTenantStore, tenants *tenant.MemoryStor
 
 var _ Store = (*MemoryStore)(nil)
 
-func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, completion bool, change func(func([]string)) error) error {
+func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, completion bool, change func(func([]string, int) (bool, int64)) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	before := ""
@@ -50,21 +52,33 @@ func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, comple
 			}
 		}
 	}
-	err := change(func(sole []string) {
+	err := change(func(sole []string, limit int) (bool, int64) {
+		if s.closureAuditCursors == nil {
+			s.closureAuditCursors = map[string]int{}
+		}
 		tids := map[string]bool{}
 		for _, id := range sole {
 			tids[id] = true
 		}
-		for i := range s.audits {
-			a := &s.audits[i]
+		cursor := s.closureAuditCursors[uid]
+		processed := int64(0)
+		scanned := 0
+		for cursor < len(s.audits) && scanned < limit {
+			a := &s.audits[cursor]
 			if a.ActorID == uid || a.TargetID == uid || tids[a.TenantID] {
 				a.Reason = "已注销账号（原因脱敏）"
 				a.RequestID = ""
 				a.Before = closureAuditNumbers(a.Before)
 				a.After = closureAuditNumbers(a.After)
+				processed++
 			}
+			cursor++
+			scanned++
 		}
+		s.closureAuditCursors[uid] = cursor
+		return cursor == len(s.audits), processed
 	})
+
 	if err == nil {
 		after := ""
 		_ = s.accounts.ReadAdministration(ctx, func(st *auth.AdministrationState) error { after = st.Users[uid].Status; return nil })
@@ -82,14 +96,10 @@ func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, comple
 	return err
 }
 func closureAuditNumbers(input map[string]any) map[string]any {
-	out := map[string]any{"anonymized": true}
-	for k, v := range input {
-		switch v.(type) {
-		case int, int64, float64, bool, nil:
-			out[k] = v
-		}
+	if result, ok := accountclosure.ScrubAudit(input).(map[string]any); ok {
+		return result
 	}
-	return out
+	return map[string]any{"anonymized": true}
 }
 
 type memoryNotification struct {

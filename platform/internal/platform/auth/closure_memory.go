@@ -15,7 +15,7 @@ import (
 
 // Administration's outer boundary precedes identity, tenant, verification and
 // credit locks. Memory stores cannot coordinate separate CLI/server processes.
-type ClosureMemoryBoundary func(context.Context, string, bool, func(func([]string)) error) error
+type ClosureMemoryBoundary func(context.Context, string, bool, func(func([]string, int) (bool, int64)) error) error
 type MemoryClosureStore struct {
 	mu           sync.Mutex
 	users        *SharedTenantStore
@@ -59,23 +59,26 @@ func (m *MemoryClosureStore) cleanupBusiness(ctx context.Context, r *memoryClosu
 	r.status.CleanupStatus = "retention_pending"
 	if done {
 		r.status.CleanupStatus = "complete"
+		now := m.now().UTC()
+		r.status.CleanupCompletedAt = &now
 	}
 }
 
 type memoryClosure struct {
-	status  accountclosure.Status
-	tenants []accountclosure.TenantImpact
-	cursor  int64
+	storageID string
+	status    accountclosure.Status
+	tenants   []accountclosure.TenantImpact
+	cursor    int64
 }
 
 func NewMemoryClosureStore(users *SharedTenantStore, v *MemoryVerificationStore, boundary ClosureMemoryBoundary, inspect func(context.Context, string) (string, []string, error), revoke func(string, []string, bool), avatars accountclosure.AvatarLifecycle) *MemoryClosureStore {
 	return &MemoryClosureStore{users: users, verification: v, boundary: boundary, inspect: inspect, revoke: revoke, avatars: avatars, now: time.Now, records: map[string]*memoryClosure{}}
 }
-func (m *MemoryClosureStore) locked(ctx context.Context, uid string, completion bool, fn func(func([]string)) error) error {
+func (m *MemoryClosureStore) locked(ctx context.Context, uid string, completion bool, fn func(func([]string, int) (bool, int64)) error) error {
 	if m.boundary == nil || m.users == nil || ctx.Err() != nil {
 		return pkgerrors.ErrServiceUnavailable
 	}
-	return m.boundary(ctx, uid, completion, func(anon func([]string)) error {
+	return m.boundary(ctx, uid, completion, func(anon func([]string, int) (bool, int64)) error {
 		m.users.mu.Lock()
 		defer m.users.mu.Unlock()
 		m.mu.Lock()
@@ -153,7 +156,7 @@ func (m *MemoryClosureStore) preview(ctx context.Context, uid string, pending bo
 	return p, nil
 }
 func (m *MemoryClosureStore) Preview(ctx context.Context, uid string, version int64) (out *accountclosure.Preview, err error) {
-	err = m.locked(ctx, uid, false, func(_ func([]string)) error {
+	err = m.locked(ctx, uid, false, func(_ func([]string, int) (bool, int64)) error {
 		if _, e := m.user(accountclosure.Actor{UserID: uid, Version: version}, "active"); e != nil {
 			return e
 		}
@@ -164,7 +167,7 @@ func (m *MemoryClosureStore) Preview(ctx context.Context, uid string, version in
 	return
 }
 func (m *MemoryClosureStore) Request(ctx context.Context, actor accountclosure.Actor, confirmed []string) (out *accountclosure.Status, err error) {
-	err = m.locked(ctx, actor.UserID, false, func(_ func([]string)) error {
+	err = m.locked(ctx, actor.UserID, false, func(_ func([]string, int) (bool, int64)) error {
 		u, e := m.user(actor, "active")
 		if e != nil {
 			return e
@@ -191,8 +194,18 @@ func (m *MemoryClosureStore) Request(ctx context.Context, actor accountclosure.A
 				return pkgerrors.ErrConflict
 			}
 		}
+		storage, ok := m.avatars.(interface {
+			RootIdentity(context.Context) (string, error)
+		})
+		if !ok {
+			return pkgerrors.ErrServiceUnavailable
+		}
+		storageID, e := storage.RootIdentity(ctx)
+		if e != nil {
+			return e
+		}
 		now := m.now().UTC().Truncate(time.Microsecond)
-		r := &memoryClosure{status: accountclosure.Status{ID: id.New(), State: "pending", RequestedAt: now, WithdrawUntil: now.Add(168 * time.Hour), CleanupStatus: "pending"}, tenants: p.Tenants}
+		r := &memoryClosure{status: accountclosure.Status{ID: id.New(), State: "pending", RequestedAt: now, WithdrawUntil: now.Add(168 * time.Hour), CleanupStatus: "pending"}, tenants: p.Tenants, storageID: storageID}
 		m.records[u.ID] = r
 		u.Status = "closure_pending"
 		u.TokenVersion++
@@ -221,7 +234,7 @@ func (m *MemoryClosureStore) Request(ctx context.Context, actor accountclosure.A
 	return
 }
 func (m *MemoryClosureStore) Cancel(ctx context.Context, actor accountclosure.Actor) (out *accountclosure.Status, err error) {
-	err = m.locked(ctx, actor.UserID, false, func(_ func([]string)) error {
+	err = m.locked(ctx, actor.UserID, false, func(_ func([]string, int) (bool, int64)) error {
 		u, e := m.user(actor, "closure_pending")
 		if e != nil {
 			return e
@@ -245,7 +258,7 @@ func (m *MemoryClosureStore) Cancel(ctx context.Context, actor accountclosure.Ac
 	return
 }
 func (m *MemoryClosureStore) Status(ctx context.Context, uid string) (out *accountclosure.Status, err error) {
-	err = m.locked(ctx, uid, false, func(_ func([]string)) error {
+	err = m.locked(ctx, uid, false, func(_ func([]string, int) (bool, int64)) error {
 		r := m.records[uid]
 		if r == nil {
 			return pkgerrors.ErrNotFound
@@ -260,13 +273,37 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 	if limit < 1 || limit > 1000 {
 		return nil, pkgerrors.ErrBadRequest
 	}
-	err = m.locked(ctx, uid, true, func(anon func([]string)) error {
+	err = m.locked(ctx, uid, true, func(anon func([]string, int) (bool, int64)) error {
 		r := m.records[uid]
 		if r == nil {
 			return pkgerrors.ErrNotFound
 		}
 		cp := r.status
 		out = &cp
+		defer func() {
+			if r.status.State == "completed" && r.status.CleanupStatus == "complete" {
+				r.status.NextAttemptAt = nil
+				*out = r.status
+				return
+			}
+			if r.status.State == "cancelled" {
+				r.status.NextAttemptAt = nil
+				*out = r.status
+				return
+			}
+			next := r.status.WithdrawUntil
+			if r.status.State == "finalizing" {
+				next = m.now().Add(20 * time.Second)
+			}
+			if r.status.LastError != "" {
+				next = m.now().Add(5 * time.Minute)
+			}
+			if r.status.State == "completed" {
+				next = m.now().Add(24 * time.Hour)
+			}
+			r.status.NextAttemptAt = &next
+			*out = r.status
+		}()
 		if r.status.State == "completed" {
 			m.cleanupBusiness(ctx, r, limit)
 			*out = r.status
@@ -333,6 +370,20 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 			*out = r.status
 			return nil
 		}
+		storage, ok := m.avatars.(interface {
+			RootIdentity(context.Context) (string, error)
+		})
+		if !ok {
+			r.status.LastError = "AVATAR_STORAGE_UNVERIFIED"
+			*out = r.status
+			return nil
+		}
+		actual, e := storage.RootIdentity(ctx)
+		if e != nil || r.storageID == "" || actual != r.storageID {
+			r.status.LastError = "AVATAR_STORAGE_MISMATCH"
+			*out = r.status
+			return nil
+		}
 		if e = m.avatars.Seal(ctx, uid); e != nil {
 			r.status.LastError = "AVATAR_CLEANUP_FAILED"
 			*out = r.status
@@ -356,6 +407,13 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 				sole = append(sole, t.ID)
 			}
 		}
+		redacted, count := anon(sole, limit)
+		r.status.AuditProcessed += count
+		r.status.CleanupStatus = "anonymizing"
+		if !redacted {
+			*out = r.status
+			return nil
+		}
 		err := m.users.tenants.CloseSoleTeams(ctx, sole, func() {
 			m.verification.mu.Lock()
 			defer m.verification.mu.Unlock()
@@ -375,7 +433,6 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 					}
 				}
 			}
-			anon(sole)
 			m.revoke(uid, sole, true)
 			delete(m.users.usersByEmail, u.Email)
 			u.Email = id.New() + ".closed@invalid"
@@ -416,4 +473,34 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 		return err
 	})
 	return
+}
+
+func (m *MemoryClosureStore) Due(ctx context.Context, limit int) ([]string, error) {
+	if limit < 1 || limit > 25 {
+		return nil, pkgerrors.ErrBadRequest
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	ids := []string{}
+	now := m.now()
+	for uid, r := range m.records {
+		if r.status.State == "cancelled" || r.status.CleanupStatus == "complete" {
+			continue
+		}
+		due := r.status.WithdrawUntil
+		if r.status.NextAttemptAt != nil {
+			due = *r.status.NextAttemptAt
+		}
+		if !now.Before(due) && !(r.status.State == "pending" && now.Before(r.status.WithdrawUntil)) {
+			ids = append(ids, uid)
+		}
+	}
+	sort.Strings(ids)
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids, nil
 }

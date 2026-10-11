@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -151,6 +152,18 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyEnvOverrides(cfg)
+	configFile, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	root := cfg.Storage.AvatarRoot
+	if root == "" {
+		root = "data/avatars"
+	}
+	if !filepath.IsAbs(root) {
+		root = filepath.Join(filepath.Dir(configFile), root)
+	}
+	cfg.Storage.AvatarRoot = filepath.Clean(root)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
