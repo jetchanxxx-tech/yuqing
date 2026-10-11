@@ -22,6 +22,8 @@ REQUIRED_TESTS = {
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestFinalMemoryQueuedMutationsRetainOriginalActor",
+        "TestIdentityIssuanceMemorySharesAttemptsAcrossPurposesAndReconstruction",
         "TestFinalQueuedCancellationRechecksOriginalActor",
         "TestFinalQueuedAPIKeyRevocationRechecksOriginalActor",
         "TestIdentityIssuancePGSharedSourceAccountBudgetPersistsAcrossRestartAndWindow",
