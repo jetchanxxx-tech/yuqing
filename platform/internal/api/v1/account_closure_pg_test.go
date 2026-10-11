@@ -2,9 +2,44 @@ package v1_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func TestClosurePGPasswordUsesDurableSocketAdmission(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	access, _, u := mustRegister(t, e.router, "closure-budget@example.invalid", "Owner")
+	k9Exec(t, e, `INSERT INTO verification_send_gates(gate_key,window_start,last_sent,sends) VALUES('confirm:ip:192.0.2.201',now(),now(),20)`)
+	body, _ := json.Marshal(map[string]any{"password": "password-123456", "confirmed": true, "close_tenant_ids": []string{u["tenant_id"].(string)}})
+	r := httptest.NewRequest("POST", "/api/v1/user/account-closure", strings.NewReader(string(body)))
+	r.RemoteAddr = "192.0.2.201:43210"
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+access)
+	r.Header.Set("X-Forwarded-For", "203.0.113.201")
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, r)
+	adminContractResponse(t, w, 429)
+	if k9Count(t, e, `SELECT count(*) FROM users WHERE id=$1 AND status='active' AND token_version=0`, u["user_id"]) != 1 {
+		t.Fatal("password admission rejection changed closure identity")
+	}
+}
+
+func TestClosurePGAdministratorCannotReidentifyClosedTombstone(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	admin, _, operator := mustRegister(t, e.router, "closure-operator@example.invalid", "Operator")
+	_, _, target := mustRegister(t, e.router, "closure-tombstone@example.invalid", "Tombstone")
+	k9Exec(t, e, `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, operator["user_id"])
+	k9Exec(t, e, `UPDATE users SET status='closed',name='已注销用户',token_version=token_version+1 WHERE id=$1`, target["user_id"])
+	path := "/api/v1/admin/users/" + target["user_id"].(string)
+	adminContractResponse(t, doReq(t, e.router, "PATCH", path, admin, map[string]any{"name": "Private identity restored", "reason": "support correction", "expected_version": 0}), 409)
+	adminContractResponse(t, doReq(t, e.router, "PUT", path+"/platform-role", admin, map[string]any{"platform_admin": true, "reason": "closed account must stay anonymous", "expected_version": 0}), 409)
+	if k9Count(t, e, `SELECT count(*) FROM users WHERE id=$1 AND status='closed' AND name='已注销用户' AND row_version=0`, target["user_id"]) != 1 {
+		t.Fatal("administrator reintroduced closed identity data")
+	}
+}
 
 func TestClosurePGPendingPasswordLoginIsRestricted(t *testing.T) {
 	e := newBillingActorPGEnv(t)
