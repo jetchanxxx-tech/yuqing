@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/yuqing/platform/internal/platform/billing"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // 订单有效期：二维码超时关闭。渠道侧通常 2h-24h，我们收窄到 15 分钟
@@ -103,6 +103,12 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 		CreatedAt:   createdAt,
 	}
 
+	// Persist the financial blocker before any supplier request. A crash or
+	// unknown supplier outcome retains pending for reconciliation; it never
+	// invents paid, closed, refunded or granted state.
+	if err = s.store.Create(ctx, o); err != nil {
+		return nil, err
+	}
 	resp, err := p.CreatePayment(ctx, &CreatePaymentReq{
 		OrderID:     o.ID,
 		Subject:     "盘古舆情 · " + sku.Name,
@@ -115,27 +121,31 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 	o.ProviderTxnID = resp.ProviderTxnID
 	o.TxnTime = resp.TxnTime
 
-	if err := s.store.Create(ctx, o); err != nil {
+	if err := s.store.SavePrecreate(ctx, o); err != nil {
 		return nil, err
-	}
-	// 渠道元数据（预下单号/银联 txnTime）随单落库，查单与核销依赖
-	if resp.ProviderTxnID != "" || resp.TxnTime != "" {
-		if err := s.store.SaveChannelMeta(ctx, o.ID, resp.ProviderTxnID, resp.TxnTime); err != nil {
-			return nil, err
-		}
 	}
 	return o, nil
 }
 
 // Get 查询订单（租户隔离）。paid 但未发放的订单顺带自愈 —— 发放是幂等的，
 // 崩溃窗口（已 paid 未 granted）由每次查询补齐。
-func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+// ReadOnlyGet returns stored tenant-scoped order facts without provider queries
+// or repairing an ungranted payment. It is safe for an unverified historical Key.
+func (s *Service) ReadOnlyGet(ctx context.Context, tenantID, orderID string) (*Order, error) {
 	o, err := s.store.Get(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
 	if o.TenantID != tenantID {
 		return nil, ErrNotFound // 跨租户探测按不存在处理
+	}
+	return o, nil
+}
+
+func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+	o, err := s.ReadOnlyGet(ctx, tenantID, orderID)
+	if err != nil {
+		return nil, err
 	}
 	if s.ensureGranted(ctx, o) {
 		o.Granted = true

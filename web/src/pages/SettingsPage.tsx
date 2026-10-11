@@ -21,15 +21,21 @@ import type { FormInstance } from 'antd';
 import { LogoutOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
-import { getPlans } from '../api/billing';
+import { useDateTime } from '../lib/format';
+import { acceptedMessage, identityError } from '../lib/identity';
+import { AccountClosureRequest } from '../components/AccountClosureRequest';
+import { getCredits, getPlans } from '../api/billing';
 import {
   bindPhone,
   changePassword,
   getProfile,
   sendPhoneCode,
   sendVerificationEmail,
+  requestEmailChange,
   unbindPhone,
   updateProfile,
+  uploadAvatar,
+  removeAvatar,
   type UserProfile,
 } from '../api/user';
 
@@ -75,9 +81,14 @@ function OverviewTab() {
   const navigate = useNavigate();
 
   const plansQ = useQuery({ queryKey: ['billing', 'plans'], queryFn: getPlans, staleTime: 60_000 });
-  const plan = plansQ.data?.find((p) => p.code === principal?.plan_code);
+  const creditsQ = useQuery({ queryKey: ['billing', 'credits'], queryFn: getCredits });
+  const plan = plansQ.data?.find((p) => p.code === creditsQ.data?.plan_code);
 
   if (!principal) return null;
+  if (creditsQ.isError || plansQ.isError) return <Space direction="vertical" style={{ width: '100%' }}>
+    {creditsQ.isError && <Alert type="error" showIcon message="报告额度暂不可用" description="暂时无法确认当前权益，之前缓存的数据不作为当前余额。" action={<Button loading={creditsQ.isFetching} onClick={() => void creditsQ.refetch()}>重试报告额度</Button>} />}
+    {plansQ.isError && <Alert type="error" showIcon message="套餐目录暂不可用" description="暂时无法确认套餐名称和保留期，请重试。" action={<Button loading={plansQ.isFetching} onClick={() => void plansQ.refetch()}>重试套餐目录</Button>} />}
+  </Space>;
 
   const confirmLogout = () => {
     modal.confirm({
@@ -107,7 +118,7 @@ function OverviewTab() {
               label: '当前套餐',
               children: (
                 <Space>
-                  <span>{plan?.name ?? principal.plan_code}</span>
+                  <span>{plan?.name ?? (creditsQ.isError ? '暂不可用' : creditsQ.data?.plan_code ?? '读取中')}</span>
                   <Button size="small" type="link" style={{ padding: 0 }} onClick={() => navigate('/plans')}>
                     切换套餐
                   </Button>
@@ -130,15 +141,24 @@ function OverviewTab() {
       </Card>
 
       <Card style={{ borderRadius: 16 }}>
+        {creditsQ.data ? <Space direction="vertical">
+          <Typography.Text>{`报告余额：${creditsQ.data.balance} 次`}</Typography.Text>
+          {creditsQ.data.billing_exempt
+            ? <Typography.Text>当前固定账号免次数与消费限制；团队其他成员按套餐计费</Typography.Text>
+            : <Typography.Text>每次创建或重跑消耗 1 次报告额度</Typography.Text>}
+        </Space> : <Typography.Text type="secondary">{creditsQ.isError ? '报告额度暂不可用' : '正在读取报告额度'}</Typography.Text>}
+      </Card>
+
+      <Card style={{ borderRadius: 16 }}>
         <Typography.Title level={5}>使用帮助</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
-          · 报告与原始文档的保存时长取决于当前套餐的数据保留策略（30 / 90 / 365 天）
+          {plan ? `当前套餐报告与原始文档保留 ${plan.retention_days} 天` : '正在读取套餐保留期'}
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
-          · Token 用量明细可在「用量」页查看，超额部分按套餐费率计费
+          · Token 用量明细可在「用量」页查看；当前按报告次数收费，不另收 Token 现金费用
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary">
-          · 如需更多帮助，可通过客服邮箱联系：support@yuqing.example.com
+          客服渠道暂未配置
         </Typography.Paragraph>
       </Card>
 
@@ -169,6 +189,7 @@ function OverviewTab() {
 // ════════════════════════════════════════════════════════════
 
 function ProfileTab() {
+  const { reloadIdentity } = useAuth();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
@@ -189,7 +210,8 @@ function ProfileTab() {
 
   const saveM = useMutation({
     mutationFn: (v: { name: string; timezone: string }) => updateProfile(v),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await reloadIdentity();
       message.success('资料已保存');
       queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
     },
@@ -198,7 +220,7 @@ function ProfileTab() {
   const sendM = useMutation({
     mutationFn: sendVerificationEmail,
     onSuccess: (msg) => {
-      message.success(msg || '验证邮件已发送，请查收');
+      message.success(msg || '验证邮件请求已受理，送达尚未确认');
       setSendCountdown(60);
     },
   });
@@ -221,7 +243,7 @@ function ProfileTab() {
           type="warning"
           showIcon
           message="邮箱未验证"
-          description="验证邮箱后可解锁全部功能（未验证也可免费试用 1 次分析）。"
+          description="验证用于确认邮箱归属；功能与额度以当前套餐为准。"
           action={sendButton}
           style={{ marginBottom: 16 }}
         />
@@ -245,6 +267,7 @@ function ProfileForm({
 }) {
   return (
     <Card style={{ borderRadius: 16 }}>
+      <AvatarControls profile={profile} />
       <Form form={form} layout="vertical" onFinish={onSave}>
         <Form.Item
           label="昵称"
@@ -268,7 +291,7 @@ function ProfileForm({
           </Space>
         </Form.Item>
         <Form.Item label="时区" name="timezone">
-          <Select options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} />
+          <Select showSearch options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={saving}>
           保存更改
@@ -283,6 +306,7 @@ function ProfileForm({
 // ════════════════════════════════════════════════════════════
 
 function SecurityTab() {
+  const formatDateTime = useDateTime();
   const { message } = App.useApp();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -311,7 +335,7 @@ function SecurityTab() {
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             {profileQ.data?.password_changed_at
-              ? `上次修改：${new Date(profileQ.data.password_changed_at).toLocaleString()}`
+              ? `上次修改：${formatDateTime(profileQ.data.password_changed_at)}`
               : '从未修改过密码'}
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
@@ -373,6 +397,10 @@ function SecurityTab() {
           </Form.Item>
         </Form>
       </Modal>
+      <Divider />
+      <EmailChangeForm />
+      <Divider />
+      <AccountClosureRequest />
     </Card>
   );
 }
@@ -383,7 +411,8 @@ function SecurityTab() {
 
 function PhoneTab() {
   const { message } = App.useApp();
-  const queryClient = useQueryClient();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const profileQ = useQuery({ queryKey: ['user', 'profile'], queryFn: getProfile });
   const [bindOpen, setBindOpen] = useState(false);
   const [unbindOpen, setUnbindOpen] = useState(false);
@@ -391,7 +420,7 @@ function PhoneTab() {
   const profile = profileQ.data;
   const bound = !!profile?.phone_verified;
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
+  const relogin = () => { logout(); navigate('/login', { replace: true }); };
 
   return (
     <Card style={{ borderRadius: 16 }}>
@@ -406,21 +435,22 @@ function PhoneTab() {
         ),
       }]} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        绑定手机号后可用于登录、找回密码与支付验证（登录功能将在 F19 上线）。
+        已验证手机号可用于登录和找回密码；绑定或更换后需要重新登录。支付验证暂未开放
       </Typography.Paragraph>
       {bound ? (
-        <Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button>
+        <Space><Button onClick={() => setBindOpen(true)}>更换手机号</Button><Button danger onClick={() => setUnbindOpen(true)}>解绑手机号</Button></Space>
       ) : (
         <Button type="primary" onClick={() => setBindOpen(true)}>绑定手机号</Button>
       )}
 
       <BindPhoneModal
         open={bindOpen}
+        rebinding={bound}
         onClose={() => setBindOpen(false)}
         onBound={() => {
           setBindOpen(false);
-          refresh();
-          message.success('手机号绑定成功');
+          message.success('手机号绑定成功，请重新登录');
+          relogin();
         }}
       />
       <UnbindPhoneModal
@@ -429,26 +459,30 @@ function PhoneTab() {
         onClose={() => setUnbindOpen(false)}
         onUnbound={() => {
           setUnbindOpen(false);
-          refresh();
-          message.success('已解绑');
+          message.success('手机号已解绑，请重新登录');
+          relogin();
         }}
       />
     </Card>
   );
 }
 
-function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: () => void; onBound: () => void }) {
+function BindPhoneModal({ open, rebinding, onClose, onBound }: { open: boolean; rebinding: boolean; onClose: () => void; onBound: () => void }) {
   const { message } = App.useApp();
   const [step, setStep] = useState<1 | 2>(1);
   const [phone, setPhone] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) {
       setStep(1);
       setPhone('');
       setCode('');
+      setPassword('');
+      setError('');
       setCountdown(0);
     }
   }, [open]);
@@ -460,43 +494,49 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
   }, [countdown]);
 
   const sendM = useMutation({
-    mutationFn: () => sendPhoneCode(phone),
+    mutationFn: () => { setError(''); return sendPhoneCode(phone, password); },
+    onError: e => setError(identityError(e)),
     onSuccess: () => {
-      message.success('验证码已发送');
+      message.success('验证码发送已受理，送达待确认');
       setCountdown(60);
       setStep(2);
     },
   });
 
   const bindM = useMutation({
-    mutationFn: () => bindPhone(phone, code),
+    mutationFn: () => { setError(''); return bindPhone(phone, code); },
+    onError: e => setError(identityError(e)),
     onSuccess: onBound,
   });
 
   return (
     <Modal
-      title={`绑定手机号${step === 2 ? '（步骤 2/2）' : ''}`}
+      title={`${rebinding ? '更换' : '绑定'}手机号${step === 2 ? '（步骤 2/2）' : ''}`}
       open={open}
       onCancel={onClose}
       footer={null}
       destroyOnHidden
     >
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
+      {rebinding && <Typography.Paragraph>新手机号验证成功后将替换原绑定，并要求重新登录。</Typography.Paragraph>}
       {step === 1 ? (
         <>
           <Form layout="vertical">
             <Form.Item label="手机号" required>
               <Input
+                aria-label="手机号"
                 placeholder="11 位手机号"
                 value={phone}
                 maxLength={11}
                 onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
               />
             </Form.Item>
+            <Form.Item label="当前密码" required><Input.Password aria-label="当前密码" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></Form.Item>
           </Form>
           <Button
             type="primary"
             block
-            disabled={!/^1[3-9]\d{9}$/.test(phone)}
+            disabled={!/^1[3-9]\d{9}$/.test(phone) || !password}
             loading={sendM.isPending}
             onClick={() => sendM.mutate()}
           >
@@ -505,7 +545,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
         </>
       ) : (
         <>
-          <Alert type="info" showIcon message={`验证码已发送至 ${phone.slice(0, 3)}****${phone.slice(7)}`} style={{ marginBottom: 16 }} />
+          <Alert type="info" showIcon message={`验证码发送已受理：${phone.slice(0, 3)}****${phone.slice(7)}`} style={{ marginBottom: 16 }} />
           <Form layout="vertical">
             <Form.Item label="验证码" required extra={
               countdown > 0
@@ -513,6 +553,7 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
                 : <Button type="link" size="small" style={{ padding: 0 }} onClick={() => sendM.mutate()}>重新发送</Button>
             }>
               <Input
+                aria-label="验证码"
                 placeholder="6 位验证码"
                 value={code}
                 maxLength={6}
@@ -522,12 +563,12 @@ function BindPhoneModal({ open, onClose, onBound }: { open: boolean; onClose: ()
           </Form>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setStep(1)}>上一步</Button>
-            <Button type="primary" disabled={code.length !== 6} loading={bindM.isPending} onClick={() => bindM.mutate()}>
+            <Button type="primary" aria-label="确认绑定" aria-busy={bindM.isPending} disabled={code.length !== 6 || bindM.isPending} loading={bindM.isPending} onClick={() => bindM.mutate()}>
               确认绑定
             </Button>
           </Space>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-            绑定后可用于：手机号登录（F19）、找回密码、支付验证
+            确认后将更新已验证的手机号，并撤销旧登录凭据
           </Typography.Paragraph>
         </>
       )}
@@ -561,7 +602,7 @@ function UnbindPhoneModal({ open, phone, onClose, onUnbound }: { open: boolean; 
       <Alert
         type="warning"
         showIcon
-        message="解绑后将无法使用手机号登录和找回密码"
+        message="解绑后将移除已验证的手机号联系方式"
         style={{ marginBottom: 16 }}
       />
       <Typography.Paragraph>
@@ -569,9 +610,56 @@ function UnbindPhoneModal({ open, phone, onClose, onUnbound }: { open: boolean; 
       </Typography.Paragraph>
       <Form layout="vertical">
         <Form.Item label="为了账户安全，请输入登录密码确认" required>
-          <Input.Password value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input.Password aria-label="为了账户安全，请输入登录密码确认" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Form.Item>
       </Form>
     </Modal>
   );
+}
+
+function EmailChangeForm() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [accepted, setAccepted] = useState(false);
+  return <>
+    <Typography.Title level={5}>更换登录邮箱</Typography.Title>
+    <Typography.Paragraph type="secondary">确认新邮箱之前，原邮箱仍可登录。确认后需重新登录，并通知原邮箱。</Typography.Paragraph>
+    {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
+    {accepted && <Alert type="info" message={acceptedMessage} showIcon style={{ marginBottom: 16 }} />}
+    <Form layout="vertical" onFinish={async (v: { password: string; new_email: string }) => {
+      setError(''); setAccepted(false); setBusy(true);
+      try { await requestEmailChange(v.password, v.new_email); setAccepted(true); } catch (e) { setError(identityError(e)); } finally { setBusy(false); }
+    }}>
+      <Form.Item label="当前密码" name="password" rules={[{ required: true, message: '请输入当前密码' }]}><Input.Password autoComplete="current-password" /></Form.Item>
+      <Form.Item label="新邮箱" name="new_email" rules={[{ required: true, type: 'email', message: '请输入新邮箱' }]}><Input autoComplete="email" /></Form.Item>
+      <Button type="primary" htmlType="submit" loading={busy}>请求更换邮箱</Button>
+    </Form>
+  </>;
+}
+
+function AvatarControls({ profile }: { profile?: UserProfile }) {
+  const { reloadIdentity } = useAuth();
+  const queryClient = useQueryClient();
+  const { message } = App.useApp();
+  const [error, setError] = useState('');
+  const mutation = useMutation({
+    mutationFn: (file: File | null) => file ? uploadAvatar(file) : removeAvatar(),
+    onSuccess: async (value) => {
+      queryClient.setQueryData(['user', 'profile'], value);
+      await reloadIdentity(); setError(''); message.success('头像已更新');
+    },
+    onError: () => setError('头像更新失败，请检查文件格式和大小后重试。'),
+  });
+  return <Space direction="vertical" style={{ marginBottom: 24 }}>
+    {profile?.avatar_url && <img src={profile.avatar_url} alt="个人头像" width={80} height={80} style={{ borderRadius: '50%', objectFit: 'cover' }} />}
+    <label>上传头像 <input aria-label="上传头像" type="file" accept="image/png,image/jpeg,image/webp" disabled={mutation.isPending || !profile} onChange={(event) => {
+      const file = event.target.files?.[0]; event.target.value = '';
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { setError('头像大小不能超过 2 MiB'); return; }
+      mutation.mutate(file);
+    }} /></label>
+    <Typography.Text type="secondary">支持 PNG、JPEG、WebP；最大 2 MiB，宽高不超过 4096 像素。</Typography.Text>
+    {profile?.avatar_url && <Button loading={mutation.isPending} onClick={() => mutation.mutate(null)}>移除头像</Button>}
+    {error && <Alert type="error" showIcon message={error} />}
+  </Space>;
 }

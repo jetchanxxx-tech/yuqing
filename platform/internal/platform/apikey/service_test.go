@@ -4,6 +4,7 @@ package apikey
 import (
 	"context"
 	"encoding/json"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ func newTestService() *Service { return NewService(NewMemoryStore()) }
 
 func TestAPIKey_CreateKey_returnsRawOnceWithPrefix(t *testing.T) {
 	svc := newTestService()
-	key, raw, err := svc.CreateKey(context.Background(), "t1", "ci-bot", []string{"analyses:create"})
+	key, raw, err := svc.CreateKey(context.Background(), "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "ci-bot", []string{"analyses:create"})
 	if err != nil {
 		t.Fatalf("CreateKey: %v", err)
 	}
@@ -60,7 +61,7 @@ func TestAPIKey_CreateKey_validatesInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := svc.CreateKey(context.Background(), tc.tenant, tc.keyName, nil); err == nil {
+			if _, _, err := svc.CreateKey(context.Background(), tc.tenant, billingpolicy.Actor{UserID: "fixture-owner"}, tc.keyName, nil); err == nil {
 				t.Error("CreateKey() error = nil, want validation error")
 			}
 		})
@@ -71,7 +72,7 @@ func TestAPIKey_CreateKey_unique(t *testing.T) {
 	svc := newTestService()
 	seen := map[string]bool{}
 	for i := 0; i < 20; i++ {
-		_, raw, err := svc.CreateKey(context.Background(), "t1", "k", nil)
+		_, raw, err := svc.CreateKey(context.Background(), "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "k", nil)
 		if err != nil {
 			t.Fatalf("CreateKey %d: %v", i, err)
 		}
@@ -87,7 +88,7 @@ func TestAPIKey_CreateKey_unique(t *testing.T) {
 func TestAPIKey_ValidateKey_roundTrip(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService()
-	created, raw, err := svc.CreateKey(ctx, "t1", "ci", nil)
+	created, raw, err := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "ci", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,11 +113,11 @@ func TestAPIKey_ValidateKey_roundTrip(t *testing.T) {
 func TestAPIKey_ValidateKey_rejections(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService()
-	_, raw, err := svc.CreateKey(ctx, "t1", "ci", nil)
+	_, raw, err := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "ci", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	revoked, revokedRaw, err := svc.CreateKey(ctx, "t1", "old", nil)
+	revoked, revokedRaw, err := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "old", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +149,9 @@ func TestAPIKey_ValidateKey_rejections(t *testing.T) {
 func TestAPIKey_ListKeys_scopedAndSafe(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService()
-	_, rawA, _ := svc.CreateKey(ctx, "t1", "a", nil)
-	_, rawB, _ := svc.CreateKey(ctx, "t1", "b", nil)
-	_, rawC, _ := svc.CreateKey(ctx, "t2", "c", nil)
+	_, rawA, _ := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "a", nil)
+	_, rawB, _ := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "b", nil)
+	_, rawC, _ := svc.CreateKey(ctx, "t2", billingpolicy.Actor{UserID: "fixture-owner"}, "c", nil)
 
 	keys, err := svc.ListKeys(ctx, "t1")
 	if err != nil {
@@ -173,7 +174,7 @@ func TestAPIKey_ListKeys_scopedAndSafe(t *testing.T) {
 func TestAPIKey_ListKeys_includesRevokedWithTimestamp(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService()
-	k, _, _ := svc.CreateKey(ctx, "t1", "gone", nil)
+	k, _, _ := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "gone", nil)
 	if err := svc.RevokeKey(ctx, "t1", k.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +192,8 @@ func TestAPIKey_ListKeys_includesRevokedWithTimestamp(t *testing.T) {
 func TestAPIKey_RevokeKey(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService()
-	k1, _, _ := svc.CreateKey(ctx, "t1", "mine", nil)
-	k2, _, _ := svc.CreateKey(ctx, "t2", "theirs", nil)
+	k1, _, _ := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "mine", nil)
+	k2, _, _ := svc.CreateKey(ctx, "t2", billingpolicy.Actor{UserID: "fixture-owner"}, "theirs", nil)
 
 	t.Run("unknown id is not found", func(t *testing.T) {
 		if err := svc.RevokeKey(ctx, "t1", "nope"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
@@ -215,7 +216,7 @@ func TestAPIKey_RevokeKey(t *testing.T) {
 		}
 	})
 	t.Run("revoked key fails validation", func(t *testing.T) {
-		k3, raw3, err := svc.CreateKey(ctx, "t1", "doomed", nil)
+		k3, raw3, err := svc.CreateKey(ctx, "t1", billingpolicy.Actor{UserID: "fixture-owner"}, "doomed", nil)
 		if err != nil {
 			t.Fatal(err)
 		}

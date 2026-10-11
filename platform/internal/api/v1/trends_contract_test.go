@@ -1,14 +1,9 @@
 package v1_test
 
 import (
-	"context"
-	"io"
-	"log/slog"
 	"net/http"
 	"testing"
 
-	"github.com/yuqing/platform/internal/api"
-	"github.com/yuqing/platform/internal/app"
 	"github.com/yuqing/platform/internal/config"
 )
 
@@ -45,19 +40,15 @@ func TestContract_trends(t *testing.T) {
 		cfg.Auth.RefreshTTL = "720h"
 		cfg.RSSHubBase = "http://127.0.0.1:1" // 不可达：服务可用，数据全部 error
 
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		deps2 := app.Build(cfg, logger)
+		r2, deps2 := newContractEnvWithConfig(t, cfg)
 		t.Cleanup(func() {
 			if deps2.Trends != nil {
 				deps2.Trends.Close()
 			}
 		})
-		if deps2.Credits != nil {
-			_ = deps2.Credits.GrantPurchase(context.Background(), "t_contract", "contract-seed", 1000)
-		}
-		r2 := api.NewRouter(cfg, logger, deps2)
+		token := issueToken(t, principal("analyst"))
 
-		w := doReq(t, r2, http.MethodGet, "/api/v1/trends", tok, nil)
+		w := doReq(t, r2, http.MethodGet, "/api/v1/trends", token, nil)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200（RSSHub 挂了是数据源状态不是服务器故障）\nbody: %s",
 				w.Code, w.Body.String())

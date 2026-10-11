@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
-	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // pgStore 是 analysisStore 的 PostgreSQL 实现，落在 platform 库的 analyses 表
@@ -35,7 +35,7 @@ func newPGStore(pool *pgxpool.Pool) *pgStore { return &pgStore{pool: pool} }
 // analysisArgs 的参数顺序一致。
 const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,'')`
 
 // analysisColumnsList 供 list 使用：不取 KB 级 report_content ——
 // 详情页按秒轮询 /analyses/:id，内联整份报告会让每次轮询都传输正文。
@@ -43,13 +43,13 @@ const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, er
 // GET /analyses/:id/result 返回，那条路径走 get）。
 const analysisColumnsList = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage`
+	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,'')`
 
 const insertAnalysisSQL = `INSERT INTO analyses (
 	id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, current_run_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NULLIF($27,''))`
 
 // updateAnalysisSQL 用 $1/$2 定位行（id + tenant_id），其余列整体写回：
 // mutate 的读-改-写语义在内存版是「改指针指向的对象」，在 pg 版是「整行 UPDATE」。
@@ -58,7 +58,7 @@ const updateAnalysisSQL = `UPDATE analyses SET
 	started_at = $8, finished_at = $9, created_at = $10, keywords = $11, sources = $12,
 	doc_count = $13, summary = $14, warning = $15, sentiments = $16, topics = $17,
 	dimensions = $18, report_id = $19, report_content = $20, created_by = $21,
-	date_from = $22, date_to = $23, exclude_words = $24, report_template_id = $25, retrieval_coverage = $26
+	date_from = $22, date_to = $23, exclude_words = $24, report_template_id = $25, retrieval_coverage = $26, current_run_id = NULLIF($27,'')
 WHERE id = $1 AND tenant_id = $2`
 
 // put 写入一条新分析；ID 已存在（含他租户）报 ErrConflict。
@@ -72,63 +72,6 @@ func (s *pgStore) put(ctx context.Context, tenantID string, a *AnalysisResult) e
 	return nil
 }
 
-func (s *pgStore) putAndPublish(ctx context.Context, tenantID string, a *AnalysisResult, q *queue.PGQueue, payload []byte) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return pgInternal(err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err = tx.Exec(ctx, insertAnalysisSQL, analysisArgs(tenantID, a)...); err != nil {
-		if isUniqueViolation(err) {
-			return pkgerrors.Wrap(pkgerrors.ErrConflict, "analysis already exists")
-		}
-		return pgInternal(err)
-	}
-	if err = q.PublishTx(ctx, tx, topicAnalysisTasks, payload); err != nil {
-		return fmt.Errorf("analysis: enqueue: %w", err)
-	}
-	return tx.Commit(ctx)
-}
-
-func (s *pgStore) rerunAndPublish(ctx context.Context, tenantID, analysisID string, q *queue.PGQueue, payload []byte) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return pgInternal(err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	a, err := scanAnalysis(tx.QueryRow(ctx, `SELECT `+analysisColumns+` FROM analyses WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, analysisID, tenantID))
-	if err != nil {
-		return notFoundOrInternal(err, "analysis not found")
-	}
-	if !IsTerminal(string(a.State)) {
-		return pkgerrors.Wrap(pkgerrors.ErrConflict, fmt.Sprintf("only terminal analyses can be rerun, current state is %s", a.State))
-	}
-	if _, err = tx.Exec(ctx, deleteDocumentsSQL, tenantID, analysisID); err != nil {
-		return pgInternal(err)
-	}
-	a.State = StateQueued
-	a.Progress = 0
-	a.ErrorCode = ""
-	a.StartedAt = time.Time{}
-	a.FinishedAt = time.Time{}
-	a.DocCount = 0
-	a.Summary = ""
-	a.Warning = ""
-	a.Sentiments = nil
-	a.Topics = nil
-	a.Dimensions = nil
-	a.ReportID = ""
-	a.ReportContent = ""
-	a.RetrievalCoverage = nil
-	if _, err = tx.Exec(ctx, updateAnalysisSQL, analysisArgs(tenantID, a)...); err != nil {
-		return pgInternal(err)
-	}
-	if err = q.PublishTx(ctx, tx, topicAnalysisTasks, payload); err != nil {
-		return fmt.Errorf("analysis: re-enqueue: %w", err)
-	}
-	return tx.Commit(ctx)
-}
-
 func (s *pgStore) recoverInterrupted(ctx context.Context, tenantID, analysisID string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -138,6 +81,9 @@ func (s *pgStore) recoverInterrupted(ctx context.Context, tenantID, analysisID s
 	a, err := scanAnalysis(tx.QueryRow(ctx, `SELECT `+analysisColumns+` FROM analyses WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, analysisID, tenantID))
 	if err != nil {
 		return notFoundOrInternal(err, "analysis not found")
+	}
+	if expected := billingpolicy.RunID(ctx); expected != "" && expected != a.CurrentRunID {
+		return pkgerrors.ErrConflict
 	}
 	if a.State == StateQueued || IsTerminal(string(a.State)) {
 		return nil
@@ -161,6 +107,9 @@ func (s *pgStore) recoverInterrupted(ctx context.Context, tenantID, analysisID s
 	if _, err = tx.Exec(ctx, updateAnalysisSQL, analysisArgs(tenantID, a)...); err != nil {
 		return pgInternal(err)
 	}
+	if err := syncRunTx(ctx, tx, tenantID, a, StateQueued); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -173,8 +122,12 @@ func (s *pgStore) addDocumentsIfActive(ctx context.Context, tenantID, analysisID
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var state State
-	if err := tx.QueryRow(ctx, `SELECT state FROM analyses WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, analysisID, tenantID).Scan(&state); err != nil {
+	var runID string
+	if err := tx.QueryRow(ctx, `SELECT state,COALESCE(current_run_id,'') FROM analyses WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, analysisID, tenantID).Scan(&state, &runID); err != nil {
 		return notFoundOrInternal(err, "analysis not found")
+	}
+	if expected := billingpolicy.RunID(ctx); expected != "" && expected != runID {
+		return pkgerrors.ErrConflict
 	}
 	if IsTerminal(string(state)) {
 		return fmt.Errorf("analysis: cannot write documents to terminal task (%s)", state)
@@ -245,11 +198,18 @@ func (s *pgStore) mutate(ctx context.Context, tenantID, analysisID string, fn fu
 	if err != nil {
 		return notFoundOrInternal(err, "analysis not found")
 	}
+	if expected := billingpolicy.RunID(ctx); expected != "" && expected != a.CurrentRunID {
+		return pkgerrors.ErrConflict
+	}
+	previous := a.State
 	if err := fn(a); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, updateAnalysisSQL, analysisArgs(tenantID, a)...); err != nil {
 		return pgInternal(err)
+	}
+	if err := syncRunTx(ctx, tx, tenantID, a, previous); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return pgInternal(err)
@@ -266,7 +226,7 @@ func analysisArgs(tenantID string, a *AnalysisResult) []any {
 		marshalJSON(a.Keywords), marshalJSON(a.Sources), a.DocCount,
 		a.Summary, a.Warning, marshalJSON(a.Sentiments), marshalJSON(a.Topics),
 		marshalJSON(a.Dimensions), a.ReportID, a.ReportContent, a.CreatedBy,
-		a.DateFrom, a.DateTo, marshalJSON(a.ExcludeWords), a.ReportTemplateID, marshalJSON(a.RetrievalCoverage),
+		a.DateFrom, a.DateTo, marshalJSON(a.ExcludeWords), a.ReportTemplateID, marshalJSON(a.RetrievalCoverage), a.CurrentRunID,
 	}
 }
 
@@ -291,7 +251,7 @@ func scanAnalysis(row pgx.Row) (*AnalysisResult, error) {
 		&a.ID, &tenantID, &a.Name, &a.AnalysisType, &state, &a.Progress, &a.ErrorCode,
 		&startedAt, &finishedAt, &a.CreatedAt, &keywords, &sources, &a.DocCount,
 		&a.Summary, &a.Warning, &sentiments, &topics, &dimensions, &a.ReportID, &a.ReportContent, &a.CreatedBy,
-		&a.DateFrom, &a.DateTo, &excludeWords, &a.ReportTemplateID, &retrievalCoverage,
+		&a.DateFrom, &a.DateTo, &excludeWords, &a.ReportTemplateID, &retrievalCoverage, &a.CurrentRunID,
 	); err != nil {
 		return nil, err
 	}

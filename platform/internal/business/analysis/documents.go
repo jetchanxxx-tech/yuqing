@@ -9,15 +9,16 @@ import (
 
 // Document 是采集到的原始内容（由 query 引擎返回）。
 type Document struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Content     string `json:"content"`
-	Author      string `json:"author,omitempty"`
-	SourceType  string `json:"source_type"`
-	SourceName  string `json:"source_name"`
-	PublishedAt string `json:"published_at,omitempty"`
-	ContentHash string `json:"content_hash,omitempty"`
+	ID                string `json:"id"`
+	Title             string `json:"title"`
+	URL               string `json:"url"`
+	Content           string `json:"content"`
+	Author            string `json:"author,omitempty"`
+	SourceType        string `json:"source_type"`
+	SourceName        string `json:"source_name"`
+	PublishedAt       string `json:"published_at,omitempty"`
+	SourcePublishedAt string `json:"source_published_at,omitempty"` // source text without an asserted UTC instant
+	ContentHash       string `json:"content_hash,omitempty"`
 }
 
 // documentStore 是采集文档的持久化契约：内存实现 memoryDocumentStore，

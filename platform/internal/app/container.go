@@ -27,6 +27,9 @@ import (
 	"github.com/yuqing/platform/internal/engine"
 	"github.com/yuqing/platform/internal/pkg/db"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/pkg/storage"
+	"github.com/yuqing/platform/internal/platform/accountadmin"
+	"github.com/yuqing/platform/internal/platform/accountclosure"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
@@ -119,20 +122,20 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 	// 报告额度闸门：Create/Rerun 各扣 1 次，管线失败/取消自动回补。
 	analysisSvc.SetCreditReserver(creditSvc)
-	if cfg.Store.Driver == "postgres" {
-		analysisSvc.SetBetaSkipCredits(true)
-	}
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
+	authSvc.SetMeter(usageMeter)
 
 	// 新租户注册赠 1 次试用额度（方案 B：试用归 Lite 档体验）。
 	authSvc.SetPostRegister(func(ctx context.Context, tenantID string) error {
 		return creditSvc.GrantTrial(ctx, tenantID, credit.TrialCredits)
 	})
 
-	// 引导管理员：内存 store 下无法用 CLI/DB 造出 platform_admin，
-	// 用该邮箱注册的账号即获得平台管理权限（YUQING_BOOTSTRAP_ADMIN_EMAIL）。
-	authSvc.SetBootstrapAdminEmail(os.Getenv("YUQING_BOOTSTRAP_ADMIN_EMAIL"))
+	// In-memory demonstrations may seed an administrator. PostgreSQL roles
+	// require explicit CLI provisioning by a verified immutable account ID.
+	if cfg.Store.Driver != "postgres" {
+		authSvc.SetBootstrapAdminEmail(os.Getenv("YUQING_BOOTSTRAP_ADMIN_EMAIL"))
+	}
 
 	// 用户中心 P0：邮箱验证 / 手机号绑定 / 个人资料 / 修改密码。
 	// UserStore 复用 authStore 底层实现（内存/PG 都实现了 UserStore）；
@@ -155,19 +158,31 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		os.Getenv("YUQING_PUBLIC_BASE_URL"),
 	)
 
+	avatarRoot := cfg.Storage.AvatarRoot
+	if avatarRoot == "" {
+		avatarRoot = "data/avatars"
+	}
+	avatarStorage := storage.NewLocalAvatar(avatarRoot)
+	authSvc.EnableAvatarStorage(avatarStorage)
+
 	tenantSvc := tenant.NewService(tenantStore)
 
 	// Report plan gating resolves the tenant's current plan from the shared
 	// tenant store; unknown tenants default to the most restrictive plan.
 	planCodeFor := func(tenantID string) string {
-		// P1-2 Solution A: Read plan_code from report_credits (single source of truth)
-		// instead of tenants.plan_code to avoid sync issues
-		planCode, err := creditSvc.PlanCode(context.Background(), tenantID)
-		if err != nil || planCode == "" {
-			return "" // Default to most restrictive (fail-closed)
+		snapshot, err := creditSvc.Snapshot(context.Background(), tenantID)
+		if err != nil {
+			return "unavailable"
 		}
-		return planCode
+		if snapshot == nil {
+			return "free"
+		}
+		if billing.DefaultPlans()[snapshot.PlanCode] == nil {
+			return "unavailable"
+		}
+		return snapshot.PlanCode
 	}
+
 	planProvider := func(planCode string) *billing.Plan {
 		return billing.DefaultPlans()[planCode]
 	}
@@ -219,13 +234,13 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		var insight *engine.RealInsightEngine
 		if cfg.Engines.Insight.URL != "" {
 			insight = engine.NewRealInsightEngine(
-				cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+				cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.insight.url，情感/话题分析将降级")
 		}
 		if cfg.Engines.Report.URL != "" {
 			reportEngine = engine.NewRealReportEngine(
-				cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+				cfg.Engines.Report.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 		} else {
 			logger.Warn("pipeline: 未配置 engines.report.url，报告生成将降级")
 		}
@@ -262,8 +277,75 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		logger.Warn("trends: 未配置 rsshub_base，热榜聚合不可用")
 	}
 
+	var accountAdminStore accountadmin.Store
+	if platformPool != nil {
+		accountAdminStore = accountadmin.NewPGStore(platformPool)
+	} else {
+		accountAdminStore = accountadmin.NewMemoryStore(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore), creditSvc, paymentSvc)
+	}
+	accountAdminSvc := accountadmin.NewService(accountAdminStore)
+	accountAdminSvc.SetVerificationSender(func(ctx context.Context, actorID, userID, purpose string, actorVersion int64) error {
+		return authSvc.SendAccountVerification(ctx, auth.Principal{UserID: actorID, TokenVersion: actorVersion}, userID, purpose)
+	})
+	var llmCalls *usage.CallService
+	if platformPool != nil {
+		priceVersion := os.Getenv("YUQING_PROVIDER_PRICE_VERSION")
+		if os.Getenv("YUQING_PROVIDER_PRICE_CURRENCY") != "CNY" {
+			priceVersion = ""
+		}
+		llmCalls = usage.NewCallService(platformPool, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), priceVersion, cfg.LLM.Models)
+	}
+	var closureService *accountclosure.Service
+	if platformPool != nil {
+		store := accountclosure.NewPGStore(platformPool)
+		store.SetAvatarStorage(avatarStorage)
+		closureService = accountclosure.NewService(store)
+	} else {
+		store := auth.NewMemoryClosureStore(authStore.(*auth.SharedTenantStore), verifications.(*auth.MemoryVerificationStore), accountAdminStore.(*accountadmin.MemoryStore).WithAccountClosure,
+			func(ctx context.Context, tid string) (string, []string, error) {
+				plan := "free"
+				snapshot, err := creditSvc.Snapshot(ctx, tid)
+				if err != nil {
+					return "", nil, err
+				}
+				if snapshot != nil {
+					plan = snapshot.PlanCode
+				}
+				blocks := []string{}
+				orders, err := paymentSvc.List(ctx, tid, 0)
+				if err != nil {
+					return "", nil, err
+				}
+				for _, o := range orders {
+					if o.State == payment.StatePending || o.State == payment.StateRefundNeeded || o.State == payment.StatePaid && !o.Granted {
+						blocks = append(blocks, "UNSETTLED_ORDERS:"+tid)
+						break
+					}
+				}
+				runs, err := analysisSvc.List(ctx, tid)
+				if err != nil {
+					return "", nil, err
+				}
+				for _, r := range runs {
+					if r.State != analysis.StateCompleted && r.State != analysis.StateFailed && r.State != analysis.StateCanceled {
+						blocks = append(blocks, "UNSETTLED_TASKS:"+tid)
+						break
+					}
+				}
+				return plan, blocks, nil
+			}, func(uid string, tids []string, anonymize bool) {
+				apiKeyStore.(*apikey.MemoryStore).RevokeForClosure(uid, tids, anonymize)
+				if anonymize {
+					creditSvc.AnonymizeMemoryClosure(uid, tids)
+				}
+			}, avatarStorage)
+		closureService = accountclosure.NewService(store)
+	}
 	return &v1.Services{
+		Closure:         closureService,
+		LLMCalls:        llmCalls,
 		Auth:            authSvc,
+		AccountAdmin:    accountAdminSvc,
 		Analysis:        analysisSvc,
 		MonitorPlans:    monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
 		Dashboard:       dashboardSvc,
@@ -283,14 +365,11 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 }
 
 // checkQueueReadiness rejects modes which would silently lose or ACK analyses.
-// The beta PG mode atomically publishes tasks but deliberately bypasses credits.
+// PostgreSQL admission atomically commits credits, runs, analyses and messages.
 func checkQueueReadiness(cfg *config.Config) error {
 	if cfg.Store.Driver == "postgres" {
 		if cfg.Queue.Driver != "postgres" {
 			return fmt.Errorf("app: PostgreSQL store requires persistent PostgreSQL queue; refusing memory fallback (queue.driver=%q)", cfg.Queue.Driver)
-		}
-		if os.Getenv("YUQING_BETA_SKIP_CREDITS") != "true" {
-			return fmt.Errorf("app: PG credit transaction not wired; explicit YUQING_BETA_SKIP_CREDITS=true required for beta test mode")
 		}
 		return nil
 	}
@@ -337,11 +416,11 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 	}
 	var insight *engine.RealInsightEngine
 	if cfg.Engines.Insight.URL != "" {
-		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 	}
 	var reportEngine *engine.RealReportEngine
 	if cfg.Engines.Report.URL != "" {
-		reportEngine = engine.NewRealReportEngine(cfg.Engines.Report.URL, "", keyFor("llm_api_key")).WithLLMOpts(llmOpts)
+		reportEngine = engine.NewRealReportEngine(cfg.Engines.Report.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
 	}
 	pipeline := analysis.NewPipeline(services.Analysis, &engineFetcher{crawler: crawler}, pipelineBudget(cfg), logger).WithModeFor(analysisModeFor(services.Credits)).WithReportSvc(&pgReportSvcAdapter{reportSvcAdapter: &reportSvcAdapter{svc: services.Report}})
 	if insight != nil {
@@ -372,7 +451,15 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 				_ = conn.Conn().Close(unlockCtx)
 			}
 		}()
-		if err := services.Analysis.RecoverInterrupted(ctx, task.TenantID, task.AnalysisID); err != nil {
+		resolved, current, err := services.Analysis.ResolveTask(ctx, task)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+		task = resolved
+		if err := services.Analysis.RecoverInterrupted(ctx, task.TenantID, task.AnalysisID, task.RunID); err != nil {
 			return err
 		}
 		return pipeline.Handle(ctx, task)

@@ -67,6 +67,10 @@ func (s *Services) handleDownloadReport(c *gin.Context) {
 		return
 	}
 	format := c.DefaultQuery("format", "html")
+	if unverifiedAPIKeyOwner(c) && format != "html" {
+		respondError(c, pkgerrors.Wrap(pkgerrors.ErrAPIKeyOwnerUnverified, "API Key 创建者无法核验，请撤销后重新签发。"))
+		return
+	}
 	reportID := c.Param("id")
 
 	// Verify report exists + tenant owns it + plan allows format

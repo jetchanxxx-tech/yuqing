@@ -21,6 +21,11 @@ jobs:
     name: PostgreSQL Store Tests
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      # Only the disposable service in this GitHub hosted job is permitted.
+      YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_test?sslmode=disable
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=2'
 
     services:
       postgres:
@@ -48,26 +53,58 @@ jobs:
           cache: true
           cache-dependency-path: platform/go.sum
 
-      - name: Run PostgreSQL tests
+      - name: Download locked Go modules
         working-directory: platform
-        env:
-          YUQING_TEST_PG_URL: postgres://postgres:testpass@localhost:5432/yuqing_test?sslmode=disable
-        run: |
-          go test ./migrations -v -count=1 -run TestReportCenterMigration
-          go test ./internal/business/analysis -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
-          go test ./internal/business/report -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
-          go test ./internal/business/alert -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*"
+        run: go mod download
 
-      - name: Verify tests actually ran
+      - name: Run and verify PostgreSQL contracts
         working-directory: platform
-        env:
-          YUQING_TEST_PG_URL: postgres://postgres:testpass@localhost:5432/yuqing_test?sslmode=disable
+        shell: bash
         run: |
-          OUTPUT=$(go test ./internal/business/analysis -v -count=1 -run ".*PG.*|.*Pg.*|.*pg.*" 2>&1)
-          if ! echo "$OUTPUT" | grep -q "=== RUN   Test.*PG\|=== RUN   Test.*Pg\|=== RUN   Test.*pg"; then
-            echo "ERROR: PostgreSQL tests did not execute"
-            echo "Test output:"
-            echo "$OUTPUT"
-            exit 1
-          fi
-          echo "✓ PostgreSQL tests executed successfully"
+          set -euo pipefail
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          mkdir -p "${GITHUB_WORKSPACE}/test-results"
+          event_log="${GITHUB_WORKSPACE}/test-results/postgresql-test-events.jsonl"
+
+          # Run whole existing packages: several PG contracts have a /postgres
+          # subtest beneath a name without PG, so a PG-only regex misses them.
+          # Add accountadmin/accountclosure only when those packages and their
+          # real PG tests exist, and extend verify-go-test-events.py with them.
+          set +e
+          go test -json -count=1 -race -timeout 10m \
+            ./migrations \
+            ./cmd/cli \
+            ./internal/api/v1 \
+            ./internal/app \
+            ./internal/platform/auth \
+            ./internal/platform/settings \
+            ./internal/pkg/storage \
+            ./internal/pkg/email \
+            ./internal/pkg/sms \
+            ./internal/platform/apikey \
+            ./internal/platform/billingpolicy \
+            ./internal/platform/usage \
+            ./internal/platform/accountadmin \
+            ./internal/platform/accountclosure \
+            ./internal/platform/tenant \
+            ./internal/platform/credit \
+            ./internal/platform/payment \
+            ./internal/business/analysis \
+            ./internal/business/monitorplan \
+            ./internal/business/report \
+            ./internal/business/alert 2>&1 | tee "$event_log"
+          test_pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/verify-go-test-events.py" \
+            "$event_log" --go-exit-code "${test_pipeline_status[0]}"
+          test "${test_pipeline_status[1]}" -eq 0
+
+      - name: Preserve complete PostgreSQL test events
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgresql-contract-events-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/postgresql-test-events.jsonl
+          if-no-files-found: error
+          retention-days: 7

@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Dropdown } from 'antd';
+import { Layout, Menu, Button, Dropdown, Avatar, Typography } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { DashboardOutlined, PlusOutlined, FileTextOutlined, CreditCardOutlined, SettingOutlined, LogoutOutlined, BarChartOutlined, FireOutlined } from '@ant-design/icons';
 import { useAuth } from '../stores/auth';
@@ -38,19 +38,21 @@ export function MainLayout() {
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
-          items={menuItems}
+          items={principal?.roles.includes('platform_admin') ? [...menuItems, { key: '/admin', icon: <SettingOutlined aria-hidden="true" />, label: '管理后台' }] : menuItems}
           onClick={({ key }) => navigate(key)}
           style={{ border: 'none' }}
         />
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+          <Typography.Text type="secondary" style={{ marginRight: 16 }}>{principal?.timezone}</Typography.Text>
           <Dropdown menu={{
             items: [
+              ...(principal?.roles.includes('platform_admin') ? [{ key: 'admin', label: '管理后台', icon: <SettingOutlined aria-hidden="true" />, onClick: () => navigate('/admin') }] : []),
               { key: 'logout', label: '退出登录', icon: <LogoutOutlined />, onClick: logout },
             ],
           }}>
-            <Button type="text">{principal?.email}</Button>
+            <Button type="text"><Avatar size="small" src={principal?.avatar_url || undefined} alt="当前账号头像">{principal?.name?.slice(0, 1)}</Avatar>{principal?.email}</Button>
           </Dropdown>
         </Header>
         <Content style={{ padding: 24, background: '#f5f5f5' }}>

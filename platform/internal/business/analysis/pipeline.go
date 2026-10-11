@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"log/slog"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 // 必须携带 tenantID：store 按租户分桶，仅凭 analysisID 无法定位任务。
 // （早期版本只投递裸 ID，管线拿到后无从查起。）
 type TaskMessage struct {
+	RunID      string `json:"run_id,omitempty"`
 	AnalysisID string `json:"analysis_id"`
 	TenantID   string `json:"tenant_id"`
 }
@@ -171,6 +174,15 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return fmt.Errorf("analysis: task message missing analysis_id or tenant_id")
 	}
 
+	resolved, current, err := p.svc.ResolveTask(ctx, msg)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return nil
+	}
+	msg = resolved
+	ctx = billingpolicy.WithRun(ctx, msg.RunID)
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
@@ -190,6 +202,9 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return nil
 	}
 
+	if p.modeFor != nil && p.modeForTenant(msg.TenantID) == "unavailable" {
+		return p.fail(ctx, msg, "plan_entitlements_unavailable", pkgerrors.ErrServiceUnavailable)
+	}
 	p.log.Info("pipeline: start",
 		slog.String("analysis_id", msg.AnalysisID), slog.String("tenant_id", msg.TenantID))
 
@@ -278,7 +293,11 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	// insightAvailable = 洞察「有产出」而非「零告警」：部分维度失败时
 	// 报告仍应基于已有结论撰写（并在报告内说明缺失），而不是整体降级。
-	if warn := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight)); warn != "" {
+	reportWarning, fatal := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight))
+	if fatal != nil {
+		return p.fail(ctx, msg, "accounting_durability_error", fatal)
+	}
+	if warn := reportWarning; warn != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
@@ -397,6 +416,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		return InsightResult{}, "insight engine not configured"
 	}
 	res, err := p.analyzer.Analyze(ctx, InsightRequest{
+		RunID:        msg.RunID,
 		TenantID:     msg.TenantID,
 		AnalysisID:   msg.AnalysisID,
 		AnalysisType: p.analysisType(ctx, msg),
@@ -416,11 +436,12 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
 // insightAvailable = 洞察步骤是否成功（失败时报告引擎不得渲染 0/0/0）。
-func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool) string {
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool) (string, error) {
 	if p.generator == nil {
-		return "report engine not configured"
+		return "report engine not configured", nil
 	}
 	res, err := p.generator.Generate(ctx, ReportRequest{
+		RunID:            msg.RunID,
 		TenantID:         msg.TenantID,
 		AnalysisID:       msg.AnalysisID,
 		TemplateID:       templateID,
@@ -432,15 +453,18 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		InsightAvailable: insightAvailable,
 	})
 	if err != nil {
+		if errors.Is(err, pkgerrors.ErrAccountingDurability) {
+			return "", err
+		}
 		p.log.Warn("pipeline: report generation failed",
 			slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
-		return "report generation failed: " + err.Error()
+		return "report generation failed: " + err.Error(), nil
 	}
 	if err := p.svc.SetReport(ctx, msg.TenantID, msg.AnalysisID, res.ReportID, res.Content); err != nil {
 		p.log.Warn("pipeline: store report failed", slog.String("err", err.Error()))
-		return "report storage failed: " + err.Error()
+		return "report storage failed: " + err.Error(), nil
 	}
-	return ""
+	return "", nil
 }
 
 type durableReportService interface {
@@ -452,7 +476,7 @@ func (p *Pipeline) ensureReportRecord(ctx context.Context, msg TaskMessage, a *A
 		return nil
 	}
 	if durable, ok := p.reportSvc.(durableReportService); ok {
-		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, a.StartedAt.UTC().Format(time.RFC3339Nano))
+		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, reportRunKey(a))
 		return err
 	}
 	if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy); err != nil {
@@ -506,7 +530,7 @@ func (p *Pipeline) fail(taskCtx context.Context, msg TaskMessage, code string, c
 		slog.String("err", cause.Error()))
 
 	// 用独立上下文：原 ctx 可能已超时，无法再写库
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(billingpolicy.WithRun(context.Background(), msg.RunID), 5*time.Second)
 	defer cancel()
 	if err := p.svc.markFailed(ctx, msg.TenantID, msg.AnalysisID, code); err != nil {
 		p.log.Error("pipeline: mark failed error",
@@ -523,4 +547,11 @@ func (p *Pipeline) setDocCount(ctx context.Context, msg TaskMessage, n int) {
 		a.DocCount = n
 		return nil
 	})
+}
+
+func reportRunKey(a *AnalysisResult) string {
+	if a.CurrentRunID != "" {
+		return a.CurrentRunID
+	}
+	return a.StartedAt.UTC().Format(time.RFC3339Nano)
 }

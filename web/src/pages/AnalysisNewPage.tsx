@@ -65,10 +65,11 @@ export default function AnalysisNewPage() {
   const creditsQ = useQuery({ queryKey: ['billing', 'credits'], queryFn: getCredits, staleTime: 30_000 });
 
   const estTokens = BASE_TOKENS + Math.max(keywords.length, 0) * Math.max(sources.length, 0) * TOKEN_PER_KEYWORD_SOURCE;
-  const remainingTokens = usageQ.data ? usageQ.data.tokens_quota - usageQ.data.tokens_used : null;
+  const remainingTokens = usageQ.data && !usageQ.data.billing_exempt && usageQ.data.budget_mode === 'hard_cap'
+    ? usageQ.data.token_quota - usageQ.data.quota_tokens_used : null;
   const overBudget = remainingTokens !== null && estTokens > remainingTokens;
   /** 报告额度（方案 B：每次分析 = 1 次） */
-  const noCredits = (creditsQ.data?.balance ?? 1) <= 0;
+  const noCredits = creditsQ.data?.billing_exempt !== true && (creditsQ.data?.balance ?? 1) <= 0;
   const selectedTemplate = ANALYSIS_TEMPLATES.find((template) => template.id === templateId);
   const defaultView = ANALYSIS_TYPES.find((item) => item.value === selectedTemplate?.defaultType)?.label;
 
@@ -304,9 +305,9 @@ export default function AnalysisNewPage() {
               description={
                 <>
                   预计耗时 <b>5-10 分钟</b>（采集 → 五维智能分析 → 报告生成）；
-                  本次分析消耗 <b>1 次报告额度</b>
+                  本次分析{creditsQ.data?.billing_exempt ? <b>免扣报告额度</b> : <>消耗 <b>1 次报告额度</b></>}
                   {creditsQ.data && (
-                    <>，当前剩余 <b style={{ color: noCredits ? '#FF2442' : undefined }}>{creditsQ.data.balance}</b> 次</>
+                    <>，{creditsQ.data.billing_exempt ? '当前账号免次数限制，实际余额' : '当前剩余'} <b style={{ color: noCredits ? '#FF2442' : undefined }}>{creditsQ.data.balance}</b> 次</>
                   )}
                   {noCredits && (
                     <div style={{ marginTop: 8 }}>

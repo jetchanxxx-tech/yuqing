@@ -5,10 +5,12 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yuqing/platform/internal/pkg/db"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // PGStore is the PostgreSQL-backed auth Store against the platform database
@@ -26,15 +28,110 @@ type PGStore struct {
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 var _ Store = (*PGStore)(nil)
+var _ RegistrationStore = (*PGStore)(nil)
+var _ AuthorizationStateStore = (*PGStore)(nil)
+var _ LoginRecorder = (*PGStore)(nil)
+
+// PlatformAdminLockID is shared with account administration transactions so
+// initial seeding cannot race an explicit grant, revocation or suspension.
+const PlatformAdminLockID int64 = 741914
+
+type authExecutor interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func (s *PGStore) RegisterAccount(ctx context.Context, user User, tenant Tenant, member Member, bootstrap bool) error {
+	if err := validateRegistration(user, tenant, member); err != nil {
+		return err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return wrapDB(err, "begin registration")
+	}
+	defer tx.Rollback(context.Background())
+	if err := insertUser(ctx, tx, user); err != nil {
+		return err
+	}
+	if err := insertTenant(ctx, tx, tenant); err != nil {
+		return err
+	}
+	if err := insertMember(ctx, tx, member); err != nil {
+		return err
+	}
+	if bootstrap {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, PlatformAdminLockID); err != nil {
+			return wrapDB(err, "lock initial administrator")
+		}
+		// This one-time registration seed is the only use of the configured
+		// bootstrap email. Existing accounts are migrated by explicit user ID.
+		if _, err := tx.Exec(ctx, `INSERT INTO platform_user_roles (user_id, role)
+			SELECT $1, 'platform_admin' WHERE NOT EXISTS (SELECT 1 FROM platform_user_roles)`, user.ID); err != nil {
+			return wrapDB(err, "persist initial administrator")
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return wrapDB(err, "commit registration")
+	}
+	return nil
+}
+
+// LoadAuthorizationState uses one PostgreSQL statement and one MVCC snapshot.
+// The tenant join is fixed to the token's tid even when membership was removed.
+func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID string) (*AuthorizationState, error) {
+	const q = `SELECT u.id, u.email, u.status, u.token_version,
+		ARRAY(SELECT pur.role FROM platform_user_roles pur WHERE pur.user_id = u.id ORDER BY pur.role),
+		COALESCE(t.status, ''), CASE WHEN rc.tenant_id IS NULL THEN 'free' ELSE rc.plan_code END,
+ CASE WHEN rc.tenant_id IS NULL THEN 'default_free' ELSE 'report_credits' END,
+		COALESCE(tm.role, ''), tm.user_id IS NOT NULL
+		FROM users u
+		LEFT JOIN tenants t ON t.id = $2
+ LEFT JOIN report_credits rc ON rc.tenant_id=t.id
+		LEFT JOIN tenant_members tm ON tm.tenant_id = t.id AND tm.user_id = u.id
+		WHERE u.id = $1`
+	state := &AuthorizationState{TenantID: tenantID}
+	err := s.pool.QueryRow(ctx, q, userID, tenantID).Scan(
+		&state.UserID, &state.Email, &state.UserStatus, &state.TokenVersion,
+		&state.PlatformRoles, &state.TenantStatus, &state.PlanCode, &state.PlanSource, &state.MemberRole, &state.MemberExists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
+	}
+	if err != nil {
+		return nil, wrapDB(err, "load authorization state")
+	}
+	state.PlanStatus = "valid"
+	if billing.DefaultPlans()[state.PlanCode] == nil {
+		state.PlanCode = "unavailable"
+		state.PlanStatus = "invalid"
+	}
+	return state, nil
+}
+
+func (s *PGStore) RecordSuccessfulLogin(ctx context.Context, userID string, version int64) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET last_login_at = now()
+		WHERE id = $1 AND status IN ('active','closure_pending') AND token_version = $2`, userID, version)
+	if err != nil {
+		return wrapDB(err, "record successful login")
+	}
+	if tag.RowsAffected() != 1 {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account or credential revoked")
+	}
+	return nil
+}
 
 // CreateUser inserts a user row.
 //
 // 内存版按 email 判重，PG 版另有主键约束：重复 email 与重复 ID 都是
 // ErrConflict，但错误消息区分得开（靠约束名，见下）。
 func (s *PGStore) CreateUser(ctx context.Context, u User) error {
-	const q = `INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)`
+	return insertUser(ctx, s.pool, u)
+}
 
-	if _, err := s.pool.Exec(ctx, q, u.ID, u.Email, u.PasswordHash, u.Name); err != nil {
+func insertUser(ctx context.Context, executor authExecutor, u User) error {
+	u = accountUserDefaults(u)
+	const q = `INSERT INTO users (id, email, password_hash, name, status, created_at, token_version, row_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+	if _, err := executor.Exec(ctx, q, u.ID, u.Email, u.PasswordHash, u.Name, u.Status, u.CreatedAt, u.TokenVersion, u.RowVersion); err != nil {
 		if db.IsUniqueViolation(err) {
 			if db.ViolatedConstraint(err) == "users_email_key" {
 				return pkgerrors.Wrap(pkgerrors.ErrConflict, "email already registered")
@@ -49,26 +146,28 @@ func (s *PGStore) CreateUser(ctx context.Context, u User) error {
 // GetUserByEmail finds a user by email. email 是 CITEXT 列：查询天然大小写
 // 不敏感（内存版是精确匹配，大小写规范化由 service 层完成）。
 func (s *PGStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	const q = `SELECT id, email, password_hash, name FROM users WHERE email = $1`
-
-	var u User
-	err := s.pool.QueryRow(ctx, q, email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name)
+	const q = `SELECT ` + userCenterColumns + ` FROM users WHERE email = $1`
+	u, err := scanUserCenter(s.pool.QueryRow(ctx, q, email))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 	}
 	if err != nil {
 		return nil, wrapDB(err, "get user by email")
 	}
-	return &u, nil
+	return u, nil
 }
 
 // CreateTenant inserts a tenant row. slug 与 db_name 也带唯一约束，
 // 冲突一律 ErrConflict（内存版只能检查 ID）。
 func (s *PGStore) CreateTenant(ctx context.Context, t Tenant) error {
+	return insertTenant(ctx, s.pool, t)
+}
+
+func insertTenant(ctx context.Context, executor authExecutor, t Tenant) error {
 	const q = `INSERT INTO tenants (id, name, slug, db_name, status, plan_code)
 	           VALUES ($1, $2, $3, $4, $5, $6)`
 
-	if _, err := s.pool.Exec(ctx, q, t.ID, t.Name, t.Slug, t.DBName, t.Status, t.PlanCode); err != nil {
+	if _, err := executor.Exec(ctx, q, t.ID, t.Name, t.Slug, t.DBName, t.Status, t.PlanCode); err != nil {
 		if db.IsUniqueViolation(err) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict, "tenant already exists")
 		}
@@ -83,9 +182,13 @@ func (s *PGStore) CreateTenant(ctx context.Context, t Tenant) error {
 // PostgreSQL 拒绝写入，这里映射为 ErrNotFound；内存版没有外键，会存下一个
 // 永远解析不出租户的孤儿成员。PG 版更严格，是更好的行为。
 func (s *PGStore) CreateMember(ctx context.Context, m Member) error {
+	return insertMember(ctx, s.pool, m)
+}
+
+func insertMember(ctx context.Context, executor authExecutor, m Member) error {
 	const q = `INSERT INTO tenant_members (tenant_id, user_id, role) VALUES ($1, $2, $3)`
 
-	if _, err := s.pool.Exec(ctx, q, m.TenantID, m.UserID, m.Role); err != nil {
+	if _, err := executor.Exec(ctx, q, m.TenantID, m.UserID, m.Role); err != nil {
 		switch {
 		case db.IsUniqueViolation(err):
 			return pkgerrors.Wrap(pkgerrors.ErrConflict, "membership already exists")
@@ -114,9 +217,8 @@ func (s *PGStore) GetUserTenant(ctx context.Context, userID string) (*Tenant, er
 	err := s.pool.QueryRow(ctx, q, userID).
 		Scan(&t.ID, &t.Name, &t.Slug, &t.DBName, &t.Status, &t.PlanCode)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// 无成员关系，或成员关系指向的租户已被删除（INNER JOIN 两种情况
-		// 都是零行）。内存版分别报 "membership not found"/"tenant not found"，
-		// 登录链路对两者都返回 ErrUnauthorized，故此处统一。
+		// Login can still resolve an active account without a tenant; tenant
+		// routes separately require an existing membership and active tenant.
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "membership not found")
 	}
 	if err != nil {
@@ -141,7 +243,7 @@ func (s *PGStore) GetUserRole(ctx context.Context, tenantID, userID string) (str
 }
 
 // wrapDB 把非业务性的数据库错误（连接断开、超时、约束之外的 SQL 错误）
-// 统一包成 ErrInternal，避免把驱动错误直接漏到 HTTP 信封里。
+// 身份存储不可用时采用 503；驱动细节保留在内部错误，HTTP 信封统一屏蔽。
 func wrapDB(err error, op string) error {
-	return pkgerrors.Wrap(pkgerrors.ErrInternal, "auth: "+op+": "+err.Error())
+	return pkgerrors.Wrap(pkgerrors.ErrServiceUnavailable, "auth: "+op+": "+err.Error())
 }

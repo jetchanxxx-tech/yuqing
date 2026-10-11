@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/yuqing/platform/internal/api/middleware"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/accountadmin"
+	"github.com/yuqing/platform/internal/platform/accountclosure"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
@@ -30,6 +33,8 @@ import (
 // once in internal/app/container.go (hand-rolled DI, see CLAUDE.md).
 type Services struct {
 	Auth         *auth.Service
+	AccountAdmin *accountadmin.Service
+	Closure      *accountclosure.Service
 	Analysis     *analysis.Service
 	MonitorPlans *monitorplan.Service
 	Dashboard    *dashboard.Service
@@ -39,6 +44,7 @@ type Services struct {
 	Settings     settings.Store
 	APIKey       *apikey.Service
 	Usage        usage.PlatformMeter
+	LLMCalls     *usage.CallService
 
 	// 收费体系（方案 B）：额度与支付。
 	Credits         *credit.Service
@@ -71,11 +77,14 @@ func respondError(c *gin.Context, err error) {
 		code = "INTERNAL"
 		status = http.StatusInternalServerError
 	}
-	c.JSON(status, gin.H{
-		"code":       code,
-		"message":    err.Error(),
-		"request_id": requestID(c),
-	})
+	if status == http.StatusTooManyRequests {
+		retry := 60
+		if limited, ok := err.(interface{ RetryAfterSeconds() int }); ok && limited.RetryAfterSeconds() > 0 {
+			retry = limited.RetryAfterSeconds()
+		}
+		c.Header("Retry-After", strconv.Itoa(retry))
+	}
+	c.JSON(status, pkgerrors.ToEnvelope(err, requestID(c)))
 }
 
 // tenantID returns the authenticated principal's tenant ID.

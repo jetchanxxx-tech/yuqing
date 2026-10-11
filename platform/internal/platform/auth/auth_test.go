@@ -2,6 +2,9 @@ package auth
 
 import (
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestHashPassword_producesDifferentFromInput(t *testing.T) {
@@ -85,8 +88,41 @@ func TestValidateAccessToken_roundTrip(t *testing.T) {
 	if got.TenantID != principal.TenantID {
 		t.Errorf("TenantID = %q, want %q", got.TenantID, principal.TenantID)
 	}
-	if got.Email != principal.Email {
-		t.Errorf("Email = %q, want %q", got.Email, principal.Email)
+	if got.TokenVersion != 0 || got.AuthType != "jwt" {
+		t.Errorf("unexpected signed identity: %+v", got)
+	}
+	if got.Email != "" || len(got.Roles) != 0 || got.PlanCode != "" || got.TenantStatus != "" || got.MemberExists {
+		t.Errorf("token validation must not grant authorization: %+v", got)
+	}
+}
+
+func TestValidateAccessTokenRejectsOtherAlgorithmAndInvalidClaims(t *testing.T) {
+	tests := []struct {
+		name   string
+		method jwt.SigningMethod
+		alter  func(jwt.MapClaims)
+	}{
+		{"hs384", jwt.SigningMethodHS384, func(jwt.MapClaims) {}},
+		{"hs512", jwt.SigningMethodHS512, func(jwt.MapClaims) {}},
+		{"missing_exp", jwt.SigningMethodHS256, func(c jwt.MapClaims) { delete(c, "exp") }},
+		{"wrong_subject", jwt.SigningMethodHS256, func(c jwt.MapClaims) { c["sub"] = "other-user" }},
+		{"negative_version", jwt.SigningMethodHS256, func(c jwt.MapClaims) { c["token_version"] = -1 }},
+		{"null_version", jwt.SigningMethodHS256, func(c jwt.MapClaims) { c["token_version"] = nil }},
+		{"fractional_version", jwt.SigningMethodHS256, func(c jwt.MapClaims) { c["token_version"] = 0.5 }},
+		{"unknown_kind", jwt.SigningMethodHS256, func(c jwt.MapClaims) { c["token_kind"] = "session" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := jwt.MapClaims{"uid": "u1", "sub": "u1", "tid": "t1", "exp": time.Now().Add(time.Hour).Unix(), "token_kind": "access", "token_version": 0}
+			tt.alter(claims)
+			token, err := jwt.NewWithClaims(tt.method, claims).SignedString([]byte(testSecret))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ValidateAccessToken(token, testSecret); err == nil {
+				t.Fatal("accepted invalid security claims or signing algorithm")
+			}
+		})
 	}
 }
 

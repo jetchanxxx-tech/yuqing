@@ -161,7 +161,7 @@ func TestService_PG_satisfiesContract(t *testing.T) {
 	creditServiceContract(t, func(t *testing.T) *Service {
 		// 子测试共享同一 schema：构造前清掉上一子测试的残留
 		if _, err := pool.Exec(context.Background(),
-			`TRUNCATE report_credits, credit_transactions`); err != nil {
+			`TRUNCATE report_credits, credit_transactions CASCADE`); err != nil {
 			t.Fatalf("pre-clean: %v", err)
 		}
 		return NewService(NewPGStore(pool))

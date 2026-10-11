@@ -6,16 +6,19 @@ AI 研判段落替换为「AI 研判不可用」提示 —— 结果呈现优于
 import io
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from string import Template
 from typing import Literal
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.usage_bridge import usage_lifespan
+from engines.common.usage_outbox import AccountingDurabilityError
+from engines.common.auth import InternalAuthMiddleware
 
 try:
     from docx import Document
@@ -27,10 +30,19 @@ except ImportError:
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
-app = FastAPI(title="Report Engine", version="0.2.0")
+app = FastAPI(title="Report Engine", version="0.2.0", lifespan=usage_lifespan)
+
+@app.exception_handler(AccountingDurabilityError)
+async def accounting_failure(_request, _error):
+    return JSONResponse(status_code=503, content={"code": "ACCOUNTING_DURABILITY_ERROR", "message": "usage persistence unavailable"})
+
+if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
+    app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
+
 
 
 class GenerateRequest(BaseModel):
+    run_id: str = ""
     title: str = ""
     template_id: Literal["", "daily", "weekly", "event"] = ""
     format: str = "html"
@@ -252,6 +264,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
     if not key:
         return None
     llm = build_client(key, req.llm_base_url, timeout=300)
+    llm.usage_context = {"run_id": req.run_id, "engine": "report", "phase": "generate"}
     try:
         data = await llm.chat_json(
             req.llm_model or LLM_MODEL,
@@ -270,6 +283,8 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
             ],
             temperature=0.3,
         )
+    except AccountingDurabilityError:
+        raise
     except Exception:
         return None
     # chat_json 只保证「能解析成 JSON」，不保证是对象
@@ -489,7 +504,7 @@ def _dimensions_section(dimensions: list[dict]) -> str:
 def _render(req: GenerateRequest, insight: dict | None) -> str:
     """渲染完整 HTML 报告。insight 为 None 时降级为纯数据报告。"""
     stats = _sentiment_stats(req.sentiments)
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     title = _esc(req.title)
     template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
 
@@ -574,7 +589,7 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
 
     doc = Document()
     stats = _sentiment_stats(req.sentiments)
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # 标题
     title_para = doc.add_heading(req.title, level=1)

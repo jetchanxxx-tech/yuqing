@@ -71,13 +71,152 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  python:
+    name: Python engine billing sandbox
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare sandbox dependencies on the hosted runner
+        run: |
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          python -m pip install 'fastapi>=0.115.0' 'httpx>=0.27.0' 'pydantic>=2.0' 'python-docx>=1.1.0' 'pytest>=8.0' 'pytest-asyncio>=0.24.0'
+      - name: Exercise actual engine clients with offline provider responses
+        run: |
+          python -m pytest engines/tests -q --junitxml=test-results/python-engine-billing.xml
+          python scripts/ci/verify-python-billing-events.py test-results/python-engine-billing.xml
+      - name: Preserve Python sandbox evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-engine-billing-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/python-engine-billing.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  billing-bridge:
+    name: Actual Python Go PostgreSQL usage bridge
+    needs: [go]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_billing_bridge_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: yuqing_billing_bridge_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-binaries-${{ github.sha }}
+          path: platform/bin
+      - name: Prepare prebuilt binaries and bridge sandbox dependencies
+        run: |
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          chmod 755 platform/bin/yuqing-*
+          python -m pip install 'httpx>=0.27.0' 'psycopg[binary]>=3.2'
+      - name: Verify actual committed ACK loss and restart settlement
+        run: python scripts/ci/verify-llm-usage-bridge.py
+      - name: Preserve actual bridge evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-billing-bridge-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/billing-bridge/
+          if-no-files-found: error
+          retention-days: 7
+
   postgresql:
     name: PostgreSQL contract checks
     uses: ./.github/workflows/postgresql-tests.yml
 
+  account-admin:
+    name: Account and administrator acceptance
+    needs: [go, frontend, postgresql]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_account_admin_test?sslmode=disable
+      E2E_BASE_URL: http://127.0.0.1:4173
+      E2E_API_URL: http://127.0.0.1:8080
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: yuqing_account_admin_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require GitHub hosted runner
+        shell: bash
+        run: test "${RUNNER_ENVIRONMENT}" = github-hosted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform-binaries-${{ github.sha }}
+          path: platform/bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          path: web/dist
+      - name: Prepare prebuilt executables
+        run: chmod 755 platform/bin/yuqing-*
+      - name: Install locked browser test dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium on the hosted runner
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Verify administrator bootstrap on the prebuilt CLI
+        run: python3 scripts/ci/verify-admin-bootstrap.py
+      - name: Prepare isolated notification provider transport
+        run: python3 scripts/ci/prepare-notification-sandbox.py
+      - name: Run the isolated account and administrator suite
+        working-directory: web
+        run: npx playwright test --config e2e/account-admin.config.ts
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-admin-browser-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            web/test-results/account-admin/
+            web/e2e/report/account-admin/
+          if-no-files-found: warn
+          retention-days: 7
+
   package:
     name: Release archive
-    needs: [go, frontend, postgresql]
+    needs: [go, frontend, postgresql, account-admin, python, billing-bridge]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

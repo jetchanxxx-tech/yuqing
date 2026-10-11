@@ -5,13 +5,10 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"html"
-	"math/big"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -40,49 +37,6 @@ const (
 	maxCodeTries  = 5                // 单验证码最多尝试次数，超限作废
 )
 
-// senderThrottle 发送节流器（进程内，单实例部署语义）。
-// 生产当前为单实例 server，多实例部署时需换 Redis（与管线同批演进）。
-type senderThrottle struct {
-	mu   sync.Mutex
-	last map[string]time.Time
-}
-
-// allow 记录并检查：window 内同 key 只允许一次。
-func (t *senderThrottle) allow(key string, window time.Duration) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.last == nil {
-		t.last = make(map[string]time.Time)
-	}
-	if ts, ok := t.last[key]; ok && time.Since(ts) < window {
-		return false
-	}
-	t.last[key] = time.Now()
-	return true
-}
-
-// codeTries 验证码错误尝试计数（与节流同生命周期语义）。
-type codeTries struct {
-	mu    sync.Mutex
-	count map[string]int
-}
-
-func (t *codeTries) failAndExceeded(key string) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.count == nil {
-		t.count = make(map[string]int)
-	}
-	t.count[key]++
-	return t.count[key] >= maxCodeTries
-}
-
-func (t *codeTries) reset(key string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.count, key)
-}
-
 // requireDeps 返回用户中心依赖，未装配时报错。
 func (s *Service) requireDeps() error {
 	if s.userStore == nil {
@@ -92,12 +46,12 @@ func (s *Service) requireDeps() error {
 }
 
 // VerifyBaseURL 返回组合根注入的站点基地址（邮箱验证链接用）；
-// 为空时 handler 回退到请求 Host。
+// 必须为受信任配置；禁止回退到请求 Host。
 func (s *Service) VerifyBaseURL() string { return s.verifyBaseURL }
 
 // ChangePassword 修改密码：验证旧密码 → 强度校验（≥8 位字母+数字）→ 更新哈希。
-// 调用方（handler）负责在成功后撤销 refresh token 强制重登。
-func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+// Store 更新哈希时原子增加账号版本，旧 access/refresh 在服务端失效。
+func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string, versions ...int64) error {
 	if err := s.requireDeps(); err != nil {
 		return err
 	}
@@ -108,6 +62,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	if err != nil {
 		return err
 	}
+	if u.Status != "active" || (len(versions) > 0 && u.TokenVersion != versions[0]) {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
 	if !VerifyPassword(u.PasswordHash, oldPassword) {
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "old password incorrect")
 	}
@@ -115,51 +72,37 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	if err != nil {
 		return err
 	}
-	return s.userStore.UpdatePassword(ctx, userID, newHash)
+	return s.userStore.UpdatePassword(ctx, userID, newHash, u.TokenVersion)
 }
 
-// SendVerificationEmail 发送邮箱验证邮件。防刷依赖 VerificationStore 的
-// key 覆盖语义（同 key 5 分钟窗口内由 handler 层限流）。
-func (s *Service) SendVerificationEmail(ctx context.Context, userID, verifyBaseURL string) error {
-	if err := s.requireDeps(); err != nil {
+// SendVerificationEmail uses only the configured public origin. The retained
+// baseURL argument is ignored so request headers cannot choose credential links.
+func (s *Service) SendVerificationEmail(ctx context.Context, userID, _ string, versions ...int64) error {
+	if err := s.verificationReady(ctx, EmailVerify); err != nil {
 		return err
 	}
-	if s.emailSender == nil {
-		return pkgerrors.Wrap(pkgerrors.ErrInternal, "email service not configured")
-	}
-	u, err := s.userByID(ctx, userID)
+	u, err := s.verificationUser(ctx, userID, versions)
 	if err != nil {
 		return err
 	}
 	if u.EmailVerifiedAt != nil {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "email already verified")
 	}
-	// 防刷：同用户 60s 只发一封（防邮件轰炸；节流在真正发送前）
-	if !s.sendGate.allow("mail:"+userID, sendWindow) {
-		return pkgerrors.Wrap(pkgerrors.ErrQuotaExceeded, "please wait before requesting another email")
-	}
-	token := newToken()
-	if err := s.verifications.SaveEmailToken(ctx, token, userID, emailTokenTTL); err != nil {
-		return err
-	}
-	link := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimRight(verifyBaseURL, "/"), token)
-	html := buildVerifyEmailHTML(u.Name, link)
-	return s.emailSender.Send(ctx, u.Email, "验证您的邮箱 - 盘古舆情", html)
-}
-
-// VerifyEmail 消费验证 token，标记邮箱已验证。token 一次性。
-func (s *Service) VerifyEmail(ctx context.Context, token string) error {
-	if err := s.requireDeps(); err != nil {
-		return err
-	}
-	userID, err := s.verifications.LoadEmailToken(ctx, token)
+	target, err := verificationTarget(EmailVerify, u.Email)
 	if err != nil {
+		return err
+	}
+	if err = s.verifications.ReserveSend(ctx, EmailVerify, target, "", s.verificationLimits); err != nil {
+		return err
+	}
+	return s.issueVerification(ctx, u, EmailVerify, target)
+}
+func (s *Service) VerifyEmail(ctx context.Context, token string) error {
+	_, err := s.ConfirmVerification(ctx, EmailVerify, "", token, "", nil)
+	if pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
 		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "invalid or expired verification link")
 	}
-	if err := s.userStore.MarkEmailVerified(ctx, userID); err != nil {
-		return err
-	}
-	return s.verifications.ConsumeEmailToken(ctx, token)
+	return err
 }
 
 // EmailVerified 查询邮箱是否已验证（创建分析前的试用额度判断用）。
@@ -197,7 +140,7 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (map[string]any
 		"email":               u.Email,
 		"name":                u.Name,
 		"avatar_url":          u.AvatarURL,
-		"timezone":            u.Timezone,
+		"timezone":            profileTimezone(u.Timezone),
 		"phone":               maskPhone(u.Phone),
 		"email_verified":      u.EmailVerifiedAt != nil,
 		"phone_verified":      u.PhoneVerifiedAt != nil,
@@ -207,7 +150,7 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (map[string]any
 }
 
 // UpdateProfile 更新昵称/时区（头像走 UpdateAvatar）。
-func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone string) error {
+func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone string, versions ...int64) error {
 	if err := s.requireDeps(); err != nil {
 		return err
 	}
@@ -216,77 +159,122 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone stri
 	if n := len([]rune(name)); name != "" && (n < 2 || n > 20) {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "name must be 2-20 characters")
 	}
-	return s.userStore.UpdateProfile(ctx, userID, name, "", timezone)
+	if timezone == "" {
+		timezone = DefaultTimezone
+	}
+	if !validTimezone(timezone) {
+		return pkgerrors.Wrap(pkgerrors.ErrBadRequest, "timezone must be an IANA identifier")
+	}
+	u, err := s.verificationUser(ctx, userID, versions)
+	if err != nil {
+		return err
+	}
+	version := u.TokenVersion
+	if len(versions) > 0 {
+		version = versions[0]
+	}
+	store, ok := s.userStore.(ProfileStore)
+	if !ok {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	return store.UpdateOwnProfile(ctx, Principal{UserID: userID, TokenVersion: version}, name, timezone)
 }
 
-// SendPhoneCode 发送手机验证码（绑定场景）。60 秒防刷由 handler 层限流。
-func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string) error {
-	if err := s.requireDeps(); err != nil {
-		return err
-	}
-	if s.smsSender == nil {
-		return pkgerrors.Wrap(pkgerrors.ErrInternal, "sms service not configured")
-	}
-	if !chinaPhoneRe.MatchString(phone) {
-		return pkgerrors.Wrap(pkgerrors.ErrConflict, "invalid phone number")
-	}
-	// 手机号被其他账号占用检查
-	if existing, err := s.userByPhone(ctx, phone); err == nil && existing != nil && existing.ID != userID {
-		return pkgerrors.Wrap(pkgerrors.ErrConflict, "phone already bound to another account")
-	}
-	// 防刷：同手机号 60s 只发一条（短信按条计费，此闸在真正发送前）
-	if !s.sendGate.allow("sms:"+phone, sendWindow) {
-		return pkgerrors.Wrap(pkgerrors.ErrQuotaExceeded, "please wait before requesting another code")
-	}
-	code := newSMSCode()
-	if err := s.verifications.SaveSMSCode(ctx, phone, "bind", code, smsCodeTTL); err != nil {
-		return err
-	}
-	return s.smsSender.Send(ctx, phone, "SMS_BIND_PHONE", map[string]string{"code": code})
+// SendPhoneCode preserves the legacy internal first-bind contract.
+// Deprecated: production issuance must use SendPhoneCodeWithPassword.
+func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string, versions ...int64) error {
+	return s.sendPhoneCode(ctx, userID, phone, "", versions)
 }
 
-// BindPhone 校验验证码并绑定手机号。错误尝试 ≥5 次作废验证码（防穷举）。
-func (s *Service) BindPhone(ctx context.Context, userID, phone, code string) error {
-	if err := s.requireDeps(); err != nil {
+// SendPhoneCodeWithPassword is the production issuance entry point. Both first
+// binding and rebinding require the current password and original JWT version.
+func (s *Service) SendPhoneCodeWithPassword(ctx context.Context, userID, phone, password string, version int64) error {
+	u, err := s.verificationUser(ctx, userID, []int64{version})
+	if err != nil {
 		return err
 	}
-	stored, err := s.verifications.LoadSMSCode(ctx, phone, "bind")
-	if err != nil || stored != code {
-		tryKey := "bind:" + phone
-		if err == nil && s.codeTries.failAndExceeded(tryKey) {
-			_ = s.verifications.ConsumeSMSCode(ctx, phone, "bind")
-			s.codeTries.reset(tryKey)
-			return pkgerrors.Wrap(pkgerrors.ErrNotFound, "too many attempts, code invalidated")
-		}
-		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "invalid or expired code")
+	if !VerifyPassword(u.PasswordHash, password) {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "current password required to bind phone")
 	}
-	if err := s.userStore.SetPhone(ctx, userID, phone); err != nil {
-		return err
-	}
-	s.codeTries.reset("bind:" + phone)
-	return s.verifications.ConsumeSMSCode(ctx, phone, "bind")
+	return s.sendPhoneCode(ctx, userID, phone, password, []int64{version})
 }
-
-// UnbindPhone 解绑手机号：需验证登录密码（防会话劫持）。
-// 唯一登录方式保护：邮箱未验证时不允许解绑。
-func (s *Service) UnbindPhone(ctx context.Context, userID, password string) error {
-	if err := s.requireDeps(); err != nil {
+func (s *Service) sendPhoneCode(ctx context.Context, userID, phone, password string, versions []int64) error {
+	if err := s.verificationReady(ctx, PhoneBind); err != nil {
 		return err
 	}
-	u, err := s.userByID(ctx, userID)
+	phone, err := verificationTarget(PhoneBind, phone)
+	if err != nil {
+		return err
+	}
+	u, err := s.verificationUser(ctx, userID, versions)
+	if err != nil {
+		return err
+	}
+	if u.Phone != "" && !VerifyPassword(u.PasswordHash, password) {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "current password required to change phone")
+	}
+	if existing, err := s.userByPhone(ctx, phone); err == nil && existing.ID != userID {
+		return pkgerrors.ErrConflict
+	} else if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		return err
+	}
+	if err = s.verifications.ReserveSend(ctx, PhoneBind, phone, "", s.verificationLimits); err != nil {
+		return err
+	}
+	return s.issueVerification(ctx, u, PhoneBind, phone)
+}
+func (s *Service) BindPhone(ctx context.Context, userID, phone, code string, versions ...int64) error {
+	u, err := s.verificationUser(ctx, userID, versions)
+	if err != nil {
+		return err
+	}
+	_, err = s.ConfirmVerification(ctx, PhoneBind, phone, code, "", &Principal{UserID: userID, TokenVersion: u.TokenVersion})
+	return err
+}
+func (s *Service) UnbindPhone(ctx context.Context, userID, password string, versions ...int64) error {
+	u, err := s.verificationUser(ctx, userID, versions)
 	if err != nil {
 		return err
 	}
 	if u.Phone == "" {
-		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "no phone bound")
+		return pkgerrors.ErrNotFound
 	}
 	if !VerifyPassword(u.PasswordHash, password) {
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "password incorrect")
 	}
 	if u.EmailVerifiedAt == nil {
-		return pkgerrors.Wrap(pkgerrors.ErrConflict, "verify your email first: phone is your only login method")
+		return pkgerrors.Wrap(pkgerrors.ErrConflict, "verify your email before removing phone")
 	}
-	return s.userStore.ClearPhone(ctx, userID)
+	if s.verifications == nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	return s.verifications.UnbindPhone(ctx, userID, u.TokenVersion)
+}
+
+// RequestEmailChange is the K7 authenticated issuance port. Confirmation uses
+// ConfirmVerification with the same authenticated immutable user identity.
+func (s *Service) RequestEmailChange(ctx context.Context, actor Principal, password, target string) error {
+	if err := s.verificationReady(ctx, EmailChange); err != nil {
+		return err
+	}
+	target, err := verificationTarget(EmailChange, target)
+	if err != nil {
+		return err
+	}
+	u, err := s.verificationUser(ctx, actor.UserID, []int64{actor.TokenVersion})
+	if err != nil {
+		return err
+	}
+	if !VerifyPassword(u.PasswordHash, password) {
+		return pkgerrors.ErrUnauthorized
+	}
+	if strings.EqualFold(u.Email, target) {
+		return pkgerrors.ErrConflict
+	}
+	if err = s.verifications.ReserveSend(ctx, EmailChange, target, "", s.verificationLimits); err != nil {
+		return err
+	}
+	return s.issueVerification(ctx, u, EmailChange, target)
 }
 
 // ─── 内部辅助 ───────────────────────────────────────────────
@@ -297,18 +285,6 @@ func (s *Service) userByID(ctx context.Context, userID string) (*User, error) {
 
 func (s *Service) userByPhone(ctx context.Context, phone string) (*User, error) {
 	return s.userStore.GetByPhone(ctx, phone)
-}
-
-func newToken() string {
-	return newSMSCode() + newSMSCode() + newSMSCode() + newSMSCode()
-}
-
-func newSMSCode() string {
-	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
-	if err != nil {
-		return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-	}
-	return fmt.Sprintf("%06d", n.Int64())
 }
 
 func maskPhone(phone string) string {

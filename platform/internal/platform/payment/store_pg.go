@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // PGStore 是 PostgreSQL 订单存储（0006 迁移的 orders 表）。
@@ -22,13 +23,38 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 }
 
 func (p *PGStore) Create(ctx context.Context, o *Order) error {
-	_, err := p.pool.Exec(ctx,
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,741915))`, o.TenantID); err != nil {
+		return err
+	}
+	var status string
+	var active bool
+	if err = tx.QueryRow(ctx, `SELECT t.status,EXISTS(SELECT 1 FROM tenant_members m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=t.id AND u.status='active') FROM tenants t WHERE t.id=$1 FOR SHARE OF t`, o.TenantID).Scan(&status, &active); errors.Is(err, pgx.ErrNoRows) {
+		return pkgerrors.ErrForbidden
+	} else if err != nil {
+		return err
+	}
+	if status != "active" || !active {
+		return pkgerrors.ErrForbidden
+	}
+	_, err = tx.Exec(ctx,
 		`INSERT INTO orders
 		   (id, tenant_id, sku_code, kind, credits, amount_cents, channel,
 		    state, provider_txn_id, qr_code_url, granted, expires_at, created_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13)`,
 		o.ID, o.TenantID, o.SKUCode, o.Kind, o.Credits, o.AmountCents, o.Channel,
 		o.State, o.ProviderTxnID, o.QRCodeURL, o.Granted, o.ExpiresAt, o.CreatedAt)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (p *PGStore) SavePrecreate(ctx context.Context, o *Order) error {
+	_, err := p.pool.Exec(ctx, `UPDATE orders SET qr_code_url=$2,provider_txn_id=NULLIF($3,''),txn_time=$4,updated_at=now() WHERE id=$1 AND state='pending'`, o.ID, o.QRCodeURL, o.ProviderTxnID, o.TxnTime)
 	return err
 }
 

@@ -11,7 +11,9 @@ package credit
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -19,6 +21,7 @@ import (
 
 // 流水原因。
 const (
+	ReasonAdjust = "admin_adjust"
 	ReasonTrial  = "trial" // 注册赠送
 	ReasonGrant  = "grant" // 运营赠送 / 客服补偿
 	ReasonBuy    = "purchase"
@@ -34,15 +37,30 @@ var ErrInsufficientCredits = pkgerrors.ErrNoCredits
 
 // Transaction 是一笔额度流水。
 type Transaction struct {
-	ID           string    `json:"id"`
-	TenantID     string    `json:"tenant_id"`
-	Delta        int       `json:"delta"`
-	Reason       string    `json:"reason"`
-	AnalysisID   string    `json:"analysis_id,omitempty"`
-	OrderID      string    `json:"order_id,omitempty"`
-	ConsumeTxID  string    `json:"consume_tx_id,omitempty"`
-	BalanceAfter int       `json:"balance_after"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	TenantID        string    `json:"tenant_id"`
+	Delta           int       `json:"delta"`
+	Reason          string    `json:"reason"`
+	AnalysisID      string    `json:"analysis_id,omitempty"`
+	OrderID         string    `json:"order_id,omitempty"`
+	ConsumeTxID     string    `json:"consume_tx_id,omitempty"`
+	BalanceAfter    int       `json:"balance_after"`
+	CreatedAt       time.Time `json:"created_at"`
+	ReasonDetail    string    `json:"reason_detail,omitempty"`
+	ActorID         string    `json:"actor_id,omitempty"`
+	IdempotencyKey  string    `json:"idempotency_key,omitempty"`
+	Version         int64     `json:"version,omitempty"`
+	ExpectedVersion int64     `json:"expected_version,omitempty"`
+}
+
+// Adjustment is an authenticated administrative balance mutation. ExpectedVersion
+// is checked in the same transaction as the balance and ledger write.
+type Adjustment struct {
+	TenantID, ActorID, ReasonDetail, IdempotencyKey string
+	Delta                                           int
+	ExpectedVersion                                 int64
+	ActorTokenVersion                               int64
+	RequestID                                       string
 }
 
 // Store 是额度持久化契约：内存（测试/开发）与 PostgreSQL（生产）双实现。
@@ -58,11 +76,19 @@ type Store interface {
 	SetPlanCode(ctx context.Context, tenantID, planCode string) error
 	PlanCode(ctx context.Context, tenantID string) (string, error)
 	Transactions(ctx context.Context, tenantID string, limit int) ([]Transaction, error)
+	Adjust(ctx context.Context, adjustment Adjustment) (*Transaction, error)
 }
 
 // Service 是额度业务入口。
 type Service struct {
-	store Store
+	store           Store
+	adjustmentGuard func(context.Context, Adjustment, func() (*Transaction, error)) (*Transaction, error)
+}
+
+func (s *Service) AnonymizeMemoryClosure(uid string, tenants []string) {
+	if m, ok := s.store.(*MemoryStore); ok {
+		m.AnonymizeClosure(uid, tenants)
+	}
 }
 
 // NewService 装配额度服务。
@@ -98,9 +124,28 @@ func (s *Service) GrantPurchase(ctx context.Context, tenantID, orderID string, c
 
 // AdminAdjust 运营手工调整（正负皆可）。
 func (s *Service) AdminAdjust(ctx context.Context, tenantID string, delta int, note string) error {
-	_, err := s.store.ApplyDelta(ctx, tenantID, delta, Transaction{Reason: ReasonGrant})
-	_ = note // 备注暂不落库（流水 reason 已区分），P1 扩展 transactions.note 列
+	_, err := s.store.ApplyDelta(ctx, tenantID, delta, Transaction{Reason: ReasonGrant, ReasonDetail: strings.TrimSpace(note)})
 	return err
+}
+
+// Adjust performs the administrator-only credit mutation. The HTTP layer
+// supplies actor/expected-version/idempotency data; storage rechecks all of it.
+func (s *Service) SetAdjustmentGuard(guard func(context.Context, Adjustment, func() (*Transaction, error)) (*Transaction, error)) {
+	s.adjustmentGuard = guard
+}
+func (s *Service) Adjust(ctx context.Context, a Adjustment) (*Transaction, error) {
+	a.ReasonDetail = strings.TrimSpace(a.ReasonDetail)
+	a.IdempotencyKey = strings.TrimSpace(a.IdempotencyKey)
+	if a.TenantID == "" || a.ActorID == "" || a.Delta == 0 || a.Delta > 2147483647 || a.Delta < -2147483647 || a.ExpectedVersion < 0 || a.ActorTokenVersion < 0 || a.IdempotencyKey == "" || len(a.IdempotencyKey) > 128 || a.ReasonDetail == "" || utf8.RuneCountInString(a.ReasonDetail) > 2000 {
+		return nil, pkgerrors.ErrBadRequest
+	}
+	if s.adjustmentGuard != nil {
+		return s.adjustmentGuard(ctx, a, func() (*Transaction, error) { return s.store.Adjust(ctx, a) })
+	}
+	if _, memory := s.store.(*MemoryStore); memory {
+		return nil, pkgerrors.ErrServiceUnavailable
+	}
+	return s.store.Adjust(ctx, a)
 }
 
 // RefundByAnalysis 回补分析失败消耗的额度（管线 markFailed 调用）。

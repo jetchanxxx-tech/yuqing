@@ -8,7 +8,7 @@ import EChart from '../components/EChart';
 import { ErrorBlock, LoadingBlock } from '../components/PageState';
 import { getOverview, getTrend, getSources, getTopics } from '../api/dashboard';
 import { sourceLabel, trendArrow } from '../lib/constants';
-import { formatDateTime, formatNum, formatPercent } from '../lib/format';
+import { useDateTime, formatNum, formatPercent } from '../lib/format';
 import type { Topic } from '../api/analyses';
 
 const BRAND = '#FF2442';
@@ -35,6 +35,7 @@ function TrendTag({ trend }: { trend?: string }) {
 }
 
 export default function DashboardPage() {
+  const formatDateTime = useDateTime();
   const overviewQ = useQuery({ queryKey: ['dashboard', 'overview'], queryFn: getOverview, refetchInterval: 60_000 });
   const trendQ = useQuery({ queryKey: ['dashboard', 'trend'], queryFn: getTrend });
   const sourcesQ = useQuery({ queryKey: ['dashboard', 'sources'], queryFn: getSources });

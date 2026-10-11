@@ -44,18 +44,21 @@ func pipelineBudget(cfg *config.Config) time.Duration {
 
 // analysisModeFor 返回「租户 → 套餐裁剪模式」解析闭包：Lite/体验档 quick
 // （3 维速览），Pro 及以上 full（5 维完整研判）。未知租户/套餐与 report
-// gating 同口径 fail-closed 到 quick（最受限档）。
+// A missing pool uses the default free catalog; invalid persisted plans fail closed.
 // P1-2 Solution A: Read plan_code from credit service (single source of truth).
 func analysisModeFor(creditSvc *credit.Service) func(string) string {
 	return func(tenantID string) string {
-		planCode, err := creditSvc.PlanCode(context.Background(), tenantID)
-		if err != nil || planCode == "" {
+		snapshot, err := creditSvc.Snapshot(context.Background(), tenantID)
+		if err != nil {
+			return "unavailable"
+		}
+		if snapshot == nil {
 			return billing.ModeQuick
 		}
-		if p := billing.DefaultPlans()[planCode]; p != nil && p.AnalysisMode != "" {
-			return p.AnalysisMode
+		if plan := billing.DefaultPlans()[snapshot.PlanCode]; plan != nil {
+			return plan.AnalysisMode
 		}
-		return billing.ModeQuick
+		return "unavailable"
 	}
 }
 
@@ -128,6 +131,7 @@ type engineInsightAdapter struct {
 func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
 	docs := toEngineDocuments(req.Documents)
 	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
+		RunID:        req.RunID,
 		Documents:    docs,
 		AnalysisID:   req.AnalysisID,
 		AnalysisType: req.AnalysisType,
@@ -202,6 +206,7 @@ type engineReportAdapter struct {
 
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
+		RunID:            req.RunID,
 		Title:            req.Title,
 		TemplateID:       req.TemplateID,
 		Format:           "html",

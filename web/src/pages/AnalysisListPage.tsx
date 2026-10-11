@@ -12,12 +12,13 @@ import {
   ANALYSIS_TYPES,
   type AnalysisState,
 } from '../lib/constants';
-import { formatDateTime } from '../lib/format';
+import { useDateTime } from '../lib/format';
 import { ErrorBlock, EmptyBlock, LoadingBlock } from '../components/PageState';
 
 const PAGE_SIZE = 10;
 
 export default function AnalysisListPage() {
+  const formatDateTime = useDateTime();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
 
@@ -116,7 +117,7 @@ export default function AnalysisListPage() {
         ),
       },
     ],
-    [cancelQ]
+    [cancelQ, formatDateTime]
   );
 
   return (

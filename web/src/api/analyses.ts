@@ -55,6 +55,7 @@ export interface SentimentDoc {
   source_type: string;
   source_name: string;
   published_at: string;
+  source_published_at?: string;
   content: string;
 }
 

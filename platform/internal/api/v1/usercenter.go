@@ -12,11 +12,20 @@ import (
 
 // RegisterUserCenterRoutes mounts authenticated user-center endpoints.
 func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
+	r.GET("/user/account-closure/preview", svcs.handleClosurePreview)
+	r.GET("/user/account-closure/status", svcs.handleClosureStatus)
+	r.POST("/user/account-closure", svcs.handleClosureRequest)
+	r.POST("/user/account-closure/cancel", svcs.handleClosureCancel)
 	// 账户安全
 	r.PUT("/auth/password", svcs.handleChangePassword)
 	r.POST("/auth/send-verification-email", svcs.handleSendVerificationEmail)
 
+	r.POST("/user/email-change/request", svcs.handleEmailChangeRequest)
+	r.POST("/user/email-change/confirm", svcs.handleEmailChangeConfirm)
+
 	// 个人资料
+	r.POST("/user/avatar", svcs.handleUploadAvatar)
+	r.DELETE("/user/avatar", svcs.handleRemoveAvatar)
 	r.GET("/user/profile", svcs.handleGetProfile)
 	r.PUT("/user/profile", svcs.handleUpdateProfile)
 
@@ -29,7 +38,10 @@ func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
 // RegisterUserCenterPublicRoutes mounts the email-link verification endpoint
 // (public: 用户点击邮件里的链接时未携带 Authorization 头).
 func RegisterUserCenterPublicRoutes(r *gin.RouterGroup, svcs *Services) {
-	r.GET("/verify-email", svcs.handleVerifyEmail)
+	r.POST("/verify-email", svcs.handleVerifyEmail)
+	r.GET("/verify-email", func(c *gin.Context) {
+		badRequest(c, "legacy verification links expired; request a new verification email")
+	})
 }
 
 // principalUserID 返回当前登录用户 ID，缺principal时返回空串（已写401）。
@@ -65,7 +77,7 @@ func (s *Services) handleChangePassword(c *gin.Context) {
 		badRequest(c, "request body must be JSON {old_password, new_password}")
 		return
 	}
-	if err := s.Auth.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
+	if err := s.Auth.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, middleware.GetPrincipal(c).TokenVersion); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -74,37 +86,31 @@ func (s *Services) handleChangePassword(c *gin.Context) {
 
 // handleSendVerificationEmail POST /auth/send-verification-email
 // 验证链接基地址优先取组合根注入的 YUQING_PUBLIC_BASE_URL（防 Host 头伪造）；
-// 未配置时回退请求 Host（反代后 X-Forwarded-Proto 优先）。
+// 未配置时失败，不使用请求 Host 或代理头。
 func (s *Services) handleSendVerificationEmail(c *gin.Context) {
 	userID, ok := requireUserID(c)
 	if !ok {
 		return
 	}
-	baseURL := s.Auth.VerifyBaseURL()
-	if baseURL == "" {
-		scheme := "https"
-		if fwd := c.GetHeader("X-Forwarded-Proto"); fwd != "" {
-			scheme = fwd
-		} else if c.Request.TLS == nil {
-			scheme = "http"
-		}
-		baseURL = scheme + "://" + c.Request.Host
-	}
 
-	if err := s.Auth.SendVerificationEmail(c.Request.Context(), userID, baseURL); err != nil {
+	if err := s.Auth.SendVerificationEmail(c.Request.Context(), userID, s.Auth.VerifyBaseURL(), middleware.GetPrincipal(c).TokenVersion); err != nil {
 		respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "verification email sent"})
+	c.JSON(http.StatusOK, gin.H{"message": "verification email accepted; delivery unconfirmed"})
 }
 
-// handleVerifyEmail GET /verify-email?token=xxx（公开，邮件链接落地）。
+// handleVerifyEmail accepts bearer credentials only in the POST body.
 func (s *Services) handleVerifyEmail(c *gin.Context) {
-	token := c.Query("token")
-	if token == "" {
-		badRequest(c, "token query parameter is required")
+	c.Header("Cache-Control", "no-store")
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+		badRequest(c, "verification token is required")
 		return
 	}
+	token := req.Token
 	if err := s.Auth.VerifyEmail(c.Request.Context(), token); err != nil {
 		respondError(c, err)
 		return
@@ -144,7 +150,7 @@ func (s *Services) handleUpdateProfile(c *gin.Context) {
 		badRequest(c, "name is required")
 		return
 	}
-	if err := s.Auth.UpdateProfile(c.Request.Context(), userID, req.Name, req.Timezone); err != nil {
+	if err := s.Auth.UpdateProfile(c.Request.Context(), userID, req.Name, req.Timezone, middleware.GetPrincipal(c).TokenVersion); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -163,17 +169,18 @@ func (s *Services) handleSendPhoneCode(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Phone string `json:"phone"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Phone) == "" {
 		badRequest(c, "request body must be JSON {phone}")
 		return
 	}
-	if err := s.Auth.SendPhoneCode(c.Request.Context(), userID, strings.TrimSpace(req.Phone)); err != nil {
-		respondError(c, err)
+	if err := s.Auth.SendPhoneCodeWithPassword(c.Request.Context(), userID, strings.TrimSpace(req.Phone), req.Password, middleware.GetPrincipal(c).TokenVersion); err != nil {
+		respondIdentityError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "verification code sent", "expires_in": 300})
+	c.JSON(http.StatusOK, gin.H{"message": "verification code accepted; delivery unconfirmed", "expires_in": 300})
 }
 
 // handleBindPhone POST /user/phone/bind {phone, code}
@@ -190,15 +197,16 @@ func (s *Services) handleBindPhone(c *gin.Context) {
 		badRequest(c, "request body must be JSON {phone, code}")
 		return
 	}
-	if err := s.Auth.BindPhone(c.Request.Context(), userID, req.Phone, req.Code); err != nil {
-		respondError(c, err)
+	if err := s.Auth.BindPhone(c.Request.Context(), userID, req.Phone, req.Code, middleware.GetPrincipal(c).TokenVersion); err != nil {
+		respondIdentityError(c, err)
 		return
 	}
 	profile, err := s.Auth.GetProfile(c.Request.Context(), userID)
 	if err != nil {
-		respondError(c, err)
+		respondIdentityError(c, err)
 		return
 	}
+	profile["requires_relogin"] = true
 	c.JSON(http.StatusOK, profile)
 }
 
@@ -215,9 +223,9 @@ func (s *Services) handleUnbindPhone(c *gin.Context) {
 		badRequest(c, "request body must be JSON {password}")
 		return
 	}
-	if err := s.Auth.UnbindPhone(c.Request.Context(), userID, req.Password); err != nil {
-		respondError(c, err)
+	if err := s.Auth.UnbindPhone(c.Request.Context(), userID, req.Password, middleware.GetPrincipal(c).TokenVersion); err != nil {
+		respondIdentityError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "phone unbound"})
+	c.JSON(http.StatusOK, gin.H{"message": "phone unbound; please log in again"})
 }

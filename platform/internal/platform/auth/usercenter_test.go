@@ -40,7 +40,7 @@ func (f *fakeSMS) Send(_ context.Context, to, _ string, params map[string]string
 func newUCService(t *testing.T) (*Service, *MemoryStore, *MemoryVerificationStore) {
 	t.Helper()
 	users := NewMemoryStore()
-	svc := NewService(NewMemoryStore(), "test-secret", "15m", "720h")
+	svc := NewService(users, "test-secret", "15m", "720h")
 	verifs := NewMemoryVerificationStore()
 	svc.EnableUserCenter(users, verifs, nil, nil, "https://test.example.com")
 	return svc, users, verifs
@@ -114,7 +114,7 @@ func TestEmailVerificationFlow(t *testing.T) {
 	if err := svc.SendVerificationEmail(context.Background(), "u1", "https://test.example.com"); err != nil {
 		t.Fatalf("SendVerificationEmail: %v", err)
 	}
-	if mail.to != "a@test.com" || !strings.Contains(mail.body, "https://test.example.com/verify-email?token=") {
+	if mail.to != "a@test.com" || !strings.Contains(mail.body, "https://test.example.com/verify-email#token=") {
 		t.Fatalf("邮件内容不符：to=%s body contains link=%v", mail.to, strings.Contains(mail.body, "verify-email?token="))
 	}
 
@@ -196,7 +196,7 @@ func TestPhoneBindUnbindFlow(t *testing.T) {
 	}
 
 	// 2. 错误验证码
-	if err := svc.BindPhone(context.Background(), "u1", "13800138000", "000000"); err == nil {
+	if err := svc.BindPhone(context.Background(), "u1", "13800138000", "not-a-code"); err == nil {
 		t.Fatal("错误验证码应失败")
 	}
 
@@ -300,14 +300,6 @@ func TestUserCenterFailsClosedWhenNotConfigured(t *testing.T) {
 	}
 }
 
-func TestTokenIsTwentyFourDigits(t *testing.T) {
-	tok := newToken()
-	if len(tok) != 24 {
-		t.Fatalf("邮箱验证 token 应 24 位数字，得到 %d 位", len(tok))
-	}
-	_ = time.Now() // 保持 time 导入（ smsCodeTTL 使用）
-}
-
 // ─── 补充覆盖（2026-09-22 测试验证轮） ──────────────────────────
 
 func TestBindPhoneConsumesCodeAfterSuccess(t *testing.T) {
@@ -329,29 +321,28 @@ func TestBindPhoneConsumesCodeAfterSuccess(t *testing.T) {
 }
 
 func TestVerificationExpiryBoundaries(t *testing.T) {
-	_, _, verifs := newUCService(t)
-	ctx := context.Background()
-
-	// 邮箱 token 过期边界：过期条目 Load 视为不存在（MemoryVerificationStore expiresAt 判断）
-	if err := verifs.SaveEmailToken(ctx, "expired-tok", "u1", -time.Second); err != nil {
-		t.Fatal(err)
+	_, users, v := newUCService(t)
+	seedUCUserOnUserStore(t, users, "u1", "expiry@example.com")
+	for _, purpose := range []string{EmailVerify, PhoneBind} {
+		target := "expiry@example.com"
+		if purpose == PhoneBind {
+			target = "13800138000"
+		}
+		c := verificationFixture("u1", purpose, target, "expired-value", -time.Second)
+		if err := v.Issue(context.Background(), c); err != nil {
+			t.Fatal(err)
+		}
+		if err := v.RecordDelivery(context.Background(), c.ID, true); err != nil {
+			t.Fatal(err)
+		}
+		version := int64(0)
+		if _, err := v.Consume(context.Background(), VerificationAttempt{Purpose: purpose, Target: target, Hash: c.Hash, UserID: "u1", ExpectedVersion: &version}); err == nil {
+			t.Fatal("expired credential consumed")
+		}
 	}
-	if _, err := verifs.LoadEmailToken(ctx, "expired-tok"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-		t.Fatalf("过期 email token 应 404，得到 %v", err)
-	}
-	if err := verifs.SaveEmailToken(ctx, "live-tok", "u1", time.Minute); err != nil {
-		t.Fatal(err)
-	}
-	if uid, err := verifs.LoadEmailToken(ctx, "live-tok"); err != nil || uid != "u1" {
-		t.Fatalf("未过期 email token 应可读取，got %q %v", uid, err)
-	}
-
-	// 短信验证码过期边界
-	if err := verifs.SaveSMSCode(ctx, "13800138000", "bind", "123456", -time.Second); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := verifs.LoadSMSCode(ctx, "13800138000", "bind"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
-		t.Fatalf("过期短信验证码应 404，得到 %v", err)
+	u, _ := users.GetByID(context.Background(), "u1")
+	if u.EmailVerifiedAt != nil || u.Phone != "" {
+		t.Fatal("expired credential mutated identity")
 	}
 }
 
@@ -389,14 +380,12 @@ func TestGetProfilePhoneMasking(t *testing.T) {
 }
 
 func TestChangePasswordTokenLifecycle(t *testing.T) {
-	// MVP 不撤销旧 token（无服务端会话表可撤销）——锁定现状语义：
-	// 旧密码立即失效、新密码可登录；旧 refresh token 因 JWT 无状态仍可换新
-	// （不 crash），强制重登由客户端丢弃 token 实现（handler 注释承诺）。
+	// A password change revokes both token types through the account version.
 	svc, users, _ := newUCService(t)
 	seedUser(t, users, "u1", "a@test.com", "oldpass1")
 	ctx := context.Background()
 
-	// 构造改密前签发的旧 token 对（Refresh 仅验签不查 store，与主 store 数据无关）
+	// The issued identity and the user center use the same account store.
 	pair, err := GenerateTokenPair(Principal{UserID: "u1", Email: "a@test.com"}, "test-secret", "15m", "720h")
 	if err != nil {
 		t.Fatal(err)
@@ -409,13 +398,18 @@ func TestChangePasswordTokenLifecycle(t *testing.T) {
 		t.Fatalf("ChangePassword: %v", err)
 	}
 
-	// 旧 refresh token 仍可换新：MVP 不撤销（现状锁定，实现撤销时更新本测试）
-	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != nil {
-		t.Fatalf("旧 refresh token 在 MVP 下不应 crash: %v", err)
+	if _, err := svc.Refresh(ctx, pair.RefreshToken); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("old refresh token must be revoked: %v", err)
 	}
-	// 改密后旧 access token 仍验签通过（同上，无 crash）
-	if _, err := svc.Authenticate(ctx, pair.AccessToken); err != nil {
-		t.Fatalf("旧 access token 在 MVP 下不应 crash: %v", err)
+	if _, err := svc.Authenticate(ctx, pair.AccessToken); !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+		t.Fatalf("old access token must be revoked: %v", err)
+	}
+	_, fresh, err := svc.Login(ctx, "a@test.com", "newpass99")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Authenticate(ctx, fresh.AccessToken); err != nil {
+		t.Fatalf("new credentials must work: %v", err)
 	}
 }
 
@@ -484,13 +478,13 @@ func TestBindPhoneCodeInvalidatedAfterFiveWrongTries(t *testing.T) {
 	}
 	// 第 1-4 次错误：401（码仍有效）
 	for i := 0; i < 4; i++ {
-		err := svc.BindPhone(ctx, "u1", "13800138000", "000000")
+		err := svc.BindPhone(ctx, "u1", "13800138000", "not-a-code")
 		if !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
 			t.Fatalf("第 %d 次错码应 401，得到 %v", i+1, err)
 		}
 	}
 	// 第 5 次错误：触发作废 → 404
-	if err := svc.BindPhone(ctx, "u1", "13800138000", "000000"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+	if err := svc.BindPhone(ctx, "u1", "13800138000", "not-a-code"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 		t.Fatalf("第 5 次错码应作废验证码（404），得到 %v", err)
 	}
 	// 作废后即使拿到正确验证码也不能绑定

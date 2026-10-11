@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"time"
 )
 
 // UserStore 用户中心存储接口（修改密码/邮箱验证/手机号绑定/资料编辑）。
@@ -13,8 +12,10 @@ type UserStore interface {
 	GetByID(ctx context.Context, userID string) (*User, error)
 	// GetByPhone 按手机号查用户（不存在返回 ErrNotFound）。
 	GetByPhone(ctx context.Context, phone string) (*User, error)
-	// UpdatePassword 更新密码哈希并记录 password_changed_at。
-	UpdatePassword(ctx context.Context, userID, newHash string) error
+	// UpdatePassword requires the active account and credential version read
+	// during password verification. It atomically updates the hash/timestamp
+	// and increments token_version/row_version; stale versions return ErrConflict.
+	UpdatePassword(ctx context.Context, userID, newHash string, expectedVersion int64) error
 	// MarkEmailVerified 标记邮箱已验证。
 	MarkEmailVerified(ctx context.Context, userID string) error
 	// UpdateProfile 更新昵称/头像/时区（空串字段跳过）。
@@ -27,23 +28,14 @@ type UserStore interface {
 	ConsumeTrialAnalysis(ctx context.Context, userID string) (bool, error)
 }
 
-// VerificationStore 验证凭据存储（邮箱 token + 短信验证码），语义化接口。
-// MVP：内存实现；生产：PG 实现（verification_tokens / sms_verification_codes 表），
-// 长期可换 Redis（TTL 原生）。过期或不存在一律返回 ErrNotFound。
+// VerificationStore owns durable send admission and atomic identity mutation.
+// Implementations lock users before credentials. No plaintext read API exists.
 type VerificationStore interface {
-	// SaveEmailToken 保存邮箱验证 token → userID 映射（同 token 覆盖）。
-	SaveEmailToken(ctx context.Context, token, userID string, ttl time.Duration) error
-	// LoadEmailToken 读取 token 对应的 userID。
-	LoadEmailToken(ctx context.Context, token string) (string, error)
-	// ConsumeEmailToken 消费 token（一次性）。
-	ConsumeEmailToken(ctx context.Context, token string) error
-
-	// SaveSMSCode 保存某手机号某用途的验证码（同手机号覆盖旧码）。
-	SaveSMSCode(ctx context.Context, phone, purpose, code string, ttl time.Duration) error
-	// LoadSMSCode 读取验证码（供 service 比对）。
-	LoadSMSCode(ctx context.Context, phone, purpose string) (string, error)
-	// ConsumeSMSCode 消费验证码（绑定成功后删除）。
-	ConsumeSMSCode(ctx context.Context, phone, purpose string) error
+	ReserveSend(ctx context.Context, purpose, target, ip string, limits VerificationLimits) error
+	Issue(ctx context.Context, credential VerificationCredential) error
+	RecordDelivery(ctx context.Context, id string, accepted bool) error
+	Consume(ctx context.Context, attempt VerificationAttempt) (*User, error)
+	UnbindPhone(ctx context.Context, userID string, expectedVersion int64) error
 }
 
 // SMSProvider 短信发送接口（pkg/sms 的 Provider 已满足此签名）。

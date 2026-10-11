@@ -6,7 +6,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/notification"
+	"net/mail"
 	"strconv"
+	"strings"
 
 	"github.com/yuqing/platform/internal/pkg/email"
 	"github.com/yuqing/platform/internal/pkg/sms"
@@ -23,38 +26,78 @@ func NewSettingsMailer(store settings.Store) *settingsMailer { return &settingsM
 
 // Send 实现 auth.MailSender。
 func (m *settingsMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
+	_, err := m.SendReceipt(ctx, to, subject, htmlBody)
+	return err
+}
+func (m *settingsMailer) SendReceipt(ctx context.Context, to, subject, body string) (notification.Receipt, error) {
 	cfg, err := m.emailConfig(ctx)
 	if err != nil {
-		return err
+		return notification.Receipt{}, err
 	}
 	p, err := email.NewProvider(cfg)
 	if err != nil {
-		return fmt.Errorf("mail: %w", err)
+		return notification.Receipt{}, fmt.Errorf("mail provider unavailable")
 	}
-	return p.SendRaw(ctx, to, subject, htmlBody)
+	sender, ok := p.(interface {
+		SendRawReceipt(context.Context, string, string, string) (notification.Receipt, error)
+	})
+	if !ok {
+		return notification.Receipt{}, fmt.Errorf("mail receipt unavailable")
+	}
+	r, err := sender.SendRawReceipt(ctx, to, subject, body)
+	r.Provider = cfg.Provider
+	return r, err
 }
 
+func readNotificationConfig(ctx context.Context, store settings.Store, keys ...string) (map[string]string, error) {
+	values := map[string]string{}
+	for _, key := range keys {
+		v, err := store.Get(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("notification configuration read failed")
+		}
+		values[key] = strings.TrimSpace(v)
+	}
+	return values, nil
+}
 func (m *settingsMailer) emailConfig(ctx context.Context) (email.Config, error) {
-	get := func(key string) string {
-		v, _ := m.store.Get(ctx, key)
-		return v
+	v, err := readNotificationConfig(ctx, m.store, "email_provider", "email_from_address", "email_from_name")
+	if err != nil {
+		return email.Config{}, err
 	}
-	cfg := email.Config{
-		Provider:     get("email_provider"),
-		FromAddress:  get("email_from_address"),
-		FromName:     get("email_from_name"),
-		ResendAPIKey: get("resend_api_key"),
-		SMTPHost:     get("smtp_host"),
-		SMTPUsername: get("smtp_username"),
-		SMTPPassword: get("smtp_password"),
+	cfg := email.Config{Provider: v["email_provider"], FromAddress: v["email_from_address"], FromName: v["email_from_name"]}
+	addr, err := mail.ParseAddress(cfg.FromAddress)
+	if err != nil || addr.Address != cfg.FromAddress {
+		return cfg, fmt.Errorf("mail sender address not configured")
 	}
-	if p, err := strconv.Atoi(get("smtp_port")); err == nil && p > 0 {
-		cfg.SMTPPort = p
-	} else {
+	switch cfg.Provider {
+	case "resend":
+		v, err = readNotificationConfig(ctx, m.store, "resend_api_key")
+		if err != nil {
+			return cfg, err
+		}
+		cfg.ResendAPIKey = v["resend_api_key"]
+		if cfg.ResendAPIKey == "" {
+			return cfg, fmt.Errorf("resend key not configured")
+		}
+	case "smtp":
+		v, err = readNotificationConfig(ctx, m.store, "smtp_host", "smtp_port", "smtp_username", "smtp_password")
+		if err != nil {
+			return cfg, err
+		}
+		cfg.SMTPHost, cfg.SMTPUsername, cfg.SMTPPassword = v["smtp_host"], v["smtp_username"], v["smtp_password"]
 		cfg.SMTPPort = 465
-	}
-	if cfg.FromAddress == "" {
-		return cfg, fmt.Errorf("mail: email_from_address not configured (admin settings)")
+		if v["smtp_port"] != "" {
+			cfg.SMTPPort, err = strconv.Atoi(v["smtp_port"])
+			if err != nil || cfg.SMTPPort < 1 || cfg.SMTPPort > 65535 {
+				return cfg, fmt.Errorf("SMTP port invalid")
+			}
+		}
+		if cfg.SMTPHost == "" || cfg.SMTPUsername == "" || cfg.SMTPPassword == "" {
+			return cfg, fmt.Errorf("SMTP configuration incomplete")
+		}
+	default:
+		return cfg, fmt.Errorf("mail provider not configured")
 	}
 	return cfg, nil
 }
@@ -68,32 +111,90 @@ type settingsSMS struct {
 func NewSettingsSMS(store settings.Store) *settingsSMS { return &settingsSMS{store: store} }
 
 // Send 实现 auth.SMSProvider。templateCode 为业务用途别名（如 SMS_BIND_PHONE），
-// 实际发送用 settings 里的 sms_template_code（独立部署环境各自申请的模板）。
-func (m *settingsSMS) Send(ctx context.Context, to, _ string, params map[string]string) error {
-	get := func(key string) string {
-		v, _ := m.store.Get(ctx, key)
-		return v
+// 实际发送使用该目的独立配置的供应商模板。
+func (m *settingsSMS) smsConfig(ctx context.Context, alias string) (sms.Config, string, error) {
+	key, err := smsPurposeSetting(alias)
+	if err != nil {
+		return sms.Config{}, "", err
 	}
-	cfg := sms.Config{
-		Provider: get("sms_provider"),
-		AliyunAccessKeyID:     get("sms_access_key_id"),
-		AliyunAccessKeySecret: get("sms_access_key_secret"),
-		AliyunSignName:        get("sms_sign_name"),
-		TencentSecretID:       get("sms_access_key_id"),
-		TencentSecretKey:      get("sms_access_key_secret"),
-		TencentSDKAppID:       get("sms_sdk_app_id"),
-		TencentSignName:       get("sms_sign_name"),
+	v, err := readNotificationConfig(ctx, m.store, "sms_provider", "sms_access_key_id", "sms_access_key_secret", "sms_sign_name", key)
+	if err != nil {
+		return sms.Config{}, "", err
 	}
-	if cfg.Provider == "" {
-		return fmt.Errorf("sms: sms_provider not configured (admin settings)")
+	for _, name := range []string{"sms_access_key_id", "sms_access_key_secret", "sms_sign_name", key} {
+		if v[name] == "" {
+			return sms.Config{}, "", fmt.Errorf("SMS configuration incomplete")
+		}
+	}
+	cfg := sms.Config{Provider: v["sms_provider"], AliyunAccessKeyID: v["sms_access_key_id"], AliyunAccessKeySecret: v["sms_access_key_secret"], AliyunSignName: v["sms_sign_name"], TencentSecretID: v["sms_access_key_id"], TencentSecretKey: v["sms_access_key_secret"], TencentSignName: v["sms_sign_name"]}
+	switch cfg.Provider {
+	case "aliyun":
+	case "tencent":
+		app, err := readNotificationConfig(ctx, m.store, "sms_sdk_app_id")
+		if err != nil {
+			return cfg, "", err
+		}
+		cfg.TencentSDKAppID = app["sms_sdk_app_id"]
+		if cfg.TencentSDKAppID == "" {
+			return cfg, "", fmt.Errorf("Tencent App ID not configured")
+		}
+	default:
+		return cfg, "", fmt.Errorf("SMS provider not configured")
+	}
+	return cfg, v[key], nil
+}
+func (m *settingsSMS) Send(ctx context.Context, to, alias string, params map[string]string) error {
+	_, err := m.SendReceipt(ctx, to, alias, params)
+	return err
+}
+func (m *settingsSMS) SendReceipt(ctx context.Context, to, alias string, params map[string]string) (notification.Receipt, error) {
+	cfg, template, err := m.smsConfig(ctx, alias)
+	if err != nil {
+		return notification.Receipt{}, err
 	}
 	p, err := sms.NewProvider(cfg)
 	if err != nil {
-		return fmt.Errorf("sms: %w", err)
+		return notification.Receipt{}, fmt.Errorf("SMS provider unavailable")
 	}
-	template := get("sms_template_code")
-	if template == "" {
-		return fmt.Errorf("sms: sms_template_code not configured (admin settings)")
+	sender, ok := p.(interface {
+		SendReceipt(context.Context, string, string, map[string]string) (notification.Receipt, error)
+	})
+	if !ok {
+		return notification.Receipt{}, fmt.Errorf("SMS receipt unavailable")
 	}
-	return p.Send(ctx, to, template, params)
+	r, err := sender.SendReceipt(ctx, to, template, params)
+	r.Provider = cfg.Provider
+	return r, err
+}
+
+// Purpose mappings are explicit; a bind template cannot silently send login or
+// recovery messages. K6a configures supplier-specific values and receipt tests.
+func smsPurposeSetting(alias string) (string, error) {
+	switch alias {
+	case "SMS_BIND_PHONE":
+		return "sms_bind_phone_template_code", nil
+	case "SMS_PHONE_LOGIN":
+		return "sms_phone_login_template_code", nil
+	case "SMS_PHONE_RESET":
+		return "sms_phone_reset_template_code", nil
+	}
+	return "", fmt.Errorf("sms: unsupported verification purpose")
+}
+func (m *settingsSMS) CheckVerification(ctx context.Context, purpose string) error {
+	aliases := map[string]string{"phone_bind": "SMS_BIND_PHONE", "phone_login": "SMS_PHONE_LOGIN", "phone_reset": "SMS_PHONE_RESET"}
+	_, _, err := m.smsConfig(ctx, aliases[purpose])
+	return err
+}
+func (m *settingsMailer) CheckVerification(ctx context.Context, purpose string) error {
+	switch purpose {
+	case "email_verify", "set_password", "password_reset", "email_change":
+	default:
+		return fmt.Errorf("mail: unsupported verification purpose")
+	}
+	cfg, err := m.emailConfig(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = email.NewProvider(cfg)
+	return err
 }

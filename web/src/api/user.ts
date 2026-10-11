@@ -38,16 +38,14 @@ export async function sendVerificationEmail() {
 
 /** 公开接口：邮件链接落地验证（无需登录态） */
 export async function verifyEmailByToken(token: string) {
-  const { data } = await client.get<{ message: string }>('/auth/verify-email', {
-    params: { token },
-  });
+  const { data } = await client.post<{ message: string }>('/auth/verify-email', { token });
   return data.message;
 }
 
-export async function sendPhoneCode(phone: string) {
+export async function sendPhoneCode(phone: string, password: string) {
   const { data } = await client.post<{ message: string; expires_in: number }>(
     '/user/phone/send-code',
-    { phone },
+    { phone, password },
   );
   return data;
 }
@@ -76,6 +74,35 @@ export const NOTIFY_SETTINGS_KEYS = [
   'sms_access_key_id',
   'sms_access_key_secret',
   'sms_sign_name',
-  'sms_template_code',
+  'sms_bind_phone_template_code',
+  'sms_phone_login_template_code',
+  'sms_phone_reset_template_code',
   'sms_sdk_app_id',
 ] as const;
+
+export async function requestPasswordReset(target: { email?: string; phone?: string }) {
+  return client.post('/auth/password-reset/request', target);
+}
+export async function resetPassword(body: { token?: string; phone?: string; code?: string; new_password: string }) {
+  return client.post('/auth/password-reset/confirm', body);
+}
+export async function activateAccount(body: { token: string; new_password: string }) {
+  return client.post('/auth/activation/confirm', body);
+}
+export async function requestPhoneLogin(phone: string) {
+  return client.post('/auth/phone/send-code', { phone });
+}
+export async function requestEmailChange(password: string, newEmail: string) {
+  return client.post('/user/email-change/request', { password, new_email: newEmail });
+}
+export async function confirmEmailChange(token: string) {
+  return client.post('/user/email-change/confirm', { token });
+}
+
+export async function uploadAvatar(file: File) {
+  const body = new FormData(); body.append('avatar', file);
+  return (await client.post<UserProfile>('/user/avatar', body)).data;
+}
+export async function removeAvatar() {
+  return (await client.delete<UserProfile>('/user/avatar')).data;
+}

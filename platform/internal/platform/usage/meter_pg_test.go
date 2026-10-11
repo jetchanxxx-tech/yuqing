@@ -29,12 +29,12 @@ func meterContract(t *testing.T, newMeter func(t *testing.T) PlatformMeter) {
 
 	t.Run("Record 累加已用 token", func(t *testing.T) {
 		m := newMeter(t)
-		m.SetQuota("t1", 1000, llm.BudgetHardCap)
+		m.SetQuota("t1", 1000000, llm.BudgetHardCap)
 
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 100, CompletionTokens: 100}); err != nil {
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 100000, CompletionTokens: 100000}); err != nil {
 			t.Fatalf("Record failed: %v", err)
 		}
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 300, CompletionTokens: 100}); err != nil {
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 300000, CompletionTokens: 100000}); err != nil {
 			t.Fatalf("Record failed: %v", err)
 		}
 
@@ -42,18 +42,18 @@ func meterContract(t *testing.T, newMeter func(t *testing.T) PlatformMeter) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if status.SpentTokens != 600 {
-			t.Errorf("spent = %d, want 600", status.SpentTokens)
+		if status.SpentTokens != 600000 {
+			t.Errorf("spent = %d, want 600000", status.SpentTokens)
 		}
-		if status.QuotaTokens != 1000 {
-			t.Errorf("quota = %d, want 1000", status.QuotaTokens)
+		if status.QuotaTokens != 1000000 {
+			t.Errorf("quota = %d, want 1000000", status.QuotaTokens)
 		}
 	})
 
 	t.Run("BudgetStatus 80% 起 warn", func(t *testing.T) {
 		m := newMeter(t)
-		m.SetQuota("t_warn", 1000, llm.BudgetHardCap)
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t_warn", PromptTokens: 810}); err != nil {
+		m.SetQuota("t_warn", 1000000, llm.BudgetHardCap)
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t_warn", PromptTokens: 810000}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -65,8 +65,8 @@ func meterContract(t *testing.T, newMeter func(t *testing.T) PlatformMeter) {
 
 	t.Run("BudgetStatus 超额为 exceeded", func(t *testing.T) {
 		m := newMeter(t)
-		m.SetQuota("t_full", 1000, llm.BudgetHardCap)
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t_full", PromptTokens: 1000, CompletionTokens: 100}); err != nil {
+		m.SetQuota("t_full", 1000000, llm.BudgetHardCap)
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t_full", PromptTokens: 1000000, CompletionTokens: 100000}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -78,24 +78,24 @@ func meterContract(t *testing.T, newMeter func(t *testing.T) PlatformMeter) {
 
 	t.Run("租户之间互不影响", func(t *testing.T) {
 		m := newMeter(t)
-		m.SetQuota("alice", 1000, llm.BudgetHardCap)
-		m.SetQuota("bob", 500, llm.BudgetHardCap)
+		m.SetQuota("alice", 1000000, llm.BudgetHardCap)
+		m.SetQuota("bob", 500000, llm.BudgetHardCap)
 
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "alice", PromptTokens: 800}); err != nil {
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "alice", PromptTokens: 800000}); err != nil {
 			t.Fatal(err)
 		}
-		if err := m.Record(ctx, llm.UsageEvent{TenantID: "bob", PromptTokens: 100}); err != nil {
+		if err := m.Record(ctx, llm.UsageEvent{TenantID: "bob", PromptTokens: 100000}); err != nil {
 			t.Fatal(err)
 		}
 
 		alice, _ := m.BudgetStatus(ctx, "alice")
 		bob, _ := m.BudgetStatus(ctx, "bob")
 
-		if alice.SpentTokens != 800 {
-			t.Errorf("alice spent = %d, want 800", alice.SpentTokens)
+		if alice.SpentTokens != 800000 {
+			t.Errorf("alice spent = %d, want 800000", alice.SpentTokens)
 		}
-		if bob.SpentTokens != 100 {
-			t.Errorf("bob spent = %d, want 100", bob.SpentTokens)
+		if bob.SpentTokens != 100000 {
+			t.Errorf("bob spent = %d, want 100000", bob.SpentTokens)
 		}
 	})
 
@@ -108,7 +108,7 @@ func meterContract(t *testing.T, newMeter func(t *testing.T) PlatformMeter) {
 
 	t.Run("Aggregate 按租户汇总且返回副本", func(t *testing.T) {
 		m := newMeter(t)
-		m.SetQuota("t1", 1000, llm.BudgetHardCap)
+		m.SetQuota("t1", 1000000, llm.BudgetHardCap)
 		if err := m.Record(ctx, llm.UsageEvent{TenantID: "t1", PromptTokens: 100, CompletionTokens: 50}); err != nil {
 			t.Fatal(err)
 		}
@@ -162,22 +162,23 @@ func TestPGMeter_survivesNewInstance(t *testing.T) {
 
 	const tenantID = "t-persist"
 	first := NewPGMeter(pool)
-	first.SetQuota(tenantID, 1000, llm.BudgetHardCap)
-	if err := first.Record(ctx, llm.UsageEvent{TenantID: tenantID, PromptTokens: 900}); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO report_credits(tenant_id,balance,plan_code) VALUES($1,0,'free')`, tenantID); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Record(ctx, llm.UsageEvent{TenantID: tenantID, PromptTokens: 900000}); err != nil {
 		t.Fatal(err)
 	}
 
-	// 新实例 = 重启后的进程：配额需要重新配置（配额仍存在内存里），
-	// 但已用 token 从 usage_events 读回。
+	// A reconstructed meter reads both its plan quota and recorded usage from PostgreSQL.
 	second := NewPGMeter(pool)
-	second.SetQuota(tenantID, 1000, llm.BudgetHardCap)
+	// No process-local quota seed: the persisted plan must survive restart.
 
 	status, err := second.BudgetStatus(ctx, tenantID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SpentTokens != 900 {
-		t.Errorf("重启后 spent = %d, want 900", status.SpentTokens)
+	if status.SpentTokens != 900000 {
+		t.Errorf("重启后 spent = %d, want 900000", status.SpentTokens)
 	}
 	if status.Status != "warn" {
 		t.Errorf("重启后 status = %q, want warn", status.Status)
@@ -246,5 +247,28 @@ func TestPGMeter_persistsCostColumns(t *testing.T) {
 	}
 	if model != "deepseek-chat" || analysisID != "a1" || userID != "u1" {
 		t.Errorf("溯源字段 = %q/%q/%q, want deepseek-chat/a1/u1", model, analysisID, userID)
+	}
+}
+
+func TestPGMeterTrustedLegacyFactUsesFixedServerPolicy(t *testing.T) {
+	pool := pgtest.Pool(t, "usage_fixed_policy")
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,status) VALUES('fixed','admin@pangu.com','fixture','active')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO billing_exempt_principals(policy_key,user_id,bound_by) VALUES('fixed_admin_v1','fixed','isolated-test')`); err != nil {
+		t.Fatal(err)
+	}
+	meter := NewPGMeter(pool)
+	if err := meter.Record(ctx, llm.UsageEvent{TenantID: "team", UserID: "fixed", Model: "legacy-trusted", PromptTokens: 400, CompletionTokens: 100, CostMicroCNY: 3200}); err != nil {
+		t.Fatal(err)
+	}
+	var quota, cost int64
+	var exempt bool
+	if err := pool.QueryRow(ctx, `SELECT quota_tokens,cost_micro_cny,billing_exempt FROM usage_events`).Scan(&quota, &cost, &exempt); err != nil {
+		t.Fatal(err)
+	}
+	if quota != 0 || cost != 3200 || !exempt {
+		t.Fatalf("trusted legacy fact bypassed server fixed policy: %d/%d/%v", quota, cost, exempt)
 	}
 }

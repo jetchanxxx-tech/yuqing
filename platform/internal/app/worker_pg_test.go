@@ -75,10 +75,9 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":2,"coverage":{"admission_version":"lexical-v1","accepted_count":2}}`)
+		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"keep-two","title":"second safe evidence","content":"safe second document","source_type":"news","published_at":"2026-09-03"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":3,"coverage":{"admission_version":"lexical-v1","accepted_count":3}}`)
 	}))
 	defer engine.Close()
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	cfg := &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}
 	cfg.DB.Primary = dsn.String()
 	cfg.Engines.Query.URL = engine.URL
@@ -86,6 +85,20 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 	defer services.PGPool.Close()
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id,email,password_hash) VALUES ('worker-user','worker@example.com','test')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO tenants(id,name,slug,db_name,status) VALUES('worker-tenant','worker','worker','worker','active')`,
+		`INSERT INTO tenant_members(tenant_id,user_id,role) VALUES('worker-tenant','worker-user','tenant_admin')`,
+	} {
+		if _, err := pool.Exec(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := services.Credits.SetPlanCode(ctx, "worker-tenant", "lite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := services.Credits.GrantPurchase(ctx, "worker-tenant", "isolated-worker-credits", 2); err != nil {
 		t.Fatal(err)
 	}
 	create := func() string {
@@ -139,8 +152,12 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 	}
 	for _, id := range []string{first, second} {
 		var count int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1`, id).Scan(&count); err != nil || count != 1 {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1`, id).Scan(&count); err != nil || count != 2 {
 			t.Fatalf("filtered document count=%d err=%v", count, err)
+		}
+		var blocked int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM raw_documents WHERE tenant_id='worker-tenant' AND analysis_id=$1 AND (id='skip' OR title='blocked')`, id).Scan(&blocked); err != nil || blocked != 0 {
+			t.Fatalf("excluded document persisted count=%d err=%v", blocked, err)
 		}
 	}
 	producer := queue.NewPGQueue(pool, queue.PGQueueOptions{})
