@@ -422,7 +422,7 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 		} else if err != nil {
 			return nil, internal(err)
 		}
-		if version != m.ExpectedVersion || strings.TrimSpace(m.Name) == "" {
+		if status == "closed" || status == "closure_pending" || version != m.ExpectedVersion || strings.TrimSpace(m.Name) == "" {
 			return nil, conflict()
 		}
 		before = map[string]any{"name": name, "row_version": version}
@@ -446,7 +446,7 @@ func (s *PGStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 		if err != nil {
 			return nil, internal(err)
 		}
-		if version != m.ExpectedVersion {
+		if status == "closed" || status == "closure_pending" || version != m.ExpectedVersion {
 			return nil, conflict()
 		}
 		result.ID = m.TargetID

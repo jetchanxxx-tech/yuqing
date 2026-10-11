@@ -91,7 +91,7 @@ writeFileSync(backendConfig, JSON.stringify({
   store: { driver: 'postgres' },
   db: { primary: databaseURL, maxConns: 5 },
   queue: { driver: 'postgres' },
-  storage: { driver: 'local' },
+  storage: { driver: 'local', avatarRoot: join(configDirectory, 'avatars') },
   auth: {
     jwtSecret: 'account-admin-ci-only-no-production-identity',
     accessTTL: '15m',

@@ -38,6 +38,43 @@ func NewMemoryStore(accounts *auth.SharedTenantStore, tenants *tenant.MemoryStor
 
 var _ Store = (*MemoryStore)(nil)
 
+func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, completion bool, change func(func([]string)) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if completion {
+		for _, n := range s.notifications {
+			if (n.UserID == uid || n.ActorID == uid) && n.State == "pending" {
+				return pkgerrors.ErrConflict
+			}
+		}
+	}
+	return change(func(sole []string) {
+		tids := map[string]bool{}
+		for _, id := range sole {
+			tids[id] = true
+		}
+		for i := range s.audits {
+			a := &s.audits[i]
+			if a.ActorID == uid || a.TargetID == uid || tids[a.TenantID] {
+				a.Reason = "已注销账号（原因脱敏）"
+				a.RequestID = ""
+				a.Before = closureAuditNumbers(a.Before)
+				a.After = closureAuditNumbers(a.After)
+			}
+		}
+	})
+}
+func closureAuditNumbers(input map[string]any) map[string]any {
+	out := map[string]any{"anonymized": true}
+	for k, v := range input {
+		switch v.(type) {
+		case int, int64, float64, bool, nil:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 type memoryNotification struct {
 	NotificationAttempt
 	UserID, ActorID string
@@ -338,6 +375,9 @@ func (s *MemoryStore) Change(ctx context.Context, m Mutation) (*Result, error) {
 			u, ok := state.Users[m.TargetID]
 			if !ok {
 				return missing()
+			}
+			if u.Status == "closed" || u.Status == "closure_pending" {
+				return conflict()
 			}
 			switch m.Action {
 			case "user.disable", "user.enable":

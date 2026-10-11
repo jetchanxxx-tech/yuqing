@@ -34,7 +34,7 @@ func (m *MemoryVerificationStore) ClaimIdentityNotice(_ context.Context) (*Ident
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for key, n := range m.notices {
-		if n.State == "accepted" || time.Now().Before(n.Next) {
+		if (n.State != "pending" && n.State != "failed" && n.State != "processing") || time.Now().Before(n.Next) {
 			continue
 		}
 		n.State = "processing"

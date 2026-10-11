@@ -85,6 +85,12 @@ type Service struct {
 	adjustmentGuard func(context.Context, Adjustment, func() (*Transaction, error)) (*Transaction, error)
 }
 
+func (s *Service) AnonymizeMemoryClosure(uid string, tenants []string) {
+	if m, ok := s.store.(*MemoryStore); ok {
+		m.AnonymizeClosure(uid, tenants)
+	}
+}
+
 // NewService 装配额度服务。
 func NewService(store Store) *Service {
 	return &Service{store: store}

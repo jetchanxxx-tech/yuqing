@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -15,6 +17,28 @@ import (
 	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/storage"
 )
+
+// Persistent ownership locks are control records, not avatar content. Ignore
+// only this exact owner's empty regular lock file; unexpected files still count.
+func avatarImageEntries(root, uid string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.Sum256([]byte(uid))
+	name := fmt.Sprintf(".closure-%x.lock", hash)
+	out := entries[:0]
+	for _, entry := range entries {
+		if entry.Name() == name {
+			info, e := entry.Info()
+			if e == nil && info.Mode().IsRegular() && info.Size() == 0 {
+				continue
+			}
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
 
 func avatarFixture(t *testing.T) []byte {
 	t.Helper()
@@ -52,7 +76,7 @@ func TestProfileAvatarPGReferenceRollbackAndPersistence(t *testing.T) {
 	if after.AvatarURL != old.AvatarURL {
 		t.Fatal("failed DB write replaced reference")
 	}
-	objects, err := os.ReadDir(root)
+	objects, err := avatarImageEntries(root, actor.UserID)
 	if err != nil || len(objects) != 1 {
 		t.Fatalf("new file cleanup=%d err=%v", len(objects), err)
 	}
@@ -83,7 +107,7 @@ func TestProfileAvatarPGReferenceRollbackAndPersistence(t *testing.T) {
 		r.Close()
 		t.Fatal("successful replacement did not reclaim old image")
 	}
-	objects, _ = os.ReadDir(root)
+	objects, _ = avatarImageEntries(root, actor.UserID)
 	if len(objects) != 1 {
 		t.Fatal("successful replacement lost current image")
 	}
@@ -98,7 +122,7 @@ func TestProfileAvatarPGReferenceRollbackAndPersistence(t *testing.T) {
 	if after.AvatarURL != "" {
 		t.Fatal("explicit deletion skipped empty string")
 	}
-	objects, _ = os.ReadDir(root)
+	objects, _ = avatarImageEntries(root, actor.UserID)
 	if len(objects) != 0 {
 		t.Fatal("old object was not reclaimed")
 	}
@@ -182,7 +206,7 @@ func TestProfileAvatarPGQueuedInvalidation(t *testing.T) {
 				if after.AvatarURL != old.AvatarURL || after.Name != old.Name || after.Timezone != old.Timezone {
 					t.Fatal("revoked actor changed profile")
 				}
-				objects, _ := os.ReadDir(root)
+				objects, _ := avatarImageEntries(root, actor.UserID)
 				if len(objects) != 1 {
 					t.Fatalf("queued failed write retained new object count=%d", len(objects))
 				}
@@ -265,7 +289,7 @@ func TestProfileAvatarPGConcurrentReplacementKeepsWinner(t *testing.T) {
 		t.Fatal("cleanup deleted winning replacement")
 	}
 	r.Close()
-	objects, _ := os.ReadDir(root)
+	objects, _ := avatarImageEntries(root, actor.UserID)
 	if len(objects) != 1 {
 		t.Fatalf("winner-only object count=%d", len(objects))
 	}

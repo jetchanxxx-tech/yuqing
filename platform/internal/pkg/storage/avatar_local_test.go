@@ -61,8 +61,10 @@ func TestLocalAvatarBoundsReencodeAndConfinement(t *testing.T) {
 		}
 	}
 	names, _ := os.ReadDir(root)
-	if len(names) != 0 {
-		t.Fatal("rejected files left stored content")
+	for _, name := range names {
+		if name.Name() != ".closure-"+owner("owner")+".lock" {
+			t.Fatal("rejected files left stored content")
+		}
 	}
 	for _, ref := range []string{AvatarURLPrefix + "../secret", AvatarURLPrefix + "%2e%2e/secret", "https://example.invalid/image.png", "/etc/passwd"} {
 		if _, _, _, err := a.Open(ctx, ref); err == nil {

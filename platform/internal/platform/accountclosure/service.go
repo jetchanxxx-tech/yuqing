@@ -34,6 +34,15 @@ type Status struct {
 	CompletedAt   *time.Time `json:"completed_at"`
 	CleanupStatus string     `json:"cleanup_status"`
 	LastError     string     `json:"error_code,omitempty"`
+	AvatarDeleted int64      `json:"avatar_deleted"`
+	Attempts      int64      `json:"attempts"`
+}
+type AvatarLifecycle = interface {
+	Seal(context.Context, string) error
+	Reconcile(context.Context, string, int64, int) (int64, bool, int, error)
+}
+type ExecutionStore interface {
+	Process(context.Context, string, int) (*Status, error)
 }
 type Store interface {
 	Preview(context.Context, string, int64) (*Preview, error)
@@ -67,4 +76,14 @@ func (s *Service) Status(ctx context.Context, uid string) (*Status, error) {
 		return nil, pkgerrors.ErrServiceUnavailable
 	}
 	return s.store.Status(ctx, uid)
+}
+func (s *Service) Process(ctx context.Context, uid string, limit int) (*Status, error) {
+	if s == nil {
+		return nil, pkgerrors.ErrServiceUnavailable
+	}
+	p, ok := s.store.(ExecutionStore)
+	if !ok {
+		return nil, pkgerrors.ErrServiceUnavailable
+	}
+	return p.Process(ctx, uid, limit)
 }

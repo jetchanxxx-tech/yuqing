@@ -22,6 +22,8 @@ REQUIRED_TESTS = {
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestClosurePGPasswordUsesDurableSocketAdmission",
+        "TestClosurePGAdministratorCannotReidentifyClosedTombstone",
         "TestClosurePGPendingPasswordLoginIsRestricted",
         "TestClosurePGRequestWithdrawalAndFreshOrderBlockers",
         "TestClosurePGSharedAssetsAndLastAdminProtection",
@@ -137,7 +139,7 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_satisfiesContract",
         "TestTenantStore_PG_survivesNewInstance",
     ),
-    "internal/platform/accountclosure": ("TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
+    "internal/platform/accountclosure": ("TestClosurePGResumesAnonymizationAndRetainsFinancialAndSharedAssets", "TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
     "internal/platform/accountadmin": (
         "TestAccountAdminPGBootstrapSerializesInitialGrant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit",
@@ -167,7 +169,7 @@ REQUIRED_TESTS = {
         "TestAccountAdminPGAdminPermissionsExcludeMemberRolesAndAPIKeys",
     ),
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
-    "internal/platform/payment": ("TestPaymentPGClosureFenceRejectsLateOrderButKeepsSettlement", "TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
+    "internal/platform/payment": ("TestPaymentPGRecordsPendingOrderBeforeSupplierAndKeepsUnknownOutcome", "TestPaymentPGClosureFenceRejectsLateOrderButKeepsSettlement", "TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
     "internal/business/analysis": (
         "TestK4PGFixedExemptionCannotBypassQueuedUserOrTenantSuspension",
         "TestK4PGAcceptedRunRefundStillSettlesAfterActorDisabled",

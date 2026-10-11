@@ -8,6 +8,7 @@ import client, {
 
 interface Principal {
   user_id: string;
+  user_status: string;
   tenant_id: string;
   email: string;
   roles: string[];

@@ -24,13 +24,14 @@ type Store interface {
 	MarkGranted(ctx context.Context, orderID string) error
 	// SaveChannelMeta 绑定预下单号与渠道侧时间元数据（银联查单必需 txnTime）。
 	SaveChannelMeta(ctx context.Context, orderID, providerTxnID, txnTime string) error
+	SavePrecreate(context.Context, *Order) error
 }
 
 // MemoryStore 是进程内订单存储（测试/开发）。
 type MemoryStore struct {
-	mu      sync.Mutex
-	orders  map[string]*Order
-	txnIdx  map[string]string // provider_txn_id → order_id（唯一索引模拟）
+	mu     sync.Mutex
+	orders map[string]*Order
+	txnIdx map[string]string // provider_txn_id → order_id（唯一索引模拟）
 }
 
 // NewMemoryStore 装配内存存储。
@@ -127,6 +128,20 @@ func (m *MemoryStore) SaveChannelMeta(_ context.Context, orderID, providerTxnID,
 	o.ProviderTxnID = providerTxnID
 	if txnTime != "" {
 		o.TxnTime = txnTime
+	}
+	return nil
+}
+func (m *MemoryStore) SavePrecreate(_ context.Context, precreate *Order) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	o := m.orders[precreate.ID]
+	if o == nil {
+		return ErrNotFound
+	}
+	if o.State == StatePending {
+		o.QRCodeURL = precreate.QRCodeURL
+		o.ProviderTxnID = precreate.ProviderTxnID
+		o.TxnTime = precreate.TxnTime
 	}
 	return nil
 }

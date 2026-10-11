@@ -25,6 +25,28 @@ func NewMemoryStore() *MemoryStore {
 		byHash: make(map[string]string),
 	}
 }
+func (m *MemoryStore) RevokeForClosure(uid string, tenants []string, anonymize bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sole := map[string]bool{}
+	for _, id := range tenants {
+		sole[id] = true
+	}
+	now := time.Now()
+	for _, k := range m.byID {
+		if k.CreatorUserID == uid || sole[k.TenantID] {
+			if k.RevokedAt == nil {
+				k.RevokedAt = &now
+			}
+			if anonymize {
+				delete(m.byHash, k.keyHash)
+				k.keyHash = "anonymized:" + k.ID
+				k.Name = "已注销账号密钥"
+				k.Prefix = ""
+			}
+		}
+	}
+}
 
 func (m *MemoryStore) Create(_ context.Context, k *APIKey) error {
 	m.mu.Lock()

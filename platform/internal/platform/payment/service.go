@@ -103,6 +103,12 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 		CreatedAt:   createdAt,
 	}
 
+	// Persist the financial blocker before any supplier request. A crash or
+	// unknown supplier outcome retains pending for reconciliation; it never
+	// invents paid, closed, refunded or granted state.
+	if err = s.store.Create(ctx, o); err != nil {
+		return nil, err
+	}
 	resp, err := p.CreatePayment(ctx, &CreatePaymentReq{
 		OrderID:     o.ID,
 		Subject:     "盘古舆情 · " + sku.Name,
@@ -115,14 +121,8 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 	o.ProviderTxnID = resp.ProviderTxnID
 	o.TxnTime = resp.TxnTime
 
-	if err := s.store.Create(ctx, o); err != nil {
+	if err := s.store.SavePrecreate(ctx, o); err != nil {
 		return nil, err
-	}
-	// 渠道元数据（预下单号/银联 txnTime）随单落库，查单与核销依赖
-	if resp.ProviderTxnID != "" || resp.TxnTime != "" {
-		if err := s.store.SaveChannelMeta(ctx, o.ID, resp.ProviderTxnID, resp.TxnTime); err != nil {
-			return nil, err
-		}
 	}
 	return o, nil
 }

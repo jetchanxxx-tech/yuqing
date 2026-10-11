@@ -11,11 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
-	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
 )
 
-type PGStore struct{ pool *pgxpool.Pool }
+type PGStore struct {
+	pool    *pgxpool.Pool
+	avatars AvatarLifecycle
+}
 
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 func begin(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
@@ -23,7 +25,7 @@ func begin(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auth.PlatformAdminLockID); err != nil {
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(741914)`); err != nil {
 		tx.Rollback(context.Background())
 		return nil, err
 	}
@@ -93,7 +95,7 @@ func preview(ctx context.Context, tx pgx.Tx, uid string, allowPending bool) (*Pr
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM orders WHERE tenant_id=$1 AND (state IN ('pending','refund_needed','refunding','disputed') OR state='paid' AND NOT granted)`, t.ID).Scan(&orders); err != nil {
 				return nil, err
 			}
-			if err = tx.QueryRow(ctx, `SELECT count(*) FROM analysis_runs r WHERE tenant_id=$1 AND (state NOT IN ('completed','failed','cancelled') OR EXISTS(SELECT 1 FROM llm_call_authorizations c WHERE c.run_id=r.id AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)))`, t.ID).Scan(&runs); err != nil {
+			if err = tx.QueryRow(ctx, `SELECT count(*) FROM analysis_runs r WHERE tenant_id=$1 AND (state NOT IN ('completed','failed','canceled') OR EXISTS(SELECT 1 FROM llm_call_authorizations c WHERE c.run_id=r.id AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)))`, t.ID).Scan(&runs); err != nil {
 				return nil, err
 			}
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM invoices WHERE tenant_id=$1 AND status IN ('unpaid','disputed','refund_pending')`, t.ID).Scan(&invoices); err != nil {
@@ -124,11 +126,11 @@ func (s *PGStore) Preview(ctx context.Context, uid string, version int64) (*Prev
 	return preview(ctx, tx, uid, false)
 }
 
-const projection = `id,state,requested_at,withdraw_until,completed_at,cleanup_status,last_error`
+const projection = `id,state,requested_at,withdraw_until,completed_at,cleanup_status,last_error,avatar_deleted,attempts`
 
 func scan(row pgx.Row) (*Status, error) {
 	r := &Status{}
-	err := row.Scan(&r.ID, &r.State, &r.RequestedAt, &r.WithdrawUntil, &r.CompletedAt, &r.CleanupStatus, &r.LastError)
+	err := row.Scan(&r.ID, &r.State, &r.RequestedAt, &r.WithdrawUntil, &r.CompletedAt, &r.CleanupStatus, &r.LastError, &r.AvatarDeleted, &r.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.ErrNotFound
 	}
@@ -190,6 +192,9 @@ func (s *PGStore) Request(ctx context.Context, actor Actor, confirmed []string) 
 		if _, err = tx.Exec(ctx, q, actor.UserID); err != nil {
 			return nil, err
 		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE verification_tokens SET notice_state='cancelled',notice_target='',notice_next_attempt=NULL WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state IN ('pending','failed')`, actor.UserID); err != nil {
+		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE api_keys SET revoked_at=COALESCE(revoked_at,now()) WHERE creator_user_id=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member)`, actor.UserID, r.ID); err != nil {
 		return nil, err

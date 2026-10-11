@@ -71,6 +71,14 @@ INSERT INTO account_notification_attempts(id,user_id,actor_id,actor_version,purp
 	if !ok {
 		t.Fatal("avatar cleanup unavailable")
 	}
+	p.SetAvatarStorage(real)
+	blocked, blockErr := p.Process(ctx, "closing", 1)
+	if blockErr != nil || blocked.State != "pending" || blocked.LastError != "NOTIFICATION_DELIVERY_UNCONFIRMED" {
+		t.Fatalf("unconfirmed dispatch was discarded: %+v %v", blocked, blockErr)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE account_notification_attempts SET state='failed' WHERE id='attempt'`); err != nil {
+		t.Fatal(err)
+	}
 	p.SetAvatarStorage(&brokenClosureStorage{})
 	r, err := p.Process(ctx, "closing", 1)
 	if err != nil || r.State != "finalizing" || r.LastError != "AVATAR_CLEANUP_FAILED" {

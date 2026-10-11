@@ -30,6 +30,23 @@ func NewMemoryStore() *MemoryStore {
 		versions: map[string]int64{},
 	}
 }
+func (m *MemoryStore) AnonymizeClosure(uid string, tenants []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sole := map[string]bool{}
+	for _, id := range tenants {
+		sole[id] = true
+	}
+	for i := range m.txs {
+		tx := &m.txs[i]
+		if tx.ActorID == uid || sole[tx.TenantID] {
+			tx.ReasonDetail = "已注销账号（原因脱敏）"
+			if tx.IdempotencyKey != "" {
+				tx.IdempotencyKey = "anonymized:" + tx.ID
+			}
+		}
+	}
+}
 
 func (m *MemoryStore) Balance(_ context.Context, tenantID string) (int, error) {
 	m.mu.Lock()

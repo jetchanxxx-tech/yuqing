@@ -13,6 +13,9 @@ import (
 func TestPGStore_contract(t *testing.T) {
 	pool := pgtest.Pool(t, "payment")
 	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,status) VALUES('owner','owner@example.invalid','fixture','active'); INSERT INTO tenants(id,name,slug,db_name,status) VALUES('t1','Team','team','team','active'); INSERT INTO tenant_members(tenant_id,user_id,role) VALUES('t1','owner','tenant_admin')`); err != nil {
+		t.Fatal(err)
+	}
 	newStore := func(t *testing.T) *PGStore {
 		t.Helper()
 		if _, err := pool.Exec(ctx, `TRUNCATE orders`); err != nil {

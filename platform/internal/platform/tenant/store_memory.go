@@ -119,3 +119,27 @@ func (m *MemoryStore) CreateWithProvision(ctx context.Context, t Tenant, provisi
 	m.order = append(m.order, t.ID)
 	return nil
 }
+
+// Called under the shared identity boundary. Validate every tenant before the
+// infallible anonymization callback, then publish all team tombstones together.
+func (m *MemoryStore) CloseSoleTeams(ctx context.Context, ids []string, commit func()) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctx.Err() != nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	for _, id := range ids {
+		if m.byID[id] == nil {
+			return pkgerrors.ErrConflict
+		}
+	}
+	commit()
+	for _, id := range ids {
+		t := m.byID[id]
+		t.Status = Status("closed")
+		t.Name = "已注销团队"
+		t.Slug = "closed-" + id
+		t.RowVersion++
+	}
+	return nil
+}

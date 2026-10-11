@@ -24,10 +24,13 @@ func main() {
 		fmt.Println("  gen-invoice <tenant>  Generate invoice for a tenant billing period")
 		fmt.Println("  backfill-reports      Backfill report records from historical analyses")
 		fmt.Println("  bootstrap-platform-admin --user-id <id> Initialize the first platform administrator")
+		fmt.Println("  account-closure <preview|execute|retry> --user-id <id> Run one bounded closure step")
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
+	case "account-closure":
+		handleAccountClosure(os.Args[2:])
 	case "migrate":
 		handleMigrate(os.Args[2:])
 	case "provision-tenant":

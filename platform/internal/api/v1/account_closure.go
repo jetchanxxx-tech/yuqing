@@ -56,7 +56,11 @@ func (s *Services) mutateClosure(c *gin.Context, cancel bool) {
 		return
 	}
 	p := middleware.GetPrincipal(c)
-	u, err := s.Auth.ClosureCredentialSnapshot(c.Request.Context(), *p, input.Password)
+	peer, ok := identityPeer(c)
+	if !ok {
+		return
+	}
+	u, err := s.Auth.ClosureCredentialSnapshot(c.Request.Context(), *p, input.Password, peer)
 	if err != nil {
 		if pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": "IDENTITY_CHECK_FAILED", "message": "password verification failed", "request_id": requestID(c)})

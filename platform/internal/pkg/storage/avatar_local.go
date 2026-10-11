@@ -52,6 +52,10 @@ func object(reference string) (string, bool) {
 	n := strings.TrimPrefix(reference, AvatarURLPrefix)
 	return n, avatarName.MatchString(n)
 }
+func OwnsAvatarReference(uid, reference string) bool {
+	name, ok := object(reference)
+	return uid != "" && ok && strings.HasPrefix(name, owner(uid)+"-")
+}
 func (a *LocalAvatar) Put(ctx context.Context, uid string, reader io.Reader) (string, error) {
 	if uid == "" || reader == nil {
 		return "", pkgerrors.ErrBadRequest
@@ -95,6 +99,16 @@ func (a *LocalAvatar) Put(ctx context.Context, uid string, reader io.Reader) (st
 		return "", err
 	}
 	defer root.Close()
+	release, err := lockAvatarOwner(ctx, root, uid)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	if _, err = root.Lstat(avatarSeal(uid)); err == nil {
+		return "", pkgerrors.ErrForbidden
+	} else if !os.IsNotExist(err) {
+		return "", pkgerrors.ErrServiceUnavailable
+	}
 	random := make([]byte, 16)
 	if _, err = rand.Read(random); err != nil {
 		return "", pkgerrors.ErrInternal

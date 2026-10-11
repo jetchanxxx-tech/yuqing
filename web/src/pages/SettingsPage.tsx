@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
 import { useDateTime } from '../lib/format';
 import { acceptedMessage, identityError } from '../lib/identity';
+import { AccountClosureRequest } from '../components/AccountClosureRequest';
 import { getCredits, getPlans } from '../api/billing';
 import {
   bindPhone,
@@ -398,6 +399,8 @@ function SecurityTab() {
       </Modal>
       <Divider />
       <EmailChangeForm />
+      <Divider />
+      <AccountClosureRequest />
     </Card>
   );
 }

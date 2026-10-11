@@ -162,7 +162,8 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	if avatarRoot == "" {
 		avatarRoot = "data/avatars"
 	}
-	authSvc.EnableAvatarStorage(storage.NewLocalAvatar(avatarRoot))
+	avatarStorage := storage.NewLocalAvatar(avatarRoot)
+	authSvc.EnableAvatarStorage(avatarStorage)
 
 	tenantSvc := tenant.NewService(tenantStore)
 
@@ -296,7 +297,49 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	}
 	var closureService *accountclosure.Service
 	if platformPool != nil {
-		closureService = accountclosure.NewService(accountclosure.NewPGStore(platformPool))
+		store := accountclosure.NewPGStore(platformPool)
+		store.SetAvatarStorage(avatarStorage)
+		closureService = accountclosure.NewService(store)
+	} else {
+		store := auth.NewMemoryClosureStore(authStore.(*auth.SharedTenantStore), verifications.(*auth.MemoryVerificationStore), accountAdminStore.(*accountadmin.MemoryStore).WithAccountClosure,
+			func(ctx context.Context, tid string) (string, []string, error) {
+				plan := "free"
+				snapshot, err := creditSvc.Snapshot(ctx, tid)
+				if err != nil {
+					return "", nil, err
+				}
+				if snapshot != nil {
+					plan = snapshot.PlanCode
+				}
+				blocks := []string{}
+				orders, err := paymentSvc.List(ctx, tid, 0)
+				if err != nil {
+					return "", nil, err
+				}
+				for _, o := range orders {
+					if o.State == payment.StatePending || o.State == payment.StateRefundNeeded || o.State == payment.StatePaid && !o.Granted {
+						blocks = append(blocks, "UNSETTLED_ORDERS:"+tid)
+						break
+					}
+				}
+				runs, err := analysisSvc.List(ctx, tid)
+				if err != nil {
+					return "", nil, err
+				}
+				for _, r := range runs {
+					if r.State != analysis.StateCompleted && r.State != analysis.StateFailed && r.State != analysis.StateCanceled {
+						blocks = append(blocks, "UNSETTLED_TASKS:"+tid)
+						break
+					}
+				}
+				return plan, blocks, nil
+			}, func(uid string, tids []string, anonymize bool) {
+				apiKeyStore.(*apikey.MemoryStore).RevokeForClosure(uid, tids, anonymize)
+				if anonymize {
+					creditSvc.AnonymizeMemoryClosure(uid, tids)
+				}
+			}, avatarStorage)
+		closureService = accountclosure.NewService(store)
 	}
 	return &v1.Services{
 		Closure:         closureService,
