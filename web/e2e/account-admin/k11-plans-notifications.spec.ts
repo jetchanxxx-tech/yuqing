@@ -32,7 +32,7 @@ test('K11 manual plan confirmation preserves reason through rollback and reloads
   const dialog = page.getByRole('dialog', { name: '修改套餐权益', exact: true });
   const plan = dialog.getByRole('combobox', { name: '目标套餐', exact: true });
   await plan.press('ArrowDown'); await plan.press('ArrowDown'); await plan.press('ArrowDown'); await plan.press('Enter');
-  await expect(dialog.getByText('研判版（pro）', { exact: true })).toBeVisible();
+  await expect(dialog.locator('.ant-select-selection-item')).toHaveText('研判版（pro）');
   await dialog.getByLabel('操作原因', { exact: true }).fill('K11 approved existing plan');
   sql("CREATE FUNCTION k11_plan_ui_reject() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='tenant.plan_change' THEN RAISE EXCEPTION 'isolated plan audit rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER k11_plan_ui_reject BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION k11_plan_ui_reject();");
   try {

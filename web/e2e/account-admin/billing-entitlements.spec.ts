@@ -52,11 +52,14 @@ function billingSQL(sql: string, variables: string[] = []) {
   execFileSync('psql', [databaseURL, '-v', 'ON_ERROR_STOP=1', ...variables.flatMap((value) => ['-v', value])], { input: sql, stdio: 'pipe' });
 }
 async function refetchCachedBilling(page: import('@playwright/test').Page, path = '/settings') {
-  await page.clock.setSystemTime(Date.now() + 120_000);
   // Application intentionally disables focus refetch. Real SPA navigation
   // remounts the stale query while preserving its QueryClient cache.
   await page.getByRole('menuitem', { name: /数据面板/ }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  // Advance relative to the browser's installed clock, including stale timers,
+  // after the page query has unmounted; runner wall time cannot race a response
+  // that records dataUpdatedAt under the previous browser clock.
+  await page.clock.fastForward(120_000);
   await page.getByRole('menuitem', { name: path === '/settings' ? /设置/ : /用量/ }).click();
   await expect(page).toHaveURL(new RegExp(`${path}$`));
 }
