@@ -31,10 +31,35 @@ func (m *MemoryVerificationStore) IdentityLinkState(_ context.Context, purpose, 
 	return "invalid", nil
 }
 func (m *MemoryVerificationStore) ClaimIdentityNotice(_ context.Context) (*IdentityNotice, error) {
+	if m.users == nil {
+		return nil, nil
+	}
+	// Match issuance/closure's users-before-credentials order. Disabled users
+	// still receive required security notices; closing identities cannot start
+	// another attempt after their request transaction has won this boundary.
+	m.users.mu.RLock()
+	defer m.users.mu.RUnlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for key, n := range m.notices {
 		if (n.State != "pending" && n.State != "failed" && n.State != "processing") || time.Now().Before(n.Next) {
+			continue
+		}
+		c, ok := m.credentials[key]
+		if !ok {
+			continue
+		}
+		allowed := true
+		for _, uid := range []string{c.UserID, c.IssuerUserID} {
+			if uid == "" {
+				continue
+			}
+			u := m.users.usersByID[uid]
+			if u == nil || u.Status == "closure_pending" || u.Status == "closed" {
+				allowed = false
+			}
+		}
+		if !allowed {
 			continue
 		}
 		n.State = "processing"

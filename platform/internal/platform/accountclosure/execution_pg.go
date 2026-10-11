@@ -237,8 +237,9 @@ func (s *PGStore) anonymize(ctx context.Context, uid, cid string) error {
 	if len(p.Blockers) > 0 {
 		return pkgerrors.ErrConflict
 	}
-	// Recheck dispatch finality while locking the exact credential rows. Once
-	// cancelled, the notice claim predicate cannot reintroduce an old recipient.
+	// Notice claims share this user boundary. Personal pages preserve processing
+	// rows even after a row-lock wait; recheck their actual finality here before
+	// releasing the identity. A lease alone does not prove an attempt finished.
 	var inflight int
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state='processing'`, uid).Scan(&inflight); err != nil {
 		return err

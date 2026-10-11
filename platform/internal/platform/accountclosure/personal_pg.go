@@ -8,7 +8,7 @@ import (
 
 func personalRemaining(ctx context.Context, tx pgx.Tx, uid, cid string, result *bool) error {
 	return tx.QueryRow(ctx, `SELECT
- EXISTS(SELECT 1 FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND (COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'')) OR
+ EXISTS(SELECT 1 FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND (notice_state='processing' OR COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'')) OR
  EXISTS(SELECT 1 FROM sms_verification_codes WHERE (user_id=$1 OR issuer_user_id=$1) AND (phone<>'anonymized:'||id OR code_hash IS NOT NULL)) OR
  EXISTS(SELECT 1 FROM login_sessions WHERE user_id=$1) OR
  EXISTS(SELECT 1 FROM api_keys WHERE creator_user_id=$1 AND (key_hash<>'anonymized:'||id OR prefix<>'' OR name IS DISTINCT FROM '已注销账号密钥')) OR
@@ -34,8 +34,12 @@ func (s *PGStore) redactPersonalPage(ctx context.Context, uid, cid string, limit
 	if err = scopeMatches(ctx, tx, uid, cid); err != nil {
 		return false, err
 	}
+	// The outer predicate is essential: a previously admitted worker may win
+	// the row lock after the page's snapshot. PostgreSQL rechecks this predicate
+	// after waiting, so neither its recipient nor receipt CAS can be erased.
+	// Processing rows remain visible to personalRemaining and the final gate.
 	for _, q := range []string{
-		`UPDATE verification_tokens SET used_at=COALESCE(used_at,now()),target='',token_hash=NULL,notice_target='',notice_state=CASE WHEN notice_state='accepted' THEN 'accepted' ELSE 'cancelled' END,notice_next_attempt=NULL WHERE id IN (SELECT id FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND (COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'') ORDER BY id LIMIT $2)`,
+		`UPDATE verification_tokens SET used_at=COALESCE(used_at,now()),target='',token_hash=NULL,notice_target='',notice_state=CASE WHEN notice_state='accepted' THEN 'accepted' ELSE 'cancelled' END,notice_next_attempt=NULL WHERE notice_state<>'processing' AND id IN (SELECT id FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state<>'processing' AND (COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'') ORDER BY id LIMIT $2)`,
 		`UPDATE sms_verification_codes SET used_at=COALESCE(used_at,now()),phone='anonymized:'||id,code_hash=NULL WHERE id IN (SELECT id FROM sms_verification_codes WHERE (user_id=$1 OR issuer_user_id=$1) AND (phone<>'anonymized:'||id OR code_hash IS NOT NULL) ORDER BY id LIMIT $2)`,
 		`DELETE FROM login_sessions WHERE id IN (SELECT id FROM login_sessions WHERE user_id=$1 ORDER BY id LIMIT $2)`,
 		`UPDATE api_keys SET name='已注销账号密钥',key_hash='anonymized:'||id,prefix='',revoked_at=COALESCE(revoked_at,now()) WHERE id IN (SELECT id FROM api_keys WHERE creator_user_id=$1 AND (key_hash<>'anonymized:'||id OR prefix<>'' OR name IS DISTINCT FROM '已注销账号密钥') ORDER BY id LIMIT $2)`,
