@@ -6,10 +6,9 @@ package auth
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/yuqing/platform/internal/pkg/db"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -20,13 +19,14 @@ var _ VerificationStore = (*PGVerificationStore)(nil)
 
 const userCenterColumns = `id, email, password_hash, name, phone, avatar_url, timezone,
 	email_verified_at, phone_verified_at, password_changed_at,
-	COALESCE(trial_analysis_used, 0)`
+	COALESCE(trial_analysis_used, 0), status, created_at, last_login_at, token_version, row_version`
 
 func scanUserCenter(row pgx.Row) (*User, error) {
 	var u User
 	var phone, avatarURL, timezone *string
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &phone, &avatarURL, &timezone,
-		&u.EmailVerifiedAt, &u.PhoneVerifiedAt, &u.PasswordChangedAt, &u.TrialAnalysisUsed)
+		&u.EmailVerifiedAt, &u.PhoneVerifiedAt, &u.PasswordChangedAt, &u.TrialAnalysisUsed,
+		&u.Status, &u.CreatedAt, &u.LastLoginAt, &u.TokenVersion, &u.RowVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +68,30 @@ func (s *PGStore) GetByPhone(ctx context.Context, phone string) (*User, error) {
 	return u, nil
 }
 
-// UpdatePassword 更新密码哈希并记录 password_changed_at。
-func (s *PGStore) UpdatePassword(ctx context.Context, userID, newHash string) error {
-	const q = `UPDATE users SET password_hash = $2, password_changed_at = now() WHERE id = $1`
-	return s.execUserUpdate(ctx, q, userID, newHash)
+// UpdatePassword commits only while the verified credential version is current
+// and the account remains active. The predicate and version increments execute
+// in the same UPDATE, including PostgreSQL's concurrent-row recheck.
+func (s *PGStore) UpdatePassword(ctx context.Context, userID, newHash string, expectedVersion int64) error {
+	const q = `UPDATE users SET password_hash = $2, password_changed_at = now(),
+		token_version = token_version + 1, row_version = row_version + 1
+		WHERE id = $1 AND status = 'active' AND token_version = $3`
+	tag, err := s.pool.Exec(ctx, q, userID, newHash, expectedVersion)
+	if err != nil {
+		return wrapDB(err, "update user password")
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	// The write already failed closed. This read only selects the error for
+	// a missing/inactive account versus a changed credential version.
+	u, err := s.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.Status != "active" {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
+	return pkgerrors.Wrap(pkgerrors.ErrConflict, "credentials changed; sign in again")
 }
 
 // MarkEmailVerified 标记邮箱已验证。
@@ -136,87 +156,36 @@ func (s *PGStore) execUserUpdate(ctx context.Context, q string, args ...any) err
 	return nil
 }
 
-// ─── VerificationStore（PG 实现） ─────────────────────────────
-
-// PGVerificationStore 验证凭据存储。
-// 邮箱 token → verification_tokens 表（type='email_verify'，
-// user_id 列存目标用户）；
-// 短信验证码 → sms_verification_codes 表（phone 主键，同手机号覆盖旧码）。
-type PGVerificationStore struct {
-	pool *pgxpool.Pool
-}
-
-// NewPGVerificationStore 创建 PG 验证凭据存储。
-func NewPGVerificationStore(pool *pgxpool.Pool) *PGVerificationStore {
-	return &PGVerificationStore{pool: pool}
-}
-
-// SaveEmailToken 保存邮箱验证 token（同 token 覆盖延长）。
-func (s *PGVerificationStore) SaveEmailToken(ctx context.Context, token, userID string, ttl time.Duration) error {
-	const q = `INSERT INTO verification_tokens (id, user_id, type, token, expires_at)
-		VALUES (md5(random()::text), $2, 'email_verify', $1, $3)
-		ON CONFLICT (token) DO UPDATE SET expires_at = EXCLUDED.expires_at, used_at = NULL`
-	if _, err := s.pool.Exec(ctx, q, token, userID, time.Now().Add(ttl)); err != nil {
-		return wrapDB(err, "save email token")
-	}
-	return nil
-}
-
-// LoadEmailToken 读取未消费未过期的 token 对应的 userID。
-func (s *PGVerificationStore) LoadEmailToken(ctx context.Context, token string) (string, error) {
-	const q = `SELECT user_id FROM verification_tokens
-		WHERE token = $1 AND type = 'email_verify' AND used_at IS NULL AND expires_at > now()`
-	var userID string
-	err := s.pool.QueryRow(ctx, q, token).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", pkgerrors.Wrap(pkgerrors.ErrNotFound, "verification expired")
-	}
+// PostgreSQL rechecks these predicates after waiting for a concurrent row
+// update, so queued requests cannot adopt a revoked actor's newer version.
+func (s *PGStore) UpdateOwnProfile(ctx context.Context, actor Principal, name, timezone string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET name=CASE WHEN $3='' THEN name ELSE $3 END,timezone=$4,row_version=row_version+1 WHERE id=$1 AND status='active' AND token_version=$2`, actor.UserID, actor.TokenVersion, name, timezone)
 	if err != nil {
-		return "", wrapDB(err, "load email token")
+		return wrapDB(err, "update own profile")
 	}
-	return userID, nil
-}
-
-// ConsumeEmailToken 标记 token 已使用（保留行作审计）。
-func (s *PGVerificationStore) ConsumeEmailToken(ctx context.Context, token string) error {
-	const q = `UPDATE verification_tokens SET used_at = now() WHERE token = $1`
-	if _, err := s.pool.Exec(ctx, q, token); err != nil {
-		return wrapDB(err, "consume email token")
+	if tag.RowsAffected() != 1 {
+		return pkgerrors.ErrUnauthorized
 	}
 	return nil
 }
-
-// SaveSMSCode 保存验证码（phone 唯一，同手机号覆盖旧码 = 天然防刷限流辅助）。
-func (s *PGVerificationStore) SaveSMSCode(ctx context.Context, phone, purpose, code string, ttl time.Duration) error {
-	const q = `INSERT INTO sms_verification_codes (id, phone, code, purpose, expires_at)
-		VALUES (md5(random()::text), $1, $2, $3, $4)
-		ON CONFLICT (phone) DO UPDATE SET code = EXCLUDED.code,
-			purpose = EXCLUDED.purpose, expires_at = EXCLUDED.expires_at, created_at = now()`
-	if _, err := s.pool.Exec(ctx, q, phone, code, purpose, time.Now().Add(ttl)); err != nil {
-		return wrapDB(err, "save sms code")
-	}
-	return nil
-}
-
-// LoadSMSCode 读取验证码。
-func (s *PGVerificationStore) LoadSMSCode(ctx context.Context, phone, purpose string) (string, error) {
-	const q = `SELECT code FROM sms_verification_codes WHERE phone = $1 AND purpose = $2 AND expires_at > now()`
-	var code string
-	err := s.pool.QueryRow(ctx, q, phone, purpose).Scan(&code)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", pkgerrors.Wrap(pkgerrors.ErrNotFound, "verification expired")
-	}
+func (s *PGStore) ReplaceOwnAvatar(ctx context.Context, actor Principal, previous, next string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET avatar_url=$4,row_version=row_version+1 WHERE id=$1 AND status='active' AND token_version=$2 AND COALESCE(avatar_url,'')=$3`, actor.UserID, actor.TokenVersion, previous, next)
 	if err != nil {
-		return "", wrapDB(err, "load sms code")
+		cause := wrapDB(err, "replace own avatar")
+		var serverError *pgconn.PgError
+		// Only confirmed integrity-constraint rejection proves this autocommit
+		// statement rolled back. Transport, cancellation and uncertain SQLSTATEs
+		// retain their staged object; wrapping INTERNAL alone proves nothing.
+		if errors.As(err, &serverError) && (serverError.Severity == "ERROR" || serverError.SeverityUnlocalized == "ERROR") && len(serverError.Code) == 5 && serverError.Code[:2] == "23" {
+			return &avatarWriteNotCommitted{cause: cause}
+		}
+		return cause
 	}
-	return code, nil
-}
-
-// ConsumeSMSCode 删除验证码。
-func (s *PGVerificationStore) ConsumeSMSCode(ctx context.Context, phone, purpose string) error {
-	const q = `DELETE FROM sms_verification_codes WHERE phone = $1 AND purpose = $2`
-	if _, err := s.pool.Exec(ctx, q, phone, purpose); err != nil {
-		return wrapDB(err, "consume sms code")
+	if tag.RowsAffected() == 0 {
+		return &avatarWriteNotCommitted{cause: pkgerrors.ErrConflict}
+	}
+	if tag.RowsAffected() != 1 {
+		return pkgerrors.ErrInternal
 	}
 	return nil
 }

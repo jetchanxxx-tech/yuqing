@@ -266,7 +266,7 @@ func TestPGDocumentStore_publishedAtNormalizedToUTC(t *testing.T) {
 }
 
 // TestPGDocumentStore_publishedAtNonStandardDropped 锁定 pg 版对非标准时间串的
-// 处理：TIMESTAMPTZ 无法无损容纳任意字符串，解析失败即存 NULL（读回空串）。
+// Canonical instants remain NULL; the separate original source text survives.
 func TestPGDocumentStore_publishedAtNonStandardDropped(t *testing.T) {
 	pool := pgTestPool(t)
 	st := newPGDocumentStore(pool)
@@ -291,6 +291,10 @@ func TestPGDocumentStore_publishedAtNonStandardDropped(t *testing.T) {
 	for _, d := range got {
 		if d.PublishedAt != "" {
 			t.Errorf("%s PublishedAt = %q, want 空串（非 RFC3339 存 NULL）", d.ID, d.PublishedAt)
+		}
+		expected := map[string]string{"doc-bad": "2026年8月1日 10:00", "doc-date-only": "2026-08-01"}
+		if d.SourcePublishedAt != expected[d.ID] {
+			t.Errorf("original source precision lost: %s %q", d.ID, d.SourcePublishedAt)
 		}
 		if d.Title == "" {
 			t.Errorf("%s Title 丢失", d.ID)
@@ -361,14 +365,13 @@ func TestPGDocumentStore_emptyIDGetsGenerated(t *testing.T) {
 func TestServiceWithPGStore_survivesServiceRebuild(t *testing.T) {
 	pool := pgTestPool(t)
 	tenant := newTestTenant()
-	defer cleanupAnalyses(t, pool, tenant)
 	defer cleanupDocuments(t, pool, tenant)
 	ctx := context.Background()
 
 	q := queue.NewPGQueue(pool, queue.PGQueueOptions{})
 	defer func() { _ = q.Close() }()
 	svc := NewPGService(pool, q, 4)
-	svc.SetBetaSkipCredits(true)
+	seedPGAdmission(t, pool, tenant, 1)
 
 	created, err := svc.Create(ctx, CreateAnalysisRequest{
 		TenantID: tenant, UserID: "user-1", Name: "雅阁后排舆情",

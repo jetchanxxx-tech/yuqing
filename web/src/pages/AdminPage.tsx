@@ -1,30 +1,25 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, App, Button, Card, Descriptions, Input, Popconfirm,
-  Result, Space, Switch, Table, Tabs, Tag, Typography,
+  Alert, App, Button, Card, Descriptions, Input,
+  Result, Space, Switch, Tabs, Tag, Typography,
 } from 'antd';
 import {
-  ReloadOutlined, StopOutlined, SaveOutlined, ApiOutlined,
+  ReloadOutlined, SaveOutlined, ApiOutlined,
   AlipayCircleFilled, WechatFilled, PayCircleOutlined,
 } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
 import {
-  listTenants, suspendTenant,
-  getAdminSettings, updateAdminSettings,
-  type Tenant,
+  adminErrorMessage, getAdminSettings, updateAdminSettings,
 } from '../api/admin';
-import { getPlans, type Plan } from '../api/billing';
 import { useAuth } from '../stores/auth';
-import { formatDateTime } from '../lib/format';
-import { ErrorBlock, EmptyBlock, LoadingBlock } from '../components/PageState';
-
-const ADMIN_ROLES = ['platform_admin', 'admin'];
+import { ErrorBlock, LoadingBlock } from '../components/PageState';
+import UsersTab from './admin/UsersTab';
+import TenantsTab from './admin/TenantsTab';
 
 export default function AdminPage() {
   const { principal } = useAuth();
 
-  const isAdmin = !!principal && principal.roles.some((r) => ADMIN_ROLES.includes(r));
+  const isAdmin = !!principal && principal.roles.includes('platform_admin');
 
   if (!principal) return null;
   if (!isAdmin) {
@@ -41,118 +36,15 @@ export default function AdminPage() {
         管理后台
       </Typography.Title>
       <Tabs
-        defaultActiveKey="tenants"
+        defaultActiveKey="users"
         items={[
-          { key: 'tenants', label: '租户管理', children: <TenantsTab /> },
+          { key: 'users', label: '用户账号管理', children: <UsersTab /> },
+          { key: 'tenants', label: '租户与套餐管理', children: <TenantsTab /> },
           { key: 'datasource', label: '数据源配置', children: <DataSourceTab /> },
           { key: 'notify', label: '通知服务', children: <NotifyTab /> },
           { key: 'payment', label: '支付渠道', children: <PaymentTab /> },
         ]}
       />
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════
-// 租户管理
-// ════════════════════════════════════════════════════════════
-
-function TenantsTab() {
-  const { message } = App.useApp();
-  const queryClient = useQueryClient();
-
-  const tenantsQ = useQuery({ queryKey: ['admin', 'tenants'], queryFn: listTenants });
-  const plansQ = useQuery({ queryKey: ['billing', 'plans'], queryFn: getPlans });
-
-  const suspendQ = useMutation({
-    mutationFn: (id: string) => suspendTenant(id),
-    onSuccess: () => {
-      message.success('操作已提交');
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] });
-    },
-  });
-
-  const planName = (code: string, plans: Plan[]) => plans.find((p) => p.code === code)?.name ?? code;
-
-  const columns: ColumnsType<Tenant> = [
-    {
-      title: '租户',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name: string) => <Typography.Text strong>{name}</Typography.Text>,
-    },
-    {
-      title: '租户 ID', dataIndex: 'id', key: 'id', width: 220,
-      render: (v: string) => <Typography.Text code style={{ fontSize: 12 }}>{v}</Typography.Text>,
-    },
-    {
-      title: '套餐', dataIndex: 'plan_code', key: 'plan_code', width: 130,
-      render: (code: string) => (plansQ.data ? <Tag>{planName(code, plansQ.data)}</Tag> : code),
-    },
-    {
-      title: '状态', dataIndex: 'status', key: 'status', width: 110,
-      render: (s: string) => (
-        <Tag color={s === 'active' ? 'success' : s === 'suspended' ? 'warning' : 'default'}>
-          {s === 'active' ? '正常' : s === 'suspended' ? '已挂起' : s}
-        </Tag>
-      ),
-    },
-    {
-      title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 180,
-      render: (v?: string) => formatDateTime(v),
-    },
-    {
-      title: '操作', key: 'action', width: 120,
-      render: (_, r) =>
-        r.status === 'active' ? (
-          <Popconfirm
-            title="挂起该租户？"
-            description="挂起后租户将无法登录与使用服务"
-            okText="挂起"
-            okButtonProps={{ danger: true }}
-            cancelText="取消"
-            onConfirm={() => suspendQ.mutate(r.id)}
-          >
-            <Button size="small" danger icon={<StopOutlined />}
-              loading={suspendQ.isPending && suspendQ.variables === r.id}>
-              挂起
-            </Button>
-          </Popconfirm>
-        ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ),
-    },
-  ];
-
-  const rows = tenantsQ.data ?? [];
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button icon={<ReloadOutlined />} onClick={() => void tenantsQ.refetch()}
-          loading={tenantsQ.isFetching}>
-          刷新
-        </Button>
-      </div>
-      {suspendQ.isError && (
-        <Alert type="error" showIcon message="挂起操作失败" style={{ marginBottom: 16 }} />
-      )}
-      <Card style={{ borderRadius: 16 }}>
-        {tenantsQ.isLoading ? (
-          <LoadingBlock rows={6} />
-        ) : tenantsQ.isError ? (
-          <ErrorBlock description="租户列表加载失败" onRetry={() => void tenantsQ.refetch()} />
-        ) : rows.length === 0 ? (
-          <EmptyBlock description="暂无租户" />
-        ) : (
-          <Table<Tenant>
-            rowKey="id"
-            columns={columns}
-            dataSource={rows}
-            pagination={{ pageSize: 10, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
-          />
-        )}
-      </Card>
     </div>
   );
 }
@@ -536,16 +428,25 @@ function NotifyTab() {
   const s = settingsQ.data ?? {};
   const emailReady =
     (s.email_provider === 'resend' && !!s.resend_api_key && !!s.email_from_address) ||
-    (s.email_provider === 'smtp' && !!s.smtp_host && !!s.email_from_address);
-  const smsReady = !!s.sms_access_key_id && !!s.sms_template_code;
+    (s.email_provider === 'smtp' && !!s.smtp_host && !!s.smtp_username && !!s.smtp_password && !!s.email_from_address);
+  const smsReady = ['aliyun', 'tencent'].includes(s.sms_provider ?? '') && !!s.sms_access_key_id && !!s.sms_access_key_secret && !!s.sms_sign_name && !!s.sms_bind_phone_template_code && !!s.sms_phone_login_template_code && !!s.sms_phone_reset_template_code && (s.sms_provider !== 'tencent' || !!s.sms_sdk_app_id);
+
+  if (settingsQ.isLoading) return <Card style={{ borderRadius: 16 }}><LoadingBlock rows={8} /></Card>;
+  if (settingsQ.isError) return (
+    <Card style={{ borderRadius: 16 }}>
+      <Alert type="error" showIcon message="通知配置加载失败" description={adminErrorMessage(settingsQ.error)}
+        action={<Button autoInsertSpace={false} loading={settingsQ.isFetching} onClick={() => void settingsQ.refetch()}>重试</Button>} />
+    </Card>
+  );
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {saveQ.isError && <Alert type="error" showIcon message="通知配置保存失败" description={adminErrorMessage(saveQ.error)} />}
       <Alert
         type="info"
         showIcon
         message="邮件与短信通道（独立部署各环境自行配置）"
-        description="邮箱验证、找回密码、告警通知走邮件通道；手机号绑定与后续手机号登录走短信通道。密钥保存在平台配置中，保存后即刻生效、无需重启。"
+        description="邮箱验证、重置密码、换邮箱和激活使用各自用途；短信绑定、登录和找回使用独立模板。本轮验收仅使用隔离沙箱，供应商受理与模拟送达分别验证；真实邮件／短信送达尚未验收。保存配置不会发送测试消息。"
       />
 
       {/* ── 邮件服务 ── */}
@@ -687,14 +588,18 @@ function SmsForm({
   const [akId, setAkId] = useState('');
   const [akSecret, setAkSecret] = useState('');
   const [signName, setSignName] = useState(initial.sms_sign_name || '');
-  const [templateCode, setTemplateCode] = useState(initial.sms_template_code || '');
+  const [templateCode, setTemplateCode] = useState(initial.sms_bind_phone_template_code || '');
+  const [loginTemplate, setLoginTemplate] = useState(initial.sms_phone_login_template_code || '');
+  const [resetTemplate, setResetTemplate] = useState(initial.sms_phone_reset_template_code || '');
   const [sdkAppId, setSdkAppId] = useState(initial.sms_sdk_app_id || '');
 
   const save = () => {
     const patch: Record<string, string> = {
       sms_provider: provider,
       sms_sign_name: signName.trim(),
-      sms_template_code: templateCode.trim(),
+      sms_bind_phone_template_code: templateCode.trim(),
+      sms_phone_login_template_code: loginTemplate.trim(),
+      sms_phone_reset_template_code: resetTemplate.trim(),
     };
     if (akId.trim()) patch.sms_access_key_id = akId.trim();
     if (akSecret.trim()) patch.sms_access_key_secret = akSecret.trim();
@@ -741,9 +646,12 @@ function SmsForm({
         </Typography.Paragraph>
         <Space>
           <Input placeholder="盘古舆情" value={signName} onChange={(e) => setSignName(e.target.value)} style={{ width: 200 }} />
-          <Input placeholder="SMS_12345678" value={templateCode} onChange={(e) => setTemplateCode(e.target.value)} style={{ width: 240 }} />
+          <Input aria-label="绑定手机模板" placeholder="绑定手机模板 ID" value={templateCode} onChange={(e) => setTemplateCode(e.target.value)} style={{ width: 240 }} />
         </Space>
       </div>
+
+      <Input aria-label="手机登录模板" placeholder="手机登录模板 ID（可预配置）" value={loginTemplate} onChange={(e) => setLoginTemplate(e.target.value)} />
+      <Input aria-label="手机找回模板" placeholder="手机找回模板 ID（可预配置）" value={resetTemplate} onChange={(e) => setResetTemplate(e.target.value)} />
 
       <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
         保存短信配置

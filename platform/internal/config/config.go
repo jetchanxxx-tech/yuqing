@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -90,7 +91,8 @@ type ModelConfig struct {
 
 // StorageConfig holds object storage settings.
 type StorageConfig struct {
-	Driver string `yaml:"driver"` // local | s3
+	Driver     string `yaml:"driver"`     // local | s3
+	AvatarRoot string `yaml:"avatarRoot"` // persistent private directory, default data/avatars
 }
 
 // SearchConfig holds full-text search settings.
@@ -150,6 +152,18 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyEnvOverrides(cfg)
+	configFile, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	root := cfg.Storage.AvatarRoot
+	if root == "" {
+		root = "data/avatars"
+	}
+	if !filepath.IsAbs(root) {
+		root = filepath.Join(filepath.Dir(configFile), root)
+	}
+	cfg.Storage.AvatarRoot = filepath.Clean(root)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err

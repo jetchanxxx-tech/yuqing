@@ -27,10 +27,16 @@ from pydantic import BaseModel
 import httpx
 
 from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.usage_bridge import usage_lifespan
+from engines.common.usage_outbox import AccountingDurabilityError
+from engines.common.auth import InternalAuthMiddleware
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
-app = FastAPI(title="Insight Engine", version="0.4.0")
+app = FastAPI(title="Insight Engine", version="0.4.0", lifespan=usage_lifespan)
+if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
+    app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
+
 
 # 每篇文档正文截断长度 —— 维度分析要读到细节，放宽到 3000 字
 MAX_CONTENT_CHARS = 3000
@@ -42,6 +48,7 @@ MAX_MATERIAL_CHARS = 16000
 
 
 class AnalyzeRequest(BaseModel):
+    run_id: str = ""
     documents: list[dict] = []
     analysis_id: str = ""
     analysis_type: str = ""
@@ -56,6 +63,7 @@ class AnalyzeRequest(BaseModel):
 
 
 class SentimentRequest(BaseModel):
+    run_id: str = ""
     documents: list[dict] = []
     model: str = ""
     analysis_id: str = ""
@@ -511,6 +519,8 @@ async def _run_dimensions(
         async with sem:
             try:
                 return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry)
+            except AccountingDurabilityError:
+                raise
             except Exception as exc:
                 # 429/超时类瞬时错误重试一次。首次失败必须留痕（排障依赖它）；
                 # 重试仍失败则异常向上抛，由 gather(return_exceptions=True)
@@ -538,6 +548,8 @@ async def _run_dimensions(
     dims: list[dict] = []
     failed: list[str] = []
     for spec, res in zip(specs, results):
+        if isinstance(res, AccountingDurabilityError):
+            raise res
         if isinstance(res, asyncio.CancelledError):
             failed.append(f"{spec.name}（超时）")
         elif isinstance(res, Exception):
@@ -591,6 +603,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     key = _require_key(req.api_key)
     llm = build_client(key, req.llm_base_url, timeout=900)
+    llm.usage_context = {"run_id": req.run_id, "engine": "insight", "phase": "analyze"}
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
@@ -638,6 +651,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
             topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
             if not isinstance(topics, list):
                 topics = []
+        except AccountingDurabilityError:
+            raise
         except HTTPException:
             raise
         except Exception as exc:
@@ -755,6 +770,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
         )
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("摘要结果为空")
+    except AccountingDurabilityError:
+        raise
     except HTTPException:
         raise
     except Exception as exc:
@@ -781,6 +798,7 @@ async def sentiment(req: SentimentRequest) -> dict:
 
     key = _require_key(req.api_key)
     llm = build_client(key, req.llm_base_url, timeout=900)
+    llm.usage_context = {"run_id": req.run_id, "engine": "insight", "phase": "analyze"}
     briefs = _doc_briefs(req.documents)
     try:
         resp = await llm.chat_json(
@@ -796,6 +814,8 @@ async def sentiment(req: SentimentRequest) -> dict:
             ],
             temperature=0,
         )
+    except AccountingDurabilityError:
+        raise
     except HTTPException:
         raise
     except Exception as exc:

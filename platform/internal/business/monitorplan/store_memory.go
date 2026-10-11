@@ -10,11 +10,14 @@ import (
 )
 
 type MemoryStore struct {
-	mu    sync.Mutex
-	plans map[string]Plan
+	mu     sync.Mutex
+	plans  map[string]Plan
+	sealed map[string]bool
 }
 
-func NewMemoryStore() *MemoryStore { return &MemoryStore{plans: make(map[string]Plan)} }
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{plans: make(map[string]Plan), sealed: map[string]bool{}}
+}
 
 func memoryKey(tenant, id string) string { return tenant + "/" + id }
 
@@ -33,6 +36,9 @@ func (s *MemoryStore) Create(_ context.Context, draft Plan) (*Plan, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.sealed[draft.TenantID] {
+		return nil, ErrConflict
+	}
 	if draft.ID == "" {
 		draft.ID = id.New()
 	}
@@ -62,6 +68,9 @@ func (s *MemoryStore) Update(_ context.Context, tenantID string, draft Plan) (*P
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.sealed[tenantID] {
+		return nil, ErrConflict
+	}
 	old, ok := s.plans[memoryKey(tenantID, draft.ID)]
 	if !ok || tenantID == "" || tenantID != draft.TenantID || old.OwnerID != draft.OwnerID || old.TemplateID != draft.TemplateID || old.TemplateVersion != draft.TemplateVersion {
 		return nil, ErrNotFound

@@ -10,6 +10,8 @@ import { ApiErrorHandler } from './components/ApiErrorHandler';
 
 // —— 路由级代码分割：按页面懒加载，首屏只加载仪表盘 ——
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const PasswordResetPage = lazy(() => import('./pages/PasswordResetPage'));
+const EmailChangePage = lazy(() => import('./pages/EmailChangePage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const TrendsPage = lazy(() => import('./pages/TrendsPage'));
@@ -24,6 +26,7 @@ const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
+const AccountClosurePage = lazy(() => import('./pages/AccountClosurePage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -86,8 +89,13 @@ export default function App() {
               <Suspense fallback={<PageFallback />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/forgot-password" element={<PasswordResetPage />} />
+                  <Route path="/reset-password" element={<PasswordResetPage />} />
+                  <Route path="/activate" element={<PasswordResetPage />} />
+                  <Route path="/email-change" element={<EmailChangePage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/verify-email" element={<VerifyEmailPage />} />
+                  <Route path="/account-closure" element={<RequireAuth><AccountClosurePage /></RequireAuth>} />
                   <Route element={<RequireAuth><MainLayout /></RequireAuth>}>
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<DashboardPage />} />

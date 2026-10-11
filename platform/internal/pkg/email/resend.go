@@ -3,6 +3,8 @@ package email
 import (
 	"context"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/notification"
+	"net/http"
 	"strings"
 	"time"
 
@@ -31,75 +33,45 @@ func NewResendProvider(cfg Config) (*ResendProvider, error) {
 	}, nil
 }
 
-// SendVerificationEmail 发送邮箱验证邮件
+// SendVerificationEmail sends through the same context-aware SDK path.
 func (p *ResendProvider) SendVerificationEmail(ctx context.Context, to, name, verifyURL string) error {
-	html := strings.ReplaceAll(verificationEmailHTML, "{{.Name}}", name)
-	html = strings.ReplaceAll(html, "{{.VerifyURL}}", verifyURL)
-
-	params := &resend.SendEmailRequest{
-		From:    fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress),
-		To:      []string{to},
-		Subject: "验证您的邮箱 - 盘古舆情",
-		Html:    html,
-	}
-
-	_, err := p.client.Emails.Send(params)
-	if err != nil {
-		return fmt.Errorf("resend send email failed: %w", err)
-	}
-
-	return nil
+	body := strings.ReplaceAll(verificationEmailHTML, "{{.Name}}", name)
+	return p.SendRaw(ctx, to, "验证您的邮箱 - 盘古舆情", strings.ReplaceAll(body, "{{.VerifyURL}}", verifyURL))
 }
-
-// SendPasswordResetEmail 发送密码重置邮件
 func (p *ResendProvider) SendPasswordResetEmail(ctx context.Context, to, name, resetURL string) error {
-	html := strings.ReplaceAll(passwordResetEmailHTML, "{{.Name}}", name)
-	html = strings.ReplaceAll(html, "{{.ResetURL}}", resetURL)
-
-	params := &resend.SendEmailRequest{
-		From:    fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress),
-		To:      []string{to},
-		Subject: "重置您的密码 - 盘古舆情",
-		Html:    html,
-	}
-
-	_, err := p.client.Emails.Send(params)
-	if err != nil {
-		return fmt.Errorf("resend send email failed: %w", err)
-	}
-
-	return nil
+	body := strings.ReplaceAll(passwordResetEmailHTML, "{{.Name}}", name)
+	return p.SendRaw(ctx, to, "重置您的密码 - 盘古舆情", strings.ReplaceAll(body, "{{.ResetURL}}", resetURL))
 }
-
-// SendTestEmail 发送测试邮件
 func (p *ResendProvider) SendTestEmail(ctx context.Context, to string) error {
-	html := strings.ReplaceAll(testEmailHTML, "{{.Timestamp}}", time.Now().Format("2006-01-02 15:04:05"))
-
-	params := &resend.SendEmailRequest{
-		From:    fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress),
-		To:      []string{to},
-		Subject: "邮件服务测试 - 盘古舆情",
-		Html:    html,
-	}
-
-	_, err := p.client.Emails.Send(params)
-	if err != nil {
-		return fmt.Errorf("resend send test email failed: %w", err)
-	}
-
-	return nil
+	return p.SendRaw(ctx, to, "邮件服务测试 - 盘古舆情", strings.ReplaceAll(testEmailHTML, "{{.Timestamp}}", time.Now().Format("2006-01-02 15:04:05")))
+}
+func (p *ResendProvider) SendRaw(ctx context.Context, to, subject, body string) error {
+	_, err := p.SendRawReceipt(ctx, to, subject, body)
+	return err
 }
 
-// SendRaw 发送自定义 HTML 邮件。
-func (p *ResendProvider) SendRaw(_ context.Context, to, subject, htmlBody string) error {
-	params := &resend.SendEmailRequest{
-		From:    fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress),
-		To:      []string{to},
-		Subject: subject,
-		Html:    htmlBody,
+// The pinned SDK has no context argument on Emails.Send. Its request and
+// response methods preserve the vendor contract while attaching our context.
+func (p *ResendProvider) SendRawReceipt(ctx context.Context, to, subject, body string) (notification.Receipt, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return notification.Receipt{}, err
 	}
-	if _, err := p.client.Emails.Send(params); err != nil {
-		return fmt.Errorf("resend send email failed: %w", err)
+	req, err := p.client.NewRequest(http.MethodPost, "emails", &resend.SendEmailRequest{From: fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress), To: []string{to}, Subject: subject, Html: body})
+	if err != nil {
+		return notification.Receipt{}, fmt.Errorf("resend request could not be prepared")
 	}
-	return nil
+	response := new(resend.SendEmailResponse)
+	_, err = p.client.Perform(req.WithContext(ctx), response)
+	if err != nil {
+		if ctx.Err() != nil {
+			return notification.Receipt{}, ctx.Err()
+		}
+		return notification.Receipt{}, fmt.Errorf("resend delivery was not accepted")
+	}
+	if strings.TrimSpace(response.Id) == "" {
+		return notification.Receipt{}, fmt.Errorf("resend acceptance receipt missing")
+	}
+	return notification.Accepted("resend", response.Id), nil
 }

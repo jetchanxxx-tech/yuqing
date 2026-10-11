@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/jackc/pgx/v5/pgxpool"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // 订单有效期：二维码超时关闭。渠道侧通常 2h-24h，我们收窄到 15 分钟
@@ -76,7 +78,10 @@ func (s *Service) provider(ctx context.Context, channel string) (Provider, error
 
 // Create 创建订单并发起渠道预下单，返回带二维码的 pending 订单。
 // 金额与额度一律取自服务端目录（billing.ResolveSKU），绝不信任前端。
-func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string) (*Order, error) {
+func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string, actors ...billingpolicy.Actor) (*Order, error) {
+	if len(actors) > 1 {
+		return nil, pkgerrors.ErrBadRequest
+	}
 	sku := billing.ResolveSKU(skuCode)
 	if sku == nil {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "payment: 未知商品 "+skuCode)
@@ -103,6 +108,20 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 		CreatedAt:   createdAt,
 	}
 
+	// Persist the financial blocker before any supplier request. A crash or
+	if len(actors) == 1 {
+		snapshot := actors[0]
+		if snapshot.TokenVersion != nil {
+			v := *snapshot.TokenVersion
+			snapshot.TokenVersion = &v
+		}
+		o.actor = &snapshot
+	}
+	// unknown supplier outcome retains pending for reconciliation; it never
+	// invents paid, closed, refunded or granted state.
+	if err = s.store.Create(ctx, o); err != nil {
+		return nil, err
+	}
 	resp, err := p.CreatePayment(ctx, &CreatePaymentReq{
 		OrderID:     o.ID,
 		Subject:     "盘古舆情 · " + sku.Name,
@@ -115,27 +134,31 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 	o.ProviderTxnID = resp.ProviderTxnID
 	o.TxnTime = resp.TxnTime
 
-	if err := s.store.Create(ctx, o); err != nil {
+	if err := s.store.SavePrecreate(ctx, o); err != nil {
 		return nil, err
-	}
-	// 渠道元数据（预下单号/银联 txnTime）随单落库，查单与核销依赖
-	if resp.ProviderTxnID != "" || resp.TxnTime != "" {
-		if err := s.store.SaveChannelMeta(ctx, o.ID, resp.ProviderTxnID, resp.TxnTime); err != nil {
-			return nil, err
-		}
 	}
 	return o, nil
 }
 
 // Get 查询订单（租户隔离）。paid 但未发放的订单顺带自愈 —— 发放是幂等的，
 // 崩溃窗口（已 paid 未 granted）由每次查询补齐。
-func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+// ReadOnlyGet returns stored tenant-scoped order facts without provider queries
+// or repairing an ungranted payment. It is safe for an unverified historical Key.
+func (s *Service) ReadOnlyGet(ctx context.Context, tenantID, orderID string) (*Order, error) {
 	o, err := s.store.Get(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
 	if o.TenantID != tenantID {
 		return nil, ErrNotFound // 跨租户探测按不存在处理
+	}
+	return o, nil
+}
+
+func (s *Service) Get(ctx context.Context, tenantID, orderID string) (*Order, error) {
+	o, err := s.ReadOnlyGet(ctx, tenantID, orderID)
+	if err != nil {
+		return nil, err
 	}
 	if s.ensureGranted(ctx, o) {
 		o.Granted = true
@@ -285,8 +308,22 @@ func (s *Service) settle(ctx context.Context, p Provider, o *Order, providerTxnI
 	return nil
 }
 
-// grant 发放额度并标记。两次写都幂等（credit 唯一索引 + granted 标志）。
+// grant uses one PG transaction for the actual composed payment/credit graph.
+// Custom test granters retain their explicit interface and replay semantics.
 func (s *Service) grant(ctx context.Context, o *Order) error {
+	if store, ok := s.store.(*MemoryStore); ok {
+		if credits, ok := s.credits.(memoryPurchaseGranter); ok {
+			return store.grantPaid(ctx, o.ID, credits)
+		}
+	}
+	if store, ok := s.store.(*PGStore); ok {
+		if credits, ok := s.credits.(interface{ UsesPool(*pgxpool.Pool) bool }); ok {
+			if !credits.UsesPool(store.pool) {
+				return fmt.Errorf("payment: credit transaction store mismatch")
+			}
+			return store.grantPaid(ctx, o.ID)
+		}
+	}
 	if o.Granted {
 		return nil
 	}

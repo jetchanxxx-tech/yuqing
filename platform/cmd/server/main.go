@@ -35,6 +35,12 @@ func main() {
 	deps := app.Build(cfg, logger)
 	router := api.NewRouter(cfg, logger, deps)
 
+	noticeCtx, stopNotices := context.WithCancel(context.Background())
+	defer stopNotices()
+	go app.RunIdentityNotifications(noticeCtx, deps.Auth, logger)
+	go app.RunAccountClosures(noticeCtx, deps.Closure, logger)
+	go app.RunTaskNotifications(noticeCtx, deps.TaskNotifications, logger)
+
 	// Create HTTP server.
 	srv := &http.Server{
 		Addr:         cfg.Server.Addr,
@@ -58,6 +64,7 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down...")
+	stopNotices()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

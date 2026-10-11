@@ -19,6 +19,7 @@ func TestSentinelErrors_areDistinct(t *testing.T) {
 		{"ErrUnauthorized", ErrUnauthorized},
 		{"ErrConflict", ErrConflict},
 		{"ErrInternal", ErrInternal},
+		{"ErrServiceUnavailable", ErrServiceUnavailable},
 	}
 
 	for i, e1 := range errs {
@@ -54,6 +55,7 @@ func TestCodeFor(t *testing.T) {
 		{ErrUnauthorized, "UNAUTHORIZED", http.StatusUnauthorized},
 		{ErrConflict, "CONFLICT", http.StatusConflict},
 		{ErrInternal, "INTERNAL", http.StatusInternalServerError},
+		{ErrServiceUnavailable, "SERVICE_UNAVAILABLE", http.StatusServiceUnavailable},
 	}
 
 	for _, tt := range tests {

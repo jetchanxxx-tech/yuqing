@@ -3,17 +3,19 @@ package sms
 import (
 	"context"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/notification"
+	"time"
 
-	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
+	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 )
 
 // TencentProvider 腾讯云短信。
 type TencentProvider struct {
-	client    *sms.Client
-	sdkAppID  string
-	signName  string
+	client   *sms.Client
+	sdkAppID string
+	signName string
 }
 
 // NewTencentProvider 创建腾讯云短信 Provider。
@@ -30,29 +32,38 @@ func NewTencentProvider(secretID, secretKey, sdkAppID, signName string) (*Tencen
 
 // Send 发送短信。
 func (p *TencentProvider) Send(ctx context.Context, to, templateID string, params map[string]string) error {
+	_, err := p.SendReceipt(ctx, to, templateID, params)
+	return err
+}
+func (p *TencentProvider) SendReceipt(ctx context.Context, to, templateID string, params map[string]string) (notification.Receipt, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return notification.Receipt{}, err
+	}
+	// All current verification templates have exactly one positional code.
+	if len(params) != 1 || params["code"] == "" {
+		return notification.Receipt{}, fmt.Errorf("invalid SMS template parameters")
+	}
 	req := sms.NewSendSmsRequest()
 	req.SmsSdkAppId = common.StringPtr(p.sdkAppID)
 	req.SignName = common.StringPtr(p.signName)
 	req.TemplateId = common.StringPtr(templateID)
 	req.PhoneNumberSet = common.StringPtrs([]string{to})
-
-	// 转换为参数数组
-	paramArray := make([]string, 0, len(params))
-	for _, v := range params {
-		paramArray = append(paramArray, v)
-	}
-	req.TemplateParamSet = common.StringPtrs(paramArray)
-
-	resp, err := p.client.SendSms(req)
+	req.TemplateParamSet = common.StringPtrs([]string{params["code"]})
+	resp, err := p.client.SendSmsWithContext(ctx, req)
 	if err != nil {
-		return fmt.Errorf("tencent sms send: %w", err)
+		if ctx.Err() != nil {
+			return notification.Receipt{}, ctx.Err()
+		}
+		return notification.Receipt{}, fmt.Errorf("tencent delivery was not accepted")
 	}
-	if len(resp.Response.SendStatusSet) == 0 {
-		return fmt.Errorf("tencent sms: empty response")
+	if resp == nil || resp.Response == nil || len(resp.Response.SendStatusSet) != 1 {
+		return notification.Receipt{}, fmt.Errorf("tencent acceptance receipt missing")
 	}
-	status := resp.Response.SendStatusSet[0]
-	if status.Code != nil && *status.Code != "Ok" {
-		return fmt.Errorf("tencent sms failed: %s - %s", *status.Code, *status.Message)
+	st := resp.Response.SendStatusSet[0]
+	if st == nil || st.Code == nil || *st.Code != "Ok" || st.SerialNo == nil || *st.SerialNo == "" {
+		return notification.Receipt{}, fmt.Errorf("tencent acceptance receipt missing or rejected")
 	}
-	return nil
+	return notification.Accepted("tencent", *st.SerialNo), nil
 }

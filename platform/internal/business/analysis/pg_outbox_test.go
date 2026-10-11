@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 func TestPGCreateAndRerunPublishAtomically(t *testing.T) {
@@ -23,7 +25,7 @@ func TestPGCreateAndRerunPublishAtomically(t *testing.T) {
 	pool := pgTestPool(t)
 	ctx := context.Background()
 	svc := NewPGService(pool, queue.NewPGQueue(pool, queue.PGQueueOptions{}), 1)
-	svc.SetBetaSkipCredits(true)
+	seedPGAdmission(t, pool, "outbox-t1", 4)
 	created, err := svc.Create(ctx, CreateAnalysisRequest{TenantID: "outbox-t1", UserID: "user-1", Name: "persisted", Keywords: []string{"topic"}})
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +37,7 @@ func TestPGCreateAndRerunPublishAtomically(t *testing.T) {
 	if err := svc.Transition(ctx, "outbox-t1", created.ID, string(StateFailed)); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Rerun(ctx, "outbox-t1", created.ID); err != nil {
+	if err := svc.Rerun(ctx, "outbox-t1", created.ID, billingpolicy.Actor{UserID: "user-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Transition(ctx, "outbox-t1", created.ID, string(StateAcquiringBudget)); err != nil {
@@ -54,13 +56,13 @@ func TestPGCreateAndRerunPublishAtomically(t *testing.T) {
 	if err := svc.Transition(ctx, "outbox-t1", created.ID, string(StateFailed)); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Rerun(ctx, "other-tenant", created.ID); err == nil {
+	if err := svc.Rerun(ctx, "other-tenant", created.ID, billingpolicy.Actor{UserID: "user-1"}); err == nil {
 		t.Fatal("cross-tenant rerun accepted")
 	}
 	if _, err := pool.Exec(ctx, `DROP TABLE queue_messages`); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Rerun(ctx, "outbox-t1", created.ID); err == nil {
+	if err := svc.Rerun(ctx, "outbox-t1", created.ID, billingpolicy.Actor{UserID: "user-1"}); err == nil {
 		t.Fatal("rerun succeeded without queue")
 	}
 	unchanged, err := svc.Get(ctx, "outbox-t1", created.ID)
@@ -76,7 +78,7 @@ func TestPGCreateAndRerunPublishAtomically(t *testing.T) {
 	}
 }
 
-func TestPGCreateRejectsWithoutExplicitBetaCreditBypass(t *testing.T) {
+func TestPGCreateWithoutCreditsRejectsAtomically(t *testing.T) {
 	if os.Getenv(pgtest.EnvURL) == "" {
 		t.Skip("YUQING_TEST_PG_URL required: disposable PostgreSQL only")
 	}
@@ -88,8 +90,9 @@ func TestPGCreateRejectsWithoutExplicitBetaCreditBypass(t *testing.T) {
 	q := queue.NewPGQueue(pool, queue.PGQueueOptions{})
 	defer q.Close()
 	svc := NewPGService(pool, q, 1)
+	seedPGAdmission(t, pool, "no-bypass", 0)
 	_, err = svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "no-bypass", UserID: "user-1", Name: "must reject"})
-	if err == nil || !strings.Contains(err.Error(), "atomic reservation") {
+	if !pkgerrors.Is(err, pkgerrors.ErrNoCredits) {
 		t.Fatalf("default PG create err=%v; must fail closed", err)
 	}
 	var count int
@@ -112,7 +115,7 @@ func TestPGCanceledTaskRejectsDocumentsAndDatabaseErrorsFailPipeline(t *testing.
 	pool := pgTestPool(t)
 	ctx := context.Background()
 	svc := NewPGService(pool, queue.NewPGQueue(pool, queue.PGQueueOptions{}), 1)
-	svc.SetBetaSkipCredits(true)
+	seedPGAdmission(t, pool, "documents-t1", 2)
 	canceled, err := svc.Create(ctx, CreateAnalysisRequest{TenantID: "documents-t1", UserID: "user-1", Name: "canceled"})
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +144,7 @@ func TestPGCanceledTaskRejectsDocumentsAndDatabaseErrorsFailPipeline(t *testing.
 		t.Fatal("database write failure swallowed")
 	}
 	p := NewPipeline(svc, &fakeFetcher{docs: sampleDocs(1)}, 5*time.Second, nil)
-	if err := p.Handle(ctx, TaskMessage{TenantID: "documents-t1", AnalysisID: active.ID}); err == nil {
+	if err := p.Handle(ctx, TaskMessage{TenantID: "documents-t1", AnalysisID: active.ID, RunID: active.CurrentRunID}); err == nil {
 		t.Fatal("pipeline reported success without documents")
 	}
 	got, err := svc.Get(ctx, "documents-t1", active.ID)

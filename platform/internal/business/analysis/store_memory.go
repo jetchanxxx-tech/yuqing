@@ -13,16 +13,21 @@ import (
 type memoryStore struct {
 	mu       sync.RWMutex
 	byTenant map[string]map[string]*AnalysisResult
+	sealed   map[string]bool
+	purged   map[string]map[string]bool
 }
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{byTenant: make(map[string]map[string]*AnalysisResult)}
+	return &memoryStore{byTenant: make(map[string]map[string]*AnalysisResult), sealed: map[string]bool{}, purged: map[string]map[string]bool{}}
 }
 
 // put stores a new analysis under its tenant; duplicate IDs conflict.
 func (m *memoryStore) put(_ context.Context, tenantID string, a *AnalysisResult) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.sealed[tenantID] {
+		return pkgerrors.ErrForbidden
+	}
 
 	tenant, ok := m.byTenant[tenantID]
 	if !ok {
@@ -80,6 +85,9 @@ func (m *memoryStore) list(_ context.Context, tenantID string) ([]AnalysisResult
 func (m *memoryStore) mutate(_ context.Context, tenantID, analysisID string, fn func(*AnalysisResult) error) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.sealed[tenantID] {
+		return pkgerrors.ErrForbidden
+	}
 
 	tenant, ok := m.byTenant[tenantID]
 	if !ok {

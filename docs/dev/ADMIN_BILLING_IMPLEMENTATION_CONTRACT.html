@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>K4 计费与唯一管理员豁免实施合同</title>
+  <style>
+    :root{color-scheme:light;--ink:#172338;--muted:#59677b;--line:#d8e1ec;--paper:#fff;--bg:#f4f7fb;--accent:#194c80}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+    header{background:#152e4b;color:#fff;padding:40px max(24px,calc((100vw - 1180px)/2)) 32px}header p{max-width:950px;color:#d9e6f4}h1{font-size:29px;margin:0 0 14px;line-height:1.4}h2{font-size:22px;color:#183a60;margin:0 0 16px}h3{font-size:17px;margin:24px 0 10px}p{margin:10px 0}a{color:var(--accent);text-underline-offset:3px}
+    .meta{display:flex;flex-wrap:wrap;gap:8px}.badge{display:inline-block;border:1px solid #7793b4;border-radius:5px;padding:3px 9px;font-size:13px}.layout{max-width:1228px;margin:26px auto;padding:0 24px;display:grid;grid-template-columns:205px minmax(0,1fr);gap:24px}
+    nav{align-self:start;position:sticky;top:24px}nav a{display:block;padding:7px 0;text-decoration:none;font-size:14px}section{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:25px;margin-bottom:22px;scroll-margin-top:24px}.notice{border-left:4px solid #c18c32;background:#fff8e8;padding:12px 16px}.info{border-left:4px solid #386c9e;background:#edf4fc;padding:12px 16px}
+    ul,ol{padding-left:22px}li{margin:7px 0}table{border-collapse:collapse;width:100%;font-size:14px;margin:15px 0}th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}th{background:#edf2f8;font-weight:650}.table-wrap{overflow-x:auto}code{font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}p code,li code,td code{background:#f0f4f8;padding:1px 4px;border-radius:3px}pre{padding:16px;background:#eff4fa;border:1px solid var(--line);border-radius:5px;overflow:auto;line-height:1.6}.muted{color:var(--muted);font-size:13px}.checklist{list-style:none;padding-left:0}.checklist li::before{content:"□ ";color:var(--accent)}footer{max-width:1180px;margin:0 auto 35px;padding:0 24px;color:var(--muted);font-size:13px}
+    @media(max-width:860px){.layout{display:block}nav{position:static;display:flex;flex-wrap:wrap;gap:0 15px;margin-bottom:20px}section{padding:19px}h1{font-size:24px}}@media print{body{background:#fff;font-size:11px}header{background:#fff;color:#172338;padding:15px 0}header p{color:#59677b}.layout{display:block;padding:0;margin:0}nav{display:none}section{border:0;border-radius:0;padding:15px 0;break-inside:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}pre{white-space:pre-wrap}footer{padding:0}.badge{border-color:#aaa}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>K4 计费与唯一管理员豁免实施合同</h1>
+  <div class="meta"><span class="badge">2026-10-09</span><span class="badge">状态：待实施</span><span class="badge">既有套餐次数收费</span><span class="badge">仅沙箱验收</span></div>
+  <p>目标：只有初始核对为 admin@pangu.com 的固定账号免使用次数和消费限制；其他账号按所选套餐收费。完成 PostgreSQL 原子额度预留后移除全局公测绕过；所有账号的真实用量和供应商成本均须记录。</p>
+  <p class="muted" style="color:#d9e6f4">本合同是实施输入，不是交付或上线证明。用户已授权逐项实施；本文件只定义 K4 增强，不宣称所列接口、迁移或测试已经完成。</p>
+</header>
+<div class="layout">
+  <nav aria-label="合同目录">
+    <a href="#scope">1. 业务规则与边界</a><a href="#evidence">2. 已核对的源码缺口</a><a href="#schema">3. 迁移与账务模型</a><a href="#identity">4. 固定身份与 API Key</a><a href="#interfaces">5. HTTP 与 Go 契约</a><a href="#atomic">6. 原子预留与精确回补</a><a href="#usage">7. Python／Go 用量桥接</a><a href="#pricing">8. 套餐与计价来源</a><a href="#tasks">9. 顺序实施与文件归属</a><a href="#red">10. RED 行为测试</a><a href="#acceptance">11. 云端验收与交付证据</a>
+  </nav>
+  <main>
+    <section id="scope">
+      <h2>1. 业务规则与边界</h2>
+      <p><strong>规格：</strong><a href="../planning/ADMIN_USER_CENTER_DEVELOPMENT_PLAN.html">管理员与用户中心开发计划</a>、2026-10-09 已确认业务规则，以及项目 AGENTS.md。本文覆盖原计划中 K4、D1 的旧公测假设；K1／K2 的实时身份、账号／租户状态和权限约束继续适用。</p>
+      <p><strong>架构：</strong>沿用 Go／Gin／pgx／goose 与 PostgreSQL 15。固定身份政策、套餐解析、报告次数账本和供应商用量各有独立职责；分析准入把它们连接到同一 PG 事务。Python 共同 LLM 层通过内部接口获取本轮调用许可并交付可重投的用量事件。</p>
+      <ul>
+        <li>固定豁免绑定核对后的不可变 <code>users.id</code>。Email 只用于一次定位与核对，不在业务请求中决定豁免；不扩展到其他平台管理员、同团队成员或整个 tenant。</li>
+        <li>固定管理员可在报告额度为零或消费配额已满时创建／重跑；实际余额保持真实值，不能赠送巨大余额、把整个团队升级成免费 Enterprise，或把后台管理权限等同于计费豁免。</li>
+        <li>普通账号 Create／每次用户主动 Rerun 消费 1 次报告额度，失败／取消按当前轮实际消费精确回补；支付金额与发放次数沿用服务端套餐目录。</li>
+        <li>豁免不绕过账号或租户非 active 状态、成员关系、API Key 撤销、接口权限、数据隔离及已有服务资源保护。固定身份仅影响次数／消费限制和用户费用。</li>
+        <li>所有实际供应商调用记录真实 token、模型、供应商成本、调用身份和轮次。免计费不等于不记录；免计费用量不得消耗同团队普通成员的套餐配额。</li>
+        <li>本轮通知和支付适配器使用沙箱：不得实发邮件／短信或实际付款。既有套餐次数收费的实现与验收不依赖真实支付或真实价格联调；真实供应商送达、付款和真实模型成本对账保留为单独未验证项。</li>
+      </ul>
+      <div class="info"><strong>实施方法：</strong>每个下列任务先提交行为 RED 用例，经指定 GitHub 托管工作流确认失败，再实现到 GREEN、独立复核和记录证据。已授权的顺序实施无需重新申请方案许可；涉及认证文件的改动须等待 K1 worker 完成并按已冻结接口衔接。</div>
+      <h3>必须在测试中覆盖的五种交叉情形</h3>
+      <ol>
+        <li>普通成员、另一平台管理员和固定管理员共用 tenant，只有固定 UID 的本轮发起人免费。</li>
+        <li>普通付费完成轮次之后管理员免费重跑失败，不退旧的成功消费。</li>
+        <li>重跑并发、旧消息重投和 worker 重启，不重复扣费，也不让旧轮消息推进新轮状态。</li>
+        <li>API Key 主体与真实创建者不同；未知历史创建者不能获得豁免或伪造 analyses.created_by。</li>
+        <li>供应商已产生用量后发生 JSON 解析失败、任务取消或事件回传失败，成本仍记录且重投不重复记账。</li>
+      </ol>
+    </section>
+
+    <section id="evidence">
+      <h2>2. 已核对的源码缺口</h2>
+      <p class="muted">下列定位来自只读调查；后续 K1 可能改变认证行号，接口实施前只对已完成的提交基线复核，不能读取并覆盖其未完成修改。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>触点</th><th>目前事实</th><th>本合同要求</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/container.go:121–123,292</code></td><td>所有 PG 用户启用 <code>SetBetaSkipCredits(true)</code>；启动要求 <code>YUQING_BETA_SKIP_CREDITS=true</code>。</td><td>原子账务完成后取消生产 bypass 与该启动要求。保留持久 PG 队列及同池检查。</td></tr>
+          <tr><td><code>business/analysis/service.go:214,321</code><br><code>store_pg.go:75,93</code></td><td>未 bypass 的 PG Create／Rerun 直接报 atomic reservation 错误；任务与队列已有事务，但没有额度。</td><td>将额度、消费流水、本轮快照、任务、队列在同一 <code>pgx.Tx</code> 提交。</td></tr>
+          <tr><td><code>api/v1/analyses.go:95–96,256</code></td><td>Create 覆盖客户端 user_id；Rerun 没有传当前发起人。</td><td>Create／Rerun 均使用可信本轮 actor；原始 CreatedBy 只用于资产创建归属。</td></tr>
+          <tr><td><code>credit/credit.go:108</code><br><code>credit/store_pg.go:82</code></td><td>回补只按 analysis_id 查最近未退消费；跨轮误退风险。</td><td>持久 run_id 与 consume_tx_id；当前轮没有消费时绝不回补旧轮。</td></tr>
+          <tr><td><code>apikey/service.go:27,77</code><br><code>middleware/apikey_auth.go:93</code><br><code>0008_report_center.sql:35</code></td><td>Key 无创建者，principal 为 <code>apikey:&lt;id&gt;</code>；analysis 创建者外键却要求真实 users.id。</td><td>补 creator_user_id，保留 Key 认证主体；账务与资产创建者使用真实创建者 ID。</td></tr>
+          <tr><td><code>analysis/pipeline.go:196</code><br><code>app/pipeline.go:128,203</code><br><code>engines/common/llm_client.py:73–87</code></td><td>预算阶段只推进状态；实际 Python LLM 调用未接共享 meter；chat_json 丢弃 usage。</td><td>共同 LLM 层预授权并采集调用事件，解析业务内容之前持久化；Go 幂等接收。</td></tr>
+          <tr><td><code>auth/service.go:138,200</code>（调查基线）<br><code>usage/meter_pg.go:54,81,123</code></td><td>Auth 私有 meter 与共享 meter 未统一；PG 配额保存在内存，查询累计历史 tokens，事件不幂等。</td><td>从真实套餐持久源解析配额；事实用量与计入配额的用量区分，重启不丢配额。</td></tr>
+          <tr><td><code>payment/service.go:79,289</code><br><code>app/pipeline.go:49</code><br><code>api/v1/billing.go:39,61,132</code></td><td>下单用服务端 SKU，付款后写 report_credits.plan_code；旧 subscription／usage 是占位。</td><td>统一实际源，展示真实额度／配额／收费方式；不能把占位返回当事实。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="schema">
+      <h2>3. 迁移与账务模型</h2>
+      <div class="notice"><strong>迁移号冻结建议：</strong><code>0014_account_admin_security.sql</code> 已由 Auth 占用；K4 优先新增 <code>0015_atomic_billing_identity.sql</code>；原验证码迁移顺移到 <code>0016_identity_verification.sql</code>，注销顺移到 <code>0017_account_closure.sql</code>。尚未应用的文件可协调编号；已应用到任何共享环境的版本禁止原地重编号，应追加新的未用版本。此次合同写入不改上述文件。</div>
+      <h3>0015 拟定字段与约束</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>表／列</th><th>拟定类型与约束</th><th>意义与兼容策略</th></tr></thead>
+        <tbody>
+          <tr><td>新 <code>billing_exempt_principals</code></td><td><code>policy_key TEXT PRIMARY KEY CHECK(policy_key='fixed_admin_v1')</code>；<code>user_id TEXT UNIQUE NOT NULL REFERENCES users(id) ON DELETE RESTRICT</code>；<code>policy_version BIGINT NOT NULL DEFAULT 1 CHECK(policy_version=1)</code>；<code>bound_at TIMESTAMPTZ NOT NULL</code>；<code>bound_by TEXT NOT NULL</code>。</td><td>最多一条固定 UID 绑定。业务无写此表接口；DB 触发器拒绝修改 user_id／policy_key 和普通删除。未绑定时无用户免费，不回退 email／role 判断。</td></tr>
+          <tr><td><code>api_keys.creator_user_id</code></td><td>新增可空 <code>TEXT REFERENCES users(id) ON DELETE RESTRICT</code>，索引 creator_user_id。新创建强制非空且不可变。</td><td>历史无证据一律保持 NULL。禁止按 tenant 管理员或唯一成员推断；只允许独立、有审计证据的回填，否则撤销并重新签发。</td></tr>
+          <tr><td>新 <code>analysis_runs</code> 身份</td><td><code>id TEXT PRIMARY KEY</code>；<code>tenant_id TEXT NOT NULL</code>；<code>analysis_id TEXT NOT NULL REFERENCES analyses(id) DEFERRABLE INITIALLY DEFERRED</code>；<code>run_no INTEGER NOT NULL CHECK(run_no&gt;0)</code>；<code>actor_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT</code>；<code>actor_api_key_id TEXT NULL REFERENCES api_keys(id)</code>；<code>UNIQUE(tenant_id,analysis_id,run_no)</code>。</td><td>一次 Create 或用户 Rerun 生成一个不可变 run_id。延迟外键允许同事务先建 run再建分析，提交时必须完整。资产原始创建者与本轮发起者可不同；本轮 actor 不随邮箱、角色、Key 状态变化而被重写。</td></tr>
+          <tr><td><code>analysis_runs</code> 账务快照</td><td><code>plan_code TEXT NOT NULL</code>；<code>catalog_revision TEXT NOT NULL</code>；<code>charge_mode TEXT NOT NULL CHECK(charge_mode IN ('normal','exempt','legacy_unbilled'))</code>；<code>exempt_policy_key TEXT NULL</code>；<code>exempt_policy_version BIGINT NULL</code>；<code>consume_tx_id TEXT NULL REFERENCES credit_transactions(id)</code>；<code>state TEXT NOT NULL</code>；<code>created_at TIMESTAMPTZ NOT NULL</code>；<code>finished_at TIMESTAMPTZ NULL</code>。</td><td>normal 运行被接纳时恰有一笔 consume；exempt 无 consume，且必须有固定政策快照。legacy_unbilled 仅用于已被旧系统接纳的历史轮次，业务 DTO／新运行不得创建该模式。</td></tr>
+          <tr><td><code>analyses.current_run_id</code></td><td>新增 <code>TEXT REFERENCES analysis_runs(id)</code>；历史回填后新运行必须非空。索引 current_run_id。</td><td>管线状态更新和消息处理同时匹配 tenant_id／analysis_id／run_id；原始 created_by 不被 Rerun 改写。</td></tr>
+          <tr><td><code>credit_transactions</code> 关联</td><td>新增可空 <code>run_id TEXT REFERENCES analysis_runs(id)</code>、<code>actor_user_id TEXT</code>、<code>actor_api_key_id TEXT</code>、<code>plan_code_snapshot TEXT</code>；新 consume 使用 <code>UNIQUE(run_id) WHERE reason='consume' AND run_id IS NOT NULL</code>。</td><td>现有 consume_tx_id 与 purchase／refund 唯一索引沿用，不重复新增。新消费每轮至多一次；退款必须指向该轮 consume，不依靠排序查找。</td></tr>
+          <tr><td>新 <code>llm_call_authorizations</code></td><td><code>call_id TEXT PRIMARY KEY</code>；<code>run_id TEXT NOT NULL REFERENCES analysis_runs(id)</code>；<code>engine TEXT NOT NULL</code>；<code>phase TEXT NOT NULL</code>；<code>attempt INTEGER NOT NULL CHECK(attempt&gt;0)</code>；<code>requested_model TEXT NOT NULL</code>；<code>provider_price_version TEXT NULL</code>；<code>price_snapshot JSONB NOT NULL</code>；<code>authorized_at TIMESTAMPTZ NOT NULL</code>；<code>expires_at TIMESTAMPTZ NOT NULL</code>。</td><td>每次实际供应商尝试独立 call_id。绑定运行和服务端价格；过期许可不能开始新供应商调用，已授权调用的晚到成本仍可接收。</td></tr>
+          <tr><td><code>usage_events</code> 幂等与轮次</td><td>新增 <code>event_id TEXT NULL</code>、<code>call_id TEXT NULL REFERENCES llm_call_authorizations(call_id)</code>、<code>run_id TEXT NULL REFERENCES analysis_runs(id)</code>、<code>event_version INTEGER</code>、<code>attempt INTEGER</code>；新事件 <code>UNIQUE(event_id) WHERE event_id IS NOT NULL</code>、<code>UNIQUE(call_id) WHERE call_id IS NOT NULL</code>。</td><td>历史事实不补造调用 ID；同 event／call、同内容重投返回已有结果，异内容 409。以规范化事件 hash 比较完整账务事实。</td></tr>
+          <tr><td><code>usage_events</code> 费用／配额</td><td>新增 <code>billing_exempt BOOLEAN</code>、<code>quota_tokens BIGINT CHECK(quota_tokens&gt;=0)</code>、<code>usage_status TEXT CHECK(usage_status IN ('reported','unknown'))</code>、<code>cost_status TEXT CHECK(cost_status IN ('known','pending'))</code>、<code>provider_price_version TEXT</code>、<code>provider_request_id TEXT</code>、<code>event_hash TEXT</code>。保留现有 token／cost_micro_cny／billed_micro_cny／engine／user_id。</td><td>user_id 是真实账务 actor，API Key ID 从 run 追踪。管理员 quota_tokens=0，但实际 token／供应商成本照录。未知成本用 pending 区分，不能将默认 0 宣称为已核对零成本。</td></tr>
+        </tbody>
+      </table></div>
+      <p>先建 analysis_runs，再加两端关联外键；事务内先写未关联消费的 run，写 consume 后回填 consume_tx_id。通过事务结束时的约束触发器或同等数据库约束保证 normal／exempt 的配对关系、tenant／analysis 一致和 current_run 唯一，不只依赖 handler 自律。</p>
+      <h3>历史数据与切换</h3>
+      <ul>
+        <li>旧已接纳分析按可信 <code>analyses.created_by</code> 生成可追踪历史轮次。仅有明确、一对一的当前消费证据才关联旧 consume；无扣费的旧公测轮次标记 legacy_unbilled，禁止追扣、补造收费或重置余额。</li>
+        <li>旧流水无法明确证明轮次时保留原账本并列入待对账清单；新退款路径不擅自领取这类旧消费。历史财务事实不能被 K4 覆盖。</li>
+        <li>切换时停止接纳新任务，协调 server／worker 同版和迁移；确认旧排队任务的 run 映射。旧缺 run_id 消息只可匹配仍为 legacy_unbilled 的当前历史轮次；分析已进入新轮后旧消息是 no-op 并记录审计。</li>
+        <li>后续用户 Rerun 一律创建 normal 或 fixed-UID exempt 新轮。历史免费模式不构成任何账号未来使用的豁免。</li>
+      </ul>
+    </section>
+
+    <section id="identity">
+      <h2>4. 固定身份与 API Key</h2>
+      <h3>一次绑定 CLI</h3>
+      <pre><code>yuqing-cli bind-billing-exempt-admin --expected-user-id &lt;verified-users.id&gt;
+yuqing-cli bind-billing-exempt-admin --expected-user-id &lt;verified-users.id&gt; --apply</code></pre>
+      <p>无 apply 只做预检。apply 在 PG 事务内直接查询唯一 <code>admin@pangu.com</code> 账号，核对与 expected-user-id 相同、账号有效以及管理员身份来源真实，写固定政策与审计。该核对不是读取调用方 JWT email，也不等同于要求发送新的验证邮件。绑定到同一 UID 重放幂等；已绑定别的 UID 返回 409，不能覆盖。后续改邮箱不改变豁免 UID，新建同邮箱账号不能继承。</p>
+      <p>运行政策解析只用绑定 UID 和可信本轮 actor；lookup 失败应拒绝准入，不能自动免计费。政策表为空则所有新轮正常收费。普通业务接口不能接受 policy_key／exempt／charge_mode。固定账号即使持有管理角色以外的角色，也不把角色本身当成豁免条件；账号和租户状态仍按 K1／K2 阻断。</p>
+      <h3>API Key 的身份分工</h3>
+      <ul>
+        <li><strong>认证主体：</strong><code>apikey:&lt;key_id&gt;</code> 与 api_service／Key scopes 保持独立；保存 creator 不授予 Key 平台管理员权限，也不允许 Key 进入用户换密／换邮箱／注销。</li>
+        <li><strong>计费 actor：</strong>从已验证 Key 元数据读取 immutable creator_user_id；服务端再次检查该用户、成员关系、Key 与 tenant 当前状态。不能从请求 JSON、Key 名称、tenant plan 或 email 推断。</li>
+        <li><strong>资产创建者：</strong>Create 写入真实 creator_user_id，满足 analyses.created_by 外键；本轮保存 actor_api_key_id 供审计。普通 JWT Create 写登录用户 ID。</li>
+        <li><strong>历史未知 Key：</strong>只要旧权限和 tenant 状态允许，可保留既有只读能力；Create／Rerun／LLM 新消费及创建子 Key 返回 <code>403 API_KEY_OWNER_UNVERIFIED</code>，提示重新签发。不能假造用户记录或借整个 tenant 免计费。</li>
+        <li><strong>固定管理员本人签发的 Key：</strong>仅可信 creator 命中固定 UID 才继承该账号的账务豁免；同 tenant 其他用户签发的 Key 正常收费。Key 撤销或 creator 失效后不能开始新调用。</li>
+      </ul>
+    </section>
+
+    <section id="interfaces">
+      <h2>5. HTTP 与 Go 契约（拟定）</h2>
+      <h3>对外 API</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>接口</th><th>请求与服务端数据</th><th>结果</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /api/v1/analyses</code></td><td>现有业务 body；tenant／actor／Key ID 由实时认证上下文覆盖，客户端不能传运行或费用身份。</td><td>201 返回现有分析对象及 current_run_id。普通零额度 402 NO_CREDITS；身份／租户失效 403；任何事务失败无孤立任务。</td></tr>
+          <tr><td><code>POST /api/v1/analyses/:id/rerun</code></td><td>本轮 actor 来自当前请求，不能取原始 CreatedBy。终态校验、准入和新 run 原子。</td><td>200 返回新 current_run_id；活动任务重跑 409 CONFLICT；跨 tenant 404；无额度 402。</td></tr>
+          <tr><td><code>POST /api/v1/apikeys</code></td><td>现有 name／scopes，服务端强制保存真实 creator_user_id。</td><td>201 的元数据增加 creator_user_id；raw key 仍只显示一次，hash 不返回。</td></tr>
+          <tr><td><code>GET /api/v1/billing/credits</code></td><td>保留真实 balance／plan_code，增加 effective_plan_source、charging_model、billing_exempt、limit_mode、effective_remaining_reports。</td><td>收费方式 report_credit；普通 effective_remaining_reports=balance。固定管理员 limit_mode=unlimited、effective_remaining_reports=null，仍显示真实账本 balance，避免伪造高余额。</td></tr>
+          <tr><td><code>GET /api/v1/billing/usage</code></td><td>替换占位：actual_tokens、quota_tokens_used、token_quota、budget_mode、billing_exempt、period_start／period_end、cycle_status。</td><td>事实累计与限制累计分别显示；没有真实周期时周期为 null、cycle_status=not_configured，不伪造重置日或月度剩余。</td></tr>
+          <tr><td>既有套餐／订单 API</td><td>仍由服务端 ResolveSKU 定价，普通购买／回调核销与 ledger 幂等沿用。</td><td>不把 fixed-admin 免费使用误报成 paid 订单，也不把沙箱交易展示成真实已付款。</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Go 领域接口</h3>
+      <pre><code>// platform/internal/platform/billingpolicy/policy.go（拟新增）
+type Actor struct { UserID string; APIKeyID string }
+type Decision struct {
+    Exempt bool
+    PolicyKey string
+    PolicyVersion int64
+    PlanCode string
+    CatalogRevision string
+}
+type Policy interface {
+    ResolveTx(ctx context.Context, tx pgx.Tx,
+        tenantID string, actor Actor) (Decision, error)
+}
+
+// platform/internal/platform/apikey/service.go
+func (s *Service) CreateKey(ctx context.Context,
+    tenantID, creatorUserID, name string, scopes []string) (*APIKey, string, error)
+// APIKey 新增 CreatorUserID string；为空只表示旧 Key 的未知归属。
+
+// platform/internal/api/middleware/apikey_auth.go
+func GetAPIKey(c *gin.Context) *apikey.APIKey
+// platform/internal/api/v1/billing_actor.go（拟新增）
+func resolveBillingActor(c *gin.Context) (billingpolicy.Actor, error)
+
+// platform/internal/business/analysis/service.go
+// CreateAnalysisRequest.UserID 保存真实 actor；新增 APIKeyID string `json:"-"`。
+func (s *Service) Create(ctx context.Context,
+    req CreateAnalysisRequest) (*AnalysisResult, error)
+func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string,
+    actor billingpolicy.Actor) error
+func (s *Service) TransitionRun(ctx context.Context,
+    tenantID, analysisID, runID, to string) error
+func (s *Service) markFailedRun(ctx context.Context,
+    tenantID, analysisID, runID, code string) error
+func (s *Service) RecoverInterrupted(ctx context.Context,
+    tenantID, analysisID, runID string) error
+// Cancel 仍接受 tenant/analysis，在事务锁内解析 current_run_id。
+// 文档／洞察／报告写入同样必须校验具体 run_id，不能只改状态方法。
+
+// platform/internal/business/analysis/runs.go（拟新增）
+type Run struct {
+    ID, TenantID, AnalysisID string
+    RunNo int
+    Actor billingpolicy.Actor
+    Decision billingpolicy.Decision
+    ChargeMode, ConsumeTxID, State string
+    CreatedAt time.Time
+    FinishedAt *time.Time
+}
+type TaskMessage struct {
+    TenantID string `json:"tenant_id"`
+    AnalysisID string `json:"analysis_id"`
+    RunID string `json:"run_id"`
+}
+
+// platform/internal/platform/credit/credit.go
+type Reservation struct {
+    TenantID, AnalysisID, RunID string
+    ActorUserID, ActorAPIKeyID, PlanCode string
+}
+func (s *Service) TryConsumeTx(ctx context.Context, tx pgx.Tx,
+    r Reservation) (*Transaction, error)
+func (s *Service) RefundRunTx(ctx context.Context, tx pgx.Tx,
+    tenantID, runID string) (bool, error)
+
+// platform/internal/platform/billing/entitlements.go（拟新增）
+type Budget struct {
+    PlanCode string
+    Mode llm.BudgetMode
+    TokenQuota int64
+    PeriodStart, PeriodEnd *time.Time
+    CycleStatus string
+}
+func (s *EntitlementService) EffectiveBudget(ctx context.Context,
+    tenantID string) (Budget, error)</code></pre>
+      <p>以上属于接口冻结草案。K1 的 Principal 内部字段由身份负责人拥有；K4 通过已验证的 principal 和 Key 元数据构造 Actor，不擅自改变 token 类型／权限接口。APIKey principal.UserID 可继续保留 Key 主体；asset 与账务使用独立的 Actor.UserID。</p>
+      <p><code>TryConsumeTx</code> 只能用与分析／队列相同的 PG pool 事务；需补 pool 一致性检查。固定豁免由准入层决定是否预留，不把免计费混入普通负余额／赠额逻辑。Memory 测试保持行为一致；生产 PG 禁止 nil 闸门或开关静默放行。</p>
+    </section>
+
+    <section id="atomic">
+      <h2>6. 原子预留与精确回补</h2>
+      <h3>Create／Rerun 的唯一准入事务</h3>
+      <ol>
+        <li>服务端构造可信 Actor 与新的 run_id；Rerun 不继承原始资产作者的豁免。开始同池 PG 事务。</li>
+        <li>遵循锁顺序 <strong>tenant → actor user → analysis → report_credits</strong>；状态检查使用可阻止并发状态更新的共享行锁，分析重跑使用 FOR UPDATE。与 K1／K2 状态写入负责人统一锁顺序。</li>
+        <li>复核 active 状态、成员／权限／Key；从 report_credits 当前来源解析套餐，读取固定 UID 政策；在事务中写本轮 actor、套餐与豁免快照。</li>
+        <li>普通轮次条件 UPDATE 余额减 1，不足返回 NO_CREDITS；写该 run 唯一消费流水并保存 consume_tx_id。固定管理员不改余额，不写假 consume。</li>
+        <li>Create 写 analyses；Rerun 确认终态、建立 run_no+1、清旧文档／产物、更新 current_run_id。原始 CreatedBy 保持不变。</li>
+        <li>通过 <code>PGQueue.PublishTx</code> 写携带 tenant／analysis／run ID 的新消息，最后一次 Commit。扣费、流水、run、分析、文档清理、队列任意失败全部 Rollback。</li>
+      </ol>
+      <h3>worker、恢复和终态</h3>
+      <ul>
+        <li>领取任务后检查消息 run_id 与 analyses.current_run_id／analysis_runs.id 一致，持有运行锁。旧轮、终态或重复已完成消息 no-op；不能把旧消息视为一次新的用户 Rerun。</li>
+        <li>进程中断恢复沿用同一个 run_id 和 consume_tx_id，不产生第二次消费。新用户主动 Rerun 才创建新轮；所有状态、文档及报告关联写入必须检查当前 run。</li>
+        <li>Cancel／markFailed 在同事务中锁分析和当前 run，只有当前活动轮次发生终态跃迁才调用 RefundRunTx。它直接读取该轮 consume_tx_id；exempt／legacy 无消费返回 false，不查 analysis 最近旧流水。</li>
+        <li>refund 仍以 consume_tx_id 唯一索引保证一扣至多一退。状态提交与退款不能分成“先 failed，再尽力回补”的两个事务；回补失败时整笔状态变更回滚并交给任务重试。</li>
+        <li>补偿退款是系统账务动作，不因原 actor 后来被禁用而拒绝；禁止继续新增外部调用，但已发生供应商成本和合法退款必须结清并可追踪。</li>
+      </ul>
+      <div class="notice"><strong>关键验收：</strong>普通用户完成收费轮次 → 固定管理员免费重跑 → 新轮失败／取消，团队余额不增长，旧成功 consume 不得被退款。反向切换为普通用户重跑时，新轮必须收费。</div>
+      <p>完成新原子路径及云端证明后，删除 production <code>SetBetaSkipCredits(true)</code> 接线、beta env 启动门槛和 PG 错误分支。推荐移除整个可用 bypass setter，现有 PG fixture 改为真实测试额度；server、worker、E2E 配置和旧断言同步更新，不能留环境变量再次放行普通账号。</p>
+    </section>
+
+    <section id="usage">
+      <h2>7. Python／Go 用量桥接与幂等落库</h2>
+      <p>实际管线经过 Python HTTP 引擎，单独修改未接线的 Go MeteredProvider 无法完成 K4。以下契约覆盖 insight 的多维并发、报告 LLM、retry、JSON 解析失败及晚到事件。</p>
+      <h3>内部接口</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>接口</th><th>请求</th><th>服务端结果</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /internal/v1/billing/llm-authorizations</code></td><td><code>{call_id,run_id,engine,phase,attempt,model}</code>。call_id 每次实际供应商尝试唯一；不接受 user_id／tenant_id／exempt 决策。</td><td>从 run 解析 actor／tenant／政策快照，复核当前状态、Key、hard cap及真实套餐；201 返回 call_id、有效期与绑定请求内容的许可。相同请求重放200；异参409；配额拒绝402 TOKEN_QUOTA_EXCEEDED。</td></tr>
+          <tr><td><code>POST /internal/v1/billing/usage-events</code></td><td><code>{event_id,call_id,event_version,attempt,actual_model,provider_request_id,usage_status,prompt_tokens,completion_tokens,cache_tokens,outcome}</code>。</td><td>核对内部调用凭据与原许可，从持久 run 取得身份和账务快照；201 已提交、相同事件重投200、异内容409。真实成本按供应商价格版本计算，不接受任意客户端指定用户账单。</td></tr>
+        </tbody>
+      </table></div>
+      <p>两端点只开放内网／loopback 服务路由，要求独立服务认证；普通 JWT、tenant API Key 和浏览器不能写入。事件接口另在 <code>X-LLM-Call-Permit</code> 头提交原调用许可；outbox保留许可直到ACK。秘钥从配置或受控环境注入，不提交到源码、不回显日志。Token计数必须非负，attempt必须与原许可一致，engine／phase按服务端允许值验证。只有 Go 根据运行与许可决定 quota／费用身份；取消后的晚到已授权用量仍须记入事实账本。</p>
+      <h3>数据类型与桥接签名</h3>
+      <pre><code>// platform/internal/platform/usage/events.go（拟新增）
+type CallAuthorizationRequest struct {
+    CallID, RunID, Engine, Phase, Model string
+    Attempt int
+}
+type CallAuthorization struct {
+    CallID string
+    ExpiresAt time.Time
+    Permit string
+}
+type ProviderUsageEvent struct {
+    EventID, CallID, ActualModel, ProviderRequestID string
+    EventVersion, Attempt int
+    PromptTokens, CompletionTokens, CacheTokens int64
+    UsageStatus, Outcome string
+}
+type CostQuote struct {
+    CostMicroCNY *int64
+    PriceVersion, Status string
+}
+type AuthorizedCall struct {
+    Request CallAuthorizationRequest
+    ProviderPriceVersion string
+    PriceSnapshot json.RawMessage
+}
+func (s *CallService) Authorize(ctx context.Context,
+    req CallAuthorizationRequest) (CallAuthorization, error)
+func (s *CallService) Record(ctx context.Context,
+    e ProviderUsageEvent, permit string) (duplicate bool, err error)
+type ProviderPricer interface {
+    Quote(ctx context.Context, authorization AuthorizedCall,
+        event ProviderUsageEvent) (CostQuote, error)
+}
+
+// engines/common/llm_client.py 与拟新增 usage_bridge.py / usage_outbox.py
+class UsageContext:
+    run_id: str
+    engine: str
+    phase: str
+
+async def authorize_call(context: UsageContext, call_id: str,
+                         model: str, attempt: int) -&gt; dict: ...
+def persist_usage_event(event: dict) -&gt; str: ...
+async def deliver_pending_usage_events() -&gt; int: ...
+
+// analysis.InsightRequest / ReportRequest 与 Go/Python 引擎 request DTO
+// 新增 RunID；Python 接到的是内部真实轮次，不接受浏览器指定豁免身份。</code></pre>
+      <h3>每一次供应商调用的顺序</h3>
+      <ol>
+        <li>Go pipeline 将当前 run_id 传给 insight／report；共同 LLMClient 在每次供应商调用及每次 retry 前创建 call_id，并申请许可。hard cap 到阈值后拒绝新的普通调用；固定 UID跳过消费闸门，仍建调用记录。</li>
+        <li>取得许可后调用既有供应商。返回时立即提取真实 model／usage／request ID，先把事件写入配置的持久 outbox，再解析 JSON 或做完整性判断；发生截断或无效 JSON 的已用 token 不能丢弃。</li>
+        <li>outbox 使用每事件独立 JSON 文件、临时文件写入、fsync 和原子替换；目录挂载到持久卷，启动及周期重投。相同逻辑事件只用同一 event_id。Go ACK 且确定事务已提交后才移除文件；ACK 丢失时重投不重复入账。</li>
+        <li>Go 在事务内核对许可、事件 hash和唯一键，插入 usage_events；identity、exempt、quota_tokens 和费用口径全部由服务端补齐。event/call 同参重放无新增事实，异参冲突不覆盖原事实。</li>
+        <li>任务失败或被取消仍记录已授权调用成本。已获得正常 usage 的失败输出照常计入真实消费配额；管理员实际 tokens保留但 quota_tokens=0。用户的 report credit 回补与供应商实际成本是两份不同事实。</li>
+      </ol>
+      <h3>不能伪造的未知值</h3>
+      <ul>
+        <li>SSE 开启供应商支持的 usage 返回选项；cache tokens 按该供应商明确口径归一，若已包含在 prompt_tokens 中不得再重复累加。</li>
+        <li>网络超时、进程崩溃或供应商未返回 usage 时记录 unknown 及调用证据，不能用字符数估计冒充真实 token，也不能把 0 当成核对过的供应商成本。保留 call_id／request ID并列出待对账调用。</li>
+        <li>无可核对供应商价格时 cost_status=pending；沙箱验收注入有版本的测试价格与真实形式 usage，验证计算和留存。生产实际成本完整性须以配置的真实供应商价格／审计记录单独证明，不能用沙箱通过冒充。</li>
+        <li>累计 token 查询改用 quota_tokens。实际统计查询仍保留全部 tokens和成本；不通过整 tenant 过滤掉管理员事件。配额来自 EffectiveBudget 的持久套餐源，重启不能回到无限制。</li>
+        <li>hard cap沿用调用前检查语义：已接纳调用的最终真实用量可能跨过阈值，后续新调用被拒。不能截断已发生的真实账务数量；若未来要求 token 预算并发严格预留，需单独定义供应商 max-token预留合同。</li>
+      </ul>
+    </section>
+
+    <section id="pricing">
+      <h2>8. 套餐与计价来源</h2>
+      <p>既有事实源为 <code>report_credits.balance／plan_code</code>、服务端 <code>billing.DefaultPlans／ResolveSKU</code> 和经过支付核验的订单／购买流水。不得以 JWT plan、tenants.plan_code 的旧值或 placeholder subscription 响应覆盖该源。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>已有目录</th><th>价格与报告次数</th><th>token／模式</th></tr></thead>
+        <tbody>
+          <tr><td>free／体验</td><td>注册赠 1 次；不是每月出售套餐，也不因邮箱验证再次赠送。</td><td>1M、hard_cap、quick。</td></tr>
+          <tr><td>lite／速览</td><td>¥99，服务端金额 9900 分；4 次。</td><td>5M、hard_cap、quick。</td></tr>
+          <tr><td>pro／研判</td><td>¥999，99900 分；10 次。</td><td>50M、hard_cap、full。</td></tr>
+          <tr><td>enterprise／旗舰</td><td>¥4999，499900 分；50 次。普通 Enterprise 仍消耗报告次数。</td><td>已有目录为 token BudgetNone；该套餐字段不构成所有限制免除。</td></tr>
+          <tr><td>addon_report</td><td>¥69，6900 分；加购 1 次，不改套餐代码。</td><td>沿用当前套餐。</td></tr>
+        </tbody>
+      </table></div>
+      <ul>
+        <li>商品价格和次数使用服务端 ResolveSKU；“选择套餐”不是已付款开通，必须完成沙箱支付适配器的同等验签／金额／订单状态／幂等行为。</li>
+        <li>普通用户的收费依据是订单价格和每轮 <code>consume -1</code>，不是每次 LLM 额外扣现金。此次不得新增 UserInputPricePerM／UserOutputPricePerM 或未确认超额单价。</li>
+        <li>现有按报告次数收费模型下，LLM 用量的 <code>billed_micro_cny=0</code> 表示没有额外 token 现金费用；普通用户仍正常扣 report credit。固定管理员也没有 report consume；通过 billing_exempt／run charge_mode区分，不能把用量字段 0 误解释为所有普通用户免费。</li>
+        <li>供应商成本与用户售价分开。ProviderPricer只算平台成本，并存价格版本；固定管理员仍计算同样实际成本，其用户应付为零。沙箱可注入明确测试成本，不能向外声称这些就是实际供应商价格。</li>
+        <li>套餐功能、报告格式及保留期仍取现有目录；不利用豁免给同 tenant 增加特性。套餐变更后新 run按当前实际套餐取快照；已有 run不因刷新 JWT或运行中购买而被重算费用。</li>
+        <li>本轮不新增余额到期、自动月度清零、订阅续费或历史追扣。已有可用且真实的周期记录可作为配额窗口；没有真实周期则按既有累计窗口统计并显示 not_configured，不凭空制造下一重置时间。</li>
+      </ul>
+      <div class="info">既有次数收费可以在没有任何真实付款、真实短信／邮件、真实供应商价格联调的条件下实现并验收。交易沙箱只验证代码行为，实际支付／模型成本对账未验证这一事实须在交付状态中明确保留。</div>
+    </section>
+
+    <section id="tasks">
+      <h2>9. 顺序实施与文件归属</h2>
+      <p>所有步骤受 GitHub 托管构建／测试政策约束。任务顺序为 B1 → B2 → B3 → B4 → B5；每项应具备独立行为证据，再进入下一项。遇到实质失败先修复新提交，不能用本地编译兜底。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>任务与依赖</th><th>拟新增／修改文件</th><th>输入 → 可验收输出</th></tr></thead>
+        <tbody>
+          <tr><td>B1 固定身份与 Key 归属<br>依赖 K1／K2完成接口</td><td>新 <code>platform/internal/platform/billingpolicy/{policy.go,store_pg.go,policy_test.go,policy_pg_test.go}</code>；<code>platform/cmd/cli/main.go</code> 与拟新增命令测试；apikey service／PG／memory store及测试；新 <code>api/v1/billing_actor.go</code>；middleware Key 元数据；0015 身份部分。</td><td>消费 K1有效身份与成员状态；产出 ResolveTx、CreatorUserID、CLI绑定及普通／固定账号隔离。未知历史 Key写操作有明确错误。</td></tr>
+          <tr><td>B2 分析原子账务<br>依赖 B1</td><td>新 <code>business/analysis/{runs.go,runs_pg_test.go}</code>；service／store_pg／pipeline／insight及相关tests；credit服务／PG事务方法及tests；<code>api/v1/analyses.go</code>；<code>app/container.go</code>；queue_wiring、worker tests；0015 run／credit部分。</td><td>消费 ResolveTx、可信Actor；产出原子 Create／Rerun、当前轮退款和run消息。禁止全局bypass，故障/并发/恢复不多扣多退。</td></tr>
+          <tr><td>B3 实际用量桥接<br>依赖 B2</td><td>新 <code>platform/internal/platform/usage/{events.go,call_service.go,call_service_pg.go}</code> 及tests；内部usage API与router；engine契约／app adapters；新 <code>engines/common/{usage_bridge.py,usage_outbox.py}</code>；LLMClient、insight/report DTO；新Python行为tests；0015许可／usage部分。</td><td>消费run快照和内部service认证；产出逐供应商调用预授权、持久事件、成本／配额分离和幂等重投。包括失败输出实际用量。</td></tr>
+          <tr><td>B4 真实权益展示<br>依赖 B2／B3</td><td>新 <code>billing/entitlements.go</code> 及tests；<code>api/v1/billing.go</code>与contract tests；<code>usage/meter_pg.go</code>；<code>web/src/api/billing.ts</code>、SettingsPage对应组件；Auth principal套餐读取衔接由K1负责人审查。</td><td>消费report_credits实际源；产出真实余额／套餐／配额／豁免展示。未有真实周期、订单和统计时不补占位数据。</td></tr>
+          <tr><td>B5 集成与交付<br>依赖 B1–B4</td><td>沙箱payment／engine test fixtures；<code>web/e2e/account-admin.config.ts</code>及产品用例；指定 workflows 与事件验证脚本；<code>docs/dev/ADMIN_USER_CENTER_DELIVERY_STATUS.html</code>。</td><td>全链沙箱证明购买→普通扣次→退款／管理员免计费→真实形式成本记录；记录exact SHA／run／non-skip及未验证供应商项。</td></tr>
+        </tbody>
+      </table></div>
+      <ul class="checklist">
+        <li>每项先加入该项具名 RED 用例，云端确认业务失败原因符合预期；不能把缺依赖、语法或环境失败当业务 RED。</li>
+        <li>实现该项所定义的接口和约束；同步受影响调用点、旧fixture和schema assertions。</li>
+        <li>指定云端工作流完成GREEN、独立diff审查和必要的并发／故障行为检查。</li>
+        <li>追加实际提交与run证据后标记完成；任何供应商事实未知须保留明确状态。</li>
+      </ul>
+      <p>0015应一次形成完整可执行迁移，避免把已应用的0015按后续任务反复改写；若采取分提交开发，在任何共享数据库应用前把完整schema冻结。Auth、accountadmin、验证码与注销由其各自worker负责；K4不能覆盖他们的中间修改。协调接口可以发消息，不以重置／回退共享文件解决冲突。</p>
+    </section>
+
+    <section id="red">
+      <h2>10. RED 行为测试清单</h2>
+      <p>以下是拟编写的具名验收，不是当前测试结果。现有可复用夹具：<code>analysis.newFakeCredits／newGatedService／failingQueue</code>、<code>analysis.pgTestPool</code>、<code>creditServiceContract</code>、<code>llm.mockProvider／mockMeter</code>、<code>middleware.newAPIKeyFixture／keyRouter／doBearer</code>。PG资金安全用真实测试credit store与同池事务证明，不能只用mock。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>ID／拟定测试名</th><th>必须断言的行为</th><th>归属</th></tr></thead>
+        <tbody>
+          <tr><td>R01 <code>TestFixedAdminBindingIsImmutableAndIdempotent</code></td><td>核对唯一初始email与expected UID；同UID重放无重复审计；不同UID／改绑定409；空政策无免费。</td><td>B1 policy／CLI PG</td></tr>
+          <tr><td>R02 <code>TestExemptionDoesNotFollowRoleTenantOrTokenEmail</code></td><td>同tenant普通用户与另一platform_admin均扣次；伪造body email／UID无效；固定UID改邮箱仍绑定，替代账号不继承。</td><td>B1／B2 API＋PG</td></tr>
+          <tr><td>R03 <code>TestAPIKeyCreatorPersistsAndUnknownOwnerCannotWrite</code></td><td>PG重建store后creator仍在；known owner写created_by真实ID；历史NULL只读无豁免，Create／Rerun403且无副作用。</td><td>B1 apikey PG／middleware</td></tr>
+          <tr><td>R04 <code>TestFixedAdminAPIKeyCannotGrantPlatformAuthority</code></td><td>固定owner Key免计费而仍只有Key scopes；普通owner Key正常扣次；撤销Key／禁用owner拒绝新消费与用户中心操作。</td><td>B1／B2权限／API</td></tr>
+          <tr><td>R05 <code>TestPGCreateWithoutBetaFlagConsumesExactlyOne</code></td><td>不设旧env，有1次额度→1任务+1消息+1normal run+1consume，余额0；零额度402，无孤立run／task／message。</td><td>B2原子PG</td></tr>
+          <tr><td>R06 <code>TestPGFixedAdminWithZeroBalanceCreatesAndReruns</code></td><td>固定UID零余额Create／终态Rerun成功，exempt快照，余额不变，无consume；其他身份同时失败。</td><td>B2 PG</td></tr>
+          <tr><td>R07 <code>TestPGRerunUsesCurrentActorAndPreservesCreator</code></td><td>普通创建、管理员重跑只本轮free；管理员创建、普通重跑正常扣次；原始created_by从不变化。</td><td>B2 API／PG</td></tr>
+          <tr><td>R08 <code>TestPGAdmissionRollsBackCreditTaskAndQueueTogether</code></td><td>注入队列insert／分析update故障，余额、消费、run、文档、task、消息均回滚；旧终态及产物完整保留。</td><td>B2 PG故障</td></tr>
+          <tr><td>R09 <code>TestPGConcurrentAdmissionDoesNotOversell</code></td><td>5次额度、20并发普通Create恰好5成功及5消息，无负余额；并发同analysis Rerun只有一轮被接纳。</td><td>B2 PG race</td></tr>
+          <tr><td>R10 <code>TestRefundTargetsCurrentConsumeNotPriorPaidRun</code></td><td>普通收费成功→管理员free重跑失败／取消不退旧consume；后续普通轮次失败只退自己的consume；重复fail/cancel至多一次。</td><td>B2 PG退款</td></tr>
+          <tr><td>R11 <code>TestWorkerRecoveryKeepsRunAndRejectsStaleMessages</code></td><td>重投／重启恢复同run无第二消费；旧run消息不能推进新run；legacy缺run仅兼容当前历史轮，不给予未来免费。</td><td>B2 worker PG</td></tr>
+          <tr><td>R12 <code>TestQuotaSurvivesRestartAndExemptUsageDoesNotConsumeTeamBudget</code></td><td>normal有效计划配额来自持久源；重启仍限制；固定管理员token事实增长，quota_tokens不增长，不阻断同tenant普通成员。</td><td>B3／B4 PG meter</td></tr>
+          <tr><td>R13 <code>TestUsageRecordsActualTokensCostAndNoExtraTokenCharge</code></td><td>沙箱400prompt+100completion、价格4／16元每M→成本3200microCNY；管理员和包内normal均无额外token现金扣费，normal仍扣1report credit。</td><td>B3 PG＋沙箱pricer</td></tr>
+          <tr><td>R14 <code>test_usage_survives_invalid_json_and_retry</code></td><td>有usage的无效JSON／截断先记录再失败；每个真实retry独立call；部分维度成功后的整体失败保留全部已用成本。</td><td>B3 Python sandbox</td></tr>
+          <tr><td>R15 <code>TestUsageEventReplayIsIdempotentAndConflictIsRejected</code></td><td>同call同事件多次ACK只有1行；异token／model内容409不覆盖；非法permit／普通JWT／tenant Key无法写账本。</td><td>B3内部API＋PG</td></tr>
+          <tr><td>R16 <code>test_usage_outbox_recovers_after_ack_loss</code></td><td>Go已落库但ACK丢失，Python持久文件重启重投后仍1行；outbox只在确认提交后删除；取消后晚到cost仍记录。</td><td>B3 Python＋Go sandbox</td></tr>
+          <tr><td>R17 <code>TestUnknownProviderUsageOrPriceRemainsExplicitlyPending</code></td><td>缺usage／价目记录unknown／pending及call evidence，无估算冒充真实；API／管理统计不能把pending默认0报成已验证成本。</td><td>B3／B4 contract</td></tr>
+          <tr><td>R18 <code>TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBased</code></td><td>lite9900分、4次；重复回调／查单只入1次；addon6900分、1次不改plan；客户端改金额失败；无真实付款。</td><td>B5 payment／PG</td></tr>
+          <tr><td>R19 <code>TestBillingEntitlementsUseActualPlanAndBalance</code></td><td>旧JWT／tenant plan不覆盖report_credits；unknown周期不填假重置日；管理员unlimited但真实balance0；普通Enterprise正常扣次。</td><td>B4 API／前端</td></tr>
+          <tr><td>R20 <code>TestAdmissionRechecksSuspensionAndStillSettlesAcceptedCost</code></td><td>状态并发改变时新准入一致拒绝；已接受调用的晚到成本／退款可结清；豁免不绕过禁用／挂起。</td><td>B2／B3与K1/K2集成</td></tr>
+        </tbody>
+      </table></div>
+      <p>同步替换旧 <code>TestPGCreateRejectsWithoutExplicitBetaCreditBypass</code>、PG outbox／documents fixture中的setter、queue_wiring／worker的beta opt-in断言，以及E2E旧env。不能通过删除PG测试、只执行skip的测试或恢复bypass使其变绿。</p>
+    </section>
+
+    <section id="acceptance">
+      <h2>11. 云端验收与交付证据</h2>
+      <ul>
+        <li>所有编译、依赖准备、Go测试／vet、前端构建和自动化验收通过 <code>.github/workflows/build-release.yml</code>、<code>.github/workflows/postgresql-tests.yml</code> 的GitHub托管runner运行；本地只允许编辑、审查和轻量HTML／语法检查。</li>
+        <li>将新policy／apikey／usage真实PG包及具名用例接入postgresql-tests现有完整包运行和 <code>scripts/ci/verify-go-test-events.py</code> non-skip gate；仅build-release中跳过PG不能证明账务验收。</li>
+        <li>在build-release增加无外网供应商调用的Python沙箱行为测试和有真实产品用例的E2E；使用httpx.MockTransport／本地沙箱handler等，禁止真实邮件、短信、付款和模型调用。</li>
+        <li>每项交付证据包含exact source SHA、workflow run ID／链接、结论、RED→GREEN业务原因、迁移版本、指定PG non-skip结果与沙箱断言；失败或进行中run不能写成通过。</li>
+        <li>在 <a href="ADMIN_USER_CENTER_DELIVERY_STATUS.html">交付状态</a> 记录B1–B5与K4实际进展。本合同文件存在、接口设计完成或沙箱夹具可用不能替代功能验收。</li>
+        <li>发布仍必须选prod目标commit的成功run，并验证release archive的.sha256、BUILD_COMMIT和SHA256SUMS；部署使用经验证预构建CLI执行迁移与绑定，保留回滚制品。本文不授权本次文档任务部署。</li>
+      </ul>
+      <div class="notice"><strong>K4完成口径：</strong>普通账号恢复既有套餐收费和限制、固定UID独享豁免、PG每轮原子扣次与精确退款、实际用量桥接和供应商成本留痕、API Key创建者归属及真实权益展示，均有相应云端证据。沙箱通过只能证明实现行为；真实供应商送达、付款、实际模型成本对账仍须单独注明未验证。</div>
+      <p class="muted">本文件生成时状态：合同已整理，生产代码未由本任务修改，所列RED用例尚未由本任务执行，未编译、未安装依赖、未联网、未运行Git或发布。</p>
+    </section>
+  </main>
+</div>
+<footer>实施合同 · K4增强 · 2026-10-09 · 业务依据以最新用户确认及AGENTS.md为准，交付事实以具体GitHub run和目标提交证据为准。</footer>
+</body>
+</html>

@@ -3,18 +3,21 @@ package tenant
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
 // Tenant is a platform tenant row.
 type Tenant struct {
-	ID       string
-	Name     string
-	Slug     string
-	DBName   string
-	Status   Status
-	PlanCode string
+	ID         string
+	Name       string
+	Slug       string
+	DBName     string
+	Status     Status
+	PlanCode   string
+	CreatedAt  time.Time
+	RowVersion int64
 }
 
 // Store persists tenant rows.
