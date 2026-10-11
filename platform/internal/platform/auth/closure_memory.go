@@ -17,17 +17,23 @@ import (
 // credit locks. Memory stores cannot coordinate separate CLI/server processes.
 type ClosureMemoryBoundary func(context.Context, string, bool, func(func([]string, int) (bool, int64)) error) error
 type MemoryClosureStore struct {
-	mu           sync.Mutex
-	users        *SharedTenantStore
-	verification *MemoryVerificationStore
-	boundary     ClosureMemoryBoundary
-	inspect      func(context.Context, string) (string, []string, error)
-	revoke       func(string, []string, bool)
-	avatars      accountclosure.AvatarLifecycle
-	now          func() time.Time
-	records      map[string]*memoryClosure
-	cleanup      func(context.Context, []accountclosure.TenantImpact, int) (bool, error)
-	assets       func(context.Context, string) (*int, int, int, int, error)
+	mu                                                                     sync.Mutex
+	users                                                                  *SharedTenantStore
+	verification                                                           *MemoryVerificationStore
+	boundary                                                               ClosureMemoryBoundary
+	inspect                                                                func(context.Context, string) (string, []string, error)
+	revoke                                                                 func(string, []string, bool)
+	avatars                                                                accountclosure.AvatarLifecycle
+	now                                                                    func() time.Time
+	records                                                                map[string]*memoryClosure
+	cleanup                                                                func(context.Context, []accountclosure.TenantImpact, int) (bool, error)
+	assets                                                                 func(context.Context, string) (*int, int, int, int, error)
+	canCloseNotifications                                                  func(string) bool
+	cancelNotifications, resumeNotifications, eraseNotificationPreferences func(string)
+}
+
+func (m *MemoryClosureStore) SetNotificationLifecycle(canClose func(string) bool, cancel, resume, erase func(string)) {
+	m.canCloseNotifications, m.cancelNotifications, m.resumeNotifications, m.eraseNotificationPreferences = canClose, cancel, resume, erase
 }
 
 func (m *MemoryClosureStore) SetAssetInspector(inspect func(context.Context, string) (*int, int, int, int, error)) {
@@ -226,6 +232,9 @@ func (m *MemoryClosureStore) Request(ctx context.Context, actor accountclosure.A
 			}
 		}
 		m.verification.mu.Unlock()
+		if m.cancelNotifications != nil {
+			m.cancelNotifications(u.ID)
+		}
 		m.revoke(u.ID, sole, false)
 		cp := r.status
 		out = &cp
@@ -249,6 +258,9 @@ func (m *MemoryClosureStore) Cancel(ctx context.Context, actor accountclosure.Ac
 		u.Status = "active"
 		u.TokenVersion++
 		u.RowVersion++
+		if m.resumeNotifications != nil {
+			m.resumeNotifications(u.ID)
+		}
 		r.status.State = "cancelled"
 		r.status.CleanupStatus = "cancelled"
 		cp := r.status
@@ -357,6 +369,11 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 			*out = r.status
 			return nil
 		}
+		if m.canCloseNotifications != nil && !m.canCloseNotifications(uid) {
+			r.status.LastError = "NOTIFICATION_DELIVERY_UNCONFIRMED"
+			*out = r.status
+			return nil
+		}
 		if r.status.State == "pending" {
 			u.TokenVersion++
 			u.RowVersion++
@@ -434,6 +451,9 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 				}
 			}
 			m.revoke(uid, sole, true)
+			if m.eraseNotificationPreferences != nil {
+				m.eraseNotificationPreferences(uid)
+			}
 			delete(m.users.usersByEmail, u.Email)
 			u.Email = id.New() + ".closed@invalid"
 			m.users.usersByEmail[u.Email] = uid

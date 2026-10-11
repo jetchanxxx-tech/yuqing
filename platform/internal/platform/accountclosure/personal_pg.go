@@ -11,6 +11,7 @@ func personalRemaining(ctx context.Context, tx pgx.Tx, uid, cid string, result *
  EXISTS(SELECT 1 FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND (notice_state='processing' OR COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'')) OR
  EXISTS(SELECT 1 FROM sms_verification_codes WHERE (user_id=$1 OR issuer_user_id=$1) AND (phone<>'anonymized:'||id OR code_hash IS NOT NULL)) OR
  EXISTS(SELECT 1 FROM login_sessions WHERE user_id=$1) OR
+ EXISTS(SELECT 1 FROM account_notification_events WHERE user_id=$1 AND state IN ('pending','failed','processing')) OR
  EXISTS(SELECT 1 FROM api_keys WHERE creator_user_id=$1 AND (key_hash<>'anonymized:'||id OR prefix<>'' OR name IS DISTINCT FROM '已注销账号密钥')) OR
  EXISTS(SELECT 1 FROM credit_transactions WHERE run_id IS NULL AND (actor_id=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member)) AND ((reason_detail<>'' AND reason_detail<>'已注销账号（原因脱敏）') OR (idempotency_key IS NOT NULL AND idempotency_key<>'anonymized:'||id)))`, uid, cid).Scan(result)
 }
@@ -39,6 +40,7 @@ func (s *PGStore) redactPersonalPage(ctx context.Context, uid, cid string, limit
 	// after waiting, so neither its recipient nor receipt CAS can be erased.
 	// Processing rows remain visible to personalRemaining and the final gate.
 	for _, q := range []string{
+		`UPDATE account_notification_events SET state='cancelled',next_attempt_at=NULL WHERE state IN ('pending','failed') AND id IN (SELECT id FROM account_notification_events WHERE user_id=$1 AND state IN ('pending','failed') ORDER BY id LIMIT $2)`,
 		`UPDATE verification_tokens SET used_at=COALESCE(used_at,now()),target='',token_hash=NULL,notice_target='',notice_state=CASE WHEN notice_state='accepted' THEN 'accepted' ELSE 'cancelled' END,notice_next_attempt=NULL WHERE notice_state<>'processing' AND id IN (SELECT id FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state<>'processing' AND (COALESCE(target,'')<>'' OR token_hash IS NOT NULL OR notice_target<>'') ORDER BY id LIMIT $2)`,
 		`UPDATE sms_verification_codes SET used_at=COALESCE(used_at,now()),phone='anonymized:'||id,code_hash=NULL WHERE id IN (SELECT id FROM sms_verification_codes WHERE (user_id=$1 OR issuer_user_id=$1) AND (phone<>'anonymized:'||id OR code_hash IS NOT NULL) ORDER BY id LIMIT $2)`,
 		`DELETE FROM login_sessions WHERE id IN (SELECT id FROM login_sessions WHERE user_id=$1 ORDER BY id LIMIT $2)`,

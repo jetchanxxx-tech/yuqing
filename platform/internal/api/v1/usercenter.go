@@ -12,6 +12,8 @@ import (
 
 // RegisterUserCenterRoutes mounts authenticated user-center endpoints.
 func RegisterUserCenterRoutes(r *gin.RouterGroup, svcs *Services) {
+	r.GET("/user/notification-preferences", svcs.handleNotificationPreferences)
+	r.PUT("/user/notification-preferences", svcs.handleSetNotificationPreferences)
 	r.GET("/user/account-closure/preview", svcs.handleClosurePreview)
 	r.GET("/user/account-closure/status", svcs.handleClosureStatus)
 	r.POST("/user/account-closure", svcs.handleClosureRequest)

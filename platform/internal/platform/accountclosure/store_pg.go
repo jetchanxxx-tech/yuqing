@@ -198,7 +198,7 @@ func (s *PGStore) Request(ctx context.Context, actor Actor, confirmed []string) 
 			return nil, err
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE users SET status='closure_pending',token_version=token_version+1,row_version=row_version+1 WHERE id=$1`, actor.UserID); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE users SET status='closure_pending',token_version=token_version+1,row_version=row_version+1,notification_epoch=notification_epoch+1 WHERE id=$1`, actor.UserID); err != nil {
 		return nil, err
 	}
 	for _, q := range []string{`UPDATE verification_tokens SET used_at=COALESCE(used_at,now()) WHERE user_id=$1 OR issuer_user_id=$1`, `UPDATE sms_verification_codes SET used_at=COALESCE(used_at,now()) WHERE user_id=$1 OR issuer_user_id=$1`} {

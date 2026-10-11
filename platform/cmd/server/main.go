@@ -39,6 +39,7 @@ func main() {
 	defer stopNotices()
 	go app.RunIdentityNotifications(noticeCtx, deps.Auth, logger)
 	go app.RunAccountClosures(noticeCtx, deps.Closure, logger)
+	go app.RunTaskNotifications(noticeCtx, deps.TaskNotifications, logger)
 
 	// Create HTTP server.
 	srv := &http.Server{

@@ -12,6 +12,7 @@ import (
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/accountclosure"
+	"github.com/yuqing/platform/internal/platform/accountnotify"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/credit"
@@ -32,19 +33,20 @@ import (
 // Services bundles the service dependencies v1 handlers call. It is wired
 // once in internal/app/container.go (hand-rolled DI, see CLAUDE.md).
 type Services struct {
-	Auth         *auth.Service
-	AccountAdmin *accountadmin.Service
-	Closure      *accountclosure.Service
-	Analysis     *analysis.Service
-	MonitorPlans *monitorplan.Service
-	Dashboard    *dashboard.Service
-	Report       *report.Service
-	Tenant       *tenant.Service
-	Alert        *alert.Service
-	Settings     settings.Store
-	APIKey       *apikey.Service
-	Usage        usage.PlatformMeter
-	LLMCalls     *usage.CallService
+	Auth              *auth.Service
+	AccountAdmin      *accountadmin.Service
+	Closure           *accountclosure.Service
+	TaskNotifications *accountnotify.Service
+	Analysis          *analysis.Service
+	MonitorPlans      *monitorplan.Service
+	Dashboard         *dashboard.Service
+	Report            *report.Service
+	Tenant            *tenant.Service
+	Alert             *alert.Service
+	Settings          settings.Store
+	APIKey            *apikey.Service
+	Usage             usage.PlatformMeter
+	LLMCalls          *usage.CallService
 
 	// 收费体系（方案 B）：额度与支付。
 	Credits         *credit.Service

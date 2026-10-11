@@ -173,7 +173,7 @@ func (s *PGStore) claim(ctx context.Context, conn interface {
 	if changed > 0 {
 		code = "TEAM_IMPACT_CHANGED"
 	}
-	if err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM account_notification_attempts WHERE (user_id=$1 OR actor_id=$1) AND state='pending')+(SELECT count(*) FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state='processing')`, uid).Scan(&unknown); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM account_notification_attempts WHERE (user_id=$1 OR actor_id=$1) AND state='pending')+(SELECT count(*) FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state='processing')+(SELECT count(*) FROM account_notification_events WHERE user_id=$1 AND state='processing')`, uid).Scan(&unknown); err != nil {
 		return nil, 0, err
 	}
 	if unknown > 0 {
@@ -241,7 +241,7 @@ func (s *PGStore) anonymize(ctx context.Context, uid, cid string) error {
 	// rows even after a row-lock wait; recheck their actual finality here before
 	// releasing the identity. A lease alone does not prove an attempt finished.
 	var inflight int
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state='processing'`, uid).Scan(&inflight); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM verification_tokens WHERE (user_id=$1 OR issuer_user_id=$1) AND notice_state='processing')+(SELECT count(*) FROM account_notification_events WHERE user_id=$1 AND state='processing')`, uid).Scan(&inflight); err != nil {
 		return err
 	}
 	if inflight > 0 {

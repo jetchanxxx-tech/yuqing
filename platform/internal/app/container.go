@@ -30,6 +30,7 @@ import (
 	"github.com/yuqing/platform/internal/pkg/storage"
 	"github.com/yuqing/platform/internal/platform/accountadmin"
 	"github.com/yuqing/platform/internal/platform/accountclosure"
+	"github.com/yuqing/platform/internal/platform/accountnotify"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/billing"
@@ -302,6 +303,18 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	accountAdminSvc.SetVerificationSender(func(ctx context.Context, actorID, userID, purpose string, actorVersion int64) error {
 		return authSvc.SendAccountVerification(ctx, auth.Principal{UserID: actorID, TokenVersion: actorVersion}, userID, purpose)
 	})
+	var taskStore accountnotify.Store
+	var memoryTaskStore *accountnotify.MemoryStore
+	if platformPool != nil {
+		taskStore = accountnotify.NewPGStore(platformPool)
+	} else {
+		memoryTaskStore = accountnotify.NewMemoryStore(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore))
+		taskStore = memoryTaskStore
+		analysisSvc.SetMemoryCompletionHook(func(_ context.Context, tid string, a *analysis.AnalysisResult) {
+			memoryTaskStore.Enqueue(a.CreatedBy, tid, a.ID, a.ID+":"+a.FinishedAt.Format(time.RFC3339Nano))
+		})
+	}
+	taskNotifications := accountnotify.NewService(taskStore, NewSettingsMailer(platformSettings))
 	var llmCalls *usage.CallService
 	if platformPool != nil {
 		priceVersion := os.Getenv("YUQING_PROVIDER_PRICE_VERSION")
@@ -397,28 +410,30 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			}
 			return balance, reports, len(analyses), len(orders), nil
 		})
+		store.SetNotificationLifecycle(memoryTaskStore.CanClose, memoryTaskStore.CancelPending, memoryTaskStore.Resume, memoryTaskStore.Anonymize)
 		closureService = accountclosure.NewService(store)
 	}
 	return &v1.Services{
-		Closure:         closureService,
-		LLMCalls:        llmCalls,
-		Auth:            authSvc,
-		AccountAdmin:    accountAdminSvc,
-		Analysis:        analysisSvc,
-		MonitorPlans:    monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
-		Dashboard:       dashboardSvc,
-		Report:          reportSvc,
-		Tenant:          tenantSvc,
-		Alert:           alertSvc,
-		Settings:        platformSettings,
-		APIKey:          apiKeySvc,
-		Usage:           usageMeter,
-		Credits:         creditSvc,
-		Payment:         paymentSvc,
-		PaymentRegistry: paymentRegistry,
-		Trends:          trendsSvc,
-		ReportEngine:    reportEngine,
-		PGPool:          platformPool,
+		Closure:           closureService,
+		TaskNotifications: taskNotifications,
+		LLMCalls:          llmCalls,
+		Auth:              authSvc,
+		AccountAdmin:      accountAdminSvc,
+		Analysis:          analysisSvc,
+		MonitorPlans:      monitorplan.NewService(monitorStore, nil, func(code string) bool { return billing.DefaultPlans()[code] != nil }),
+		Dashboard:         dashboardSvc,
+		Report:            reportSvc,
+		Tenant:            tenantSvc,
+		Alert:             alertSvc,
+		Settings:          platformSettings,
+		APIKey:            apiKeySvc,
+		Usage:             usageMeter,
+		Credits:           creditSvc,
+		Payment:           paymentSvc,
+		PaymentRegistry:   paymentRegistry,
+		Trends:            trendsSvc,
+		ReportEngine:      reportEngine,
+		PGPool:            platformPool,
 	}
 }
 

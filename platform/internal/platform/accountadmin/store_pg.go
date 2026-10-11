@@ -32,11 +32,16 @@ func lockAdministrator(ctx context.Context, tx pgx.Tx, actorID string, version i
 	var status string
 	var current int64
 	var admin bool
-	err := tx.QueryRow(ctx, `SELECT u.status,u.token_version,EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=u.id AND role='platform_admin') FROM users u WHERE id=$1 FOR SHARE OF u`, actorID).Scan(&status, &current, &admin)
+	err := tx.QueryRow(ctx, `SELECT u.status,u.token_version FROM users u WHERE id=$1 FOR SHARE OF u`, actorID).Scan(&status, &current)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return conflict()
 	}
 	if err != nil {
+		return internal(err)
+	}
+	// A role subquery in the locking statement can retain its pre-wait snapshot
+	// when only the role row changed. Read roles after the actor lock is acquired.
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=$1 AND role='platform_admin')`, actorID).Scan(&admin); err != nil {
 		return internal(err)
 	}
 	if status != "active" || version != current || !admin {
