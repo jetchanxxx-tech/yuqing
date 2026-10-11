@@ -1,37 +1,43 @@
-# Project execution policy
+# Repository Guidelines
 
-## Build and test location
+## Rule Precedence & Reading
 
-All compilation, bundling, and compiler based checks must run on GitHub hosted runners through `.github/workflows/build-release.yml` and `.github/workflows/postgresql-tests.yml`. This is the user's instruction of 2026-10-09.
+Current user instructions and newer confirmed decisions override historical guidance. Read `CLAUDE.md` and relevant plans/contracts/reviews before editing. Verify implementation/deployment claims against source and hosted evidence; superseded local-build, unlimited-account, nonrevoking-password and incomplete-insight guidance must not override this policy.
 
-Do not run `go build`, `go test`, `go vet`, `go run`, `make build`, `make test`, `npm run build`, `npm run dev`, `tsc`, or Vite builds/dependency prebundling on local machines, development hosts, deployment servers, or self hosted runners. Dependency installation or package preparation that compiles code must also run on GitHub hosted runners.
+## Structure & Coding Style
 
-Local work is limited to editing, review, lightweight syntax checks, Git operations, downloading artifacts, checksum verification, and uploading verified artifacts. Deployment hosts may verify checksums, unpack artifacts, change configuration, run prebuilt migration tools, restart services, and perform health checks.
+`platform/` contains Go entrypoints, services, adapters, migrations and adjacent `*_test.go`/integration tests. `engines/` contains Python/FastAPI and `tests/`; `web/` contains React/TypeScript, `src/api/`, assets and Playwright `e2e/`. `scripts/` and `.github/workflows/` handle operations/verification.
 
-A successful GitHub run for the exact source commit is required before release. An incomplete or failed run is not a passing check. Report a failed CI result and fix it through a new commit; do not fall back to local compilation.
+Use LF, Go `gofmt`/tabs, TypeScript two-space and Python four-space indentation; PascalCase components, camelCase TypeScript and snake_case Python. Wire interfaces/adapters in `platform/internal/app/container.go`; keep handlers thin, errors typed (`{code,message,details,request_id}`), IDs ULID, arrays non-null and catalog checks centralized. Route UI requests through `web/src/api/`. Preserve 盘古舆情 branding/internal `yuqing` identifiers.
 
-## Branches and release artifacts
+## Build & Test Commands
 
-- `dev`: development branch; pushes and pull requests run cloud checks.
-- `prod`: production source baseline; changes arrive through pull requests from `dev` after required checks pass.
-- Existing `main` and `beta/*` branches remain available for history and ongoing work.
+**Compilation, bundling, compiler checks and compiling dependency preparation run only on GitHub-hosted runners through `.github/workflows/build-release.yml` and `.github/workflows/postgresql-tests.yml`.** Never locally/on development or deployment hosts/self-hosted runners: `go build/test/vet/run`, `make build/test`, `npm run build/dev`, `tsc`, Vite builds/prebundling or equivalent wrappers.
 
-For production, select the successful run on `prod` for the intended commit. Download `yuqing-release-<SHA>` and verify the archive's `.sha256`, its `BUILD_COMMIT`, and the unpacked `SHA256SUMS` before installation. Preserve rollback artifacts and install hash named frontend assets before atomically replacing `index.html`.
+Runner commands: `platform/`: `make test` (race), `make lint` (vet), `make build` (binaries); `web/`: `npm ci`, `npm run lint` (Oxlint), `npm run build`; workflows also run pytest/Playwright.
 
-Never commit deployment credentials or tokens.
+Local work permits editing/review, lightweight syntax checks, Git and artifact download/checksum/upload. Deployment hosts only verify/unpack, configure, run prebuilt migrations, restart and health-check; missing artifacts must fail.
 
-## Approved administration planning scope (2026-10-09)
+## Testing & PRs
 
-The administrator backend is organized into user account management and tenant/subscription management. The development director's plan is `docs/planning/ADMIN_USER_CENTER_DEVELOPMENT_PLAN.html`.
+Use RED→GREEN, table-driven `Test…`/`*_test.go`, pytest `test_*` and Playwright `*.spec.ts`. New PG behavior needs real concurrency/rollback/reconstruction contracts. Test actual entrypoints; skips/mocks alone cannot prove acceptance. Define observable outcomes; unresolved blockers prevent release.
 
-Login device management is deferred for this iteration: device lists, device fingerprints, per-device sign-out, and device session pages are outside scope. Account security requirements for password changes and user/tenant suspension remain part of the plan and may use account status or credential versions without introducing device management.
+Use `feat:`, `fix:`, `test:`, `docs:` commits. PRs describe behavior, reference tasks and provide exact-SHA hosted results plus relevant UI evidence. Review diffs for secrets.
 
-The user authorized sequential implementation on 2026-10-09. Complete each task with GitHub-hosted acceptance evidence and record progress in docs/dev/ADMIN_USER_CENTER_DELIVERY_STATUS.html. Do not report proposed or incomplete features as implemented or deployed.
+## Branches & Release
 
-## Confirmed business rules (2026-10-09)
+Develop on `dev`; reviewed `dev → prod` PRs establish production. Preserve `main`/`beta/*`. Failed/incomplete CI requires new-commit fixes, never local compilation. Production requires the successful exact-commit `prod` run: download `yuqing-release-<SHA>`, verify archive `.sha256`, `BUILD_COMMIT` and unpacked `SHA256SUMS`. Preserve rollback artifacts; install hashed assets before atomically replacing `index.html`.
 
-Account closure has a seven-day withdrawal window. Unsettled orders block completion. Closing a sole-member team requires explicit confirmation; other members' assets must remain intact. Financial ledgers remain but personal data is anonymized, and business files follow existing plan retention.
+## Approved Scope & Business Rules
 
-Notification integration uses sandbox tests for this implementation. Do not send real email or SMS without separately supplied, authorized test recipients. Real supplier delivery remains unverified until separately tested.
+Execute authorized tasks sequentially using `docs/planning/ADMIN_USER_CENTER_DEVELOPMENT_PLAN.html`; record evidence in `docs/dev/ADMIN_USER_CENTER_DELIVERY_STATUS.html`. Separate account and tenant/subscription management. Device management/invitations are deferred; password/status security remains required. Never label proposals or undeployed changes as deployed.
 
-Only the fixed administrator account initially identified by admin@pangu.com is exempt from usage-count and spending restrictions. Bind that exception to its verified immutable user ID, not an untrusted token email, a platform-admin role, or an entire tenant. All other accounts follow their selected plan's charging and limits; the previous global PostgreSQL beta bypass must be removed after atomic billing is implemented. Record actual usage and provider cost even for the exempt account.
+Closure requires seven-day withdrawal, unsettled-order blockers and explicit sole-member-team confirmation. Preserve others’ assets, financial ledgers with personal-data anonymization and existing file retention; unresolved notification attempts remain blockers.
+
+Only verified immutable UID of the initial `admin@pangu.com` account is billing-exempt—not token email, role or tenant. Others follow selected plans; everyone records actual usage/provider cost. Preserve atomic billing/paired refunds; never reinstate the global PG beta bypass or fabricate financial facts.
+
+## Security & Documentation
+
+Never commit credentials/tokens or load `credentials.local.md` into context. Notifications use sandbox tests; real email/SMS needs separately authorized recipients. Supplier delivery/mobile-payment confirmation remains unverified until separately tested. Human-facing deliverables use HTML; agent instructions use Markdown.
+
+Consult `docs/dev/ADMIN_ACCOUNT_API_CONTRACT.html`, `docs/dev/reviews/`, `docs/ops/DEPLOYMENT_RUNBOOK.md`, `docs/dev/ACCOUNT_CLOSURE_OPERATIONS.md`, `docs/dev/LLM_USAGE_BRIDGE_OPERATIONS.md`; UI/manual-monitoring changes also follow `design/design-spec.md` and `docs/planning/v0.2.4/PRD-dashboard-manual-monitoring.md`. Saved drafts do not imply active scheduling/delivery.
