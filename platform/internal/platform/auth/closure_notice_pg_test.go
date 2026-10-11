@@ -126,7 +126,7 @@ func TestClosurePGPersonalPagePreservesNoticeThatWinsRowLock(t *testing.T) {
 	if err = v.CompleteIdentityNotice(ctx, *n, notification.Receipt{Provider: "custom", State: "rejected"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE account_closures SET requested_at=now()-interval '169 hours',withdraw_until=now()-interval '1 second'; UPDATE verification_tokens SET notice_next_attempt=now() WHERE id='closure-notice'`); err != nil {
+	if _, err = pool.Exec(ctx, `UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second'; UPDATE verification_tokens SET notice_next_attempt=now() WHERE id='closure-notice'`); err != nil {
 		t.Fatal(err)
 	}
 	type outcome struct {
