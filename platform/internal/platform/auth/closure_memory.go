@@ -27,6 +27,11 @@ type MemoryClosureStore struct {
 	now          func() time.Time
 	records      map[string]*memoryClosure
 	cleanup      func(context.Context, []accountclosure.TenantImpact, int) (bool, error)
+	assets       func(context.Context, string) (*int, int, int, int, error)
+}
+
+func (m *MemoryClosureStore) SetAssetInspector(inspect func(context.Context, string) (*int, int, int, int, error)) {
+	m.assets = inspect
 }
 
 func (m *MemoryClosureStore) SetBusinessCleanup(cleanup func(context.Context, []accountclosure.TenantImpact, int) (bool, error)) {
@@ -126,6 +131,12 @@ func (m *MemoryClosureStore) preview(ctx context.Context, uid string, pending bo
 			return nil, err
 		}
 		x.PlanCode = plan
+		if m.assets != nil {
+			x.CreditBalance, x.Reports, x.Analyses, x.Orders, err = m.assets(ctx, t.ID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if catalog := billing.DefaultPlans()[plan]; catalog != nil {
 			d := catalog.RetentionDays
 			x.RetentionDays = &d

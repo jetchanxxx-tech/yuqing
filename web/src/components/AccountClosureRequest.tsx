@@ -47,6 +47,7 @@ export function AccountClosureRequest() {
         {preview?.tenants.map(t => <div key={t.id}>
           <Typography.Text strong>{t.name}</Typography.Text>
           <div>{t.members} 位成员 · {t.plan_code} · {t.retention_days == null ? '保留政策待核对' : `文件保留 ${t.retention_days} 天`}</div>
+          <div>报告 {t.reports} 份 · 分析 {t.analyses} 个 · 订单 {t.orders} 笔 · 剩余额度 {t.credit_balance ?? '待核对'} 次</div>
           {t.members === 1 && <Checkbox checked={teams.includes(t.id)} disabled={busy} onChange={e => setTeams(e.target.checked ? [...teams, t.id] : teams.filter(id => id !== t.id))}>我确认关闭这个仅我一人的团队</Checkbox>}
         </div>)}
         {preview?.blockers.map(b => <Alert key={b} type="error" message={blockerText[b.split(':')[0]] || '当前账户存在尚未处理的注销限制。'} />)}

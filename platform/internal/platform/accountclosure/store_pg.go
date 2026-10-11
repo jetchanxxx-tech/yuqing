@@ -56,13 +56,13 @@ func preview(ctx context.Context, tx pgx.Tx, uid string, allowPending bool) (*Pr
 	if platform && activeAdmins < 2 && !allowPending {
 		p.Blockers = append(p.Blockers, "LAST_PLATFORM_ADMIN")
 	}
-	rows, err := tx.Query(ctx, `SELECT t.id,t.name,t.status,tm.role,(SELECT count(*) FROM tenant_members WHERE tenant_id=t.id),CASE WHEN rc.tenant_id IS NULL THEN 'free' ELSE rc.plan_code END FROM tenant_members tm JOIN tenants t ON t.id=tm.tenant_id LEFT JOIN report_credits rc ON rc.tenant_id=t.id WHERE tm.user_id=$1 ORDER BY t.id`, uid)
+	rows, err := tx.Query(ctx, `SELECT t.id,t.name,t.status,tm.role,(SELECT count(*) FROM tenant_members WHERE tenant_id=t.id),CASE WHEN rc.tenant_id IS NULL THEN 'unknown' ELSE rc.plan_code END,rc.balance,(SELECT count(*) FROM reports WHERE tenant_id=t.id),(SELECT count(*) FROM analyses WHERE tenant_id=t.id),(SELECT count(*) FROM orders WHERE tenant_id=t.id) FROM tenant_members tm JOIN tenants t ON t.id=tm.tenant_id LEFT JOIN report_credits rc ON rc.tenant_id=t.id WHERE tm.user_id=$1 ORDER BY t.id`, uid)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var t TenantImpact
-		if err = rows.Scan(&t.ID, &t.Name, &t.Status, &t.Role, &t.Members, &t.PlanCode); err != nil {
+		if err = rows.Scan(&t.ID, &t.Name, &t.Status, &t.Role, &t.Members, &t.PlanCode, &t.CreditBalance, &t.Reports, &t.Analyses, &t.Orders); err != nil {
 			rows.Close()
 			return nil, err
 		}

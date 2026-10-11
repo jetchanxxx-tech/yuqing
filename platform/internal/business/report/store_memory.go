@@ -23,6 +23,14 @@ func NewMemoryStore() *MemoryStore {
 		sealed:   map[string]bool{},
 	}
 }
+func (m *MemoryStore) CountForClosure(ctx context.Context, tid string) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+	return len(m.byTenant[tid]), nil
+}
 
 var _ Store = (*MemoryStore)(nil)
 

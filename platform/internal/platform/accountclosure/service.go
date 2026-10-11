@@ -20,6 +20,10 @@ type TenantImpact struct {
 	Status        string `json:"status"`
 	PlanCode      string `json:"plan_code"`
 	RetentionDays *int   `json:"retention_days"`
+	CreditBalance *int   `json:"credit_balance"`
+	Reports       int    `json:"reports"`
+	Analyses      int    `json:"analyses"`
+	Orders        int    `json:"orders"`
 }
 type Preview struct {
 	WithdrawalDays int            `json:"withdrawal_days"`

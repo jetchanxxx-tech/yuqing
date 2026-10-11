@@ -3,6 +3,7 @@ import client from './client';
 export interface ClosureTenant {
   id: string; name: string; members: number; role: string; status: string;
   plan_code: string; retention_days: number | null;
+  credit_balance: number | null; reports: number; analyses: number; orders: number;
 }
 export interface ClosurePreview { withdrawal_days: number; tenants: ClosureTenant[]; blockers: string[] }
 export interface ClosureStatus {

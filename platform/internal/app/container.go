@@ -306,7 +306,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	} else {
 		store := auth.NewMemoryClosureStore(authStore.(*auth.SharedTenantStore), verifications.(*auth.MemoryVerificationStore), accountAdminStore.(*accountadmin.MemoryStore).WithAccountClosure,
 			func(ctx context.Context, tid string) (string, []string, error) {
-				plan := "free"
+				plan := "unknown"
 				snapshot, err := creditSvc.Snapshot(ctx, tid)
 				if err != nil {
 					return "", nil, err
@@ -360,6 +360,30 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 				}
 			}
 			return done, nil
+		})
+		store.SetAssetInspector(func(ctx context.Context, tid string) (*int, int, int, int, error) {
+			snapshot, err := creditSvc.Snapshot(ctx, tid)
+			if err != nil {
+				return nil, 0, 0, 0, err
+			}
+			var balance *int
+			if snapshot != nil {
+				v := snapshot.Balance
+				balance = &v
+			}
+			reports, err := reportStore.(*report.MemoryStore).CountForClosure(ctx, tid)
+			if err != nil {
+				return nil, 0, 0, 0, err
+			}
+			analyses, err := analysisSvc.List(ctx, tid)
+			if err != nil {
+				return nil, 0, 0, 0, err
+			}
+			orders, err := paymentSvc.List(ctx, tid, 0)
+			if err != nil {
+				return nil, 0, 0, 0, err
+			}
+			return balance, reports, len(analyses), len(orders), nil
 		})
 		closureService = accountclosure.NewService(store)
 	}
