@@ -15,19 +15,21 @@ var errAlreadyRefunded = errors.New("credit: idempotent replay")
 // MemoryStore 是进程内额度存储（测试/开发）。互斥锁保证 ApplyDelta 原子，
 // 与 PG 实现的超卖语义一致。
 type MemoryStore struct {
-	mu       sync.Mutex
-	balances map[string]int
-	plans    map[string]string
-	versions map[string]int64
-	txs      []Transaction
+	mu          sync.Mutex
+	balances    map[string]int
+	plans       map[string]string
+	planSources map[string]string
+	versions    map[string]int64
+	txs         []Transaction
 }
 
 // NewMemoryStore 装配内存存储。
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		balances: map[string]int{},
-		plans:    map[string]string{},
-		versions: map[string]int64{},
+		balances:    map[string]int{},
+		plans:       map[string]string{},
+		planSources: map[string]string{},
+		versions:    map[string]int64{},
 	}
 }
 func (m *MemoryStore) AnonymizeClosure(uid string, tenants []string) {
@@ -66,7 +68,11 @@ func (m *MemoryStore) Snapshot(_ context.Context, tenantID string) (*Snapshot, e
 	if !hasPlan {
 		plan = "free"
 	}
-	return &Snapshot{Balance: bal, PlanCode: plan, Version: m.versions[tenantID]}, nil
+	source := m.planSources[tenantID]
+	if source == "" {
+		source = "report_credits"
+	}
+	return &Snapshot{Balance: bal, PlanCode: plan, PlanSource: source, Version: m.versions[tenantID]}, nil
 }
 
 func (m *MemoryStore) ApplyDelta(_ context.Context, tenantID string, delta int, tx Transaction) (int, error) {
@@ -133,6 +139,7 @@ func (m *MemoryStore) SetPlanCode(_ context.Context, tenantID, planCode string) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.plans[tenantID] = planCode
+	m.planSources[tenantID] = "report_credits"
 	m.versions[tenantID]++
 	return nil
 }

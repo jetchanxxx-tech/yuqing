@@ -100,6 +100,7 @@ type Service struct {
 	verifyBaseURL string            // 邮箱验证链接前缀（如 https://yuqing2.pangu-cloud.com）
 
 	verificationLimits VerificationLimits
+	memoryPlanResolver func(context.Context, string) (string, string, error)
 }
 
 // EnableUserCenter 装配用户中心 P0 依赖（组合根调用）。

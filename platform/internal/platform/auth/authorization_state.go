@@ -4,6 +4,7 @@ import (
 	"context"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billing"
 )
 
 // AuthorizationState is a current store snapshot for one user and the explicit
@@ -55,6 +56,16 @@ func (s *Service) loadPrincipal(ctx context.Context, userID, tenantID string, ve
 	if state == nil || state.UserID != userID || state.TenantID != tenantID ||
 		(state.UserStatus != "active" && state.UserStatus != "closure_pending") || state.TokenVersion != version {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account or credential revoked")
+	}
+	if s.memoryPlanResolver != nil {
+		state.PlanCode, state.PlanSource, err = s.memoryPlanResolver(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		state.PlanStatus = "valid"
+		if billing.DefaultPlans()[state.PlanCode] == nil {
+			state.PlanCode, state.PlanStatus = "unavailable", "invalid"
+		}
 	}
 	roles := make([]string, 0, len(state.PlatformRoles)+1)
 	if state.MemberExists && state.UserStatus == "active" {

@@ -34,5 +34,5 @@ func (s *Services) effectiveBudget(ctx context.Context, tenantID string) (billin
 	if snapshot == nil {
 		return billing.BudgetForPlan("free", "default_free")
 	}
-	return billing.BudgetForPlan(snapshot.PlanCode, "report_credits")
+	return billing.BudgetForPlan(snapshot.PlanCode, snapshot.PlanSource)
 }

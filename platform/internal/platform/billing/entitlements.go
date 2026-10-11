@@ -48,7 +48,7 @@ func (s *EntitlementService) EffectiveBudgetTx(ctx context.Context, tx pgx.Tx, t
 func effectiveBudget(ctx context.Context, q budgetQuery, tenantID string) (Budget, error) {
 	var code string
 	source := "report_credits"
-	err := q.QueryRow(ctx, `SELECT plan_code FROM report_credits WHERE tenant_id=$1 FOR SHARE`, tenantID).Scan(&code)
+	err := q.QueryRow(ctx, `SELECT plan_code,plan_source FROM report_credits WHERE tenant_id=$1 FOR SHARE`, tenantID).Scan(&code, &source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		code = "free"
 		source = "default_free"

@@ -125,6 +125,18 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 	authSvc.SetMeter(usageMeter)
+	if platformPool == nil {
+		authSvc.SetMemoryPlanResolver(func(ctx context.Context, tid string) (string, string, error) {
+			snapshot, err := creditSvc.Snapshot(ctx, tid)
+			if err != nil {
+				return "", "", err
+			}
+			if snapshot == nil {
+				return "free", "default_free", nil
+			}
+			return snapshot.PlanCode, snapshot.PlanSource, nil
+		})
+	}
 
 	// 新租户注册赠 1 次试用额度（方案 B：试用归 Lite 档体验）。
 	authSvc.SetPostRegister(func(ctx context.Context, tenantID string) error {

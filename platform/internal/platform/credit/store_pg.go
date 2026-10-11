@@ -36,7 +36,7 @@ func (p *PGStore) Balance(ctx context.Context, tenantID string) (int, error) {
 
 func (p *PGStore) Snapshot(ctx context.Context, tenantID string) (*Snapshot, error) {
 	s := &Snapshot{}
-	err := p.pool.QueryRow(ctx, `SELECT balance,plan_code,version FROM report_credits WHERE tenant_id=$1`, tenantID).Scan(&s.Balance, &s.PlanCode, &s.Version)
+	err := p.pool.QueryRow(ctx, `SELECT balance,plan_code,plan_source,version FROM report_credits WHERE tenant_id=$1`, tenantID).Scan(&s.Balance, &s.PlanCode, &s.PlanSource, &s.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -124,7 +124,7 @@ func (p *PGStore) SetPlanCode(ctx context.Context, tenantID, planCode string) er
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO report_credits (tenant_id, balance, plan_code)
 		 VALUES ($1, 0, $2)
-		 ON CONFLICT (tenant_id) DO UPDATE SET plan_code = $2, updated_at = now()`,
+		 ON CONFLICT (tenant_id) DO UPDATE SET plan_code = $2, plan_source='report_credits', updated_at = now()`,
 		tenantID, planCode)
 	return err
 }

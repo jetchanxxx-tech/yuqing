@@ -28,6 +28,7 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svcs *Services) {
 	admin.GET("/tenants", middleware.RequirePermission("admin:tenants:read"), svcs.handleListTenants)
 	admin.GET("/tenants/:id", middleware.RequirePermission("admin:tenants:read"), svcs.handleAdminTenant)
 	admin.POST("/tenants/:id/credit-adjustments", middleware.RequirePermission("admin:credits:manage"), svcs.handleCreditAdjustment)
+	admin.POST("/tenants/:id/plan-change", middleware.RequirePermission("admin:plans:manage"), svcs.handleAdminPlanChange)
 	admin.POST("/tenants/:id/suspend", middleware.RequirePermission("admin:tenants:manage"), svcs.handleSuspendTenant)
 	admin.POST("/tenants/:id/resume", middleware.RequirePermission("admin:tenants:manage"), svcs.handleResumeTenant)
 	admin.PUT("/tenants/:id/members/:user_id/role", middleware.RequirePermission("admin:members:manage"), svcs.handleAdminMemberRole)

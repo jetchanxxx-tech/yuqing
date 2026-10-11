@@ -275,7 +275,7 @@ func (s *MemoryStore) tenantRow(ctx context.Context, t tenant.Tenant, state *aut
 	}
 	if pool != nil {
 		row.EffectivePlanCode = pool.PlanCode
-		row.PlanSource = "report_credits"
+		row.PlanSource = pool.PlanSource
 	}
 	return row, pool, nil
 }

@@ -236,7 +236,7 @@ func (s *PGStore) User(ctx context.Context, id string) (*UserDetail, error) {
 
 const tenantProjection = `t.id,t.name,t.slug,t.plan_code,t.status,t.created_at,t.row_version,
 	(SELECT COUNT(*) FROM tenant_members WHERE tenant_id=t.id),COALESCE(rc.plan_code,''),
-	CASE WHEN rc.tenant_id IS NULL THEN 'unknown' ELSE 'report_credits' END`
+	CASE WHEN rc.tenant_id IS NULL THEN 'unknown' ELSE rc.plan_source END`
 const tenantJoin = ` FROM tenants t LEFT JOIN report_credits rc ON rc.tenant_id=t.id `
 const tenantFilter = `WHERE ($1='' OR strpos(lower(t.id),lower($1))>0 OR strpos(lower(t.name),lower($1))>0)
 	AND ($2='' OR t.status=$2) AND ($3='' OR rc.plan_code=$3)`

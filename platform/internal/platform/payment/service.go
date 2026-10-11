@@ -10,6 +10,7 @@ import (
 	"github.com/yuqing/platform/internal/pkg/id"
 	"github.com/yuqing/platform/internal/platform/billing"
 	"github.com/yuqing/platform/internal/platform/billingpolicy"
+	"github.com/yuqing/platform/internal/platform/credit"
 )
 
 // 订单有效期：二维码超时关闭。渠道侧通常 2h-24h，我们收窄到 15 分钟
@@ -307,8 +308,17 @@ func (s *Service) settle(ctx context.Context, p Provider, o *Order, providerTxnI
 	return nil
 }
 
-// grant 发放额度并标记。两次写都幂等（credit 唯一索引 + granted 标志）。
+// grant uses one PG transaction for the actual composed payment/credit graph.
+// Custom test granters retain their explicit interface and replay semantics.
 func (s *Service) grant(ctx context.Context, o *Order) error {
+	if store, ok := s.store.(*PGStore); ok {
+		if credits, ok := s.credits.(*credit.Service); ok {
+			if !credits.UsesPool(store.pool) {
+				return fmt.Errorf("payment: credit transaction store mismatch")
+			}
+			return store.grantPaid(ctx, o.ID)
+		}
+	}
 	if o.Granted {
 		return nil
 	}

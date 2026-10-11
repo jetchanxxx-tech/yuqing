@@ -8,9 +8,10 @@ import (
 // Snapshot reads the actual pool without creating a row or assuming a plan.
 // A nil snapshot is different from an existing pool with a zero balance.
 type Snapshot struct {
-	Balance  int    `json:"balance"`
-	PlanCode string `json:"plan_code"`
-	Version  int64  `json:"version"`
+	Balance    int    `json:"balance"`
+	PlanCode   string `json:"plan_code"`
+	PlanSource string `json:"plan_source"`
+	Version    int64  `json:"version"`
 }
 type snapshotStore interface {
 	Snapshot(context.Context, string) (*Snapshot, error)

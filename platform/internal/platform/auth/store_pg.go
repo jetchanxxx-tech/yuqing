@@ -81,7 +81,7 @@ func (s *PGStore) LoadAuthorizationState(ctx context.Context, userID, tenantID s
 	const q = `SELECT u.id, u.email, u.status, u.token_version,
 		ARRAY(SELECT pur.role FROM platform_user_roles pur WHERE pur.user_id = u.id ORDER BY pur.role),
 		COALESCE(t.status, ''), CASE WHEN rc.tenant_id IS NULL THEN 'free' ELSE rc.plan_code END,
- CASE WHEN rc.tenant_id IS NULL THEN 'default_free' ELSE 'report_credits' END,
+ CASE WHEN rc.tenant_id IS NULL THEN 'default_free' ELSE rc.plan_source END,
 		COALESCE(tm.role, ''), tm.user_id IS NOT NULL
 		FROM users u
 		LEFT JOIN tenants t ON t.id = $2
