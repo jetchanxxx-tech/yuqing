@@ -1,14 +1,69 @@
 package accountclosure
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/yuqing/platform/internal/pkg/pgtest"
 	"github.com/yuqing/platform/internal/pkg/storage"
 	"github.com/yuqing/platform/internal/platform/payment"
+	"image"
+	"image/png"
 	"testing"
 	"time"
 )
+
+func closurePNGFixture(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
+func TestClosurePGMismatchedStorageCannotReleaseIdentity(t *testing.T) {
+	s, root := closureReviewFixture(t)
+	ctx := context.Background()
+	adapter := storage.NewLocalAvatar(root)
+	data := closurePNGFixture(t)
+	ref, err := adapter.Put(ctx, "closing", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = adapter.Put(ctx, "closing", bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.pool.Exec(ctx, `UPDATE users SET avatar_url=$1 WHERE id='closing'`, ref); err != nil {
+		t.Fatal(err)
+	}
+	s.SetAvatarStorage(storage.NewLocalAvatar(t.TempDir()))
+	r, err := s.Process(ctx, "closing", 100)
+	if err != nil || r.State == "completed" {
+		t.Fatalf("different empty root claimed profile PII cleared: %+v %v", r, err)
+	}
+	var email string
+	if err = s.pool.QueryRow(ctx, `SELECT email FROM users WHERE id='closing'`).Scan(&email); err != nil || email != "closing@example.invalid" {
+		t.Fatal("wrong root released reusable identity")
+	}
+	s.SetAvatarStorage(adapter)
+	for i := 0; i < 30; i++ {
+		r, err = s.Process(ctx, "closing", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.State == "completed" {
+			break
+		}
+	}
+	if r.State != "completed" {
+		t.Fatalf("verified root could not resume: %+v", r)
+	}
+	if f, _, _, err := adapter.Open(ctx, ref); err == nil {
+		f.Close()
+		t.Fatal("correct-root retry left current image")
+	}
+}
 
 func closureReviewFixture(t *testing.T) (*PGStore, string) {
 	t.Helper()
