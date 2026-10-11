@@ -24,6 +24,7 @@ import { useAuth } from '../stores/auth';
 import { useDateTime } from '../lib/format';
 import { acceptedMessage, identityError } from '../lib/identity';
 import { AccountClosureRequest } from '../components/AccountClosureRequest';
+import NotificationPreferencesTab from '../components/NotificationPreferencesTab';
 import { getCredits, getPlans } from '../api/billing';
 import {
   bindPhone,
@@ -65,6 +66,7 @@ export default function SettingsPage() {
           { key: 'profile', label: '个人资料', children: <ProfileTab /> },
           { key: 'security', label: '账户安全', children: <SecurityTab /> },
           { key: 'phone', label: '手机绑定', children: <PhoneTab /> },
+          { key: 'notifications', label: '通知偏好', children: <NotificationPreferencesTab /> },
         ]}
       />
     </div>

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, Modal, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { adminErrorMessage, adminErrorStatus, adminStatusLabel, changeMemberRole, changeTenantStatus, getAdminTenant, type TenantMember } from '../../api/admin';
+import { adminErrorMessage, adminErrorStatus, adminStatusLabel, changeMemberRole, changeTenantStatus, getAdminTenant, planSourceLabel, type TenantMember } from '../../api/admin';
 import type { Order } from '../../api/billing';
 import { useAuth } from '../../stores/auth';
 import { formatCents, useDateTime } from '../../lib/format';
 import { ErrorBlock, LoadingBlock } from '../../components/PageState';
 import CreditAdjustmentDialog from './CreditAdjustmentDialog';
+import PlanChangeDialog from './PlanChangeDialog';
 import { AdminActionDialog, AuditTable, MutationErrorAlert, type AdminAction } from './UserDetail';
 
 export default function TenantDetail({ tenantID, onClose }: { tenantID: string; onClose: () => void }) {
@@ -15,6 +16,7 @@ export default function TenantDetail({ tenantID, onClose }: { tenantID: string; 
   const queryClient = useQueryClient();
   const { reloadIdentity } = useAuth();
   const [adjusting, setAdjusting] = useState(false);
+  const [changingPlan, setChangingPlan] = useState(false);
   const [action, setAction] = useState<AdminAction | null>(null);
   const [error, setError] = useState<unknown>(null);
   const detail = useQuery({ queryKey: ['admin', 'tenant', tenantID], queryFn: ({ signal }) => getAdminTenant(tenantID, signal) });
@@ -72,7 +74,7 @@ export default function TenantDetail({ tenantID, onClose }: { tenantID: string; 
           { key: 'status', label: '状态', children: <Tag color={tenant.status === 'active' ? 'success' : 'warning'}>{adminStatusLabel(tenant.status)}</Tag> },
           { key: 'plan', label: '历史套餐', children: tenant.plan_code },
           { key: 'effective', label: '有效套餐', children: tenant.effective_plan_code || '未知（按严格限制）' },
-          { key: 'source', label: '套餐来源', children: tenant.plan_source },
+          { key: 'source', label: '套餐来源', children: planSourceLabel(tenant.plan_source) },
           { key: 'credit', label: '报告剩余额度', children: tenant.credit ? tenant.credit.balance : '无额度池' },
           { key: 'credit_plan', label: '额度池套餐', children: tenant.credit?.plan_code ?? '未知' },
           { key: 'count', label: '成员数', children: tenant.user_count },
@@ -81,6 +83,7 @@ export default function TenantDetail({ tenantID, onClose }: { tenantID: string; 
         ]} />
         <Space style={{ marginTop: 16 }}>
           <Button onClick={() => setAdjusting(true)}>调整报告额度</Button>
+          {['active', 'suspended'].includes(tenant.status) && <Button onClick={() => setChangingPlan(true)}>修改套餐权益</Button>}
           {['active', 'suspended'].includes(tenant.status) && <Button danger={tenant.status === 'active'} onClick={statusAction}>{tenant.status === 'active' ? '挂起租户' : '恢复租户'}</Button>}
           <Button onClick={() => void refresh()} loading={detail.isFetching}>刷新详情</Button>
         </Space>
@@ -100,6 +103,7 @@ export default function TenantDetail({ tenantID, onClose }: { tenantID: string; 
       </>}
     </Modal>
     {adjusting && tenant && <CreditAdjustmentDialog tenantID={tenant.id} tenantName={tenant.name} balance={tenant.credit?.balance ?? 0} version={tenant.credit?.version ?? 0} onClose={() => setAdjusting(false)} onSuccess={refresh} />}
+    {changingPlan && tenant && <PlanChangeDialog tenantID={tenant.id} tenantName={tenant.name} code={tenant.effective_plan_code} source={tenant.plan_source} balance={tenant.credit?.balance ?? 0} version={tenant.credit?.version ?? 0} onClose={() => setChangingPlan(false)} onSuccess={success} />}
     {action && <AdminActionDialog action={action} onClose={() => setAction(null)} onSuccess={success} onError={failed} />}
   </>;
 }

@@ -1,6 +1,6 @@
 import client from './client';
 import { readEnvelope } from './error';
-import type { CreditTransaction, Order } from './billing';
+import type { CreditTransaction, Order, Plan } from './billing';
 
 export interface AdminPage<T> { items: T[]; total: number; page: number; page_size: number; }
 export interface AdminQuery {
@@ -31,8 +31,19 @@ export interface Tenant {
   row_version: number; user_count: number; effective_plan_code: string; plan_source: string;
 }
 export interface TenantMember { user_id: string; name: string; email: string; role: string; row_version: number; }
-export interface AdminTenantDetail extends Tenant { members: TenantMember[]; credit: { balance: number; plan_code: string; version: number } | null; orders: Order[]; audit_logs: AuditEntry[]; credit_transactions: AdminCreditTransaction[]; }
+export interface PlanSnapshot { balance: number; plan_code: string; plan_source: string; version: number; }
+export interface AdminTenantDetail extends Tenant { members: TenantMember[]; credit: PlanSnapshot | null; orders: Order[]; audit_logs: AuditEntry[]; credit_transactions: AdminCreditTransaction[]; }
 export interface AdminChange { reason: string; expected_version: number; }
+export interface PlanChange extends AdminChange { plan_code: string; }
+export async function getAdminPlans(signal?: AbortSignal): Promise<Plan[]> {
+  return (await client.get<{ plans: Plan[] }>('/admin/plans', { signal })).data.plans;
+}
+export async function changeAdminPlan(id: string, change: PlanChange): Promise<PlanSnapshot> {
+  return (await client.post<PlanSnapshot>(`/admin/tenants/${encodeURIComponent(id)}/plan-change`, change)).data;
+}
+export function planSourceLabel(source: string) {
+  return ({ manual: '人工调整', purchase: '实际购买入账', report_credits: '现有额度池', default_free: '默认免费档', unknown: '未知' } as Record<string, string>)[source] ?? source;
+}
 export type MemberRole = 'tenant_admin' | 'analyst' | 'viewer';
 
 export async function listUsers(query: AdminQuery, signal?: AbortSignal): Promise<AdminPage<AdminUser>> {

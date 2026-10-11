@@ -1,5 +1,14 @@
 import client from './client';
 
+export interface NotificationPreferences { task_completed: boolean; }
+export interface NotificationPreferenceResponse { preferences: NotificationPreferences; supported: string[]; unavailable: string[]; }
+export async function getNotificationPreferences(signal?: AbortSignal): Promise<NotificationPreferenceResponse> {
+  return (await client.get<NotificationPreferenceResponse>('/user/notification-preferences', { signal })).data;
+}
+export async function setNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferenceResponse> {
+  return (await client.put<NotificationPreferenceResponse>('/user/notification-preferences', preferences)).data;
+}
+
 /** 用户资料（GET/PUT /user/profile） */
 export interface UserProfile {
   id: string;
