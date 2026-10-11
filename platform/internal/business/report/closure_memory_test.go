@@ -10,12 +10,13 @@ func TestClosureMemoryReportRetentionPreservesOtherTenantAndRejectsLateCreate(t 
 	ctx := context.Background()
 	s := NewMemoryStore()
 	now := time.Now().UTC()
-	for _, r := range []Report{{ID: "old", CreatedAt: now.Add(-40 * 24 * time.Hour), Format: "html", FileKey: "reports/old.html"}, {ID: "new", CreatedAt: now, Format: "html", FileKey: "reports/new.html"}} {
+	old, ancient := now.Add(-40*24*time.Hour), now.Add(-400*24*time.Hour)
+	for _, r := range []Report{{ID: "old", CreatedAt: &old, Format: "html", FileKey: "reports/old.html"}, {ID: "new", CreatedAt: &now, Format: "html", FileKey: "reports/new.html"}} {
 		if err := s.Create(ctx, "closing", "owner", r); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Create(ctx, "other", "other", Report{ID: "other", Format: "html", FileKey: "reports/other.html", CreatedAt: now.Add(-400 * 24 * time.Hour)}); err != nil {
+	if err := s.Create(ctx, "other", "other", Report{ID: "other", Format: "html", FileKey: "reports/other.html", CreatedAt: &ancient}); err != nil {
 		t.Fatal(err)
 	}
 	p, ok := any(s).(interface {
@@ -34,7 +35,7 @@ func TestClosureMemoryReportRetentionPreservesOtherTenantAndRejectsLateCreate(t 
 	if _, err = s.Get(ctx, "other", "other"); err != nil {
 		t.Fatal("other tenant report lost")
 	}
-	if err = s.Create(ctx, "closing", "owner", Report{ID: "late", CreatedAt: now, Format: "html"}); err == nil {
+	if err = s.Create(ctx, "closing", "owner", Report{ID: "late", CreatedAt: &now, Format: "html"}); err == nil {
 		t.Fatal("late report created after fence")
 	}
 	done, err = p.CleanupClosedTenant(ctx, "closing", now.Add(24*time.Hour), 1)
