@@ -1,9 +1,21 @@
 package v1_test
 
-import "testing"
+import (
+	"github.com/yuqing/platform/internal/api"
+	"github.com/yuqing/platform/internal/app"
+	"github.com/yuqing/platform/internal/config"
+	"io"
+	"log/slog"
+	"testing"
+)
 
 func TestClosureMemoryRequestWithdrawalRevokesOldVersions(t *testing.T) {
-	router, _ := newContractEnv(t)
+	cfg := &config.Config{}
+	cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL = testJWTSecret, "15m", "720h"
+	cfg.Storage.AvatarRoot = t.TempDir()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	deps := app.Build(cfg, logger)
+	router := api.NewRouter(cfg, logger, deps)
 	access, refresh, user := mustRegister(t, router, "closure-memory@example.invalid", "Memory owner")
 	adminContractResponse(t, doReq(t, router, "GET", "/api/v1/user/account-closure/preview", access, nil), 200)
 	input := map[string]any{"password": "password-123456", "confirmed": true, "close_tenant_ids": []string{user["tenant_id"].(string)}}
