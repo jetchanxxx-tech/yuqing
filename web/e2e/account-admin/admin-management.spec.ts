@@ -299,10 +299,11 @@ test('successful credential refresh reloads me instead of retaining stale cached
     localStorage.setItem('access_token', 'expired-access-token-for-refresh-test');
   });
   const refreshed = page.waitForResponse((response) => response.url().endsWith('/auth/refresh'));
-  const me = page.waitForResponse((response) => response.url().endsWith('/auth/me') && response.status() === 200);
+  const navigationStarted = Date.now();
+  const me = page.waitForResponse((response) => response.url().endsWith('/auth/me') && response.status() === 200 && response.request().timing().startTime >= navigationStarted).then(response => response.json());
   await page.goto('/admin');
   expect((await refreshed).status()).toBe(200);
-  expect(await (await me).json()).toMatchObject({ user_id: admin.user.user_id, plan_code: 'free', roles: expect.arrayContaining(['platform_admin']) });
+  expect(await me).toMatchObject({ user_id: admin.user.user_id, plan_code: 'free', roles: expect.arrayContaining(['platform_admin']) });
   await expect(page.getByRole('tab', { name: '用户账号管理', exact: true })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('principal') ?? '{}'))).toMatchObject({ plan_code: 'free', roles: expect.arrayContaining(['platform_admin']) });
 });

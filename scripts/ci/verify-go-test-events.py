@@ -148,8 +148,9 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_survivesNewInstance",
     ),
     "internal/business/monitorplan": ("TestClosureMemoryMonitorRetentionAndWriteFence",),
-    "internal/platform/accountclosure": ("TestClosurePGCatalogRetentionPreservesRunFactsAndOtherTenants", "TestClosurePGResumesAnonymizationAndRetainsFinancialAndSharedAssets", "TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
+    "internal/platform/accountclosure": ("TestClosurePGRedactionKeepsTypedAuditTargetLedgerAndCategories", "TestClosurePGRedactionIsBoundedAndResumesBeforeIdentityRelease", "TestClosurePGLateRefundDuringRedactionCannotPublishCompletion", "TestClosurePGDueDriverAdvancesDeadlinesAndResumesAfterRestart", "TestClosurePGMismatchedStorageCannotReleaseIdentity", "TestClosurePGCatalogRetentionPreservesRunFactsAndOtherTenants", "TestClosurePGResumesAnonymizationAndRetainsFinancialAndSharedAssets", "TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
     "internal/platform/accountadmin": (
+        "TestClosureMemoryAuditBatchesPreserveLedgerAndRoleHistory",
         "TestAccountAdminPGBootstrapSerializesInitialGrant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit/revoke/grant",

@@ -59,7 +59,7 @@ func TestClosureMigrationPreservesAccountsFinancialFactsAndNotificationIntent(t 
 	if _, err = pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,name,status,token_version,row_version) VALUES('history','history@example.invalid','original','Historical owner','active',3,4); INSERT INTO report_credits(tenant_id,balance,plan_code) VALUES('history',7,'pro'); INSERT INTO credit_transactions(id,tenant_id,delta,reason,balance_after) VALUES('history-fact','history',7,'grant',7); INSERT INTO verification_tokens(id,user_id,type,purpose,target,expires_at,used_at,notice_target,notice_state,notice_next_attempt) VALUES('notice','history','email_change','email_change','new@example.invalid',now(),now(),'history@example.invalid','processing',now())`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.UpTo(ctx, 22); err != nil {
+	if _, err = provider.UpTo(ctx, 23); err != nil {
 		t.Fatal(err)
 	}
 	var intact bool
@@ -69,7 +69,7 @@ func TestClosureMigrationPreservesAccountsFinancialFactsAndNotificationIntent(t 
 	if _, err = provider.Down(ctx); err == nil {
 		t.Fatal("destructive anonymization rollback accepted")
 	}
-	if version, err := provider.GetDBVersion(ctx); err != nil || version != 22 {
+	if version, err := provider.GetDBVersion(ctx); err != nil || version != 23 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 }

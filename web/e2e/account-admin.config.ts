@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -71,14 +71,25 @@ if (!runnerTemp || !statSync(runnerTemp).isDirectory()) {
 }
 // Hosted workspaces and RUNNER_TEMP can have private ancestors. The isolated
 // API user must be able to traverse its fixture without opening the checkout.
-const configDirectory = mkdtempSync('/tmp/yuqing-account-admin-');
+// Playwright evaluates this module in the coordinator and its test worker.
+// Reuse the coordinator's exact fixture so server, CLI and assertions bind to
+// the same persistent avatar volume; never regenerate a second worker root.
+const existingConfig = process.env.YUQING_E2E_CONFIG;
+if (existingConfig && (!/^\/tmp\/yuqing-account-admin-[^/]+\/backend\.json$/.test(existingConfig) || !existsSync(existingConfig) || realpathSync(existingConfig) !== existingConfig)) throw new Error('Invalid inherited hosted backend fixture.');
+const configDirectory = existingConfig ? dirname(existingConfig) : mkdtempSync('/tmp/yuqing-account-admin-');
+const sourceMarker = join(configDirectory, 'runner-source.sha');
+if (existingConfig) {
+  if (!existsSync(sourceMarker) || readFileSync(sourceMarker, 'utf8') !== process.env.GITHUB_SHA) throw new Error('Inherited backend fixture belongs to a different source checkout.');
+} else writeFileSync(sourceMarker, process.env.GITHUB_SHA!, { mode: 0o644 });
 // The API keeps the runner UID so Playwright can terminate it, with a dedicated
 // group whose outbound traffic is blocked. Only generated test files are used.
 chmodSync(configDirectory, 0o755);
 const isolatedServerBinary = join(configDirectory, 'yuqing-server');
 const isolatedCLIBinary = join(configDirectory, 'yuqing-cli');
-copyFileSync(serverBinary, isolatedServerBinary);
-copyFileSync(cliBinary, isolatedCLIBinary);
+if (!existingConfig) {
+  copyFileSync(serverBinary, isolatedServerBinary);
+  copyFileSync(cliBinary, isolatedCLIBinary);
+} else if (![isolatedServerBinary, isolatedCLIBinary].every(path => existsSync(path) && statSync(path).isFile())) throw new Error('Inherited prebuilt fixture binaries are unavailable.');
 chmodSync(isolatedServerBinary, 0o755);
 chmodSync(isolatedCLIBinary, 0o755);
 const backendConfig = join(configDirectory, 'backend.json');

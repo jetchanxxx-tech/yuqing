@@ -94,6 +94,13 @@ func (s *PGStore) Process(ctx context.Context, uid string, limit int) (*Status, 
 	if !redacted {
 		return s.Status(ctx, uid)
 	}
+	personalDone, err := s.redactPersonalPage(ctx, uid, r.ID, limit)
+	if err != nil {
+		return s.failStep(ctx, r, "ANONYMIZATION_FAILED")
+	}
+	if !personalDone {
+		return s.Status(ctx, uid)
+	}
 	if err = s.anonymize(ctx, uid, r.ID); err != nil {
 		return s.failStep(ctx, r, "ANONYMIZATION_FAILED")
 	}
@@ -239,18 +246,14 @@ func (s *PGStore) anonymize(ctx context.Context, uid, cid string) error {
 	if inflight > 0 {
 		return pkgerrors.ErrConflict
 	}
-	for _, q := range []string{
-		`UPDATE verification_tokens SET used_at=COALESCE(used_at,now()),target='',token_hash=NULL,notice_target='',notice_state=CASE WHEN notice_state='accepted' THEN 'accepted' ELSE 'cancelled' END,notice_next_attempt=NULL WHERE user_id=$1 OR issuer_user_id=$1`,
-		`UPDATE sms_verification_codes SET used_at=COALESCE(used_at,now()),phone='anonymized:'||id,code_hash=NULL WHERE user_id=$1 OR issuer_user_id=$1`,
-		`DELETE FROM login_sessions WHERE user_id=$1`,
-		`UPDATE api_keys SET name='已注销账号密钥',key_hash='anonymized:'||id,prefix='',revoked_at=COALESCE(revoked_at,now()) WHERE creator_user_id=$1`,
-		`DELETE FROM platform_user_roles WHERE user_id=$1`,
-	} {
-		if _, err = tx.Exec(ctx, q, uid); err != nil {
-			return err
-		}
+	var personalLeft bool
+	if err = personalRemaining(ctx, tx, uid, cid, &personalLeft); err != nil {
+		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE credit_transactions SET reason_detail='已注销账号（原因脱敏）',idempotency_key=CASE WHEN idempotency_key IS NULL THEN NULL ELSE 'anonymized:'||id END WHERE run_id IS NULL AND (actor_id=$1 OR tenant_id IN (SELECT tenant_id FROM account_closure_tenants WHERE closure_id=$2 AND sole_member))`, uid, cid); err != nil {
+	if personalLeft {
+		return pkgerrors.ErrConflict
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM platform_user_roles WHERE user_id=$1`, uid); err != nil {
 		return err
 	}
 	var unseen bool

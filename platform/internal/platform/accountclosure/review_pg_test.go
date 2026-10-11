@@ -245,8 +245,11 @@ func TestClosurePGDueDriverAdvancesDeadlinesAndResumesAfterRestart(t *testing.T)
 	if _, err := s.pool.Exec(ctx, `UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO audit_logs(actor_id,action,resource,details_json) SELECT 'closing','scheduled-history','closing',jsonb_build_object('name','Private '||n) FROM generate_series(1,7) n; INSERT INTO analyses(id,tenant_id,name,state,created_by,report_content) VALUES('retained','sole','Retained','completed','closing','retained content')`); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 30; i++ {
-		n, err := port.AdvanceDue(ctx, 5, 100)
+		n, err := port.AdvanceDue(ctx, 5, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -260,6 +263,12 @@ func TestClosurePGDueDriverAdvancesDeadlinesAndResumesAfterRestart(t *testing.T)
 		if n == 0 {
 			t.Fatal("due driver lost a resumable step")
 		}
+		if immediate, err := port.AdvanceDue(ctx, 5, 3); err != nil || immediate != 0 {
+			t.Fatalf("due driver ignored persisted retry backoff: %d %v", immediate, err)
+		}
+		if _, err = s.pool.Exec(ctx, `UPDATE account_closures SET next_attempt_at=now()`); err != nil {
+			t.Fatal(err)
+		}
 		reconstructed := NewPGStore(s.pool)
 		reconstructed.SetAvatarStorage(storage.NewLocalAvatar(root))
 		port = any(NewService(reconstructed)).(interface {
@@ -269,6 +278,19 @@ func TestClosurePGDueDriverAdvancesDeadlinesAndResumesAfterRestart(t *testing.T)
 	r, err := s.Status(ctx, "closing")
 	if err != nil || r.State != "completed" {
 		t.Fatalf("due discovery did not complete: %+v %v", r, err)
+	}
+	if r.CleanupStatus != "retention_pending" || r.BusinessRemaining != 1 {
+		t.Fatalf("retained data lost from due progress: %+v", r)
+	}
+	if _, err = s.pool.Exec(ctx, `UPDATE analyses SET created_at=now()-interval '40 days' WHERE id='retained'; UPDATE account_closures SET next_attempt_at=now()`); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := port.AdvanceDue(ctx, 5, 100); err != nil || n != 1 {
+		t.Fatalf("retention eligibility was not rediscovered after restart: %d %v", n, err)
+	}
+	r, err = s.Status(ctx, "closing")
+	if err != nil || r.CleanupStatus != "complete" {
+		t.Fatalf("retained cleanup did not complete: %+v %v", r, err)
 	}
 	data, _ := json.Marshal(r)
 	var fields map[string]any

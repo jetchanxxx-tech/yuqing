@@ -70,3 +70,12 @@ test('prebuilt closure CLI refuses a replacement avatar root and retries the ver
   expect(sql("SELECT status FROM users WHERE id=:'uid';",{uid})).toBe('closed');
   const files=await import('node:fs');expect(files.readdirSync(root).filter(f=>f.startsWith(name.slice(0,65))&&f.endsWith('.png'))).toEqual([]);
 });
+
+test('prebuilt server discovers and completes a due closure without a manual user command',async({request})=>{
+  const a=await account(request);const uid=a.user.user_id,tid=a.user.tenant_id;
+  expect((await request.post(`${api}/user/account-closure`,{headers:{Authorization:`Bearer ${a.access_token}`},data:{password,confirmed:true,close_tenant_ids:[tid]}})).status()).toBe(202);
+  sql("UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second' WHERE user_id=:'uid';",{uid});
+  await expect.poll(()=>sql("SELECT status FROM users WHERE id=:'uid';",{uid}),{timeout:35_000,intervals:[500,1000,1000]}).toBe('closed');
+  expect(sql("SELECT state||':'||cleanup_status FROM account_closures WHERE user_id=:'uid';",{uid})).toBe('completed:complete');
+  expect(sql("SELECT count(*) FROM orders WHERE tenant_id=:'tid';",{tid})).toBe('0');
+});
