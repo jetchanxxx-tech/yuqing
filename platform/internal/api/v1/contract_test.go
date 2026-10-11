@@ -74,6 +74,7 @@ func newContractEnvWithConfig(t *testing.T, cfg *config.Config) (*gin.Engine, *v
 	deps.Tenant = tenant.NewService(tenants)
 	deps.Auth = auth.NewService(store, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 	deps.AccountAdmin = accountadmin.NewService(accountadmin.NewMemoryStore(store, tenants, deps.Credits, deps.Payment))
+	deps.Payment.SetOrderGuard(app.MemoryOrderGuard(store, tenants, deps.APIKey))
 	deps.Auth.SetPostRegister(func(ctx context.Context, tenantID string) error {
 		return deps.Credits.GrantTrial(ctx, tenantID, credit.TrialCredits)
 	})

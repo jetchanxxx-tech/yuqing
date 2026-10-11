@@ -212,7 +212,12 @@ func (s *Services) handleCreateOrder(c *gin.Context) {
 		badRequest(c, "body must be JSON {sku_code, channel}")
 		return
 	}
-	order, err := s.Payment.Create(c.Request.Context(), tenantID, req.SKUCode, req.Channel)
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	order, err := s.Payment.Create(c.Request.Context(), tenantID, req.SKUCode, req.Channel, actor)
 	if err != nil {
 		// 渠道未配置是用户可理解的业务拒绝（购买页不应展示该渠道），
 		// 映射 400 而非 500 —— 配置缺失不该像服务器故障。

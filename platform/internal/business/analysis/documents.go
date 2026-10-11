@@ -39,19 +39,23 @@ type documentStore interface {
 
 // memoryDocumentStore 按租户+分析分桶保存采集结果（内存实现，重启即失）。
 type memoryDocumentStore struct {
-	mu   sync.RWMutex
-	data map[string]map[string][]Document // tenantID → analysisID → docs
+	mu     sync.RWMutex
+	data   map[string]map[string][]Document // tenantID → analysisID → docs
+	sealed map[string]bool
 }
 
 var _ documentStore = (*memoryDocumentStore)(nil)
 
 func newMemoryDocumentStore() *memoryDocumentStore {
-	return &memoryDocumentStore{data: make(map[string]map[string][]Document)}
+	return &memoryDocumentStore{data: make(map[string]map[string][]Document), sealed: map[string]bool{}}
 }
 
 func (d *memoryDocumentStore) add(_ context.Context, tenantID, analysisID string, docs []Document) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.sealed[tenantID] {
+		return fmt.Errorf("analysis: tenant is closed")
+	}
 	if d.data[tenantID] == nil {
 		d.data[tenantID] = make(map[string][]Document)
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // PGStore 是 PostgreSQL 订单存储（0006 迁移的 orders 表）。
@@ -28,8 +29,19 @@ func (p *PGStore) Create(ctx context.Context, o *Order) error {
 		return err
 	}
 	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(741914)`); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,741915))`, o.TenantID); err != nil {
 		return err
+	}
+	if o.actor != nil {
+		if err = billingpolicy.CheckActorTx(ctx, tx, o.TenantID, *o.actor); err != nil {
+			if pkgerrors.Is(err, pkgerrors.ErrForbidden) || pkgerrors.Is(err, pkgerrors.ErrTenantSuspended) {
+				return pkgerrors.ErrConflict
+			}
+			return err
+		}
 	}
 	var status string
 	var active bool

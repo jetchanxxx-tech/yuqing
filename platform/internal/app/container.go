@@ -266,6 +266,9 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	initialProviders, _ := paymentRegistry.Resolve(context.Background())
 	paymentSvc := payment.NewService(paymentStore, creditSvc, initialProviders, logger)
 	paymentSvc.SetProviderReload(paymentRegistry.Resolve)
+	if platformPool == nil {
+		paymentSvc.SetOrderGuard(MemoryOrderGuard(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore), apiKeySvc))
+	}
 
 	// ── 热榜聚合（F21）────────────────────────────────────────
 	// RSSHub 地址可配置（生产绑 127.0.0.1:1200，测试用公共实例），
@@ -339,6 +342,25 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 					creditSvc.AnonymizeMemoryClosure(uid, tids)
 				}
 			}, avatarStorage)
+		store.SetBusinessCleanup(func(ctx context.Context, impacts []accountclosure.TenantImpact, limit int) (bool, error) {
+			done := true
+			for _, t := range impacts {
+				if t.RetentionDays == nil || *t.RetentionDays < 1 {
+					return false, fmt.Errorf("retention policy unavailable")
+				}
+				cutoff := time.Now().UTC().Add(-time.Duration(*t.RetentionDays) * 24 * time.Hour)
+				for _, cleanup := range []func(context.Context, string, time.Time, int) (bool, error){analysisSvc.CleanupClosedTenant, reportStore.(*report.MemoryStore).CleanupClosedTenant, monitorStore.(*monitorplan.MemoryStore).CleanupClosedTenant, alertStore.(*alert.MemoryStore).CleanupClosedTenant} {
+					complete, err := cleanup(ctx, t.ID, cutoff, limit)
+					if err != nil {
+						return false, err
+					}
+					if !complete {
+						done = false
+					}
+				}
+			}
+			return done, nil
+		})
 		closureService = accountclosure.NewService(store)
 	}
 	return &v1.Services{

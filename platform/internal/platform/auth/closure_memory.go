@@ -26,7 +26,37 @@ type MemoryClosureStore struct {
 	avatars      accountclosure.AvatarLifecycle
 	now          func() time.Time
 	records      map[string]*memoryClosure
+	cleanup      func(context.Context, []accountclosure.TenantImpact, int) (bool, error)
 }
+
+func (m *MemoryClosureStore) SetBusinessCleanup(cleanup func(context.Context, []accountclosure.TenantImpact, int) (bool, error)) {
+	m.cleanup = cleanup
+}
+func (m *MemoryClosureStore) cleanupBusiness(ctx context.Context, r *memoryClosure, limit int) {
+	if m.cleanup == nil {
+		r.status.CleanupStatus = "pending_cleanup"
+		r.status.LastError = "MEMORY_BUSINESS_RETENTION_UNVERIFIED"
+		return
+	}
+	sole := []accountclosure.TenantImpact{}
+	for _, t := range r.tenants {
+		if t.Members == 1 {
+			sole = append(sole, t)
+		}
+	}
+	done, err := m.cleanup(ctx, sole, limit)
+	if err != nil {
+		r.status.CleanupStatus = "pending_cleanup"
+		r.status.LastError = "BUSINESS_CLEANUP_FAILED"
+		return
+	}
+	r.status.LastError = ""
+	r.status.CleanupStatus = "retention_pending"
+	if done {
+		r.status.CleanupStatus = "complete"
+	}
+}
+
 type memoryClosure struct {
 	status  accountclosure.Status
 	tenants []accountclosure.TenantImpact
@@ -226,7 +256,12 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 		}
 		cp := r.status
 		out = &cp
-		if r.status.State == "completed" || r.status.State == "cancelled" || m.now().Before(r.status.WithdrawUntil) {
+		if r.status.State == "completed" {
+			m.cleanupBusiness(ctx, r, limit)
+			*out = r.status
+			return nil
+		}
+		if r.status.State == "cancelled" || m.now().Before(r.status.WithdrawUntil) {
 			return nil
 		}
 		u := m.users.usersByID[uid]
@@ -259,6 +294,21 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 			*out = r.status
 			return nil
 		}
+		m.verification.mu.Lock()
+		processing := false
+		for key, n := range m.verification.notices {
+			c := m.verification.credentials[key]
+			if (c.UserID == uid || c.IssuerUserID == uid) && n.State == "processing" {
+				processing = true
+				break
+			}
+		}
+		m.verification.mu.Unlock()
+		if processing {
+			r.status.LastError = "NOTIFICATION_DELIVERY_UNCONFIRMED"
+			*out = r.status
+			return nil
+		}
 		if r.status.State == "pending" {
 			u.TokenVersion++
 			u.RowVersion++
@@ -266,6 +316,7 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 		}
 		r.status.Attempts++
 		r.status.CleanupStatus = "avatars"
+		r.status.LastError = ""
 		if m.avatars == nil {
 			r.status.LastError = "AVATAR_STORAGE_UNAVAILABLE"
 			*out = r.status
@@ -294,7 +345,7 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 				sole = append(sole, t.ID)
 			}
 		}
-		return m.users.tenants.CloseSoleTeams(ctx, sole, func() {
+		err := m.users.tenants.CloseSoleTeams(ctx, sole, func() {
 			m.verification.mu.Lock()
 			defer m.verification.mu.Unlock()
 			for k, c := range m.verification.credentials {
@@ -305,7 +356,9 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 					c.UsedAt = &now
 					m.verification.credentials[k] = c
 					if n, ok := m.verification.notices[k]; ok {
-						n.State = "cancelled"
+						if n.State != "accepted" {
+							n.State = "cancelled"
+						}
 						n.Recipient = ""
 						m.verification.notices[k] = n
 					}
@@ -339,10 +392,17 @@ func (m *MemoryClosureStore) Process(ctx context.Context, uid string, limit int)
 			now := m.now().UTC()
 			r.status.State = "completed"
 			r.status.CompletedAt = &now
-			r.status.CleanupStatus = "pending_cleanup"
-			r.status.LastError = "MEMORY_BUSINESS_RETENTION_UNVERIFIED"
-			*out = r.status
+			for i := range r.tenants {
+				if r.tenants[i].Members == 1 {
+					r.tenants[i].Name = "已注销团队"
+				}
+			}
 		})
+		if err == nil {
+			m.cleanupBusiness(ctx, r, limit)
+			*out = r.status
+		}
+		return err
 	})
 	return
 }

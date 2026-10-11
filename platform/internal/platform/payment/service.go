@@ -9,6 +9,7 @@ import (
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
 	"github.com/yuqing/platform/internal/platform/billing"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 )
 
 // 订单有效期：二维码超时关闭。渠道侧通常 2h-24h，我们收窄到 15 分钟
@@ -76,7 +77,10 @@ func (s *Service) provider(ctx context.Context, channel string) (Provider, error
 
 // Create 创建订单并发起渠道预下单，返回带二维码的 pending 订单。
 // 金额与额度一律取自服务端目录（billing.ResolveSKU），绝不信任前端。
-func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string) (*Order, error) {
+func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string, actors ...billingpolicy.Actor) (*Order, error) {
+	if len(actors) > 1 {
+		return nil, pkgerrors.ErrBadRequest
+	}
 	sku := billing.ResolveSKU(skuCode)
 	if sku == nil {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "payment: 未知商品 "+skuCode)
@@ -104,6 +108,14 @@ func (s *Service) Create(ctx context.Context, tenantID, skuCode, channel string)
 	}
 
 	// Persist the financial blocker before any supplier request. A crash or
+	if len(actors) == 1 {
+		snapshot := actors[0]
+		if snapshot.TokenVersion != nil {
+			v := *snapshot.TokenVersion
+			snapshot.TokenVersion = &v
+		}
+		o.actor = &snapshot
+	}
 	// unknown supplier outcome retains pending for reconciliation; it never
 	// invents paid, closed, refunded or granted state.
 	if err = s.store.Create(ctx, o); err != nil {

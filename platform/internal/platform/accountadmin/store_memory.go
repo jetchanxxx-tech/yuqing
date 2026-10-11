@@ -41,6 +41,8 @@ var _ Store = (*MemoryStore)(nil)
 func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, completion bool, change func(func([]string)) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	before := ""
+	_ = s.accounts.ReadAdministration(ctx, func(st *auth.AdministrationState) error { before = st.Users[uid].Status; return nil })
 	if completion {
 		for _, n := range s.notifications {
 			if (n.UserID == uid || n.ActorID == uid) && n.State == "pending" {
@@ -48,7 +50,7 @@ func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, comple
 			}
 		}
 	}
-	return change(func(sole []string) {
+	err := change(func(sole []string) {
 		tids := map[string]bool{}
 		for _, id := range sole {
 			tids[id] = true
@@ -63,6 +65,21 @@ func (s *MemoryStore) WithAccountClosure(ctx context.Context, uid string, comple
 			}
 		}
 	})
+	if err == nil {
+		after := ""
+		_ = s.accounts.ReadAdministration(ctx, func(st *auth.AdministrationState) error { after = st.Users[uid].Status; return nil })
+		if before != after {
+			action := "account.closure.request"
+			if after == "active" {
+				action = "account.closure.cancel"
+			}
+			if after == "closed" {
+				action = "account.closure.complete"
+			}
+			s.audits = append(s.audits, Audit{ID: int64(len(s.audits) + 1), ActorID: uid, Action: action, TargetType: "user", TargetID: uid, Reason: action, CreatedAt: time.Now().UTC(), Before: map[string]any{}, After: map[string]any{}})
+		}
+	}
+	return err
 }
 func closureAuditNumbers(input map[string]any) map[string]any {
 	out := map[string]any{"anonymized": true}

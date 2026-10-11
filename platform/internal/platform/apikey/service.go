@@ -63,6 +63,13 @@ type Service struct {
 	store Store
 }
 
+func (s *Service) WithOwnedKey(ctx context.Context, id, tid, uid string, commit func() error) error {
+	if m, ok := s.store.(*MemoryStore); ok {
+		return m.WithOwnedKey(ctx, id, tid, uid, commit)
+	}
+	return pkgerrors.ErrServiceUnavailable
+}
+
 // NewService creates an API key service over the given store.
 func NewService(store Store) *Service {
 	return &Service{store: store}
