@@ -9,15 +9,16 @@ import (
 
 // Document 是采集到的原始内容（由 query 引擎返回）。
 type Document struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Content     string `json:"content"`
-	Author      string `json:"author,omitempty"`
-	SourceType  string `json:"source_type"`
-	SourceName  string `json:"source_name"`
-	PublishedAt string `json:"published_at,omitempty"`
-	ContentHash string `json:"content_hash,omitempty"`
+	ID                string `json:"id"`
+	Title             string `json:"title"`
+	URL               string `json:"url"`
+	Content           string `json:"content"`
+	Author            string `json:"author,omitempty"`
+	SourceType        string `json:"source_type"`
+	SourceName        string `json:"source_name"`
+	PublishedAt       string `json:"published_at,omitempty"`
+	SourcePublishedAt string `json:"source_published_at,omitempty"` // source text without an asserted UTC instant
+	ContentHash       string `json:"content_hash,omitempty"`
 }
 
 // documentStore 是采集文档的持久化契约：内存实现 memoryDocumentStore，
@@ -38,19 +39,23 @@ type documentStore interface {
 
 // memoryDocumentStore 按租户+分析分桶保存采集结果（内存实现，重启即失）。
 type memoryDocumentStore struct {
-	mu   sync.RWMutex
-	data map[string]map[string][]Document // tenantID → analysisID → docs
+	mu     sync.RWMutex
+	data   map[string]map[string][]Document // tenantID → analysisID → docs
+	sealed map[string]bool
 }
 
 var _ documentStore = (*memoryDocumentStore)(nil)
 
 func newMemoryDocumentStore() *memoryDocumentStore {
-	return &memoryDocumentStore{data: make(map[string]map[string][]Document)}
+	return &memoryDocumentStore{data: make(map[string]map[string][]Document), sealed: map[string]bool{}}
 }
 
 func (d *memoryDocumentStore) add(_ context.Context, tenantID, analysisID string, docs []Document) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.sealed[tenantID] {
+		return fmt.Errorf("analysis: tenant is closed")
+	}
 	if d.data[tenantID] == nil {
 		d.data[tenantID] = make(map[string][]Document)
 	}

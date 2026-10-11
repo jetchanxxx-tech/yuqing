@@ -18,7 +18,6 @@ func TestBuildRejectsUnsafeQueueWiringBeforeConnecting(t *testing.T) {
 		name, store, driver, want string
 	}{
 		{"pg memory fallback", "postgres", "memory", "persistent PostgreSQL queue"},
-		{"pg requires beta opt-in", "postgres", "postgres", "YUQING_BETA_SKIP_CREDITS"},
 		{"unknown driver", "memory", "redis", "unsupported queue driver"},
 		{"memory store with pg queue", "memory", "postgres", "PostgreSQL store"},
 	} {
@@ -34,20 +33,14 @@ func TestBuildRejectsUnsafeQueueWiringBeforeConnecting(t *testing.T) {
 	}
 }
 
-func TestBetaPGModeRequiresExplicitCreditSkip(t *testing.T) {
+func TestPGAtomicBillingStartsWithoutBetaEnvironment(t *testing.T) {
 	cfg := &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "")
-	if err := checkQueueReadiness(cfg); err == nil || !strings.Contains(err.Error(), "YUQING_BETA_SKIP_CREDITS") {
-		t.Fatalf("default mode err=%v", err)
-	}
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	if err := checkQueueReadiness(cfg); err != nil {
-		t.Fatalf("explicit beta mode rejected: %v", err)
+		t.Fatalf("atomic PG mode rejected: %v", err)
 	}
 }
 
 func TestPGWorkerRefusesMissingCrawler(t *testing.T) {
-	t.Setenv("YUQING_BETA_SKIP_CREDITS", "true")
 	err := RunPGWorker(context.Background(), &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "engines.query.url") {
 		t.Fatalf("missing crawler err=%v", err)

@@ -3,6 +3,7 @@ package tenant
 import (
 	"context"
 	"testing"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -24,12 +25,14 @@ func tenantStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 		t.Helper()
 		tenantID := id.New()
 		tn := Tenant{
-			ID:       tenantID,
-			Name:     name,
-			Slug:     "t-" + tenantID,
-			DBName:   DBName(tenantID),
-			Status:   StatusActive,
-			PlanCode: "free",
+			ID:         tenantID,
+			Name:       name,
+			Slug:       "t-" + tenantID,
+			DBName:     DBName(tenantID),
+			Status:     StatusActive,
+			PlanCode:   "free",
+			CreatedAt:  time.Now().UTC().Truncate(time.Microsecond),
+			RowVersion: 3,
 		}
 		if err := st.Create(ctx, tn); err != nil {
 			t.Fatalf("seed tenant %q failed: %v", name, err)
@@ -45,7 +48,7 @@ func tenantStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err != nil {
 			t.Fatalf("Get failed: %v", err)
 		}
-		if *got != want {
+		if !sameTenantRow(*got, want) {
 			t.Errorf("tenant = %+v, want %+v", *got, want)
 		}
 		if got.Status != StatusActive {
@@ -53,6 +56,36 @@ func tenantStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 		}
 		if got.DBName != DBName(want.ID) {
 			t.Errorf("DBName = %q, want %q", got.DBName, DBName(want.ID))
+		}
+	})
+
+	t.Run("Generated creation time is retained by Get and List", func(t *testing.T) {
+		st := newStore(t)
+		tenantID := id.New()
+		input := Tenant{ID: tenantID, Name: "generated-time", Slug: "t-" + tenantID, DBName: DBName(tenantID), Status: StatusActive, PlanCode: "free"}
+		if err := st.Create(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+		first, err := st.Get(ctx, tenantID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.CreatedAt.IsZero() || first.RowVersion != 0 {
+			t.Fatalf("generated timestamp/default version missing: %+v", first)
+		}
+		again, err := st.Get(ctx, tenantID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !sameTenantRow(*first, *again) {
+			t.Fatalf("Get regenerated stored fields: first=%+v again=%+v", first, again)
+		}
+		rows, err := st.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || !sameTenantRow(rows[0], *first) {
+			t.Fatalf("List omitted stored timestamp/version: %+v, want %+v", rows, first)
 		}
 	})
 
@@ -162,6 +195,12 @@ func tenantStoreContract(t *testing.T, newStore func(t *testing.T) Store) {
 	})
 }
 
+// Compare the stored instant rather than Go's location pointer/monotonic
+// representation, while still checking every independent tenant row field.
+func sameTenantRow(got, want Tenant) bool {
+	return got.ID == want.ID && got.Name == want.Name && got.Slug == want.Slug && got.DBName == want.DBName && got.Status == want.Status && got.PlanCode == want.PlanCode && got.CreatedAt.Equal(want.CreatedAt) && got.RowVersion == want.RowVersion
+}
+
 // 本地（无 YUQING_TEST_PG_URL）也有信号：契约本身必须被内存版满足。
 func TestTenantStore_Memory_satisfiesContract(t *testing.T) {
 	tenantStoreContract(t, func(t *testing.T) Store { return NewMemoryStore() })
@@ -187,12 +226,14 @@ func TestTenantStore_PG_survivesNewInstance(t *testing.T) {
 
 	first := NewPGStore(pool)
 	want := Tenant{
-		ID:       id.New(),
-		Name:     "持久化租户",
-		Slug:     "t-persist",
-		DBName:   "yuqing_t_persist",
-		Status:   StatusActive,
-		PlanCode: "pro",
+		ID:         id.New(),
+		Name:       "持久化租户",
+		Slug:       "t-persist",
+		DBName:     "yuqing_t_persist",
+		Status:     StatusActive,
+		PlanCode:   "pro",
+		CreatedAt:  time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC),
+		RowVersion: 5,
 	}
 	if err := first.Create(ctx, want); err != nil {
 		t.Fatal(err)
@@ -202,7 +243,7 @@ func TestTenantStore_PG_survivesNewInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重启后读租户失败: %v", err)
 	}
-	if *got != want {
+	if !sameTenantRow(*got, want) {
 		t.Errorf("tenant = %+v, want %+v", *got, want)
 	}
 

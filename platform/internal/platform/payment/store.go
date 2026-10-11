@@ -2,6 +2,8 @@ package payment
 
 import (
 	"context"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"sort"
 	"sync"
 	"time"
@@ -24,13 +26,22 @@ type Store interface {
 	MarkGranted(ctx context.Context, orderID string) error
 	// SaveChannelMeta 绑定预下单号与渠道侧时间元数据（银联查单必需 txnTime）。
 	SaveChannelMeta(ctx context.Context, orderID, providerTxnID, txnTime string) error
+	SavePrecreate(context.Context, *Order) error
 }
 
 // MemoryStore 是进程内订单存储（测试/开发）。
 type MemoryStore struct {
-	mu      sync.Mutex
-	orders  map[string]*Order
-	txnIdx  map[string]string // provider_txn_id → order_id（唯一索引模拟）
+	mu     sync.Mutex
+	orders map[string]*Order
+	txnIdx map[string]string // provider_txn_id → order_id（唯一索引模拟）
+	guard  OrderGuard
+}
+type OrderGuard func(context.Context, string, billingpolicy.Actor, func() error) error
+
+func (s *Service) SetOrderGuard(guard OrderGuard) {
+	if m, ok := s.store.(*MemoryStore); ok {
+		m.guard = guard
+	}
 }
 
 // NewMemoryStore 装配内存存储。
@@ -38,12 +49,15 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{orders: map[string]*Order{}, txnIdx: map[string]string{}}
 }
 
-func (m *MemoryStore) Create(_ context.Context, o *Order) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cp := *o
-	m.orders[o.ID] = &cp
-	return nil
+func (m *MemoryStore) Create(ctx context.Context, o *Order) error {
+	commit := func() error { m.mu.Lock(); defer m.mu.Unlock(); cp := *o; m.orders[o.ID] = &cp; return nil }
+	if o.actor != nil {
+		if m.guard == nil {
+			return pkgerrors.ErrServiceUnavailable
+		}
+		return m.guard(ctx, o.TenantID, *o.actor, commit)
+	}
+	return commit()
 }
 
 func (m *MemoryStore) Get(_ context.Context, orderID string) (*Order, error) {
@@ -127,6 +141,20 @@ func (m *MemoryStore) SaveChannelMeta(_ context.Context, orderID, providerTxnID,
 	o.ProviderTxnID = providerTxnID
 	if txnTime != "" {
 		o.TxnTime = txnTime
+	}
+	return nil
+}
+func (m *MemoryStore) SavePrecreate(_ context.Context, precreate *Order) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	o := m.orders[precreate.ID]
+	if o == nil {
+		return ErrNotFound
+	}
+	if o.State == StatePending {
+		o.QRCodeURL = precreate.QRCodeURL
+		o.ProviderTxnID = precreate.ProviderTxnID
+		o.TxnTime = precreate.TxnTime
 	}
 	return nil
 }

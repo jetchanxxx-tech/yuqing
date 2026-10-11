@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import { listReports, openReportDownload, type Report } from '../api/reports';
 import { REPORT_FORMATS, type ReportFormat } from '../lib/constants';
-import { formatDateTime } from '../lib/format';
+import { useDateTime } from '../lib/format';
 import { ErrorBlock, EmptyBlock, LoadingBlock } from '../components/PageState';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -16,6 +16,7 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 };
 
 export default function ReportHistoryPage() {
+  const formatDateTime = useDateTime();
   const { message } = App.useApp();
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['reports', 'list'],

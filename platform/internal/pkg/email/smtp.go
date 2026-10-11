@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/notification"
+	"net"
 	"net/smtp"
 	"strings"
 	"time"
@@ -40,7 +42,7 @@ func (p *SMTPProvider) SendVerificationEmail(ctx context.Context, to, name, veri
 	html := strings.ReplaceAll(verificationEmailHTML, "{{.Name}}", name)
 	html = strings.ReplaceAll(html, "{{.VerifyURL}}", verifyURL)
 
-	return p.sendEmail(to, "验证您的邮箱 - 盘古舆情", html)
+	return p.sendEmail(ctx, to, "验证您的邮箱 - 盘古舆情", html)
 }
 
 // SendPasswordResetEmail 发送密码重置邮件
@@ -48,23 +50,49 @@ func (p *SMTPProvider) SendPasswordResetEmail(ctx context.Context, to, name, res
 	html := strings.ReplaceAll(passwordResetEmailHTML, "{{.Name}}", name)
 	html = strings.ReplaceAll(html, "{{.ResetURL}}", resetURL)
 
-	return p.sendEmail(to, "重置您的密码 - 盘古舆情", html)
+	return p.sendEmail(ctx, to, "重置您的密码 - 盘古舆情", html)
 }
 
 // SendTestEmail 发送测试邮件
 func (p *SMTPProvider) SendTestEmail(ctx context.Context, to string) error {
 	html := strings.ReplaceAll(testEmailHTML, "{{.Timestamp}}", time.Now().Format("2006-01-02 15:04:05"))
 
-	return p.sendEmail(to, "邮件服务测试 - 盘古舆情", html)
+	return p.sendEmail(ctx, to, "邮件服务测试 - 盘古舆情", html)
 }
 
 // SendRaw 发送自定义 HTML 邮件。
-func (p *SMTPProvider) SendRaw(_ context.Context, to, subject, htmlBody string) error {
-	return p.sendEmail(to, subject, htmlBody)
+func (p *SMTPProvider) SendRaw(ctx context.Context, to, subject, htmlBody string) error {
+	return p.sendEmail(ctx, to, subject, htmlBody)
 }
 
 // sendEmail SMTP 发送邮件实现
-func (p *SMTPProvider) sendEmail(to, subject, htmlBody string) error {
+func (p *SMTPProvider) SendRawReceipt(ctx context.Context, to, subject, body string) (notification.Receipt, error) {
+	if err := p.sendEmail(ctx, to, subject, body); err != nil {
+		return notification.Receipt{}, err
+	}
+	return notification.Receipt{Provider: "smtp", State: "accepted", AcceptedAt: time.Now().UTC()}, nil
+}
+func (p *SMTPProvider) sendEmail(ctx context.Context, to, subject, htmlBody string) (sendErr error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	defer func() {
+		if sendErr != nil {
+			if ctx.Err() != nil {
+				sendErr = ctx.Err()
+			} else {
+				sendErr = fmt.Errorf("SMTP delivery was not accepted")
+			}
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, v := range []string{to, subject, p.fromAddress, p.fromName} {
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("invalid mail header")
+		}
+	}
+
 	from := fmt.Sprintf("%s <%s>", p.fromName, p.fromAddress)
 
 	// 构建邮件内容
@@ -88,11 +116,16 @@ func (p *SMTPProvider) sendEmail(to, subject, htmlBody string) error {
 		ServerName: p.host,
 	}
 
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	dialer := tls.Dialer{NetDialer: &net.Dialer{Timeout: 10 * time.Second}, Config: tlsConfig}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp tls dial failed: %w", err)
 	}
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	deadline, _ := ctx.Deadline()
+	_ = conn.SetDeadline(deadline)
 
 	client, err := smtp.NewClient(conn, p.host)
 	if err != nil {
@@ -131,5 +164,7 @@ func (p *SMTPProvider) sendEmail(to, subject, htmlBody string) error {
 		return fmt.Errorf("smtp close failed: %w", err)
 	}
 
-	return client.Quit()
+	// DATA completion is acceptance; QUIT failure cannot undo it.
+	_ = client.Quit()
+	return nil
 }

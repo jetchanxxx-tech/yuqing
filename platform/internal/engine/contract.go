@@ -34,6 +34,7 @@ type MediaAnalyzeResp struct {
 
 // InsightAnalyzeReq requests deep analysis + sentiment + topics.
 type InsightAnalyzeReq struct {
+	RunID        string     `json:"run_id"`
 	DocumentIDs  []string   `json:"document_ids"`
 	Documents    []Document `json:"documents,omitempty"`
 	AnalysisID   string     `json:"analysis_id"`
@@ -80,6 +81,7 @@ type QuoteResult struct {
 
 // SentimentReq requests batched sentiment classification.
 type SentimentReq struct {
+	RunID      string     `json:"run_id"`
 	Documents  []Document `json:"documents"`
 	Model      string     `json:"model,omitempty"`
 	AnalysisID string     `json:"analysis_id"`
@@ -93,6 +95,7 @@ type SentimentResp struct {
 
 // ReportGenerateReq requests report generation from document IR.
 type ReportGenerateReq struct {
+	RunID      string            `json:"run_id"`
 	Title      string            `json:"title"`
 	TemplateID string            `json:"template_id"`
 	Format     string            `json:"format"` // html, markdown, pdf, docx

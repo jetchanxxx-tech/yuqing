@@ -3,7 +3,7 @@ import { Button, Card, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { getInvoices, type Invoice } from '../api/billing';
-import { formatCny, formatDateTime } from '../lib/format';
+import { formatCny, useDateTime } from '../lib/format';
 import { ErrorBlock, EmptyBlock, LoadingBlock } from '../components/PageState';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -13,6 +13,7 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 };
 
 export default function InvoicesPage() {
+  const formatDateTime = useDateTime();
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['billing', 'invoices'],
     queryFn: getInvoices,

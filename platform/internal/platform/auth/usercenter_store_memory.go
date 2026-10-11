@@ -5,7 +5,6 @@ package auth
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
@@ -14,17 +13,26 @@ import (
 var _ UserStore = (*MemoryStore)(nil)
 var _ VerificationStore = (*MemoryVerificationStore)(nil)
 
-// UpdatePassword 更新密码哈希并记录修改时间。
-func (m *MemoryStore) UpdatePassword(_ context.Context, userID, newHash string) error {
+// UpdatePassword verifies account status/version and updates the credential
+// within one lock, so old password snapshots cannot overwrite a newer change.
+func (m *MemoryStore) UpdatePassword(_ context.Context, userID, newHash string, expectedVersion int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u, ok := m.usersByID[userID]
 	if !ok {
 		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 	}
+	if u.Status != "active" {
+		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "account unavailable")
+	}
+	if u.TokenVersion != expectedVersion {
+		return pkgerrors.Wrap(pkgerrors.ErrConflict, "credentials changed; sign in again")
+	}
 	now := time.Now()
 	u.PasswordHash = newHash
 	u.PasswordChangedAt = &now
+	u.TokenVersion++
+	u.RowVersion++
 	return nil
 }
 
@@ -133,76 +141,28 @@ func (m *MemoryStore) GetByPhone(_ context.Context, phone string) (*User, error)
 	return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "user not found")
 }
 
-// MemoryVerificationStore 内存验证凭据存储（语义化接口实现）。
-type MemoryVerificationStore struct {
-	mu       sync.RWMutex
-	emailTok map[string]verificationEntry // token → {userID, expiresAt}
-	smsCodes map[string]verificationEntry // "phone|purpose" → {code, expiresAt}
-}
-
-type verificationEntry struct {
-	value     string
-	expiresAt time.Time
-}
-
-// NewMemoryVerificationStore 创建空存储。
-func NewMemoryVerificationStore() *MemoryVerificationStore {
-	return &MemoryVerificationStore{
-		emailTok: make(map[string]verificationEntry),
-		smsCodes: make(map[string]verificationEntry),
-	}
-}
-
-// SaveEmailToken 保存邮箱验证 token。
-func (m *MemoryVerificationStore) SaveEmailToken(_ context.Context, token, userID string, ttl time.Duration) error {
+func (m *MemoryStore) UpdateOwnProfile(_ context.Context, actor Principal, name, timezone string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.emailTok[token] = verificationEntry{value: userID, expiresAt: time.Now().Add(ttl)}
+	u, ok := m.usersByID[actor.UserID]
+	if !ok || u.Status != "active" || u.TokenVersion != actor.TokenVersion {
+		return pkgerrors.ErrUnauthorized
+	}
+	if name != "" {
+		u.Name = name
+	}
+	u.Timezone = timezone
+	u.RowVersion++
 	return nil
 }
-
-// LoadEmailToken 读取 token 对应的 userID（过期视为不存在）。
-func (m *MemoryVerificationStore) LoadEmailToken(_ context.Context, token string) (string, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	e, ok := m.emailTok[token]
-	if !ok || time.Now().After(e.expiresAt) {
-		return "", pkgerrors.Wrap(pkgerrors.ErrNotFound, "verification expired")
+func (m *MemoryStore) ReplaceOwnAvatar(_ context.Context, actor Principal, previous, next string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.usersByID[actor.UserID]
+	if !ok || u.Status != "active" || u.TokenVersion != actor.TokenVersion || u.AvatarURL != previous {
+		return &avatarWriteNotCommitted{cause: pkgerrors.ErrConflict}
 	}
-	return e.value, nil
-}
-
-// ConsumeEmailToken 消费 token（一次性）。
-func (m *MemoryVerificationStore) ConsumeEmailToken(_ context.Context, token string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.emailTok, token)
-	return nil
-}
-
-// SaveSMSCode 保存验证码（同手机号同用途覆盖）。
-func (m *MemoryVerificationStore) SaveSMSCode(_ context.Context, phone, purpose, code string, ttl time.Duration) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.smsCodes[phone+"|"+purpose] = verificationEntry{value: code, expiresAt: time.Now().Add(ttl)}
-	return nil
-}
-
-// LoadSMSCode 读取验证码。
-func (m *MemoryVerificationStore) LoadSMSCode(_ context.Context, phone, purpose string) (string, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	e, ok := m.smsCodes[phone+"|"+purpose]
-	if !ok || time.Now().After(e.expiresAt) {
-		return "", pkgerrors.Wrap(pkgerrors.ErrNotFound, "verification expired")
-	}
-	return e.value, nil
-}
-
-// ConsumeSMSCode 消费验证码。
-func (m *MemoryVerificationStore) ConsumeSMSCode(_ context.Context, phone, purpose string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.smsCodes, phone+"|"+purpose)
+	u.AvatarURL = next
+	u.RowVersion++
 	return nil
 }

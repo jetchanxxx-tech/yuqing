@@ -12,6 +12,7 @@ package payment
 import (
 	"context"
 	"errors"
+	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"time"
 )
 
@@ -32,6 +33,7 @@ const (
 
 // Order 是一笔支付订单。
 type Order struct {
+	actor         *billingpolicy.Actor
 	ID            string     `json:"id"` // 商户订单号（out_trade_no）
 	TenantID      string     `json:"tenant_id"`
 	SKUCode       string     `json:"sku_code"`

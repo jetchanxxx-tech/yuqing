@@ -9,7 +9,7 @@ import {
   createOrder, getCredits, getCatalog, getOrder, getCreditTransactions,
   type CreditTransaction, type Order, type Plan, type SKU,
 } from '../api/billing';
-import { formatCents, formatDateTime } from '../lib/format';
+import { formatCents, useDateTime } from '../lib/format';
 import { ErrorBlock, LoadingBlock } from '../components/PageState';
 
 /** 套餐权益文案（按 code 静态补充，与后端目录语义一致） */
@@ -114,7 +114,7 @@ export default function PlanSelectionPage() {
         <Space>
           {creditsQ.data && (
             <Tag color="#FF2442" style={{ fontSize: 14, padding: '4px 12px' }}>
-              剩余额度：{creditsQ.data.balance} 次
+              {creditsQ.data.billing_exempt ? '当前账号免次数限制，实际余额：' : '剩余额度：'}{creditsQ.data.balance} 次
             </Tag>
           )}
           <Button icon={<ReloadOutlined />} onClick={() => { void refetch(); void creditsQ.refetch(); }}>
@@ -291,6 +291,7 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 function TransactionsTable() {
+  const formatDateTime = useDateTime();
   const txQ = useQuery({ queryKey: ['billing', 'transactions'], queryFn: getCreditTransactions });
 
   if (txQ.isLoading) return <LoadingBlock rows={3} />;

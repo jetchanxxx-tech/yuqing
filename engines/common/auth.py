@@ -1,5 +1,7 @@
 """Shared internal-auth middleware for Python engines."""
-from fastapi import Request, HTTPException
+from fastapi import Request
+from starlette.responses import JSONResponse
+import hmac
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -11,6 +13,8 @@ class InternalAuthMiddleware(BaseHTTPMiddleware):
         self.token = token
 
     async def dispatch(self, request: Request, call_next):
-        if request.headers.get("X-Internal-Token") != self.token:
-            raise HTTPException(status_code=403, detail="forbidden")
+        if request.method == "GET" and request.url.path == "/health":
+            return await call_next(request)
+        if not hmac.compare_digest(request.headers.get("X-Internal-Token", ""), self.token):
+            return JSONResponse(status_code=403, content={"detail": "forbidden"})
         return await call_next(request)

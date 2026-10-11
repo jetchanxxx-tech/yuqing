@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/platform/apikey"
 	"github.com/yuqing/platform/internal/platform/auth"
 	"github.com/yuqing/platform/internal/platform/tenant"
@@ -39,54 +40,84 @@ func bearerToken(c *gin.Context) (string, string) {
 	return parts[1], ""
 }
 
-// authenticateJWT validates an access token and injects its principal,
+// authenticateJWT resolves current account state and injects its principal,
 // aborting the chain on failure. Shared by AuthRequired and AuthAny.
 func authenticateJWT(c *gin.Context, cfg AuthConfig, token string) {
-	p, err := auth.ValidateAccessToken(token, cfg.JWTSecret)
+	if cfg.Authenticator == nil {
+		abortAuthorizationUnavailable(c)
+		return
+	}
+	p, err := cfg.Authenticator.Authenticate(c.Request.Context(), token)
 	if err != nil {
+		if pkgerrors.Is(err, pkgerrors.ErrUnauthorized) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code": "UNAUTHORIZED", "message": "invalid or expired token",
+				"request_id": c.GetString(string(CtxRequestID)),
+			})
+		} else {
+			abortAuthorizationUnavailable(c)
+		}
+		return
+	}
+	if p == nil || p.UserID == "" || p.AuthType != "jwt" || (p.UserStatus != "active" && p.UserStatus != "closure_pending") {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"code": "UNAUTHORIZED", "message": "invalid or expired token",
+			"request_id": c.GetString(string(CtxRequestID)),
 		})
 		return
 	}
-	if p.TenantStatus == "suspended" {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"code": "TENANT_SUSPENDED", "message": "tenant account is suspended",
-		})
+	if p.UserStatus == "closure_pending" && !restrictedClosurePath(c.Request.Method, c.Request.URL.Path) {
+		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.Wrap(pkgerrors.ErrForbidden, "account closure permits status and withdrawal only"), c.GetString(string(CtxRequestID))))
 		return
 	}
 	c.Set(string(CtxPrincipal), p)
 	c.Next()
 }
 
+func restrictedClosurePath(method, path string) bool {
+	return method == http.MethodGet && (path == "/api/v1/auth/me" || path == "/api/v1/user/account-closure/status") ||
+		method == http.MethodPost && (path == "/api/v1/user/account-closure/cancel" || path == "/api/v1/auth/logout")
+}
+
+func abortAuthorizationUnavailable(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable,
+		pkgerrors.ToEnvelope(pkgerrors.ErrServiceUnavailable, c.GetString(string(CtxRequestID))))
+}
+
 // authenticateWithAPIKey validates the raw key, checks the tenant and injects
 // an api_service principal. It aborts the chain on failure. Unknown/revoked
-// keys fail closed with 401; a suspended tenant answers 403 like in JWT mode.
+// keys fail closed with 401; every non-active tenant answers 403.
 func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants TenantLookup, raw string) {
 	if apiKeys == nil || tenants == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"code": "UNAUTHORIZED", "message": "invalid or expired token",
-		})
+		abortAuthorizationUnavailable(c)
 		return
 	}
 	key, err := apiKeys.ValidateKey(c.Request.Context(), raw)
-	if err != nil {
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrUnauthorized) && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		abortAuthorizationUnavailable(c)
+		return
+	}
+	if err != nil || key == nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"code": "UNAUTHORIZED", "message": err.Error(),
+			"code": "UNAUTHORIZED", "message": "invalid api key",
+			"request_id": c.GetString(string(CtxRequestID)),
 		})
 		return
 	}
 	t, err := tenants.Get(c.Request.Context(), key.TenantID)
-	if err != nil {
+	if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+		abortAuthorizationUnavailable(c)
+		return
+	}
+	if err != nil || t == nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"code": "UNAUTHORIZED", "message": "invalid api key",
+			"request_id": c.GetString(string(CtxRequestID)),
 		})
 		return
 	}
-	if t.Status == tenant.StatusSuspended {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"code": "TENANT_SUSPENDED", "message": "tenant account is suspended",
-		})
+	if t.Status != tenant.StatusActive {
+		abortInactiveTenant(c, string(t.Status))
 		return
 	}
 	p := &auth.Principal{
@@ -95,9 +126,25 @@ func authenticateWithAPIKey(c *gin.Context, apiKeys APIKeyValidator, tenants Ten
 		Roles:        []string{"api_service"},
 		PlanCode:     t.PlanCode,
 		TenantStatus: string(t.Status),
+		AuthType:     "api_key",
+	}
+	c.Set("billing_api_key", key)
+	if key.CreatorUserID == "" && c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions {
+		c.AbortWithStatusJSON(http.StatusForbidden, pkgerrors.ToEnvelope(pkgerrors.Wrap(pkgerrors.ErrAPIKeyOwnerUnverified, "API Key 创建者无法核验，请撤销后重新签发。"), c.GetString(string(CtxRequestID))))
+		return
 	}
 	c.Set(string(CtxPrincipal), p)
 	c.Next()
+}
+
+// GetAPIKey returns only validated server metadata, never body-supplied identity.
+func GetAPIKey(c *gin.Context) *apikey.APIKey {
+	value, ok := c.Get("billing_api_key")
+	if !ok {
+		return nil
+	}
+	key, _ := value.(*apikey.APIKey)
+	return key
 }
 
 // ApiKeyAuth authenticates a request with a tenant API key only
@@ -109,6 +156,7 @@ func ApiKeyAuth(apiKeys APIKeyValidator, tenants TenantLookup) gin.HandlerFunc {
 		if why != "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": "UNAUTHORIZED", "message": why,
+				"request_id": c.GetString(string(CtxRequestID)),
 			})
 			return
 		}
@@ -118,14 +166,14 @@ func ApiKeyAuth(apiKeys APIKeyValidator, tenants TenantLookup) gin.HandlerFunc {
 
 // AuthAny authenticates either a JWT access token or a pangu_ API key.
 // Credentials carrying the API key prefix go to the key validator; everything
-// else keeps the existing JWT path untouched. apiKeys/tenants may be nil, in
-// which case key credentials are rejected (JWT behavior unchanged).
+// else uses current account authentication. Missing dependencies fail closed.
 func AuthAny(cfg AuthConfig, apiKeys APIKeyValidator, tenants TenantLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, why := bearerToken(c)
 		if why != "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": "UNAUTHORIZED", "message": why,
+				"request_id": c.GetString(string(CtxRequestID)),
 			})
 			return
 		}

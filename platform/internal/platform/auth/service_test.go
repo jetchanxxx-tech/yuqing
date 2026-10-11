@@ -4,9 +4,13 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/llm"
+	ptenant "github.com/yuqing/platform/internal/platform/tenant"
 )
 
 const (
@@ -312,9 +316,8 @@ func TestServiceRegister_freePlanQuotaHardCapMode(t *testing.T) {
 }
 
 // ── 引导管理员（platform_admin）──────────────────────────────
-// MVP 用内存 store，管理员角色无法通过 CLI 或 DB 直接写入（store 在服务进程内），
-// 因此提供环境变量引导：注册邮箱命中引导邮箱时授予 platform_admin。
-// 否则管理后台（/admin/*）永远 403 —— 实测首次部署即遇到该问题。
+// Initial registration may persist the first administrator; every subsequent
+// login and request reads that role from storage.
 
 func hasRole(roles []string, want string) bool {
 	for _, r := range roles {
@@ -375,10 +378,7 @@ func TestServiceRegister_emptyBootstrapEmailGrantsNothing(t *testing.T) {
 	}
 }
 
-// Login 必须与 Register 应用同一套引导逻辑：成员表里只存基础角色，
-// 若 Login 只回显该角色，则用户重新登录后 platform_admin 丢失、管理后台
-// 再次 403（实测：注册返回 [tenant_admin platform_admin]，登录只返回
-// [tenant_admin]）。
+// Login retains the persisted platform role independently from member roles.
 func TestServiceLogin_bootstrapAdminKeepsPlatformRole(t *testing.T) {
 	svc, _ := newTestAuthService(t)
 	svc.SetBootstrapAdminEmail("root@pangu.com")
@@ -407,5 +407,143 @@ func TestServiceLogin_normalUserHasNoPlatformRole(t *testing.T) {
 	}
 	if hasRole(p.Roles, rolePlatformAdmin) {
 		t.Errorf("login roles = %v, want NOT to contain %q", p.Roles, rolePlatformAdmin)
+	}
+}
+
+func TestServiceBootstrapRevocationIsNotRegrantedOnLogin(t *testing.T) {
+	svc, st := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("root@pangu.com")
+	p, pair := mustRegister(t, svc, "root@pangu.com", testPassword, "Root")
+	st.mu.Lock()
+	delete(st.platformRolesByUser, p.UserID)
+	st.mu.Unlock()
+	current, err := svc.Authenticate(context.Background(), pair.AccessToken)
+	if err != nil || hasRole(current.Roles, "platform_admin") {
+		t.Fatalf("revocation must affect the next request: %+v %v", current, err)
+	}
+	login, _, err := svc.Login(context.Background(), p.Email, testPassword)
+	if err != nil || hasRole(login.Roles, "platform_admin") {
+		t.Fatalf("bootstrap email must not regrant a removed role: %+v %v", login, err)
+	}
+}
+
+func TestServiceBootstrapDoesNotAddASecondAdministrator(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	svc.SetBootstrapAdminEmail("first@pangu.com")
+	mustRegister(t, svc, "first@pangu.com", testPassword, "First")
+	svc.SetBootstrapAdminEmail("second@pangu.com")
+	second, _ := mustRegister(t, svc, "second@pangu.com", testPassword, "Second")
+	if hasRole(second.Roles, "platform_admin") {
+		t.Fatal("initial registration seed must not grant a second administrator")
+	}
+}
+
+func TestServiceAuthenticateIgnoresSignedAuthorizationClaims(t *testing.T) {
+	svc, _ := newTestAuthService(t)
+	p, _ := mustRegister(t, svc, testEmail, testPassword, testUserName)
+	claims := jwt.MapClaims{
+		"uid": p.UserID, "sub": p.UserID, "tid": p.TenantID, "exp": time.Now().Add(time.Hour).Unix(),
+		"token_kind": "access", "token_version": 0,
+		"email": "root@pangu.com", "roles": []string{"platform_admin"}, "plan": "enterprise", "ts": "suspended",
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.Authenticate(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Email != testEmail || hasRole(current.Roles, "platform_admin") || current.PlanCode != "free" || current.TenantStatus != "active" || !current.MemberExists || current.UserStatus != "active" || current.AuthType != "jwt" {
+		t.Fatalf("authorization must reflect store state: %+v", current)
+	}
+}
+
+func TestServiceAuthenticatePreservesTokenTenantAfterMembershipRemoval(t *testing.T) {
+	svc, st := newTestAuthService(t)
+	p, pair := mustRegister(t, svc, testEmail, testPassword, testUserName)
+	ctx := context.Background()
+	if err := st.CreateTenant(ctx, Tenant{ID: "second", Slug: "second", DBName: "second", Name: "Second", Status: "active", PlanCode: "pro"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateMember(ctx, Member{TenantID: "second", UserID: p.UserID, Role: "analyst"}); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	delete(st.roleByMember, memberKey{tenantID: p.TenantID, userID: p.UserID})
+	st.mu.Unlock()
+	current, err := svc.Authenticate(ctx, pair.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TenantID != p.TenantID || current.MemberExists || len(current.Roles) != 0 {
+		t.Fatalf("missing membership must preserve identity without switching tenants: %+v", current)
+	}
+	refreshed, err := svc.Refresh(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := ValidateAccessToken(refreshed.AccessToken, testSecret)
+	if err != nil || identity.TenantID != p.TenantID {
+		t.Fatalf("refresh switched the bound tenant: %+v %v", identity, err)
+	}
+}
+
+func TestServiceSharedTenantStoreReflectsCurrentStatus(t *testing.T) {
+	ctx := context.Background()
+	tenants := ptenant.NewMemoryStore()
+	base := NewMemoryStore()
+	svc := NewService(NewSharedTenantStore(base, tenants), testSecret, "15m", "720h")
+	p, pair := mustRegister(t, svc, testEmail, testPassword, testUserName)
+	for _, status := range []ptenant.Status{ptenant.StatusSuspended, ptenant.StatusActive} {
+		if err := tenants.UpdateStatus(ctx, p.TenantID, status); err != nil {
+			t.Fatal(err)
+		}
+		current, err := svc.Authenticate(ctx, pair.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.TenantStatus != string(status) || !current.MemberExists {
+			t.Fatalf("shared store returned private or stale tenant state: %+v", current)
+		}
+	}
+	base.mu.RLock()
+	privateTenants := len(base.tenantsByID)
+	base.mu.RUnlock()
+	if privateTenants != 0 {
+		t.Fatal("shared registration must use the external tenant store")
+	}
+}
+
+func TestAtomicRegistrationMemoryAndSharedTenantFailureLeavesNoAccount(t *testing.T) {
+	ctx := context.Background()
+	for _, shared := range []bool{false, true} {
+		name := "memory"
+		if shared {
+			name = "shared"
+		}
+		t.Run(name, func(t *testing.T) {
+			base := NewMemoryStore()
+			var st Store = base
+			if shared {
+				st = NewSharedTenantStore(base, ptenant.NewMemoryStore())
+			}
+			tenant := Tenant{ID: "existing", Name: "Existing", Slug: "existing", DBName: "existing", Status: "active", PlanCode: "free"}
+			if err := st.CreateTenant(ctx, tenant); err != nil {
+				t.Fatal(err)
+			}
+			err := st.(RegistrationStore).RegisterAccount(ctx,
+				User{ID: "orphan", Email: "orphan@example.com", Name: "Orphan"}, tenant,
+				Member{UserID: "orphan", TenantID: "existing", Role: "tenant_admin"}, true)
+			if !pkgerrors.Is(err, pkgerrors.ErrConflict) {
+				t.Fatalf("expected tenant conflict: %v", err)
+			}
+			if _, err := base.GetByID(ctx, "orphan"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+				t.Fatalf("failed registration leaked user: %v", err)
+			}
+			if _, err := base.GetUserRole(ctx, "existing", "orphan"); !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
+				t.Fatalf("failed registration leaked membership: %v", err)
+			}
+		})
 	}
 }

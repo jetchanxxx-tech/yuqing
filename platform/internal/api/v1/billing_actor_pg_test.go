@@ -1,0 +1,307 @@
+package v1_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/yuqing/platform/internal/api"
+	"github.com/yuqing/platform/internal/api/v1"
+	"github.com/yuqing/platform/internal/app"
+	"github.com/yuqing/platform/internal/config"
+	"github.com/yuqing/platform/internal/pkg/pgtest"
+)
+
+// This fixture uses the actual composition root and an isolated PostgreSQL
+// schema. It cannot create a production account or contact a supplier.
+type billingActorPGEnv struct {
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	deps   *v1.Services
+	router *gin.Engine
+}
+
+func newBillingActorPGEnv(t *testing.T) *billingActorPGEnv {
+	t.Helper()
+	pool := pgtest.Pool(t, "billing_actor_http")
+	dsn, err := url.Parse(os.Getenv(pgtest.EnvURL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := dsn.Query()
+	params.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
+	dsn.RawQuery = params.Encode()
+	// Production admission now uses the same real atomic credit path.
+	t.Setenv("YUQING_BOOTSTRAP_ADMIN_EMAIL", "")
+	cfg := &config.Config{}
+	cfg.Store.Driver, cfg.Queue.Driver, cfg.DB.Primary = "postgres", "postgres", dsn.String()
+	cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL = testJWTSecret, "15m", "720h"
+	e := &billingActorPGEnv{pool: pool, cfg: cfg}
+	e.rebuild()
+	t.Cleanup(func() { e.deps.PGPool.Close() })
+	return e
+}
+
+func (e *billingActorPGEnv) rebuild() {
+	if e.deps != nil {
+		e.deps.PGPool.Close()
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	e.deps = app.Build(e.cfg, logger)
+	e.router = api.NewRouter(e.cfg, logger, e.deps)
+}
+
+func TestBillingActorPGKeyCreatorIsServerAssignedImmutableAndPersistent(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	token, _, owner := mustRegister(t, e.router, "key-owner@example.invalid", "Key owner")
+	_, _, other := mustRegister(t, e.router, "other-key-owner@example.invalid", "Other owner")
+	created := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{
+		"name": "trusted owner", "scopes": []string{},
+		"creator_user_id": other["user_id"], "user_id": other["user_id"], "tenant_id": other["tenant_id"],
+	}), http.StatusCreated)
+	if created["creator_user_id"] != owner["user_id"] || created["tenant_id"] != owner["tenant_id"] {
+		t.Fatalf("key creator/tenant must come from current server identity: %v", created)
+	}
+	keyID := created["id"].(string)
+	raw := created["api_key"].(string)
+	e.rebuild()
+	listed := doReq(t, e.router, http.MethodGet, "/api/v1/apikeys", token, nil)
+	body := adminContractResponse(t, listed, http.StatusOK)
+	keys, ok := body["keys"].([]any)
+	if !ok || len(keys) != 1 || keys[0].(map[string]any)["creator_user_id"] != owner["user_id"] {
+		t.Fatalf("creator must survive service reconstruction: %v", body)
+	}
+	if strings.Contains(listed.Body.String(), raw) || strings.Contains(listed.Body.String(), "key_hash") {
+		t.Fatal("key listing must not return the raw credential or hash")
+	}
+	if _, err := e.pool.Exec(context.Background(), `UPDATE api_keys SET creator_user_id=$2 WHERE id=$1`, keyID, other["user_id"]); err == nil {
+		t.Fatal("a stored key cannot transfer its billing creator")
+	}
+	var creator string
+	if err := e.pool.QueryRow(context.Background(), `SELECT creator_user_id FROM api_keys WHERE id=$1`, keyID).Scan(&creator); err != nil {
+		t.Fatal(err)
+	}
+	if creator != owner["user_id"] {
+		t.Fatalf("creator changed: %s", creator)
+	}
+}
+
+func TestBillingActorPGLegacyUnknownKeyCanReadButCannotCreateCharges(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	_, _, account := mustRegister(t, e.router, "historical-key@example.invalid", "Historical key")
+	raw := "pangu_isolated_historical_unknown_creator"
+	sum := sha256.Sum256([]byte(raw))
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO api_keys(id,tenant_id,name,key_hash,scopes,prefix)
+		VALUES('historical-key',$1,'legacy unknown owner',$2,'[]','pangu_legacy')`, account["tenant_id"], hex.EncodeToString(sum[:])); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/analyses", raw, nil), http.StatusOK)
+	rejected := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", raw, map[string]any{
+		"name": "unverified creator cannot be charged", "user_id": account["user_id"], "billing_exempt": true,
+	}), http.StatusForbidden)
+	if rejected["code"] != "API_KEY_OWNER_UNVERIFIED" {
+		t.Fatalf("unknown key owner needs actionable code: %v", rejected)
+	}
+	for _, path := range []string{"/api/v1/analyses/missing/rerun", "/api/v1/apikeys"} {
+		rejection := adminContractResponse(t, doReq(t, e.router, http.MethodPost, path, raw, map[string]any{"name": "unknown owner write"}), http.StatusForbidden)
+		if rejection["code"] != "API_KEY_OWNER_UNVERIFIED" {
+			t.Fatalf("unknown owner operation %s returned %v", path, rejection)
+		}
+	}
+	var analyses, consumes, messages int
+	if err := e.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM analyses),
+		(SELECT count(*) FROM credit_transactions WHERE reason='consume'),(SELECT count(*) FROM queue_messages)`).Scan(&analyses, &consumes, &messages); err != nil {
+		t.Fatal(err)
+	}
+	if analyses != 0 || consumes != 0 || messages != 0 {
+		t.Fatalf("rejected key wrote side effects: %d/%d/%d", analyses, consumes, messages)
+	}
+}
+
+func TestBillingActorPGKnownOwnerKeyRetainsMachinePermissionsAndRejectsDisabledOwner(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	token, _, owner := mustRegister(t, e.router, "platform-key-owner@example.invalid", "Platform key owner")
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, owner["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	created := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": "owner status boundary"}), http.StatusCreated)
+	raw := created["api_key"].(string)
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/users", raw, nil), http.StatusForbidden)
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/user/profile", raw, nil), http.StatusForbidden)
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/analyses", raw, nil), http.StatusOK)
+	if _, err := e.pool.Exec(context.Background(), `UPDATE users SET status='disabled' WHERE id=$1`, owner["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/analyses", raw, nil), http.StatusUnauthorized)
+}
+
+// The request authenticates before waiting for the same exclusive lock used by
+// account administration. Revocation in that window must prevent a durable key.
+func TestBillingActorPGQueuedKeyCreationRechecksOriginalJWTAndPermission(t *testing.T) {
+	for _, kind := range []string{"credential_version", "membership_permission", "unchanged_actor"} {
+		t.Run(kind, func(t *testing.T) {
+			e := newBillingActorPGEnv(t)
+			token, _, owner := mustRegister(t, e.router, "queued-key-"+kind+"@example.invalid", "Queued key owner")
+			dsn, err := url.Parse(e.cfg.DB.Primary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			application := "k4-key-race-" + kind
+			values := dsn.Query()
+			values.Set("application_name", application)
+			dsn.RawQuery = values.Encode()
+			e.cfg.DB.Primary = dsn.String()
+			e.rebuild()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			blocker, err := e.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback(context.Background())
+			if _, err = blocker.Exec(ctx, `SELECT pg_advisory_xact_lock(741914)`); err != nil {
+				t.Fatal(err)
+			}
+			response := make(chan *httptest.ResponseRecorder, 1)
+			go func() {
+				response <- doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": "must not survive revocation"})
+			}()
+			for {
+				var waiting bool
+				if err = e.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock_shared%')`, application).Scan(&waiting); err != nil {
+					t.Fatal(err)
+				}
+				if waiting {
+					break
+				}
+				select {
+				case result := <-response:
+					t.Fatalf("request did not wait for administration transaction: %d %s", result.Code, result.Body.String())
+				case <-ctx.Done():
+					t.Fatal("request never reached transaction lock")
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			if kind == "credential_version" {
+				_, err = blocker.Exec(ctx, `UPDATE users SET token_version=token_version+1 WHERE id=$1`, owner["user_id"])
+			} else if kind == "membership_permission" {
+				// Permission itself is rechecked even if a historic administrator failed to
+				// increment a credential version when changing membership.
+				_, err = blocker.Exec(ctx, `UPDATE tenant_members SET role='viewer' WHERE tenant_id=$1 AND user_id=$2`, owner["tenant_id"], owner["user_id"])
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = blocker.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case result := <-response:
+				want := http.StatusForbidden
+				if kind == "unchanged_actor" {
+					want = http.StatusCreated
+				}
+				adminContractResponse(t, result, want)
+				if kind != "unchanged_actor" && strings.Contains(result.Body.String(), `"api_key":`) {
+					t.Fatal("rejected request returned a raw key")
+				}
+			case <-ctx.Done():
+				t.Fatal("queued request did not complete")
+			}
+			var count int
+			if err = e.pool.QueryRow(ctx, `SELECT count(*) FROM api_keys WHERE tenant_id=$1`, owner["tenant_id"]).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			wantKeys := 0
+			if kind == "unchanged_actor" {
+				wantKeys = 1
+			}
+			if count != wantKeys {
+				t.Fatalf("revoked request created %d durable keys", count)
+			}
+		})
+	}
+}
+
+func TestBillingActorPGFixedOwnerKeyChargesOnlyItsImmutableCreator(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	fixedToken, _, fixed := mustRegister(t, e.router, "admin@pangu.com", "Fixed billing administrator")
+	ordinaryToken, _, ordinary := mustRegister(t, e.router, "ordinary-billing-key@example.invalid", "Ordinary key")
+	ctx := context.Background()
+	if _, err := e.pool.Exec(ctx, `INSERT INTO billing_exempt_principals(policy_key,user_id,bound_by) VALUES('fixed_admin_v1',$1,'isolated-known-id-fixture')`, fixed["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	// Another administrator, even with the same email in an untrusted body, pays.
+	if _, err := e.pool.Exec(ctx, `INSERT INTO platform_user_roles(user_id,role) VALUES($1,'platform_admin')`, ordinary["user_id"]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE report_credits SET balance=0 WHERE tenant_id IN($1,$2)`, fixed["tenant_id"], ordinary["tenant_id"]); err != nil {
+		t.Fatal(err)
+	}
+	mint := func(token, name string) string {
+		t.Helper()
+		result := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/apikeys", token, map[string]any{"name": name}), http.StatusCreated)
+		return result["api_key"].(string)
+	}
+	fixedKey := mint(fixedToken, "fixed key")
+	ordinaryKey := mint(ordinaryToken, "ordinary key")
+	created := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", fixedKey, map[string]any{"name": "fixed free key report", "user_id": ordinary["user_id"]}), http.StatusCreated)
+	if created["created_by"] != fixed["user_id"] || created["current_run_id"] == nil {
+		t.Fatalf("key write did not persist trusted actor: %v", created)
+	}
+	var actor, key, mode string
+	var balance, consumes int
+	if err := e.pool.QueryRow(ctx, `SELECT actor_user_id,actor_api_key_id,charge_mode FROM analysis_runs WHERE id=$1`, created["current_run_id"]).Scan(&actor, &key, &mode); err != nil {
+		t.Fatal(err)
+	}
+	if actor != fixed["user_id"] || key == "" || mode != "exempt" {
+		t.Fatalf("key run actor/key/mode=%s/%s/%s", actor, key, mode)
+	}
+	denied := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", ordinaryKey, map[string]any{"name": "ordinary key report", "email": "admin@pangu.com", "billing_exempt": true}), http.StatusPaymentRequired)
+	if denied["code"] != "NO_CREDITS" {
+		t.Fatalf("ordinary key rejection=%v", denied)
+	}
+	if err := e.pool.QueryRow(ctx, `SELECT balance,(SELECT count(*) FROM credit_transactions WHERE reason='consume') FROM report_credits WHERE tenant_id=$1`, fixed["tenant_id"]).Scan(&balance, &consumes); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 || consumes != 0 {
+		t.Fatalf("exempt key altered balance/consume=%d/%d", balance, consumes)
+	}
+	if err := e.deps.Credits.GrantPurchase(ctx, ordinary["tenant_id"].(string), "isolated-key-credit-purchase", 1); err != nil {
+		t.Fatal(err)
+	}
+	normalCreated := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", ordinaryKey, map[string]any{"name": "ordinary key purchased report", "user_id": fixed["user_id"]}), http.StatusCreated)
+	if normalCreated["created_by"] != ordinary["user_id"] {
+		t.Fatalf("ordinary key forged free creator: %v", normalCreated)
+	}
+	var normalActor, normalKey, normalMode string
+	if err := e.pool.QueryRow(ctx, `SELECT actor_user_id,actor_api_key_id,charge_mode FROM analysis_runs WHERE id=$1`, normalCreated["current_run_id"]).Scan(&normalActor, &normalKey, &normalMode); err != nil {
+		t.Fatal(err)
+	}
+	if normalActor != ordinary["user_id"] || normalKey == "" || normalMode != "normal" {
+		t.Fatalf("ordinary key charge identity=%s/%s/%s", normalActor, normalKey, normalMode)
+	}
+	var normalBalance, normalConsumes int
+	if err := e.pool.QueryRow(ctx, `SELECT balance,(SELECT count(*) FROM credit_transactions WHERE tenant_id=$1 AND reason='consume') FROM report_credits WHERE tenant_id=$1`, ordinary["tenant_id"]).Scan(&normalBalance, &normalConsumes); err != nil {
+		t.Fatal(err)
+	}
+	if normalBalance != 0 || normalConsumes != 1 {
+		t.Fatalf("ordinary key did not pay exactly once: %d/%d", normalBalance, normalConsumes)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodGet, "/api/v1/admin/users", fixedKey, nil), http.StatusForbidden)
+	if _, err := e.pool.Exec(ctx, `UPDATE api_keys SET revoked_at=now() WHERE id=$1`, key); err != nil {
+		t.Fatal(err)
+	}
+	adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", fixedKey, map[string]any{"name": "revoked key"}), http.StatusUnauthorized)
+}

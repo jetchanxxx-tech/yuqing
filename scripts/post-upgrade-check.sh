@@ -4,17 +4,18 @@ set -euo pipefail
 app_root="${YUQING_APP_ROOT:-/opt/yuqing}"
 database="${YUQING_PLATFORM_DB:-yuqing_platform}"
 api_base="${YUQING_API_BASE:-http://127.0.0.1:8080}"
-expected_version="${YUQING_EXPECTED_GOOSE_VERSION:-12}"
+expected_version="${YUQING_EXPECTED_GOOSE_VERSION:-25}"
+expected_app_version="${YUQING_EXPECTED_APP_VERSION:-0.2.5-beta}"
 health_file="$(mktemp)"
 trap 'rm -f -- "$health_file"' EXIT
 
 systemctl is-active yuqing-server yuqing-worker yuqing-query yuqing-media yuqing-insight yuqing-report yuqing-forum
 curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 --max-time 5 "$api_base/api/v1/health" > "$health_file"
-python3 - "$health_file" <<'PY'
+python3 - "$health_file" "$expected_app_version" <<'PY'
 import json, sys
 with open(sys.argv[1]) as handle:
     health = json.load(handle)
-if health.get('status') != 'ok' or health.get('version') != '0.2.3-beta':
+if health.get('status') != 'ok' or health.get('version') != sys.argv[2]:
     raise SystemExit('Unexpected API health/version')
 print('API health/version verified')
 PY

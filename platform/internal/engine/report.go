@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"io"
 	"net/http"
 	"time"
@@ -39,7 +40,6 @@ func (e *RealReportEngine) WithLLMOpts(f func() (string, string)) *RealReportEng
 	return e
 }
 
-
 // Generate requests an HTML report for the analysis and returns its content.
 func (e *RealReportEngine) Generate(ctx context.Context, req *ReportGenerateReq) (*ReportGenerateResp, error) {
 	if e.apiKeyFunc != nil {
@@ -70,6 +70,12 @@ func (e *RealReportEngine) Generate(ctx context.Context, req *ReportGenerateReq)
 
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != http.StatusOK {
+		var problem struct {
+			Code string `json:"code"`
+		}
+		if json.Unmarshal(data, &problem) == nil && problem.Code == "ACCOUNTING_DURABILITY_ERROR" {
+			return nil, pkgerrors.ErrAccountingDurability
+		}
 		return nil, fmt.Errorf("report: engine returned %d: %s", resp.StatusCode, string(data))
 	}
 

@@ -3,6 +3,7 @@ package tenant
 import (
 	"context"
 	"sync"
+	"time"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
@@ -30,8 +31,30 @@ func (m *MemoryStore) Create(_ context.Context, t Tenant) error {
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "tenant already exists")
 	}
 	cp := t
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = time.Now().UTC()
+	}
+	// Match PostgreSQL timestamptz precision for supplied/generated instants.
+	cp.CreatedAt = cp.CreatedAt.UTC().Truncate(time.Microsecond)
 	m.byID[t.ID] = &cp
 	m.order = append(m.order, t.ID)
+	return nil
+}
+
+// ChangeAdministration holds the shared tenant row lock through CAS, status
+// and audit preparation; an unsuccessful callback leaves the live row intact.
+func (m *MemoryStore) ChangeAdministration(_ context.Context, id string, change func(*Tenant) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.byID[id]
+	if !ok {
+		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "tenant not found")
+	}
+	cp := *t
+	if err := change(&cp); err != nil {
+		return err
+	}
+	*t = cp
 	return nil
 }
 
@@ -72,5 +95,51 @@ func (m *MemoryStore) UpdateStatus(_ context.Context, id string, status Status) 
 		return pkgerrors.Wrap(pkgerrors.ErrNotFound, "tenant not found")
 	}
 	t.Status = status
+	return nil
+}
+
+// CreateWithProvision commits a new row only after its provision callback
+// succeeds. Callers hold identity before this tenant lock, then credit locks.
+func (m *MemoryStore) CreateWithProvision(ctx context.Context, t Tenant, provision func() error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctx.Err() != nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	for _, existing := range m.byID {
+		if existing.ID == t.ID || existing.Slug == t.Slug || existing.DBName == t.DBName {
+			return pkgerrors.ErrConflict
+		}
+	}
+	if err := provision(); err != nil {
+		return err
+	}
+	t.CreatedAt = time.Now().UTC().Truncate(time.Microsecond)
+	m.byID[t.ID] = &t
+	m.order = append(m.order, t.ID)
+	return nil
+}
+
+// Called under the shared identity boundary. Validate every tenant before the
+// infallible anonymization callback, then publish all team tombstones together.
+func (m *MemoryStore) CloseSoleTeams(ctx context.Context, ids []string, commit func()) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctx.Err() != nil {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	for _, id := range ids {
+		if m.byID[id] == nil {
+			return pkgerrors.ErrConflict
+		}
+	}
+	commit()
+	for _, id := range ids {
+		t := m.byID[id]
+		t.Status = Status("closed")
+		t.Name = "已注销团队"
+		t.Slug = "closed-" + id
+		t.RowVersion++
+	}
 	return nil
 }

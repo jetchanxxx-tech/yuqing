@@ -13,6 +13,7 @@ type MemoryStore struct {
 	mu     sync.RWMutex
 	alerts map[string]map[string]*Alert
 	order  map[string][]string // tenantID → insertion-ordered alert IDs
+	sealed map[string]bool
 }
 
 // NewMemoryStore creates an empty in-memory alert store.
@@ -20,6 +21,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		alerts: make(map[string]map[string]*Alert),
 		order:  make(map[string][]string),
+		sealed: map[string]bool{},
 	}
 }
 
@@ -29,6 +31,9 @@ var _ Store = (*MemoryStore)(nil)
 func (m *MemoryStore) Create(_ context.Context, tenantID string, a Alert) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.sealed[tenantID] {
+		return pkgerrors.ErrForbidden
+	}
 
 	tenant, ok := m.alerts[tenantID]
 	if !ok {

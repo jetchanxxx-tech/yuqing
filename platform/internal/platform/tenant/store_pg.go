@@ -3,6 +3,7 @@ package tenant
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,10 +29,14 @@ var _ Store = (*PGStore)(nil)
 
 // Create inserts a tenant; duplicate ID (or slug/db_name) conflict.
 func (s *PGStore) Create(ctx context.Context, t Tenant) error {
-	const q = `INSERT INTO tenants (id, name, slug, db_name, status, plan_code)
-	           VALUES ($1, $2, $3, $4, $5, $6)`
+	const q = `INSERT INTO tenants (id, name, slug, db_name, status, plan_code, created_at, row_version)
+	           VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz,now()), $8)`
+	var createdAt any
+	if !t.CreatedAt.IsZero() {
+		createdAt = t.CreatedAt.UTC().Truncate(time.Microsecond)
+	}
 
-	_, err := s.pool.Exec(ctx, q, t.ID, t.Name, t.Slug, t.DBName, string(t.Status), t.PlanCode)
+	_, err := s.pool.Exec(ctx, q, t.ID, t.Name, t.Slug, t.DBName, string(t.Status), t.PlanCode, createdAt, t.RowVersion)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return pkgerrors.Wrap(pkgerrors.ErrConflict, "tenant already exists")
@@ -43,13 +48,13 @@ func (s *PGStore) Create(ctx context.Context, t Tenant) error {
 
 // Get returns one tenant.
 func (s *PGStore) Get(ctx context.Context, id string) (*Tenant, error) {
-	const q = `SELECT id, name, slug, db_name, status, plan_code FROM tenants WHERE id = $1`
+	const q = `SELECT id, name, slug, db_name, status, plan_code, created_at, row_version FROM tenants WHERE id = $1`
 
 	var (
 		t      Tenant
 		status string
 	)
-	err := s.pool.QueryRow(ctx, q, id).Scan(&t.ID, &t.Name, &t.Slug, &t.DBName, &status, &t.PlanCode)
+	err := s.pool.QueryRow(ctx, q, id).Scan(&t.ID, &t.Name, &t.Slug, &t.DBName, &status, &t.PlanCode, &t.CreatedAt, &t.RowVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, pkgerrors.Wrap(pkgerrors.ErrNotFound, "tenant not found")
 	}
@@ -66,7 +71,7 @@ func (s *PGStore) Get(ctx context.Context, id string) (*Tenant, error) {
 // 兜底。ULID 高位即时间戳，所以 (created_at, id) 与插入顺序一致，分页与
 // 前端渲染都稳定可复现（不带 ORDER BY 的 SELECT 无顺序保证）。
 func (s *PGStore) List(ctx context.Context) ([]Tenant, error) {
-	const q = `SELECT id, name, slug, db_name, status, plan_code
+	const q = `SELECT id, name, slug, db_name, status, plan_code, created_at, row_version
 	           FROM tenants ORDER BY created_at, id`
 
 	rows, err := s.pool.Query(ctx, q)
@@ -82,7 +87,7 @@ func (s *PGStore) List(ctx context.Context) ([]Tenant, error) {
 			t      Tenant
 			status string
 		)
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.DBName, &status, &t.PlanCode); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.DBName, &status, &t.PlanCode, &t.CreatedAt, &t.RowVersion); err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.ErrInternal, "tenant: list scan: "+err.Error())
 		}
 		t.Status = Status(status)
