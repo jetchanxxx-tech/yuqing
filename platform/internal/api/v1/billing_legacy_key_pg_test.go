@@ -57,7 +57,7 @@ func TestBillingLegacyUnknownKeyPGCannotMutateDraftsOrCreateOrders(t *testing.T)
 			}
 			provider := payment.NewFakeProvider(payment.ChannelAlipay)
 			provider.CreateResp = &payment.CreatePaymentResp{QRCodeURL: "sandbox://pending"}
-			e.deps.Payment = payment.NewService(payment.NewPGStore(e.pool), e.deps.Credits, map[string]payment.Provider{payment.ChannelAlipay: provider}, nil)
+			e.deps.Payment = payment.NewService(payment.NewPGStore(e.deps.PGPool), e.deps.Credits, map[string]payment.Provider{payment.ChannelAlipay: provider}, nil)
 			switch operation {
 			case "preview":
 				assertUnknownOwnerRefused(t, doReq(t, e.router, http.MethodPost, "/api/v1/monitor-plans/preview", raw, previewRequest))
@@ -99,7 +99,7 @@ func TestBillingLegacyUnknownKeyPGOrderReadNeverReconcilesOrGrants(t *testing.T)
 				fake.CreateResp.QRCodeURL = "<form>existing sandbox cashier</form>"
 			}
 			provider := &legacyOwnerPaymentProbe{FakeProvider: fake}
-			store := payment.NewPGStore(e.pool)
+			store := payment.NewPGStore(e.deps.PGPool)
 			e.deps.Payment = payment.NewService(store, e.deps.Credits, map[string]payment.Provider{channel: provider}, nil)
 			order, err := e.deps.Payment.Create(ctx, account["tenant_id"].(string), "lite", channel)
 			if err != nil {

@@ -18,7 +18,7 @@ func TestClosurePGQueuedOrderRetainsOriginalActorInSharedTenant(t *testing.T) {
 			uid, tid := owner["user_id"].(string), owner["tenant_id"].(string)
 			k9Exec(t, e, `INSERT INTO tenant_members(tenant_id,user_id,role) VALUES($1,$2,'tenant_admin')`, tid, other["user_id"])
 			provider := payment.NewFakeProvider(payment.ChannelAlipay)
-			e.deps.Payment = payment.NewService(payment.NewPGStore(e.pool), e.deps.Credits, map[string]payment.Provider{payment.ChannelAlipay: provider}, nil)
+			e.deps.Payment = payment.NewService(payment.NewPGStore(e.deps.PGPool), e.deps.Credits, map[string]payment.Provider{payment.ChannelAlipay: provider}, nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			gate, err := e.pool.Begin(ctx)
