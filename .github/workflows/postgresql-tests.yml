@@ -85,6 +85,7 @@ jobs:
             ./internal/platform/billingpolicy \
             ./internal/platform/usage \
             ./internal/platform/accountadmin \
+            ./internal/platform/accountclosure \
             ./internal/platform/tenant \
             ./internal/platform/credit \
             ./internal/platform/payment \

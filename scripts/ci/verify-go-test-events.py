@@ -17,11 +17,15 @@ MODULE = "github.com/yuqing/platform"
 REQUIRED_TESTS = {
     "cmd/cli": ("TestFixedAdminBindingIsImmutableAndIdempotent",),
     "internal/app": ("TestPGServerWorkerAcrossProcessAndRestart", "TestNotificationPublicConfigurationFailureBeforeKnownUnknownLookup", "TestNotificationProviderPurposePrerequisites", "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge", "TestAnalysisModeForInvalidCreditPlanDoesNotSelectFreeTier"),
-    "internal/pkg/storage": ("TestLocalAvatarWebPCanvasCannotHideFrameBounds", "TestLocalAvatarWebPLossyCanvasConsistency", "TestLocalAvatarWebPVerticalFrameLimit", "TestLocalAvatarWebPLossyAlphaRemainsSupported", "TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
+    "internal/pkg/storage": ("TestAvatarClosureSealAndBoundedOwnershipReconciliation", "TestAvatarClosureFenceStopsPreviouslyAdmittedLateFileCreation", "TestLocalAvatarWebPCanvasCannotHideFrameBounds", "TestLocalAvatarWebPLossyCanvasConsistency", "TestLocalAvatarWebPVerticalFrameLimit", "TestLocalAvatarWebPLossyAlphaRemainsSupported", "TestLocalAvatarBoundsReencodeAndConfinement", "TestLocalAvatarFileFailureAndCancellation", "TestLocalAvatarWebPAndDimensionBoundary"),
     "internal/pkg/email": ("TestResendSandboxMissingReceiptAndSanitizedError", "TestResendSandboxCancelledContextCannotSend", "TestResendSandboxRequestReceiptAndSimulatedDelivery", "TestResendSandboxHTTPFailureAndDeadline", "TestSMTPCancelledContextCannotDial"),
     "internal/pkg/sms": ("TestAliyunSandboxJSONEncoding", "TestAliyunSandboxMissingReceiptAndSanitizedError", "TestAliyunSandboxRequestReceiptAndSimulatedDelivery", "TestAliyunSandboxHTTPFailureCancellationAndDeadline", "TestTencentSandboxReceiptAndRejection"),
     "internal/platform/settings": ("TestSettingsStore_PG_satisfiesContract", "TestSettingsStore_PG_survivesNewInstance"),
     "internal/api/v1": (
+        "TestClosurePGPendingPasswordLoginIsRestricted",
+        "TestClosurePGRequestWithdrawalAndFreshOrderBlockers",
+        "TestClosurePGSharedAssetsAndLastAdminProtection",
+        "TestClosureMemoryRequestWithdrawalRevokesOldVersions",
         "TestK9PGCreateActivationAndTrialReplay",
         "TestK9PGCreateFailedDispatchRemainsDiscoverableAndRetryable",
         "TestK9PGCreateValidationAndAtomicRollback",
@@ -133,6 +137,7 @@ REQUIRED_TESTS = {
         "TestTenantStore_PG_satisfiesContract",
         "TestTenantStore_PG_survivesNewInstance",
     ),
+    "internal/platform/accountclosure": ("TestClosurePGExecutionWaitsAndRechecksFreshBlockers",),
     "internal/platform/accountadmin": (
         "TestAccountAdminPGBootstrapSerializesInitialGrant",
         "TestAccountAdminPGQueuedActorRevocationCannotCommit",
@@ -162,7 +167,7 @@ REQUIRED_TESTS = {
         "TestAccountAdminPGAdminPermissionsExcludeMemberRolesAndAPIKeys",
     ),
     "internal/platform/credit": ("TestService_PG_satisfiesContract",),
-    "internal/platform/payment": ("TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
+    "internal/platform/payment": ("TestPaymentPGClosureFenceRejectsLateOrderButKeepsSettlement", "TestPGStore_contract", "TestSandboxPlanPurchaseGrantAndUseRemainsCatalogBasedPG"),
     "internal/business/analysis": (
         "TestK4PGFixedExemptionCannotBypassQueuedUserOrTenantSuspension",
         "TestK4PGAcceptedRunRefundStillSettlesAfterActorDisabled",
