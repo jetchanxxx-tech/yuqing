@@ -178,7 +178,11 @@ func (s *Services) handleSendPhoneCode(c *gin.Context) {
 		badRequest(c, "request body must be JSON {phone}")
 		return
 	}
-	if err := s.Auth.SendPhoneCodeWithPassword(c.Request.Context(), userID, strings.TrimSpace(req.Phone), req.Password, middleware.GetPrincipal(c).TokenVersion); err != nil {
+	ip, ok := identityPeer(c)
+	if !ok {
+		return
+	}
+	if err := s.Auth.SendPhoneCodeWithPassword(c.Request.Context(), userID, strings.TrimSpace(req.Phone), req.Password, middleware.GetPrincipal(c).TokenVersion, ip); err != nil {
 		respondIdentityError(c, err)
 		return
 	}

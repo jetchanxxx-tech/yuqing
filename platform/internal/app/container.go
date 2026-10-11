@@ -208,6 +208,11 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	// rollup reads. The meter is shared with Auth's quota provisioning
 	// target; REVIEW_REPORT §5 tracks unifying auth's private meter.
 	apiKeySvc := apikey.NewService(apiKeyStore)
+	if platformPool == nil {
+		guard := MemoryMutationGuard(authStore.(*auth.SharedTenantStore), tenantStore.(*tenant.MemoryStore))
+		analysisSvc.SetCancellationGuard(guard)
+		apiKeySvc.SetRevocationGuard(guard)
+	}
 
 	// ── 分析管线 ────────────────────────────────────────────
 	// 在同一进程内消费 analysis.tasks。内存 store/queue 都是进程私有的，

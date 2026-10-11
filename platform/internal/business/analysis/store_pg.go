@@ -184,6 +184,10 @@ func (s *pgStore) list(ctx context.Context, tenantID string) ([]AnalysisResult, 
 // markFailed/Rerun/SetInsight/SetReport/SetWarning）都先校验后写入，
 // 因此实际行为一致；新增回调请沿用「先校验后写入」。
 func (s *pgStore) mutate(ctx context.Context, tenantID, analysisID string, fn func(*AnalysisResult) error) error {
+	return s.mutateAs(ctx, tenantID, analysisID, nil, fn)
+}
+
+func (s *pgStore) mutateAs(ctx context.Context, tenantID, analysisID string, actor *billingpolicy.Actor, fn func(*AnalysisResult) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return pgInternal(err)
@@ -192,6 +196,11 @@ func (s *pgStore) mutate(ctx context.Context, tenantID, analysisID string, fn fu
 	// 连接与行锁 —— 回调报错时不能漏掉回滚，否则行锁要等连接归还才释放。
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if actor != nil {
+		if err := billingpolicy.CheckActorTx(ctx, tx, tenantID, *actor); err != nil {
+			return err
+		}
+	}
 	a, err := scanAnalysis(tx.QueryRow(ctx,
 		`SELECT `+analysisColumns+` FROM analyses WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
 		analysisID, tenantID))

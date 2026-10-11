@@ -39,12 +39,13 @@ type analysisStore interface {
 // Runs are persisted in the injected store keyed by tenant, then published
 // to the queue. The queue stays the only cross-process handoff point.
 type Service struct {
-	queue            queue.Queue
-	concurrency      int
-	store            analysisStore
-	docs             documentStore
-	credits          CreditReserver
-	memoryCompletion func(context.Context, string, *AnalysisResult)
+	queue             queue.Queue
+	concurrency       int
+	store             analysisStore
+	docs              documentStore
+	credits           CreditReserver
+	memoryCompletion  func(context.Context, string, *AnalysisResult)
+	cancellationGuard billingpolicy.MutationGuard
 }
 
 func (s *Service) SetMemoryCompletionHook(hook func(context.Context, string, *AnalysisResult)) {
@@ -406,6 +407,10 @@ func (s *Service) advance(ctx context.Context, tenantID, analysisID string, to S
 		}
 		if IsTerminal(string(to)) {
 			a.FinishedAt = now
+		}
+		if to == StateCompleted && s.memoryCompletion != nil {
+			copy := *a
+			s.memoryCompletion(ctx, tenantID, &copy)
 		}
 		return nil
 	})

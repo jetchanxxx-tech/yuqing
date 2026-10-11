@@ -236,7 +236,12 @@ func (s *Services) handleCancelAnalysis(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	if err := s.Analysis.Cancel(ctx, p.TenantID, c.Param("id")); err != nil {
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if err := s.Analysis.CancelAs(ctx, p.TenantID, c.Param("id"), actor); err != nil {
 		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 			notFound(c, "analysis not found")
 			return

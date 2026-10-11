@@ -26,6 +26,10 @@ type Actor struct {
 	TokenVersion *int64
 	Permission   string
 }
+
+// MutationGuard keeps current authority locked through a local commit.
+type MutationGuard func(context.Context, string, Actor, func() error) error
+
 type Decision struct {
 	Exempt          bool
 	PolicyKey       string
@@ -111,7 +115,7 @@ func CheckActorTx(ctx context.Context, tx pgx.Tx, tenantID string, actor Actor) 
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_user_roles WHERE user_id=$1 AND role='platform_admin')`, actor.UserID).Scan(&admin); err != nil {
 			return err
 		}
-		if !admin && role != "tenant_admin" && (role != "analyst" || actor.Permission != "analyses:create") {
+		if !admin && role != "tenant_admin" && (role != "analyst" || (actor.Permission != "analyses:create" && actor.Permission != "analyses:cancel")) {
 			return pkgerrors.ErrForbidden
 		}
 	}

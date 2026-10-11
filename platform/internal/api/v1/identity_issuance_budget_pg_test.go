@@ -57,7 +57,7 @@ func issuanceRoute(i int) (string, string) {
 func assertIssuanceIdentityUnchanged(t *testing.T, e *billingActorPGEnv, uid any) {
 	t.Helper()
 	var unchanged bool
-	if err := e.pool.QueryRow(context.Background(), `SELECT token_version=0 AND row_version=0 AND email='issuance-budget@example.invalid' AND phone='' AND NOT EXISTS(SELECT 1 FROM verification_tokens WHERE user_id=users.id) AND NOT EXISTS(SELECT 1 FROM sms_verification_codes WHERE user_id=users.id) FROM users WHERE id=$1`, uid).Scan(&unchanged); err != nil {
+	if err := e.pool.QueryRow(context.Background(), `SELECT token_version=0 AND row_version=0 AND email='issuance-budget@example.invalid' AND COALESCE(phone,'')='' AND NOT EXISTS(SELECT 1 FROM verification_tokens WHERE user_id=users.id) AND NOT EXISTS(SELECT 1 FROM sms_verification_codes WHERE user_id=users.id) FROM users WHERE id=$1`, uid).Scan(&unchanged); err != nil {
 		t.Fatal(err)
 	}
 	if !unchanged {

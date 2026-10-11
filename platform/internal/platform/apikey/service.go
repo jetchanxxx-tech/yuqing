@@ -60,7 +60,8 @@ type Store interface {
 
 // Service implements the API key lifecycle.
 type Service struct {
-	store Store
+	store           Store
+	revocationGuard billingpolicy.MutationGuard
 }
 
 func (s *Service) WithOwnedKey(ctx context.Context, id, tid, uid string, commit func() error) error {

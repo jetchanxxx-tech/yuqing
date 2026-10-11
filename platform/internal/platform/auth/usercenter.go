@@ -188,15 +188,22 @@ func (s *Service) SendPhoneCode(ctx context.Context, userID, phone string, versi
 
 // SendPhoneCodeWithPassword is the production issuance entry point. Both first
 // binding and rebinding require the current password and original JWT version.
-func (s *Service) SendPhoneCodeWithPassword(ctx context.Context, userID, phone, password string, version int64) error {
+func (s *Service) SendPhoneCodeWithPassword(ctx context.Context, userID, phone, password string, version int64, sourceIP string) error {
+	if err := s.verificationReady(ctx, PhoneBind); err != nil {
+		return err
+	}
+	phone, err := verificationTarget(PhoneBind, phone)
+	if err != nil {
+		return err
+	}
 	u, err := s.verificationUser(ctx, userID, []int64{version})
 	if err != nil {
 		return err
 	}
-	if !VerifyPassword(u.PasswordHash, password) {
-		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "current password required to bind phone")
+	if err := s.verifyCurrentPassword(ctx, u, password, sourceIP); err != nil {
+		return err
 	}
-	return s.sendPhoneCode(ctx, userID, phone, password, []int64{version})
+	return s.issuePhoneCode(ctx, u, phone)
 }
 func (s *Service) sendPhoneCode(ctx context.Context, userID, phone, password string, versions []int64) error {
 	if err := s.verificationReady(ctx, PhoneBind); err != nil {
@@ -213,12 +220,15 @@ func (s *Service) sendPhoneCode(ctx context.Context, userID, phone, password str
 	if u.Phone != "" && !VerifyPassword(u.PasswordHash, password) {
 		return pkgerrors.Wrap(pkgerrors.ErrUnauthorized, "current password required to change phone")
 	}
-	if existing, err := s.userByPhone(ctx, phone); err == nil && existing.ID != userID {
+	return s.issuePhoneCode(ctx, u, phone)
+}
+func (s *Service) issuePhoneCode(ctx context.Context, u *User, phone string) error {
+	if existing, err := s.userByPhone(ctx, phone); err == nil && existing.ID != u.ID {
 		return pkgerrors.ErrConflict
 	} else if err != nil && !pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 		return err
 	}
-	if err = s.verifications.ReserveSend(ctx, PhoneBind, phone, "", s.verificationLimits); err != nil {
+	if err := s.verifications.ReserveSend(ctx, PhoneBind, phone, "", s.verificationLimits); err != nil {
 		return err
 	}
 	return s.issueVerification(ctx, u, PhoneBind, phone)
@@ -253,7 +263,7 @@ func (s *Service) UnbindPhone(ctx context.Context, userID, password string, vers
 
 // RequestEmailChange is the K7 authenticated issuance port. Confirmation uses
 // ConfirmVerification with the same authenticated immutable user identity.
-func (s *Service) RequestEmailChange(ctx context.Context, actor Principal, password, target string) error {
+func (s *Service) RequestEmailChange(ctx context.Context, actor Principal, password, target, sourceIP string) error {
 	if err := s.verificationReady(ctx, EmailChange); err != nil {
 		return err
 	}
@@ -265,8 +275,8 @@ func (s *Service) RequestEmailChange(ctx context.Context, actor Principal, passw
 	if err != nil {
 		return err
 	}
-	if !VerifyPassword(u.PasswordHash, password) {
-		return pkgerrors.ErrUnauthorized
+	if err := s.verifyCurrentPassword(ctx, u, password, sourceIP); err != nil {
+		return err
 	}
 	if strings.EqualFold(u.Email, target) {
 		return pkgerrors.ErrConflict

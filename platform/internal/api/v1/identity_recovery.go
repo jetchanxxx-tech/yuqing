@@ -162,7 +162,11 @@ func (s *Services) handleEmailChangeRequest(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
-	if err := s.Auth.RequestEmailChange(c.Request.Context(), *p, req.Password, req.NewEmail); err != nil {
+	ip, ok := identityPeer(c)
+	if !ok {
+		return
+	}
+	if err := s.Auth.RequestEmailChange(c.Request.Context(), *p, req.Password, req.NewEmail, ip); err != nil {
 		respondIdentityError(c, err)
 		return
 	}

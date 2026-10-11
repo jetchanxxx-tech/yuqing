@@ -89,7 +89,12 @@ func (s *Services) handleRevokeAPIKey(c *gin.Context) {
 		unauthorized(c)
 		return
 	}
-	if err := s.APIKey.RevokeKey(c.Request.Context(), p.TenantID, c.Param("id")); err != nil {
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if err := s.APIKey.RevokeKeyAs(c.Request.Context(), p.TenantID, c.Param("id"), actor); err != nil {
 		if pkgerrors.Is(err, pkgerrors.ErrNotFound) {
 			notFound(c, "api key not found")
 			return
