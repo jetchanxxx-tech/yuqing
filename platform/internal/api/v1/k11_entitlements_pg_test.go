@@ -3,8 +3,10 @@ package v1_test
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestK11PGManualPlanPreservesFinancialFactsAndFreshSources(t *testing.T) {
@@ -121,5 +123,68 @@ func TestK11PGNotificationPreferencesPersistOnlyConnectedKeys(t *testing.T) {
 	var optedOut bool
 	if err := e.pool.QueryRow(context.Background(), `SELECT notification_prefs->>'task_completed'='false' FROM users WHERE id=$1`, user["user_id"]).Scan(&optedOut); err != nil || !optedOut {
 		t.Fatalf("rejected preference mutated persisted consent: %v", err)
+	}
+}
+
+func TestK11PGQueuedManualPlanRetainsOriginalActor(t *testing.T) {
+	for _, change := range []string{"version", "role", "disabled"} {
+		t.Run(change, func(t *testing.T) {
+			e, _, access, admin := k9Env(t)
+			uid, tid := admin["user_id"].(string), admin["tenant_id"].(string)
+			version := k9Count(t, e, `SELECT version FROM report_credits WHERE tenant_id=$1`, tid)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			gate, err := e.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer gate.Rollback(context.Background())
+			var pid int
+			if err := gate.QueryRow(ctx, `SELECT pg_backend_pid() FROM users WHERE id=$1 FOR UPDATE`, uid).Scan(&pid); err != nil {
+				t.Fatal(err)
+			}
+			result := make(chan *httptest.ResponseRecorder, 1)
+			go func() {
+				result <- doReq(t, e.router, "POST", "/api/v1/admin/tenants/"+tid+"/plan-change", access, map[string]any{"plan_code": "pro", "reason": "queued", "expected_version": version})
+			}()
+			blocked := false
+			for !blocked && ctx.Err() == nil {
+				blocked = k9Count(t, e, `SELECT count(*) FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))`, pid) > 0
+				select {
+				case w := <-result:
+					t.Fatalf("queued plan completed before original actor check: %d", w.Code)
+				default:
+				}
+				if !blocked {
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+			if !blocked {
+				t.Fatal("queued plan did not reach actor row")
+			}
+			statement := `UPDATE users SET token_version=token_version+1 WHERE id=$1`
+			if change == "role" {
+				statement = `DELETE FROM platform_user_roles WHERE user_id=$1`
+			} else if change == "disabled" {
+				statement = `UPDATE users SET status='disabled' WHERE id=$1`
+			}
+			if _, err := gate.Exec(ctx, statement, uid); err != nil {
+				t.Fatal(err)
+			}
+			if err := gate.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case w := <-result:
+				if w.Code != 409 {
+					t.Fatalf("revoked queued plan status=%d", w.Code)
+				}
+			case <-ctx.Done():
+				t.Fatal("queued plan did not finish")
+			}
+			if k9Count(t, e, `SELECT version FROM report_credits WHERE tenant_id=$1`, tid) != version || k9Count(t, e, `SELECT count(*) FROM audit_logs WHERE action='tenant.plan_change' AND tenant_id=$1`, tid) != 0 {
+				t.Fatal("queued stale actor wrote plan/version/audit")
+			}
+		})
 	}
 }
