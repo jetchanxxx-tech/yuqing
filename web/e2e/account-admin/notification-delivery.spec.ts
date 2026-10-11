@@ -76,6 +76,32 @@ test.afterEach(async ({ request }) => {
   sql("DELETE FROM platform_settings WHERE key=ANY(string_to_array(:'keys',',')); INSERT INTO platform_settings(key,value) SELECT key,value FROM json_each_text(:'previous'::json);", { keys: keys.join(','), previous });
 });
 
+test('K11 committed completion intent uses the actual Resend SDK and opt-out suppresses delivery', async ({ request }) => {
+  for (const optedIn of [false, true]) {
+    const a = await account(request);
+    sql("UPDATE users SET email_verified_at=now() WHERE id=:'uid';", { uid: a.user.user_id });
+    expect((await request.put(`${api}/user/notification-preferences`, { headers: { Authorization: `Bearer ${a.access_token}` }, data: { task_completed: optedIn } })).status()).toBe(200);
+    const response = await request.post(`${api}/analyses`, { headers: { Authorization: `Bearer ${a.access_token}` }, data: { name: 'K11 completion fixture' } });
+    expect(response.status()).toBe(201); const task = await response.json();
+    // Runner completion fixture commits the real trigger and run together;
+    // PG service-transition contracts separately cover the worker mutation.
+    sql("BEGIN; UPDATE analyses SET state='completed',finished_at=now() WHERE id=:'aid'; UPDATE analysis_runs SET state='completed',finished_at=now() WHERE id=:'rid'; COMMIT;", { aid: task.id, rid: task.current_run_id });
+    await expect.poll(() => sql("SELECT state FROM account_notification_events WHERE run_id=:'rid';", { rid: task.current_run_id }), { timeout: 35000 }).toBe(optedIn ? 'accepted' : 'cancelled');
+    const messages = (await inbox(request)).filter(message => message.purpose === 'task_completed' && message.target_hash === hash(a.email));
+    expect(messages).toHaveLength(optedIn ? 1 : 0);
+    if (optedIn) {
+      const message = messages[0]; expect(message.accepted).toBe(true); expect(message.delivered).toBe(false);
+      const value = JSON.parse(sql("SELECT receipt::text FROM account_notification_events WHERE run_id=:'rid';", { rid: task.current_run_id }));
+      expect(value.provider).toBe('resend'); expect(value.purpose).toBe('task_completed'); expect(value.state).toBe('accepted'); expect(value.provider_id).toBe(`sha256:${message.provider_id}`);
+      expect(JSON.stringify(value)).not.toContain(a.email); expect(value).not.toHaveProperty('payload'); expect(value).not.toHaveProperty('recipient');
+      const delivered = await deliver(request, message); expect(delivered).toEqual({ purpose: 'task_completed' });
+      console.log('K11 committed completion fixture: actual Resend SDK acceptance, payload-free receipt and explicit sandbox delivery verified; zero real suppliers.');
+    }
+    expect((await request.put(`${api}/user/notification-preferences`, { headers: { Authorization: `Bearer ${a.access_token}` }, data: { task_completed: true } })).status()).toBe(200);
+    expect(sql("SELECT count(*) FROM account_notification_events WHERE run_id=:'rid';", { rid: task.current_run_id })).toBe('1');
+  }
+});
+
 test('K6b actual Resend verification and reset are explicitly delivered and consumed by the browser', async ({ page, request }) => {
   const a = await account(request); await login(page, a.email); await page.goto('/settings'); await page.getByRole('tab', { name: '个人资料', exact: true }).click();
   const sending = page.waitForResponse(response => response.url().endsWith('/auth/send-verification-email'));

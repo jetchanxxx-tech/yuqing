@@ -30,6 +30,8 @@ REQUIRED_TESTS = {
         "TestK11PGTaskCompletionDurableIntentPreferenceAndAcceptedReplay",
         "TestK11PGTaskNotificationFailureRetriesWithoutUndoingCompletion",
         "TestK11PGClosurePreservesTaskNoticeInFlightAndItsReceipt",
+        "TestK11PGCompletionIntentFailureRollsBackBusinessTerminalState",
+        "TestK11PGTaskNoticeReceiptFailureRetainsUnknownProcessing",
         "TestClosurePGPreviewShowsActualBalanceAssetsAndUnknownPolicy",
         "TestClosurePGAmbiguousLateAvatarCommitIsFencedBeforeReconciliation",
         "TestClosurePGPreviouslyAdmittedAvatarReaderCannotWriteAfterCompletion",

@@ -19,6 +19,7 @@ async function body(req) {
   return Buffer.concat(chunks).toString('utf8');
 }
 const emailPurpose = subject => {
+  if (subject.startsWith('分析任务已完成')) return 'task_completed';
   if (subject.startsWith('账户邮箱已更换')) return 'email_changed_notice';
   if (subject.startsWith('确认更换邮箱')) return 'email_change';
   if (subject.startsWith('激活账户')) return 'set_password';
@@ -35,8 +36,10 @@ async function provider(req, res) {
       if (input.to?.length !== 1 || !input.to[0].endsWith('@example.invalid') || !String(input.from).includes('sender@example.invalid')) throw new Error('Reserved recipient required');
       recipient = input.to[0]; purpose = emailPurpose(input.subject); vendor = 'resend';
       const link = String(input.html).match(/http:\/\/127\.0\.0\.1:4173\/(?:verify-email|reset-password|email-change|activate)#token=[A-Za-z0-9_%.-]+/)?.[0];
-      if (purpose !== 'email_changed_notice' && !link) throw new Error('Purpose link absent');
-      payload = purpose === 'email_changed_notice' ? {} : { link, token: new URL(link).hash.slice(7) };
+      const notice = purpose === 'email_changed_notice' || purpose === 'task_completed';
+      if (!notice && !link) throw new Error('Purpose link absent');
+      if (purpose === 'task_completed' && (!String(input.html).includes('任务执行已完成') || String(input.html).includes('token='))) throw new Error('Invalid task notice body');
+      payload = notice ? {} : { link, token: new URL(link).hash.slice(7) };
     } else if (req.headers.host === 'dysmsapi.aliyuncs.com') {
       const query = new URL(req.url, 'https://dysmsapi.aliyuncs.com').searchParams;
       for (const [key, value] of new URLSearchParams(await body(req))) if (!query.has(key)) query.set(key, value);

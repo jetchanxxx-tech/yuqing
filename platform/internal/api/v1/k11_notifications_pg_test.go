@@ -180,3 +180,65 @@ func TestK11PGClosurePreservesTaskNoticeInFlightAndItsReceipt(t *testing.T) {
 		t.Fatalf("settled task receipt did not allow resumed closure: %+v %v", r, err)
 	}
 }
+
+func TestK11PGCompletionIntentFailureRollsBackBusinessTerminalState(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	access, _, user := mustRegister(t, e.router, "k11-intent-rollback@example.invalid", "Rollback")
+	tid := user["tenant_id"].(string)
+	created := adminContractResponse(t, doReq(t, e.router, "POST", "/api/v1/analyses", access, map[string]any{"name": "Completion rollback"}), 201)
+	aid, rid := created["id"].(string), created["current_run_id"].(string)
+	ctx := context.Background()
+	for _, state := range []string{"acquiring_budget", "fetching", "analyzing", "generating_report"} {
+		if err := e.deps.Analysis.TransitionRun(ctx, tid, aid, rid, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	k9Exec(t, e, `CREATE FUNCTION reject_k11_intent() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated intent failure'; END $$; CREATE TRIGGER reject_k11_intent BEFORE INSERT ON account_notification_events FOR EACH ROW EXECUTE FUNCTION reject_k11_intent()`)
+	if err := e.deps.Analysis.TransitionRun(ctx, tid, aid, rid, "completed"); err == nil {
+		t.Fatal("completion published without its durable intent")
+	}
+	if k9Count(t, e, `SELECT count(*) FROM analyses WHERE id=$1 AND state='generating_report'`, aid) != 1 || k9Count(t, e, `SELECT count(*) FROM analysis_runs WHERE id=$1 AND state='generating_report'`, rid) != 1 || k9Count(t, e, `SELECT count(*) FROM account_notification_events WHERE run_id=$1`, rid) != 0 {
+		t.Fatal("failed intent left partial completion")
+	}
+	k9Exec(t, e, `DROP TRIGGER reject_k11_intent ON account_notification_events`)
+	if err := e.deps.Analysis.TransitionRun(ctx, tid, aid, rid, "completed"); err != nil {
+		t.Fatal(err)
+	}
+	if k9Count(t, e, `SELECT count(*) FROM account_notification_events WHERE run_id=$1`, rid) != 1 {
+		t.Fatal("completion retry did not create exactly one intent")
+	}
+}
+
+func TestK11PGTaskNoticeReceiptFailureRetainsUnknownProcessing(t *testing.T) {
+	e := newBillingActorPGEnv(t)
+	access, _, user := mustRegister(t, e.router, "k11-receipt-failure@example.invalid", "Receipt")
+	uid, tid := user["user_id"].(string), user["tenant_id"].(string)
+	k9Exec(t, e, `UPDATE users SET email_verified_at=now() WHERE id=$1`, uid)
+	aid := k11CompleteTask(t, e, access, tid)
+	box := &identitySandbox{}
+	port := k11Dispatcher(t, e, box)
+	k9Exec(t, e, `CREATE FUNCTION reject_k11_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='accepted' THEN RAISE EXCEPTION 'isolated receipt failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_k11_receipt BEFORE UPDATE ON account_notification_events FOR EACH ROW EXECUTE FUNCTION reject_k11_receipt()`)
+	if err := port.Dispatch(context.Background(), 25); err == nil {
+		t.Fatal("failed receipt was reported persisted")
+	}
+	if box.count() != 1 || k9Count(t, e, `SELECT count(*) FROM account_notification_events WHERE analysis_id=$1 AND state='processing' AND receipt='{}'::jsonb`, aid) != 1 || k9Count(t, e, `SELECT count(*) FROM analyses WHERE id=$1 AND state='completed'`, aid) != 1 {
+		t.Fatal("external acceptance lost unknown processing or undid business")
+	}
+	closing := accountclosure.NewPGStore(e.pool)
+	closing.SetAvatarStorage(storage.NewLocalAvatar(t.TempDir()))
+	var hash string
+	if err := e.pool.QueryRow(context.Background(), `SELECT password_hash FROM users WHERE id=$1`, uid).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closing.Request(context.Background(), accountclosure.Actor{UserID: uid, PasswordHash: hash}, []string{tid}); err != nil {
+		t.Fatal(err)
+	}
+	k9Exec(t, e, `UPDATE account_closures SET requested_at=now()-interval '168 hours'-interval '1 second',withdraw_until=now()-interval '1 second' WHERE user_id=$1; UPDATE account_notification_events SET next_attempt_at=now()-interval '1 second' WHERE user_id=$1`, uid)
+	if err := port.Dispatch(context.Background(), 25); err != nil || box.count() != 1 {
+		t.Fatal("closing identity retried an unresolved old processing lease")
+	}
+	r, err := closing.Process(context.Background(), uid, 100)
+	if err != nil || r.State == "completed" || k9Count(t, e, `SELECT count(*) FROM account_notification_events WHERE analysis_id=$1 AND state='processing'`, aid) != 1 {
+		t.Fatal("lease expiry was treated as finished delivery")
+	}
+}
