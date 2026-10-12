@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [dev, prod, main, 'beta/**']
   workflow_dispatch:
+    inputs:
+      marketing_only:
+        description: 'Validate and render marketing materials only; never a release acceptance run'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,6 +22,7 @@ concurrency:
 jobs:
   go:
     name: Go tests and binaries
+    if: ${{ !inputs.marketing_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -46,6 +52,7 @@ jobs:
 
   frontend:
     name: Frontend build
+    if: ${{ !inputs.marketing_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -73,6 +80,7 @@ jobs:
 
   python:
     name: Python engine billing sandbox
+    if: ${{ !inputs.marketing_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -99,6 +107,7 @@ jobs:
 
   billing-bridge:
     name: Actual Python Go PostgreSQL usage bridge
+    if: ${{ !inputs.marketing_only }}
     needs: [go]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -145,10 +154,12 @@ jobs:
 
   postgresql:
     name: PostgreSQL contract checks
+    if: ${{ !inputs.marketing_only }}
     uses: ./.github/workflows/postgresql-tests.yml
 
   account-admin:
     name: Account and administrator acceptance
+    if: ${{ !inputs.marketing_only }}
     needs: [go, frontend, postgresql]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -214,9 +225,62 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  marketing:
+    name: Marketing materials and browser acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require GitHub hosted runner
+        run: test "${RUNNER_ENVIRONMENT}" = github-hosted
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare document rendering tools on the hosted runner
+        run: |
+          python -m pip install 'python-pptx==1.0.2' 'Pillow==11.3.0'
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libreoffice-impress fonts-noto-cjk poppler-utils
+      - name: Generate editable presentations and matching HTML previews
+        run: python scripts/marketing/generate_presentations.py
+      - name: Render and verify all three presentation decks
+        run: python scripts/ci/verify-marketing-decks.py
+      - name: Install locked browser dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium on the hosted runner
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Exercise the portable website, demo and slide previews
+        working-directory: web
+        run: npx playwright test --config e2e/marketing.config.ts
+      - name: Assemble portable verified materials
+        run: python scripts/ci/package-marketing.py
+      - name: Preserve marketing deliverables and acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yuqing-marketing-${{ github.sha }}
+          path: |
+            docs/marketing/
+            landing/index.html
+            landing/index-redesign.html
+            demo/demo.html
+            demo/index.html
+            test-results/marketing/
+            marketing-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+
   package:
     name: Release archive
-    needs: [go, frontend, postgresql, account-admin, python, billing-bridge]
+    if: ${{ !inputs.marketing_only }}
+    needs: [go, frontend, postgresql, account-admin, python, billing-bridge, marketing]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -229,6 +293,10 @@ jobs:
         with:
           name: frontend-dist-${{ github.sha }}
           path: web/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: yuqing-marketing-${{ github.sha }}
+          path: marketing-prebuilt
       - name: Package verified source and binaries
         shell: bash
         run: |
@@ -244,6 +312,7 @@ jobs:
             --dest "$release_dir/deployment-wheels" 'python-docx==1.2.0'
           cp -a platform/bin/. "$release_dir/platform/bin/"
           cp -a web/dist/. "$release_dir/web/dist/"
+          cp -a marketing-prebuilt/docs/marketing/. "$release_dir/docs/marketing/"
           chmod 755 "$release_dir/platform/bin/yuqing-"*
           printf '%s\n' "$GITHUB_SHA" > "$release_dir/BUILD_COMMIT"
           (

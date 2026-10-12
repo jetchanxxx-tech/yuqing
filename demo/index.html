@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="盘古舆情 0.2.5-beta 离线交互演示：从公开网页搜索摘要、三／五维研判到 HTML 报告。所有案例与数据均为虚构示例。">
+<meta name="color-scheme" content="light">
+<title>盘古舆情 · 离线产品演示 · 0.2.5-beta</title>
+<style>
+:root {
+  --bg:           #f5f5f5;
+  --surface:      #ffffff;
+  --surface-warm: #fafafa;
+  --fg:    rgba(0, 0, 0, 0.8);
+  --fg-2:  rgba(0, 0, 0, 0.62);
+  --muted: rgba(0, 0, 0, 0.45);
+  --meta:  rgba(0, 0, 0, 0.27);
+  --border:      rgba(0, 0, 0, 0.08);
+  --border-soft: rgba(0, 0, 0, 0.05);
+  --accent:        #ff2442;
+  --accent-on:     #ffffff;
+  --accent-hover:  #ff2e4d;
+  --accent-active: #e6203a;
+  --success: #02b940;
+  --warn:    #ff7d03;
+  --danger:  #ff2442;
+  --font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-lg:   18px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  28px;
+  --text-4xl:  32px;
+  --leading-body:     1.5;
+  --leading-tight:    1.25;
+  --tracking-display: 0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --section-y-desktop: 64px;
+  --section-y-tablet:  48px;
+  --section-y-phone:   32px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-pill: 9999px;
+  --elev-flat:   none;
+  --elev-ring:   0 0 0 1px var(--border);
+  --elev-raised: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+  --motion-fast:   150ms;
+  --motion-base:   200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max:            1200px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet:  16px;
+  --container-gutter-phone:   12px;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.65 var(--font-body)}button,input,textarea,select{font:inherit}button,a,input,textarea,select,summary{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}button,a{transition:background .15s ease,color .15s ease}a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid rgba(255,36,66,.32);outline-offset:3px}[hidden]{display:none!important}.skip{position:fixed;top:-100px;left:12px;z-index:30;background:#fff;padding:12px}.skip:focus{top:8px}.notice{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:center;gap:12px;min-height:42px;padding:9px 20px;background:#303034;color:#fff;font-size:12px}.notice b{font-weight:500;white-space:nowrap}.notice span{color:#e4e4e5}.shell{max-width:1440px;margin:auto;display:grid;grid-template-columns:232px minmax(0,1fr);min-height:calc(100vh - 42px)}.side{position:sticky;top:42px;align-self:start;height:calc(100vh - 42px);padding:30px 20px 24px;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:30px}.brand{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:600;letter-spacing:-.5px}.brand-mark{width:32px;height:32px;border:1.5px solid var(--fg);border-radius:8px;display:grid;place-items:center;font-size:19px;line-height:1}.brand small{display:block;font-size:11px;font-weight:400;letter-spacing:0;color:#646466;margin-top:0}.stepnav{list-style:none;margin:0;padding:0;display:grid;gap:7px}.stepnav button{width:100%;display:flex;align-items:center;gap:11px;text-align:left;border:0;background:transparent;border-radius:10px;padding:11px 9px;color:#545458;min-height:57px}.stepnav button:not(:disabled):hover{background:var(--surface-warm)}.stepnav button[aria-current="step"]{background:#f5f5f5;color:var(--fg)}.stepnum{display:grid;place-items:center;flex:0 0 25px;height:25px;border:1px solid #dddddf;border-radius:50%;font:12px var(--font-mono);color:#737378}.stepnav [aria-current="step"] .stepnum{background:var(--accent);color:#fff;border-color:var(--accent)}.navtext{font-weight:500}.navtext small{display:block;font-size:11px;font-weight:400;color:#76767b}.sidebottom{margin-top:auto;padding-top:18px;border-top:1px solid var(--border);color:#66666b;font-size:12px}.sidebottom a{display:inline-flex;min-height:44px;align-items:center;gap:7px}.sidebottom p{margin:6px 0 0}.main{min-width:0;padding:32px 40px 44px}.topline{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:28px}.eyebrow{font:12px var(--font-mono);color:#69696d;letter-spacing:.025em}.topactions{display:flex;gap:12px;align-items:center}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:5px 10px;font-size:12px;background:#fff;color:#59595d}.pill.good{background:#eef8f1;color:#147832;border:0}.pill.warning{background:#fff2e6;color:#8d4600;border:0}.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor}.btn{border:0;min-height:44px;padding:10px 19px;border-radius:999px;background:#eaeaec;color:#333338;font-weight:500;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn:hover:not(:disabled){background:#e0e0e3}.btn.primary{background:var(--accent);color:#fff}.btn.primary:hover:not(:disabled){background:var(--accent-active)}.btn.outline{background:#fff;border:1px solid #d9d9dd}.btn.outline:hover:not(:disabled){background:#f5f5f5}.btn.ghost{background:transparent;padding:8px 9px;font-weight:400;color:#5e5e62}.btn.ghost:hover:not(:disabled){background:#ececed}.btn.small{min-height:36px;padding:6px 14px;font-size:12px}.icon{width:15px;height:15px;display:block}.heading{margin:0 0 10px;font-weight:600;font-size:clamp(25px,3vw,32px);line-height:1.4;letter-spacing:-.7px}.intro{font-size:15px;line-height:1.8;color:#65656a;max-width:650px;margin:0}.panelhead{margin-bottom:24px}.herohead{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:35px;align-items:end}.herosketch{display:flex;align-items:center;justify-content:flex-end;gap:5px;height:100px;color:#6a6a6d;position:relative}.paper{width:70px;min-height:85px;border:1px solid #d8d8dc;background:#fff;border-radius:7px;padding:12px 9px;transform:rotate(-8deg);font-size:10px}.paper:nth-child(2){transform:rotate(7deg);margin-left:-25px;margin-top:-12px}.paper span{display:block;height:3px;background:#e3e3e6;margin-top:8px}.paper span:last-child{width:65%}.paper label{font-size:10px;display:block;letter-spacing:.08em}.paper.report{transform:rotate(0);margin-left:5px;width:80px;min-height:98px}.paper.report:before{content:"";display:block;width:18px;height:3px;background:#55555a;margin-bottom:9px}.card{background:#fff;border:1px solid var(--border-soft);border-radius:16px;padding:25px 26px}.card h2{font-size:18px;font-weight:600;margin:0 0 4px;line-height:1.5}.card h3{font-size:15px;font-weight:600;margin:0 0 5px}.desc{margin:0;color:#646469;font-size:13px}.formgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 24px}.field{display:grid;gap:7px;min-width:0}.field.wide{grid-column:1/-1}.label,fieldset legend{font-size:13px;font-weight:500;color:#45454b}.input{width:100%;background:#f5f5f5;color:#303035;border:1px solid transparent;border-radius:9px;padding:11px 13px;min-height:44px}.input:focus{border-color:#aaaaaf;outline:0}.input:focus-visible{outline:3px solid rgba(255,36,66,.32)}textarea.input{resize:vertical;min-height:70px}fieldset{padding:0;border:0;margin:0;min-width:0}fieldset legend{margin-bottom:8px}.help{font-size:12px;color:#737378;margin:0;line-height:1.75}.optiongrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mode{padding:13px 14px;border:1px solid #dedee1;border-radius:10px;display:flex;gap:10px;align-items:flex-start;cursor:pointer}.mode:has(input:checked){border-color:#747479;background:#fafafa}.mode input{margin-top:5px;accent-color:#49494f;width:15px;height:15px;flex-shrink:0}.mode strong{font-size:14px;font-weight:500;display:block}.mode small{font-size:12px;color:#6c6c72;display:block}.sources{display:flex;flex-wrap:wrap;gap:8px}.sourceoption{display:flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid #dedee1;border-radius:999px;font-size:13px;min-height:44px;cursor:pointer}.sourceoption input{accent-color:#45454a;width:14px;height:14px;margin:0}.sourceoption:has(input:checked){background:#f2f2f3;border-color:#a7a7ad}.sourceoption.disabled{opacity:.55;cursor:default}.subtleline{border-top:1px solid var(--border);margin-top:21px;padding-top:18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.error{font-size:13px;color:#ae1730;margin:12px 0 0}.draftnotice{overflow-wrap:anywhere;padding:12px 14px;background:#f5f5f5;border-radius:10px;margin-top:15px;font-size:12px;color:#505057}.aside-note{margin-top:18px;padding:16px 20px;border:1px dashed #cdcdD2;border-radius:12px;font-size:13px;color:#65656b}.aside-note strong{color:#44444a;font-weight:500}.dual{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}.stepstatus{margin-top:24px;border-top:1px solid var(--border);padding-top:22px}.progressbar{width:100%;height:6px;border:0;border-radius:999px;overflow:hidden;accent-color:var(--accent);background:#e8e8eb}.progressbar::-webkit-progress-bar{background:#e8e8eb;border-radius:999px}.progressbar::-webkit-progress-value{background:var(--accent);border-radius:999px}.progressbar::-moz-progress-bar{background:var(--accent);border-radius:999px}.progressline{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:10px 0 18px}.timeline{list-style:none;margin:0;padding:0;display:grid;gap:0}.timeline li{position:relative;padding:0 0 23px 31px;font-size:13px;color:#8a8a90}.timeline li:before{content:"";position:absolute;left:3px;top:6px;width:10px;height:10px;border:1px solid #c6c6cc;border-radius:50%;background:#fff;z-index:1}.timeline li:not(:last-child):after{content:"";position:absolute;left:8px;top:18px;bottom:0;border-left:1px solid #e6e6e8}.timeline li.done,.timeline li.active{color:#424248}.timeline li.done:before{background:#48484e;border-color:#48484e}.timeline li.active:before{background:var(--accent);border-color:var(--accent)}.timeline b{font-weight:500;display:block}.timeline small{display:block;font-size:12px;margin-top:2px;color:#727278}.sideinfo{display:grid;gap:16px}.summaryitem{border-top:1px solid var(--border);padding-top:11px}.summaryitem:first-child{border:0;padding:0}.summaryitem dt{font-size:12px;color:#727279}.summaryitem dd{font-size:13px;margin:3px 0 0;color:#393940;overflow-wrap:anywhere}.summaryitem strong{font-weight:500}.task-summary{margin:0;display:grid;gap:12px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:18px}.metric{padding:19px 20px;background:#fff;border-radius:12px;border:1px solid var(--border-soft)}.metric b{display:block;font-weight:600;font-size:29px;line-height:1.4;font-variant-numeric:tabular-nums}.metric span{font-size:12px;color:#626269}.metric small{display:block;font-size:11px;color:#77777d;margin-top:4px}.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:17px 0}.toolbar select{min-height:40px;min-width:130px;background:#f5f5f5;border:1px solid #e5e5e7;border-radius:8px;padding:6px 10px;font-size:12px}.toolbar label{font-size:12px;color:#66666d;display:flex;align-items:center;gap:7px}.materials{display:grid;gap:0}.material{padding:17px 0;border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px}.materialtitle{font-size:14px;font-weight:500;margin:3px 0 6px}.material p{font-size:13px;color:#68686e;margin:0;line-height:1.8}.meta{display:flex;gap:9px;align-items:center;flex-wrap:wrap;color:#77777e;font-size:11px}.tag{display:inline-flex;align-items:center;border:1px solid #e0e0e4;border-radius:999px;padding:2px 8px;color:#5d5d65;font-size:11px;white-space:nowrap}.tag.positive{color:#147832;background:#f0f8f3;border-color:transparent}.tag.negative{color:#ae1730;background:#fff1f3;border-color:transparent}.tag.neutral{background:#f4f4f5;border-color:transparent}.material-action{align-self:center;white-space:nowrap}.fineprint{font-size:12px;color:#6b6b73;line-height:1.8}.exclusions{border-top:1px solid var(--border);padding-top:15px;margin-top:6px;font-size:12px}.exclusions summary{min-height:32px;cursor:pointer;font-weight:500;color:#51515a}.exclusions ul{margin:10px 0 0;padding-left:20px;color:#707079}.exclusions li{margin-bottom:6px}.bottomnext{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:22px}.resultsummary{padding:21px 24px;background:#fff;border:1px solid var(--border-soft);border-radius:14px;margin-bottom:18px}.resultsummary h2{font-size:16px;margin:0 0 8px;font-weight:600}.resultsummary p{margin:0;color:#57575f;line-height:1.9;overflow-wrap:anywhere}.analysis-layout{display:grid;grid-template-columns:minmax(0,1fr) 255px;gap:18px;align-items:start}.dimensionlist{display:grid;gap:12px}.dimension{background:#fff;border:1px solid var(--border-soft);border-radius:12px;padding:20px 23px}.dimensionheader{display:flex;align-items:center;gap:10px}.dimensionheader span{font:12px var(--font-mono);color:#83838b}.dimensionheader h3{margin:0;font-weight:500;font-size:15px}.dimension p{font-size:13px;color:#65656e;line-height:1.85;margin:10px 0}.refbutton{min-height:32px;border:1px solid #dedee3;border-radius:999px;padding:4px 11px;font:11px var(--font-mono);color:#585860;background:#fff;margin-right:6px}.refbutton:hover{background:#f5f5f5}.sentiment{display:flex;width:100%;height:15px;border-radius:6px;overflow:hidden;margin:18px 0}.sentiment span{height:100%;min-width:0}.sentiment .positive{background:#72b185}.sentiment .neutral{background:#d2d2d7}.sentiment .negative{background:#cf8290}.countlist{list-style:none;padding:0;margin:0;display:grid;gap:10px}.countlist li{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#5e5e66}.countlist b{font-weight:500;color:#404048;font-variant-numeric:tabular-nums}.countlist .tag{border:0;padding:0;background:none}.statbox+.statbox{margin-top:18px;border-top:1px solid var(--border);padding-top:18px}.statbox h3{font-size:14px;font-weight:500;margin:0 0 12px}.topicitem{margin-bottom:12px;font-size:12px;color:#5f5f67}.topiclabel{display:flex;justify-content:space-between;margin-bottom:5px;gap:12px}.topicbar{height:5px;background:#f0f0f2;border-radius:4px;overflow:hidden}.topicbar span{height:100%;display:block;background:#96969f;border-radius:4px}.reportlayout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px;align-items:start}.reportpaper{background:#fff;border:1px solid #e6e6e9;box-shadow:0 3px 15px rgba(0,0,0,.035);padding:35px;border-radius:3px;min-width:0}.reportmast{font-size:11px;letter-spacing:.07em;color:#797983;display:flex;justify-content:space-between;gap:12px;padding-bottom:16px;border-bottom:1px solid #dfdfe4}.reportpaper h2{margin:25px 0 13px;font-size:22px;font-weight:600;line-height:1.55;overflow-wrap:anywhere}.reportpaper .reportmeta{display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:#74747c}.reportpaper h3{margin:25px 0 8px;font-size:14px;font-weight:500}.reportpaper p{overflow-wrap:anywhere;margin:0;font-size:13px;color:#606069;line-height:1.95}.reportpaper ul{font-size:12px;color:#63636d;line-height:1.9;padding-left:19px}.reportstamp{margin:22px 0 0;padding:10px 12px;background:#f5f5f6;color:#66666f;font-size:11px;border-radius:4px}.accounttabs{display:flex;gap:23px;border-bottom:1px solid #dcdce1;margin:20px 0}.accounttabs button{border:0;background:transparent;color:#787882;min-height:44px;padding:8px 0 10px;font-size:13px}.accounttabs button[aria-selected="true"]{color:#34343b;font-weight:500;box-shadow:inset 0 -2px 0 #494950}.balance{display:flex;gap:28px;align-items:center;justify-content:space-between;margin-bottom:18px}.balance-number{font-size:34px;font-weight:600;line-height:1.5;font-variant-numeric:tabular-nums}.balance-number span{font-size:13px;font-weight:400;color:#76767d;margin-left:5px}.balance p{margin:0;font-size:12px;color:#74747b}.balance .desc{max-width:410px}.ledger{list-style:none;padding:0;margin:12px 0 0}.ledger li{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--border);font-size:12px;color:#63636c}.ledger b{font:12px var(--font-mono);color:#42424a}.tablewrap{margin-top:18px;overflow-x:auto;border:1px solid var(--border);border-radius:12px}table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}th{font-weight:500;color:#6a6a74;background:#fafafa;white-space:nowrap}th,td{padding:13px 14px;border-bottom:1px solid var(--border);white-space:nowrap}tr:last-child td{border:0}td:nth-child(n+2){font-variant-numeric:tabular-nums}.rules{margin-top:20px;display:grid;gap:9px}.rules details{padding:13px 16px;background:#fff;border:1px solid var(--border-soft);border-radius:10px}.rules summary{cursor:pointer;min-height:29px;font-size:13px;font-weight:500;display:list-item}.rules p{font-size:12px;color:#65656e;line-height:1.9;margin:8px 0 0}.settingsrow{display:flex;gap:12px;align-items:flex-start;margin-top:16px;padding:15px;border-radius:10px;background:#f5f5f5}.settingsrow input{margin-top:5px;accent-color:#45454c}.settingsrow label{font-size:13px;color:#45454d}.settingsrow small{display:block;color:#72727a;font-size:12px;margin-top:4px}.profilelayout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px}.avatar{width:44px;height:44px;border-radius:50%;background:#ececef;display:grid;place-items:center;font-size:17px;font-weight:500}.identity{display:flex;align-items:center;gap:12px;margin:3px 0 23px}.identity strong{font-size:15px;font-weight:500;display:block}.identity small{font-size:12px;color:#73737c}.empty{padding:20px 0;font-size:13px;color:#75757e}.foot{margin-top:35px;border-top:1px solid #e0e0e4;padding-top:17px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;color:#777780}.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:50;padding:12px 20px;max-width:calc(100vw - 32px);border-radius:10px;background:#303034;color:#fff;font-size:12px;text-align:center;box-shadow:0 3px 15px rgba(0,0,0,.1)}dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100vh - 60px);border:1px solid #e0e0e4;border-radius:16px;padding:27px;color:#40404a;background:#fff;overflow:auto}dialog::backdrop{background:rgba(30,30,34,.4)}.dialoghead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:17px}.dialoghead h2{font-size:17px;font-weight:600;margin:0}.dialoghead button{padding:5px 11px;min-height:36px}.sourceurl{word-break:break-all;padding:12px 14px;background:#f5f5f6;border-radius:8px;font:11px/1.8 var(--font-mono);display:block;margin:11px 0 7px}dialog dl{font-size:12px;margin:20px 0}dialog dt{color:#7b7b84;margin-top:12px}dialog dd{margin:4px 0 0;line-height:1.85}dialog h3{font-size:15px;line-height:1.65;margin:13px 0 9px}dialog p{font-size:13px;color:#62626c;line-height:1.9}.breaktext{overflow-wrap:anywhere}.muted{color:#72727b}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(min-width:1440px){body{background:#eeeeF0}.shell{background:var(--bg);border-left:1px solid var(--border);border-right:1px solid var(--border)}}
+@media(max-width:1150px){.main{padding:28px 26px}.shell{grid-template-columns:205px minmax(0,1fr)}.side{padding:28px 15px}.dual,.analysis-layout,.reportlayout,.profilelayout{grid-template-columns:minmax(0,1fr)}.analysisaside{display:grid;grid-template-columns:1fr 1fr;gap:18px}.analysisaside .statbox+.statbox{margin:0;border:0;padding:0}.sideinfo{grid-template-columns:1fr 1fr}.sideinfo .summaryitem{border-top:0;padding:0}.reportlayout>.card{order:-1}.reportlayout>.card .actions{margin-top:14px}.herohead{grid-template-columns:1fr 165px;gap:15px}.paper{width:58px}.paper.report{width:64px}.profilelayout>.card:last-child{grid-column:auto}}
+@media(max-width:790px){.notice{font-size:11px;gap:7px;padding:9px 12px;min-height:47px;text-align:left;align-items:flex-start}.notice span{max-width:480px}.shell{display:block}.side{position:static;height:auto;padding:19px 20px 0;gap:18px;border-right:0;border-bottom:1px solid var(--border)}.brand{font-size:18px}.brand small{display:inline;margin-left:7px;font-size:11px}.brand-mark{width:29px;height:29px;font-size:17px}.stepnav{display:flex;gap:13px;overflow-x:auto;margin:0 -20px;padding:0 20px 12px;scrollbar-width:thin}.stepnav li{flex:0 0 auto}.stepnav button{padding:9px 10px;min-height:44px;gap:7px;width:auto}.stepnum{height:21px;flex-basis:21px;width:21px;font-size:10px}.navtext{font-size:12px}.navtext small,.sidebottom{display:none}.main{padding:22px 20px 35px}.topline{margin-bottom:20px}.herohead{grid-template-columns:1fr}.herosketch{display:none}.card{padding:22px 20px}.metric{padding:15px 13px}.metric b{font-size:25px}.metric small{font-size:10px}.reportpaper{padding:25px}.formgrid{gap:18px}.subtleline{align-items:flex-start;flex-direction:column}.sideinfo{grid-template-columns:1fr 1fr}.topactions{gap:5px}.topactions .pill{font-size:11px;padding:4px 8px}.foot{align-items:flex-start}.balance{align-items:flex-start}.balance .desc{max-width:250px}}
+@media(max-width:480px){.main{padding:20px 14px 28px}.side{padding:17px 14px 0}.stepnav{margin:0 -14px;padding:0 14px 10px;gap:5px}.notice b{white-space:normal;flex:0 0 80px}.notice span{line-height:1.65}.heading{font-size:26px}.intro{font-size:14px}.formgrid{grid-template-columns:1fr}.field.wide{grid-column:auto}.card{padding:20px 17px}.metrics{gap:7px}.metric{padding:14px 10px}.metric b{font-size:23px}.metric span{font-size:11px}.metric small{line-height:1.7}.material{grid-template-columns:1fr;gap:6px;padding:16px 0}.material-action{justify-self:start}.material-action .btn{min-height:38px}.analysisaside,.sideinfo{grid-template-columns:1fr}.analysisaside .statbox+.statbox{border-top:1px solid var(--border);padding-top:18px}.balance{flex-direction:column;gap:12px}.balance .desc{max-width:none}.reportpaper{padding:22px 18px}.topline{align-items:flex-start}.topline .eyebrow{font-size:10px}.topactions .btn{font-size:11px;min-height:32px;padding:4px 5px}.optiongrid{gap:7px}.mode{padding:11px 10px;gap:7px}.mode strong{font-size:13px}.mode small{font-size:11px}.bottomnext{align-items:flex-start}.bottomnext .btn{font-size:12px;padding:9px 12px}.sourceoption{padding:8px 10px}.foot{flex-direction:column}.reportmast{font-size:10px}.reportpaper h2{font-size:20px}.tablewrap{border:0;overflow:visible}table{font-size:10px;table-layout:fixed}th,td{padding:10px 5px;white-space:normal;overflow-wrap:anywhere}th:first-child,td:first-child{width:23%}th:nth-child(2),td:nth-child(2){width:20%}.toolbar select{min-width:100px}.sources{gap:7px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳至演示内容</a>
+<div class="notice" data-testid="sample-notice"><b>离线交互演示</b><span>所有案例、材料、数值与账号均为虚构示例 · 不连接生产服务</span></div>
+<div class="shell">
+  <aside class="side" aria-label="演示导航">
+    <a class="brand" href="../landing/index.html"><span class="brand-mark" aria-hidden="true">古</span><span>盘古舆情<small>产品交互演示 · 0.2.5-beta</small></span></a>
+    <nav aria-label="演示步骤">
+      <ol class="stepnav" id="step-nav">
+        <li><button type="button" data-step="0" data-testid="nav-setup" aria-current="step"><span class="stepnum">01</span><span class="navtext">新建分析<small>选场景 · 定关键词</small></span></button></li>
+        <li><button type="button" data-step="1" data-testid="nav-progress" disabled><span class="stepnum">02</span><span class="navtext">任务进度<small>查看本轮状态</small></span></button></li>
+        <li><button type="button" data-step="2" data-testid="nav-materials" disabled><span class="stepnum">03</span><span class="navtext">本次材料<small>看数量 · 查来源</small></span></button></li>
+        <li><button type="button" data-step="3" data-testid="nav-analysis" disabled><span class="stepnum">04</span><span class="navtext">多维研判<small>理解观点与边界</small></span></button></li>
+        <li><button type="button" data-step="4" data-testid="nav-report" disabled><span class="stepnum">05</span><span class="navtext">HTML 报告<small>阅读 · 下载示例</small></span></button></li>
+        <li><button type="button" data-step="5" data-testid="nav-account"><span class="stepnum">06</span><span class="navtext">账号与额度<small>套餐 · 团队 · 安全</small></span></button></li>
+      </ol>
+    </nav>
+    <div class="sidebottom"><a href="../landing/index.html">← 返回产品官网</a><p>按次分析公开网页搜索摘要。<br>演示页可断网打开。</p></div>
+  </aside>
+  <main class="main" id="main">
+    <div class="topline"><span class="eyebrow" id="page-location">青禾茶饮 / 虚构案例</span><div class="topactions"><span class="pill" id="quota-top" data-testid="quota-top">示例余额 8 次</span><button class="btn ghost small" id="reset-demo" data-testid="reset-demo" type="button">重置演示</button></div></div>
+
+    <section class="panel" id="panel-setup" data-testid="setup-panel" aria-labelledby="setup-heading">
+      <header class="panelhead herohead"><div><h1 class="heading" id="setup-heading" tabindex="-1">把零散信息，整理成一次研判。</h1><p class="intro">跟着虚构品牌「青禾茶饮」，体验从关键词、搜索材料到 HTML 报告的完整流程。直接用示例开始，也可以修改输入，看结果如何变化。</p></div><div class="herosketch" aria-hidden="true"><div class="paper"><label>公开网页</label><span></span><span></span><span></span></div><div class="paper"><label>搜索摘要</label><span></span><span></span><span></span></div><div class="paper report"><label>一次研判</label><span></span><span></span><span></span><span></span></div></div></header>
+      <form class="card" id="analysis-form" novalidate>
+        <div class="formgrid">
+          <div class="field"><label class="label" for="analysis-title">分析名称</label><input class="input" id="analysis-title" data-testid="analysis-title" type="text" maxlength="80" value="青禾茶饮 · 新品上市观察" required></div>
+          <div class="field"><label class="label" for="scenario">业务场景</label><select class="input" id="scenario" data-testid="scenario"><option value="product_launch" selected>新品上市</option><option value="brand_daily">品牌日常口碑</option><option value="quality_complaint">产品质量投诉</option><option value="competitor_update">竞品动态</option><option value="crisis">突发危机</option><option value="campaign_review">营销活动复盘</option></select></div>
+          <div class="field wide"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><label class="label" for="keywords">关键词 <span class="muted">· 最多 8 个</span></label><button class="btn ghost small" id="restore-keywords" type="button">恢复场景关键词</button></div><textarea class="input" id="keywords" data-testid="keywords" rows="2" maxlength="480" aria-describedby="keyword-help">青禾茶饮, 青禾轻乳茶, 新品糖度</textarea><p class="help" id="keyword-help">用逗号或换行分隔，各词分别检索，任一词命中可入选。此页只筛选虚构材料库；输入无匹配词可体验材料不足状态。</p></div>
+          <fieldset class="field wide"><legend>研判深度</legend><div class="optiongrid"><label class="mode"><input type="radio" name="mode" value="quick" data-testid="mode-quick"><span><strong>三维速览</strong><small>热度 · 情感 · 深层原因</small></span></label><label class="mode"><input type="radio" name="mode" value="full" data-testid="mode-full" checked><span><strong>五维研判</strong><small>加入背景与群体差异</small></span></label></div><p class="help">示例账号使用研判版额度。实际可选维度以套餐权益及材料产出为准。</p></fieldset>
+          <fieldset class="field wide"><legend>公开网页来源</legend><div class="sources" id="source-options"><label class="sourceoption"><input type="checkbox" name="source" value="douyin" checked>抖音</label><label class="sourceoption"><input type="checkbox" name="source" value="toutiao" checked>今日头条</label><label class="sourceoption"><input type="checkbox" name="source" value="xigua" checked>西瓜视频</label><label class="sourceoption"><input type="checkbox" name="source" value="weibo" checked>微博</label><label class="sourceoption"><input type="checkbox" name="source" value="wechat" checked>公众号</label><label class="sourceoption disabled"><input type="checkbox" disabled>小红书 · 未开放</label><label class="sourceoption disabled"><input type="checkbox" disabled>B站 · 未开放</label></div><p class="help">分析对象是被搜索服务索引的公开网页摘要，不是视频、完整正文或评论。可获得的材料以实际返回为准。</p></fieldset>
+        </div>
+        <div class="subtleline"><div><strong style="font-size:13px;font-weight:500">本轮消耗 1 次示例报告额度</strong><p class="help">失败或取消会回补本轮额度。与真实账号、资金无关。</p></div><div class="actions"><button class="btn outline" id="save-draft" data-testid="save-draft" type="button">保存方案草稿</button><button class="btn primary" id="start-analysis" data-testid="start-analysis" type="submit">一键体验示例 <span aria-hidden="true">→</span></button></div></div>
+        <p class="error" id="form-error" role="alert" hidden></p><p class="draftnotice" id="draft-status" data-testid="draft-status" role="status" hidden></p>
+      </form>
+      <div class="aside-note"><strong>本次演示关注什么？</strong> 哪些材料谈到新品糖度，哪些涉及门店体验；结论能否回到来源。保存草稿只保存配置，不自动运行或发送预警。</div>
+    </section>
+
+    <section class="panel" id="panel-progress" data-testid="progress-panel" data-state="idle" aria-labelledby="progress-heading" hidden>
+      <header class="panelhead"><h1 class="heading" id="progress-heading" tabindex="-1">每一步，都有状态可查看。</h1><p class="intro">这里用可控制的动画说明一次任务的流程。动画节奏与真实分析耗时无关。</p></header>
+      <div class="dual"><div class="card"><div style="display:flex;justify-content:space-between;gap:15px;align-items:center"><h2 class="breaktext" id="progress-title">青禾茶饮 · 新品上市观察</h2><span class="pill" id="run-badge">准备中</span></div><p class="desc" id="run-message" role="status" aria-live="polite">正在准备演示。</p><div class="stepstatus"><progress class="progressbar" id="run-progress" max="6" value="0" aria-label="模拟分析进度"></progress><div class="progressline"><span class="help">模拟流程进度</span><span class="help" id="run-percent">0 / 6</span></div><ol class="timeline" id="run-timeline"><li data-runstep="0"><b>排队中</b><small>保留本轮输入快照</small></li><li data-runstep="1"><b>预留额度</b><small>本轮消耗一次示例报告额度</small></li><li data-runstep="2"><b>检索公开网页材料</b><small>在本页虚构材料库中筛选</small></li><li data-runstep="3"><b>多维分析</b><small>结合材料形成可回溯的结论</small></li><li data-runstep="4"><b>整理 HTML 报告</b><small>保留输入、材料与研判摘要</small></li><li data-runstep="5"><b>报告可读</b><small>查看结果与下载示例报告</small></li></ol></div><div class="actions"><button class="btn outline" id="pause-demo" data-testid="pause-demo" type="button">暂停演示</button><button class="btn primary" id="skip-progress" data-testid="skip-progress" type="button">直接查看结果 →</button><button class="btn ghost" id="cancel-demo" data-testid="cancel-demo" type="button">取消本轮</button><button class="btn primary" id="progress-edit" type="button" hidden>修改输入，再试一次</button><button class="btn outline" id="progress-materials" type="button" hidden>查看材料诊断</button></div></div><div class="card"><h3>本轮输入快照</h3><p class="help" style="margin-bottom:17px">结果对应启动时的条件，不随之后编辑改变。</p><dl class="task-summary" id="task-summary"></dl></div></div>
+      <p class="fineprint" style="margin-top:18px">离线页不会调用搜索、模型或支付服务。真实运行中，来源不可用、材料不足或部分维度缺失会显示对应状态，不以空结果推断“没有舆情”。</p>
+    </section>
+
+    <section class="panel" id="panel-materials" data-testid="materials-panel" aria-labelledby="materials-heading" hidden>
+      <header class="panelhead"><h1 class="heading" id="materials-heading" tabindex="-1">先看材料，再理解结论。</h1><p class="intro">每个数字都指向本轮虚构搜索样本。检查摘要、去重情况与来源，再决定哪些发现值得继续关注。</p></header>
+      <div class="metrics"><div class="metric"><b id="count-candidate" data-testid="count-candidate">20</b><span>搜索候选</span><small>本轮示例库匹配数</small></div><div class="metric"><b id="count-summary" data-testid="count-summary">15</b><span>摘要初筛</span><small>剔除无可用摘要的条目</small></div><div class="metric"><b id="count-effective" data-testid="count-effective">10</b><span>有效材料</span><small>初筛后去重入选</small></div></div>
+      <div class="card"><h2>本次有效摘要</h2><p class="desc" id="evidence-scope">以下均为虚构示例，不代表平台总声量或公众总体观点。</p><div class="toolbar"><label>来源筛选<select id="evidence-source" data-testid="evidence-source" aria-label="材料来源筛选"><option value="all">全部来源</option></select></label><span class="help" id="visible-material-count">显示 10 条</span></div><div class="materials" id="evidence-list" data-testid="evidence-list"></div><details class="exclusions" id="exclusions"><summary id="exclusion-heading">查看初筛与去重明细</summary><ul id="exclusion-list"></ul></details></div>
+      <div class="bottomnext"><span class="help">来源链接为 example.com 占位，不打开外部网页。</span><button class="btn primary" id="materials-next" data-testid="materials-next" type="button">查看五维研判 →</button><button class="btn outline" id="materials-edit" type="button" hidden>修改输入</button></div>
+    </section>
+
+    <section class="panel" id="panel-analysis" data-testid="analysis-panel" aria-labelledby="analysis-heading" hidden>
+      <header class="panelhead"><h1 class="heading" id="analysis-heading" tabindex="-1">观点有层次，判断有边界。</h1><p class="intro" id="analysis-intro">五个独立维度，围绕同一批有效材料做观察。以下是虚构案例的示例研判，不是事实鉴定或真实经营建议。</p></header>
+      <div class="resultsummary"><h2 id="result-title">青禾茶饮 · 新品上市观察</h2><p id="result-summary" data-testid="result-summary"></p></div>
+      <div class="analysis-layout"><div class="dimensionlist" id="dimension-list" data-testid="dimension-list"></div><aside class="card analysisaside" aria-label="样本构成"><div class="statbox"><h3>材料情感分类</h3><p class="help" id="sentiment-denominator"></p><div class="sentiment" id="sentiment-bar" aria-hidden="true"></div><ul class="countlist" id="sentiment-counts"></ul><p class="fineprint">只表示摘要文本的分类，不代表消费者总体情绪。</p></div><div class="statbox"><h3>本次话题</h3><div id="topic-counts"></div><p class="fineprint">一条材料可涉及多个话题；话题计数不相加为总声量。</p></div></aside></div>
+      <div class="bottomnext"><span class="help">点击材料编号，可对照本轮摘要。</span><button class="btn primary" id="analysis-next" type="button">阅读 HTML 报告 →</button></div>
+    </section>
+
+    <section class="panel" id="panel-report" data-testid="report-panel" aria-labelledby="report-heading" hidden>
+      <header class="panelhead"><h1 class="heading" id="report-heading" tabindex="-1">把这一次分析，带走。</h1><p class="intro">HTML 报告保留输入条件、材料口径与研判摘要。下载后的文件可独立打开，且始终标注虚构示例。</p></header>
+      <div class="reportlayout"><article class="reportpaper" aria-label="示例报告预览"><div class="reportmast"><span>盘古舆情 / 示例报告</span><span>0.2.5-beta</span></div><h2 id="report-preview-title" data-testid="report-preview-title"></h2><div class="reportmeta" id="report-preview-meta"></div><h3>01 · 本次观察</h3><p id="report-preview-summary"></p><h3>02 · 输入与材料口径</h3><p id="report-preview-scope"></p><h3>03 · 研判目录</h3><ul id="report-preview-dimensions"></ul><h3>04 · 建议的下一步</h3><p id="report-preview-next"></p><div class="reportstamp">离线演示 · 案例、摘要、来源链接与全部数值为虚构展示，不作为真实事件证据。结论仅依据本轮示例材料。</div></article><aside class="card"><h2>示例报告已就绪</h2><p class="desc">下载可编辑输入对应的 HTML 示例，不发起任何服务请求。</p><div class="actions" style="margin-top:20px"><button class="btn primary" id="download-report" data-testid="download-report" type="button">下载 HTML 示例</button></div><p class="help" id="download-status" role="status" style="margin-top:12px"></p><div class="summaryitem" style="margin-top:20px"><strong style="font-size:13px;font-weight:500">当前报告格式：HTML</strong><p class="help" style="margin-top:7px">Word、PDF、Markdown 尚不构成当前完整下载流程。</p></div><p class="fineprint">报告保留期限按所选套餐；生产环境的实际文件以报告中心为准。</p></aside></div>
+      <div class="bottomnext"><span class="help">报告里可以回看材料摘要与占位来源。</span><button class="btn outline" id="report-next" type="button">查看账号与额度 →</button></div>
+    </section>
+
+    <section class="panel" id="panel-account" data-testid="account-panel" aria-labelledby="account-heading" hidden>
+      <header class="panelhead"><h1 class="heading" id="account-heading" tabindex="-1">分析之外，管理也要清楚。</h1><p class="intro">查看报告次数、套餐目录，以及账号和团队的管理边界。此处为本页演示状态，不修改真实账号。</p></header>
+      <div class="accounttabs" role="tablist" aria-label="账号演示内容"><button type="button" role="tab" id="tab-credits" aria-controls="account-credits" aria-selected="true" data-accounttab="credits">套餐与额度</button><button type="button" role="tab" id="tab-security" aria-controls="account-security" aria-selected="false" tabindex="-1" data-accounttab="security">账号与安全</button></div>
+      <div id="account-credits" role="tabpanel" aria-labelledby="tab-credits"><div class="card"><div class="balance"><div><span class="help">青禾示例团队 · 研判版</span><div class="balance-number"><b id="quota-account" data-testid="quota-account">8</b><span>次可用报告</span></div><p>示例初始额度 10 次，历史报告消耗 2 次。</p></div><p class="desc">新建或重跑每轮扣 1 次；失败或取消按该轮回补。当前按报告次数计费，不另收 Token 现金费用，也不承诺每月重置。</p></div><h3>本页额度记录</h3><ul class="ledger" id="credit-ledger" data-testid="credit-ledger"></ul></div><div class="card" style="margin-top:18px"><h2>公测套餐目录参考</h2><p class="desc">一次购买获得对应报告额度。实际开通和支付渠道以产品页面为准。</p><div class="tablewrap"><table><caption class="sr-only">当前套餐参考价、报告额度、分析维度和文件保留期限</caption><thead><tr><th scope="col">套餐</th><th scope="col">参考价格</th><th scope="col">报告额度</th><th scope="col">维度</th><th scope="col">文件保留</th></tr></thead><tbody><tr><td>体验版</td><td>¥0</td><td>1 次</td><td>3 维</td><td>30 天</td></tr><tr><td>速览版</td><td>¥99</td><td>4 次</td><td>3 维</td><td>90 天</td></tr><tr><td>研判版</td><td>¥999</td><td>10 次</td><td>5 维</td><td>180 天</td></tr><tr><td>旗舰版</td><td>¥4,999</td><td>50 次</td><td>5 维</td><td>365 天</td></tr></tbody></table></div><p class="fineprint">体验额度为新注册团队的一次赠送；单次加购参考 ¥69 / 次。套餐包含的维度和保留期限不同，不能只按单次价格比较。</p><p class="help">演示不展示真实收银台，不创建订单，也不模拟支付成功。</p></div></div>
+      <div id="account-security" role="tabpanel" aria-labelledby="tab-security" hidden><div class="profilelayout"><form class="card" id="profile-form"><div class="identity"><span class="avatar" aria-hidden="true">青</span><div><strong id="profile-display">青禾运营</strong><small>demo@example.com · 虚构账号</small></div></div><div class="formgrid"><div class="field"><label class="label" for="profile-name">演示昵称</label><input class="input" id="profile-name" maxlength="24" value="青禾运营"></div><div class="field"><label class="label" for="profile-timezone">时区</label><select class="input" id="profile-timezone"><option value="Asia/Shanghai">中国标准时间 · UTC+8</option><option value="Asia/Tokyo">日本标准时间 · UTC+9</option><option value="UTC">协调世界时 · UTC</option></select></div></div><div class="settingsrow"><input type="checkbox" id="notify-preference"><label for="notify-preference">任务完成邮件偏好<small>本页只保存偏好，不发送邮件。正式渠道的真实送达仍需联调验证。</small></label></div><div class="subtleline"><span class="help">仅保存到本页内存，刷新即恢复。</span><button class="btn outline" id="save-profile" data-testid="save-profile" type="submit">保存演示设置</button></div><p class="help" id="profile-status" data-testid="profile-status" role="status" style="margin-top:12px"></p></form><div class="card"><h3>账号与团队，分开管理</h3><p class="desc">账号中心管理个人资料与状态；团队管理套餐、额度与已有成员角色。相关管理操作保留审计记录。</p><p class="fineprint">成员邀请、登录设备管理仍在后续范围，演示不提供这些操作。</p></div></div><div class="rules"><details open><summary>密码安全：修改后，旧凭据应失效</summary><p>密码修改与账号、团队暂停属于安全控制。正式操作需要重新鉴权；本演示不收集密码，也不模拟修改真实凭据。</p></details><details><summary>账号注销：七天撤回，不是立即清空</summary><p>注销申请提供七天撤回期。未结订单及未解决事项阻止完成；关闭仅剩本人团队需要明确确认。其他成员资产保留，财务流水保留并对个人信息脱敏，业务文件遵循现有保留期限。</p></details><details><summary>方案草稿：保存不会自动运行</summary><p>可保存、编辑和重新打开场景配置草稿。当前草稿没有自动周期执行、调度或预警送达；本页“保存方案草稿”也不扣额度、不启动任务。</p></details></div></div>
+      <div class="bottomnext"><a class="btn outline" href="../landing/index.html">返回产品官网</a><button class="btn ghost" id="account-new" type="button">回到新建分析 →</button></div>
+    </section>
+    <footer class="foot"><span>盘古舆情 · 0.2.5-beta</span><span>公开网页摘要 → 按次研判 → HTML 报告 <span aria-hidden="true">/</span> 虚构示例</span></footer>
+  </main>
+</div>
+<dialog id="source-dialog" aria-labelledby="source-dialog-heading" data-testid="source-dialog"><div class="dialoghead"><h2 id="source-dialog-heading">材料与来源</h2><button class="btn ghost" id="close-source" type="button" aria-label="关闭材料详情">关闭</button></div><span class="pill">虚构材料 · 仅演示</span><h3 id="source-title"></h3><p id="source-summary"></p><dl id="source-meta"></dl><strong style="font-size:12px;font-weight:500">占位来源链接</strong><code class="sourceurl" id="source-url"></code><p class="help">example.com 为示例域名。此处不打开外部网页；正式产品提供实际检索材料的来源链接。</p></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script>
+'use strict';
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
+  const sourceNames = {douyin:'抖音', toutiao:'今日头条', xigua:'西瓜视频', weibo:'微博', wechat:'公众号'};
+  const sentimentNames = {positive:'正面', neutral:'中性', negative:'负面'};
+  const scenes = {
+    product_launch: {name:'新品上市', title:'新品上市观察', keywords:['青禾茶饮','青禾轻乳茶','新品糖度'], theme:'新品糖度', topic2:'门店等候体验', lead:'新品糖度说明与门店等候，是这批样本中反复出现的两类信息。', next:'先核对门店糖度说明是否统一，再人工复核等候体验相关材料；需要更多样本时，调整关键词重新运行一次。', cause:'新品认知来自宣传信息与购买体验两个环节。示例材料呈现信息说明与服务体验的差异，不能直接推断总体满意度或长期社会影响。', group:'本轮不同来源都出现新品说明或等候体验；公开摘要没有可靠的用户画像。可以比较文本侧重，暂不对年龄、职业或人群立场作判断。'},
+    brand_daily: {name:'品牌日常口碑', title:'日常口碑观察', keywords:['青禾茶饮','门店体验','原料说明'], theme:'原料信息说明', topic2:'门店服务体验', lead:'原料说明与门店服务体验，是这批品牌样本中的主要关注点。', next:'人工核对原料说明材料，并回看服务体验相关摘要；后续按需发起新一轮分析，不把单次样本当作连续监测。', cause:'消费者理解产品的信息入口与到店体验并不相同。示例材料显示两者可能影响口碑表述，但不足以证明品牌声誉的总体变化。', group:'所选来源的材料侧重产品介绍或门店服务。来源标签本身不是用户画像，本轮无法判断具体群体是否存在稳定的态度差异。'},
+    quality_complaint: {name:'产品质量投诉', title:'质量投诉材料复核', keywords:['青禾茶饮','包装密封','质量投诉'], theme:'包装密封投诉', topic2:'处理说明', lead:'包装密封的投诉转述与处理说明需要分开阅读，不能把单条摘要视为质量事故已核实。', next:'逐条人工核对投诉对象、发生时间与处理进度；以直接证据核验质量问题，不仅凭搜索摘要作出事故结论。', cause:'包装体验与处理信息的可获得性影响材料中的表述。示例材料不足以证明质量问题的发生率、责任归属或处理效果。', group:'部分来源偏向投诉转述，部分偏向处理说明。这是样本内容差异，不等于平台用户或消费者群体的总体立场差异。'},
+    competitor_update: {name:'竞品动态', title:'竞品动作观察', keywords:['青禾茶饮','邻岸茶社','产品对比'], theme:'新品组合对比', topic2:'门店价格信息', lead:'青禾茶饮与虚构竞品「邻岸茶社」的新品组合和价格信息，需要在相同条件下对照。', next:'人工核对发布时间、门店和活动条件，再整理可比较的新品信息；不根据样本数量估算市场份额。', cause:'产品定位与促销条件可能改变对比材料的叙述。单次搜索摘要不足以确认商业表现、销量或竞争关系的因果变化。', group:'本轮来源内容侧重产品组合或价格信息，未含可靠人群信息。样本差异可用于提出问题，不能直接推断目标消费者群体。'},
+    crisis: {name:'突发危机', title:'事件材料梳理', keywords:['青禾茶饮','门店争议','回应说明'], theme:'门店争议转述', topic2:'回应说明', lead:'门店争议转述与回应说明同时出现在样本中，事实与转述需要分别核对。', next:'先核对事件当事方与时间，再对照回应说明；缺少直接证据时保留未知，不用摘要推断事件首发或回应效果。', cause:'事件描述与回应信息可能存在不对称。示例材料不足以确认责任、实际影响范围或回应导致的情绪变化。', group:'所选来源对争议和回应的文本侧重不同，缺少真实转发关系与群体资料；暂不能判断哪些群体促成扩散。'},
+    campaign_review: {name:'营销活动复盘', title:'活动材料复盘', keywords:['青禾茶饮','周末活动','优惠规则'], theme:'优惠规则说明', topic2:'活动参与体验', lead:'优惠规则说明与参与体验，是本轮活动材料中的两条线索。', next:'核对活动规则与门店适用条件，再回看参与体验材料；转化、销售和投入产出需要独立经营数据。', cause:'规则理解与实际参与体验可能影响材料表述。示例材料不含真实销售或流量数据，不能据此计算营销收益或活动效果。', group:'本轮材料在活动介绍和参与体验上各有侧重，来源分布不代表触达人群；缺少用户资料时不推断群体偏好。'}
+  };
+  const dimensions = [
+    {id:'background',name:'背景与事件概述'},
+    {id:'heat',name:'热度与传播路径'},
+    {id:'sentiment',name:'公众情感与观点'},
+    {id:'group',name:'群体与平台差异'},
+    {id:'deep_cause',name:'深层原因与社会影响'}
+  ];
+  const runStates = ['排队中','预留额度','筛选示例材料','整理多维研判','生成示例报告','报告可读'];
+  let activeStep = 0;
+  let runStatus = 'idle';
+  let runIndex = 0;
+  let timer = null;
+  let toastTimer = null;
+  let snapshot = null;
+  let balance = 8;
+  let runNumber = 0;
+  let reserved = false;
+  let ledger = initialLedger();
+  function initialLedger() { return [{label:'套餐示例入账',amount:10},{label:'历史示例报告 × 2',amount:-2}]; }
+  function notify(message) {
+    clearTimeout(toastTimer);
+    $('toast').textContent = message;
+    $('toast').hidden = false;
+    toastTimer = setTimeout(() => { $('toast').hidden = true; }, 3500);
+  }
+  function updateCredits() {
+    $('quota-top').textContent = `示例余额 ${balance} 次`;
+    $('quota-account').textContent = balance;
+    $('credit-ledger').innerHTML = ledger.slice().reverse().map((row) => `<li><span>${esc(row.label)}</span><b>${row.amount > 0 ? '+' : ''}${row.amount} 次</b></li>`).join('');
+  }
+  function updateNavigation() {
+    const diagnosticAvailable = ['completed','failed'].includes(runStatus);
+    document.querySelectorAll('#step-nav button').forEach((button) => {
+      const step = Number(button.dataset.step);
+      button.disabled = (step === 1 && runStatus === 'idle') || (step === 2 && !diagnosticAvailable) || ([3,4].includes(step) && runStatus !== 'completed');
+      if (step === activeStep) button.setAttribute('aria-current','step'); else button.removeAttribute('aria-current');
+      button.title = button.disabled ? '完成示例任务后可查看' : '';
+    });
+    const busy = ['running','paused'].includes(runStatus);
+    document.querySelectorAll('#analysis-form input:not(:disabled), #analysis-form textarea, #analysis-form select').forEach((input) => { if (busy) input.dataset.runDisabled = 'yes'; });
+    document.querySelectorAll('#analysis-form [data-run-disabled="yes"]').forEach((input) => {
+      input.disabled = busy;
+      if (!busy) delete input.dataset.runDisabled;
+    });
+    $('start-analysis').disabled = busy;
+    $('restore-keywords').disabled = busy;
+    $('save-draft').disabled = busy;
+    $('start-analysis').textContent = runStatus === 'idle' ? '一键体验示例 →' : '用当前输入重新运行 →';
+  }
+  function showStep(step) {
+    activeStep = step;
+    document.querySelectorAll('.panel').forEach((panel, index) => { panel.hidden = index !== step; });
+    updateNavigation();
+    const heading = document.querySelectorAll('.panel')[step].querySelector('h1');
+    heading.focus({preventScroll:true});
+    window.scrollTo({top:0,behavior:'auto'});
+  }
+  function formError(message) {
+    $('form-error').hidden = !message;
+    $('form-error').textContent = message;
+  }
+  function readInputs() {
+    const title = $('analysis-title').value.trim();
+    const keywords = [...new Set($('keywords').value.split(/[,，;；\n]+/).map((word) => word.trim()).filter(Boolean))];
+    const sources = [...document.querySelectorAll('input[name="source"]:checked')].map((input) => input.value);
+    if (!title) { formError('请填写分析名称。'); $('analysis-title').focus(); return null; }
+    if (keywords.length === 0 || keywords.length > 8) { formError('请填写 1–8 个不同的关键词，用逗号或换行分隔。'); $('keywords').focus(); return null; }
+    if (keywords.some((word) => word.length > 60)) { formError('单个关键词请控制在 60 个字符内。'); $('keywords').focus(); return null; }
+    if (!sources.length) { formError('请至少选择一个当前开放的公开网页来源。'); return null; }
+    formError('');
+    return {title, keywords, sources, sceneId:$('scenario').value, mode:document.querySelector('input[name="mode"]:checked').value};
+  }
+  function buildMaterials(input) {
+    const scene = scenes[input.sceneId];
+    const library = [];
+    input.sources.forEach((source) => {
+      const index = Object.keys(sourceNames).indexOf(source);
+      const prefix = String(Object.keys(sourceNames).indexOf(source) + 1).padStart(2,'0');
+      const themePositive = index % 3 === 0;
+      const themeSentiment = themePositive ? 'positive' : index % 3 === 1 ? 'neutral' : 'negative';
+      const secondSentiment = index % 2 === 0 ? 'neutral' : 'negative';
+      const title1 = `青禾茶饮：${scene.theme}${themePositive ? '公开说明' : themeSentiment === 'neutral' ? '信息整理' : '争议转述'}`;
+      const title2 = `青禾茶饮：${scene.topic2}${secondSentiment === 'neutral' ? '相关记录' : '待核对诉求'}`;
+      const summary1 = `这则虚构公开网页摘要记录${scene.theme}。${input.sceneId === 'product_launch' ? '示例新品名称为青禾轻乳茶。' : input.sceneId === 'competitor_update' ? '示例对照品牌为邻岸茶社，两者均为虚构品牌。' : ''}${themeSentiment === 'positive' ? '文本以肯定语气介绍相关安排，但没有总体消费者样本。' : themeSentiment === 'neutral' ? '文本整理了相关信息，未提出已核验的效果结论。' : '文本转述了需要核对的疑问，未附完整原文或直接证据。'} 仅用于青禾茶饮${scene.name}演示。`;
+      const summary2 = `这则虚构公开网页摘要谈到${scene.topic2}。${secondSentiment === 'neutral' ? '文本以中性语气描述相关情况，具体时间和范围仍需核对。' : '文本记录一项需要人工复核的诉求，不能据此推断问题发生率。'} 不包含评论、完整文章或真实经营数据。`;
+      const date = `2026-10-${String(5 + index).padStart(2,'0')}`;
+      library.push({id:`S${prefix}A`,source,title:title1,summary:summary1,date,sentiment:themeSentiment,topics:[scene.theme],fingerprint:`${source}-first`,usable:true});
+      library.push({id:`S${prefix}B`,source,title:title2,summary:summary2,date,sentiment:secondSentiment,topics:[scene.topic2],fingerprint:`${source}-second`,usable:true});
+      library.push({id:`S${prefix}C`,source,title:title1+'（相同摘要副本）',summary:summary1,date,sentiment:themeSentiment,topics:[scene.theme],fingerprint:`${source}-first`,usable:true});
+      library.push({id:`S${prefix}D`,source,title:`青禾茶饮 · ${scene.theme}页面占位`,summary:'',date,sentiment:'neutral',topics:[],fingerprint:`${source}-placeholder`,usable:false});
+    });
+    const matches = (doc) => input.keywords.some((word) => `${doc.title} ${doc.summary} ${sourceNames[doc.source]}`.toLocaleLowerCase().includes(word.toLocaleLowerCase()));
+    const candidates = library.filter(matches);
+    const admitted = candidates.filter((doc) => doc.usable);
+    const seen = new Set();
+    const effective = [];
+    const excluded = [];
+    candidates.forEach((doc) => {
+      doc.url = `https://example.com/yuqing-demo/${input.sceneId}/${doc.source}/${doc.id.toLowerCase()}`;
+      if (!doc.usable) excluded.push({...doc, reason:'页面占位：没有可用搜索摘要'});
+      else if (seen.has(doc.fingerprint)) excluded.push({...doc, reason:'重复摘要：与本来源另一条候选相同'});
+      else { seen.add(doc.fingerprint); effective.push(doc); }
+    });
+    return {candidates, admitted, effective, excluded};
+  }
+  function snapshotMarkup() {
+    const scene = scenes[snapshot.sceneId];
+    $('task-summary').innerHTML = [
+      ['业务场景',scene.name],['关键词',snapshot.keywords.join(' / ')],['来源',snapshot.sources.map((source) => sourceNames[source]).join(' / ')],['研判深度',snapshot.mode === 'quick' ? '三维速览' : '五维研判'],['本轮额度','已预留 1 次示例额度']
+    ].map(([name,value]) => `<div class="summaryitem"><dt>${esc(name)}</dt><dd>${esc(value)}</dd></div>`).join('');
+    $('progress-title').textContent = snapshot.title;
+  }
+  function startAnalysis(event) {
+    if (event) event.preventDefault();
+    if (['running','paused'].includes(runStatus)) return;
+    const input = readInputs();
+    if (!input) return;
+    if (balance < 1) { formError('本页示例额度已用完。点击右上角“重置演示”恢复示例状态。'); return; }
+    clearTimeout(timer);
+    snapshot = {...input, materials:buildMaterials(input)};
+    runNumber += 1;
+    balance -= 1;
+    reserved = true;
+    ledger.push({label:`第 ${runNumber} 轮示例任务 · 预留`,amount:-1});
+    runStatus = 'running';
+    runIndex = 0;
+    updateCredits();
+    snapshotMarkup();
+    showStep(1);
+    renderProgress();
+    scheduleTick();
+  }
+  function scheduleTick() { clearTimeout(timer); if (runStatus === 'running') timer = setTimeout(nextTick, 950); }
+  function nextTick() {
+    if (runStatus !== 'running') return;
+    runIndex += 1;
+    if (runIndex >= 6) { completeRun(); return; }
+    renderProgress();
+    scheduleTick();
+  }
+  function renderProgress() {
+    $('panel-progress').dataset.state = runStatus;
+    $('run-progress').value = runIndex;
+    $('run-percent').textContent = `${runIndex} / 6`;
+    document.querySelectorAll('#run-timeline li').forEach((item, index) => { item.className = index < runIndex ? 'done' : index === runIndex && ['running','paused'].includes(runStatus) ? 'active' : ''; });
+    const active = ['running','paused'].includes(runStatus);
+    $('pause-demo').hidden = !active;
+    $('cancel-demo').hidden = !active;
+    $('skip-progress').hidden = !active && runStatus !== 'completed';
+    $('pause-demo').textContent = runStatus === 'paused' ? '继续演示' : '暂停演示';
+    $('progress-edit').hidden = active || runStatus === 'completed';
+    $('progress-materials').hidden = runStatus !== 'failed';
+    $('run-badge').textContent = ({running:'模拟进行中',paused:'已暂停',completed:'示例已完成',canceled:'本轮已取消',failed:'材料不足'})[runStatus] || '准备中';
+    $('run-badge').className = runStatus === 'completed' ? 'pill good' : ['failed','canceled'].includes(runStatus) ? 'pill warning' : 'pill';
+    if (runStatus === 'running') $('run-message').textContent = `当前步骤：${runStates[runIndex]}。可暂停，也可直接查看结果。`;
+    if (runStatus === 'paused') $('run-message').textContent = '演示已暂停，流程和额度状态保持。点击继续或直接查看结果。';
+    if (runStatus === 'completed') $('run-message').textContent = '示例材料、研判与 HTML 报告均可查看。没有调用任何真实服务。';
+    if (runStatus === 'canceled') $('run-message').textContent = '本轮已取消，1 次示例额度已回补。可修改输入后重新运行。';
+    if (runStatus === 'failed') $('run-message').textContent = `本轮仅 ${snapshot.materials.effective.length} 条有效示例材料，不足 2 条；不生成完整研判或报告，已回补 1 次示例额度。`;
+    updateNavigation();
+  }
+  function refund(reason) {
+    if (!reserved) return;
+    balance += 1;
+    reserved = false;
+    ledger.push({label:`第 ${runNumber} 轮示例任务 · ${reason}回补`,amount:1});
+    updateCredits();
+  }
+  function completeRun() {
+    clearTimeout(timer);
+    if (!snapshot || !['running','paused','completed'].includes(runStatus)) return;
+    if (runStatus === 'completed') { showStep(2); return; }
+    runIndex = 6;
+    if (snapshot.materials.effective.length < 2) {
+      runStatus = 'failed';
+      refund('材料不足');
+      renderMaterials();
+      renderProgress();
+      notify('材料不足，示例额度已回补。可查看材料诊断或修改关键词。');
+      return;
+    }
+    runStatus = 'completed';
+    reserved = false;
+    renderMaterials();
+    renderAnalysis();
+    renderReport();
+    renderProgress();
+    showStep(2);
+    notify('示例已完成：先看本次材料，再查看研判与报告。');
+  }
+  function cancelRun() {
+    if (!['running','paused'].includes(runStatus)) return;
+    clearTimeout(timer);
+    runStatus = 'canceled';
+    refund('取消');
+    renderProgress();
+    notify('本轮已取消；1 次示例额度已回补。');
+  }
+  function pauseRun() {
+    if (runStatus === 'running') { clearTimeout(timer); runStatus = 'paused'; }
+    else if (runStatus === 'paused') { runStatus = 'running'; scheduleTick(); }
+    renderProgress();
+  }
+  function renderMaterials() {
+    const materials = snapshot.materials;
+    $('count-candidate').textContent = materials.candidates.length;
+    $('count-summary').textContent = materials.admitted.length;
+    $('count-effective').textContent = materials.effective.length;
+    $('evidence-scope').textContent = `本轮使用 ${snapshot.sources.length} 个来源、${snapshot.keywords.length} 个关键词。${materials.effective.length} 条有效材料均为虚构示例，不代表平台总声量。`;
+    $('evidence-source').innerHTML = '<option value="all">全部来源</option>'+snapshot.sources.map((source) => `<option value="${source}">${sourceNames[source]}</option>`).join('');
+    $('exclusion-heading').textContent = `查看初筛与去重明细（${materials.excluded.length} 条）`;
+    $('exclusion-list').innerHTML = materials.excluded.length ? materials.excluded.map((doc) => `<li>${esc(doc.id)} / ${esc(sourceNames[doc.source])} · ${esc(doc.reason)}</li>`).join('') : '<li>当前输入没有产生被排除的候选；不代表真实来源没有相关材料。</li>';
+    $('materials-next').hidden = runStatus !== 'completed';
+    $('materials-edit').hidden = runStatus === 'completed';
+    $('materials-next').textContent = snapshot.mode === 'quick' ? '查看三维研判 →' : '查看五维研判 →';
+    renderEvidenceList();
+  }
+  function renderEvidenceList() {
+    if (!snapshot) return;
+    const selected = $('evidence-source').value;
+    const docs = snapshot.materials.effective.filter((doc) => selected === 'all' || doc.source === selected);
+    $('visible-material-count').textContent = `显示 ${docs.length} 条 / 有效 ${snapshot.materials.effective.length} 条`;
+    $('evidence-list').innerHTML = docs.length ? docs.map((doc) => `<article class="material" data-testid="evidence-item"><div><div class="meta"><span style="font-family:var(--font-mono)">${esc(doc.id)}</span><span>${esc(sourceNames[doc.source])} · 公开网页摘要</span><span class="tag ${doc.sentiment}">${sentimentNames[doc.sentiment]}文本</span></div><h3 class="materialtitle">${esc(doc.title)}</h3><p>${esc(doc.summary)}</p><div class="meta" style="margin-top:8px">示例发表时间 ${esc(doc.date)} · 时间未独立核验</div></div><div class="material-action"><button class="btn outline small" type="button" data-doc="${doc.id}" data-testid="inspect-source">检查来源 ↗</button></div></article>`).join('') : '<p class="empty">当前条件没有有效示例材料。调整关键词或来源后可重新运行；不能据此判断实际没有舆情。</p>';
+  }
+  function sentiments() {
+    const counts = {positive:0,neutral:0,negative:0};
+    snapshot.materials.effective.forEach((doc) => { counts[doc.sentiment] += 1; });
+    return counts;
+  }
+  function observedTopics() {
+    return [...new Set(snapshot.materials.effective.flatMap((doc) => doc.topics))];
+  }
+  function observationsText() {
+    const topics = observedTopics();
+    if (topics.length === 0) return '本轮没有足够材料支持完整观察。';
+    if (topics.length === 1) return `「${topics[0]}」是本轮有效摘要中的主题；其他主题未在这批有效摘要中出现。`;
+    return scenes[snapshot.sceneId].lead;
+  }
+  function nextStepsText() {
+    const topics = observedTopics();
+    if (topics.length === 1) return `逐条人工核对「${topics[0]}」相关材料的对象、时间和上下文；如需理解其他关注点，调整关键词发起新一次分析。`;
+    return scenes[snapshot.sceneId].next;
+  }
+  function representativeRefs(docs) {
+    if (!docs.length) return [];
+    const first = docs[0];
+    const second = docs.find((doc) => doc.topics[0] !== first.topics[0]) || docs.find((doc) => doc.source !== first.source) || docs[1];
+    return second ? [first,second] : [first];
+  }
+  function dimensionContent() {
+    const scene = scenes[snapshot.sceneId];
+    const docs = snapshot.materials.effective;
+    const counts = sentiments();
+    const total = docs.length;
+    const sourceCount = new Set(docs.map((doc) => doc.source)).size;
+    const topics = observedTopics();
+    const content = {
+      background:`本轮${scene.name}示例围绕${topics.map((topic) => `「${topic}」`).join('、')}展开。材料的示例发表时间用于整理记录，不代表事件首发；完整事实需要人工核对。`,
+      heat:`本轮有效材料 ${total} 条，来自 ${sourceCount} 个所选公开网页来源。这个分布只能说明当前样本构成；没有完整转发关系或平台总量，无法核验传播路径、总体热度或引爆点。`,
+      sentiment:`按有效摘要的文本表达分类：正面 ${counts.positive} 条、中性 ${counts.neutral} 条、负面 ${counts.negative} 条。${observationsText()} 这些分类不代表消费者总体情绪。`,
+      group:topics.length === 1 ? `有效摘要集中于「${topics[0]}」，来源数量只表示这批材料的构成。公开摘要缺少可靠用户画像，暂不能据此判断年龄、职业或平台用户的总体立场。` : scene.group,
+      deep_cause:topics.length === 1 ? `仅凭「${topics[0]}」的摘要无法确定根本原因或长期影响。建议人工核对事实、对象和时间，再补充其他相关材料。` : scene.cause
+    };
+    const selected = snapshot.mode === 'quick' ? dimensions.filter((dim) => ['heat','sentiment','deep_cause'].includes(dim.id)) : dimensions;
+    return selected.map((dim) => ({...dim,content:content[dim.id],refs:representativeRefs(docs)}));
+  }
+  function summaryText() {
+    const scene = scenes[snapshot.sceneId];
+    return `围绕「${snapshot.keywords.join('、')}」，本轮从 ${snapshot.sources.length} 个所选来源获得 ${snapshot.materials.effective.length} 条有效示例摘要。${observationsText()} 建议逐条回看材料，再决定下一步。此结论只描述这批虚构样本。`;
+  }
+  function renderAnalysis() {
+    const dims = dimensionContent();
+    const counts = sentiments();
+    const docs = snapshot.materials.effective;
+    $('analysis-intro').textContent = `${dims.length === 3 ? '三个' : '五个'}独立维度，围绕同一批有效材料做观察。以下是虚构案例的示例研判，不是事实鉴定或真实经营建议。`;
+    $('result-title').textContent = snapshot.title;
+    $('result-summary').textContent = summaryText();
+    $('dimension-list').innerHTML = dims.map((dim,index) => `<article class="dimension" data-testid="analysis-dimension" data-dimension="${dim.id}"><div class="dimensionheader"><span>${String(index+1).padStart(2,'0')}</span><h3>${esc(dim.name)}</h3></div><p>${esc(dim.content)}</p><div>${dim.refs.map((doc) => `<button type="button" class="refbutton" data-doc="${doc.id}" aria-label="查看材料 ${doc.id}">${doc.id} ↗</button>`).join('')}</div></article>`).join('');
+    $('sentiment-denominator').textContent = `分类样本：本轮 ${docs.length} 条有效摘要`;
+    $('sentiment-bar').innerHTML = Object.entries(counts).map(([kind,count]) => `<span class="${kind}" style="width:${100*count/docs.length}%"></span>`).join('');
+    $('sentiment-counts').innerHTML = Object.entries(counts).map(([kind,count]) => `<li><span>${sentimentNames[kind]}文本</span><b>${count} 条</b></li>`).join('');
+    const topics = new Map();
+    docs.forEach((doc) => doc.topics.forEach((topic) => topics.set(topic,(topics.get(topic)||0)+1)));
+    $('topic-counts').innerHTML = [...topics].map(([topic,count]) => `<div class="topicitem"><div class="topiclabel"><span>${esc(topic)}</span><span>${count} 条</span></div><div class="topicbar" aria-hidden="true"><span style="width:${100*count/docs.length}%"></span></div></div>`).join('');
+  }
+  function renderReport() {
+    $('report-preview-title').textContent = snapshot.title;
+    $('report-preview-meta').innerHTML = [scenes[snapshot.sceneId].name,snapshot.mode === 'quick' ? '三维速览' : '五维研判',`${snapshot.materials.effective.length} 条有效示例摘要`].map((label) => `<span class="tag">${esc(label)}</span>`).join('');
+    $('report-preview-summary').textContent = summaryText();
+    $('report-preview-scope').textContent = `关键词：${snapshot.keywords.join('、')}。来源：${snapshot.sources.map((source) => sourceNames[source]).join('、')}。搜索候选 ${snapshot.materials.candidates.length} 条，摘要初筛 ${snapshot.materials.admitted.length} 条，去重后有效 ${snapshot.materials.effective.length} 条。计数仅表示本轮虚构搜索样本。`;
+    $('report-preview-dimensions').innerHTML = dimensionContent().map((dim) => `<li>${esc(dim.name)}</li>`).join('');
+    $('report-preview-next').textContent = nextStepsText();
+    $('download-status').textContent = '';
+  }
+  function buildReport() {
+    const scene = scenes[snapshot.sceneId];
+    const materials = snapshot.materials;
+    const counts = sentiments();
+    const rows = materials.effective.map((doc) => `<article><h3>${esc(doc.id)} · ${esc(doc.title)}</h3><p>${esc(doc.summary)}</p><p class="small">${esc(sourceNames[doc.source])} · ${esc(doc.date)}（示例发表时间，未独立核验） · ${sentimentNames[doc.sentiment]}文本</p><p class="url">占位来源：${esc(doc.url)}</p></article>`).join('');
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(snapshot.title)} · 盘古舆情虚构示例</title><style>body{margin:0;background:#f5f5f5;color:#35353d;font:15px/1.9 "PingFang SC","Microsoft YaHei",sans-serif}main{max-width:850px;margin:28px auto;padding:40px;background:#fff;border:1px solid #e5e5e8}h1{font-size:27px;line-height:1.55;overflow-wrap:anywhere}h2{font-size:19px;margin-top:32px;border-bottom:1px solid #e6e6e9;padding-bottom:8px}h3{font-size:15px;margin:17px 0 7px}p,li{overflow-wrap:anywhere}.notice{background:#303034;color:#fff;padding:13px 16px;font-size:13px}.small{font-size:12px;color:#6c6c75}.url{font:11px/1.8 monospace;overflow-wrap:anywhere;background:#f5f5f6;padding:8px 10px}article{border-bottom:1px solid #e6e6e9;padding:10px 0}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:9px;text-align:left;border-bottom:1px solid #e6e6e9}th{font-weight:500;color:#777}footer{font-size:12px;color:#777;margin-top:30px}@media(max-width:600px){main{margin:0;padding:24px 18px;border:0}h1{font-size:23px}.notice{font-size:12px}}@media print{body{background:white}main{margin:0;border:0}}</style></head><body><main><div class="notice">离线演示 · 所有案例、材料、来源链接、数值与账号均为虚构展示，不连接生产服务。</div><p class="small">盘古舆情 · 0.2.5-beta · HTML 示例报告</p><h1>${esc(snapshot.title)}</h1><h2>一、本次输入</h2><p>场景：${esc(scene.name)} · ${snapshot.mode === 'quick' ? '三维速览' : '五维研判'}</p><p>关键词：${snapshot.keywords.map(esc).join('、')}</p><p>所选来源：${snapshot.sources.map((source) => esc(sourceNames[source])).join('、')}</p><p class="small">各词分别筛选本页虚构材料，任一词命中可入选；没有调用真实搜索服务。此文件不含脚本、远程字体或外部资源。</p><h2>二、材料口径</h2><table><thead><tr><th>搜索候选</th><th>摘要初筛</th><th>有效材料</th></tr></thead><tbody><tr><td>${materials.candidates.length} 条</td><td>${materials.admitted.length} 条</td><td>${materials.effective.length} 条</td></tr></tbody></table><p class="small">初筛剔除无可用摘要的条目，再去重得到有效材料。计数仅表示本轮样本，不是平台总声量、公众总体观点或覆盖率。</p><h2>三、示例研判</h2><p>${esc(summaryText())}</p><p>摘要文本分类：正面 ${counts.positive} 条，中性 ${counts.neutral} 条，负面 ${counts.negative} 条。</p>${dimensionContent().map((dim) => `<article><h3>${esc(dim.name)}</h3><p>${esc(dim.content)}</p><p class="small">材料编号：${dim.refs.map((doc) => esc(doc.id)).join('、')}</p></article>`).join('')}<h2>四、建议的下一步</h2><p>${esc(nextStepsText())}</p><h2>五、有效材料与占位来源</h2>${rows}<footer>虚构品牌「青禾茶饮」及「邻岸茶社」仅用于产品流程展示。所有来源为 example.com 占位；时间未独立核验。此报告不构成真实事件证据、总体情绪统计、传播关系核验或实际经营建议。</footer></main></body></html>`;
+  }
+  function downloadReport() {
+    if (runStatus !== 'completed' || !snapshot) return;
+    const blob = new Blob([buildReport()], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'pangu-yuqing-fictional-sample-report.html';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    $('download-status').textContent = '已生成本轮 HTML 示例文件；文件内保留虚构示例标识。';
+  }
+  function inspectSource(id) {
+    if (!snapshot) return;
+    const doc = snapshot.materials.effective.find((item) => item.id === id);
+    if (!doc) return;
+    $('source-title').textContent = `${doc.id} · ${doc.title}`;
+    $('source-summary').textContent = doc.summary;
+    $('source-meta').innerHTML = [['来源',sourceNames[doc.source]+' · 公开网页搜索摘要'],['发表时间',doc.date+' · 虚构时间，未独立核验'],['材料类型','虚构摘要示例；无完整正文或评论'],['分类与话题',sentimentNames[doc.sentiment]+'文本 / '+doc.topics.join('、')]].map(([key,value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('');
+    $('source-url').textContent = doc.url;
+    $('source-dialog').showModal();
+  }
+  function setAccountTab(name,focus=false) {
+    document.querySelectorAll('[data-accounttab]').forEach((button) => {
+      const active = button.dataset.accounttab === name;
+      button.setAttribute('aria-selected',String(active));
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    });
+    $('account-credits').hidden = name !== 'credits';
+    $('account-security').hidden = name !== 'security';
+  }
+  function resetDemo() {
+    clearTimeout(timer);
+    clearTimeout(toastTimer);
+    if ($('source-dialog').open) $('source-dialog').close();
+    runStatus = 'idle';
+    runIndex = 0;
+    snapshot = null;
+    balance = 8;
+    runNumber = 0;
+    reserved = false;
+    ledger = initialLedger();
+    $('analysis-form').reset();
+    $('profile-form').reset();
+    $('profile-display').textContent = '青禾运营';
+    $('profile-status').textContent = '';
+    $('draft-status').hidden = true;
+    $('download-status').textContent = '';
+    $('toast').hidden = true;
+    $('panel-progress').dataset.state = 'idle';
+    formError('');
+    updateCredits();
+    setAccountTab('credits');
+    showStep(0);
+    notify('已恢复初始虚构案例与 8 次示例余额。');
+  }
+  $('analysis-form').addEventListener('submit',startAnalysis);
+  $('reset-demo').addEventListener('click',resetDemo);
+  $('pause-demo').addEventListener('click',pauseRun);
+  $('cancel-demo').addEventListener('click',cancelRun);
+  $('skip-progress').addEventListener('click',completeRun);
+  $('progress-edit').addEventListener('click',() => showStep(0));
+  $('progress-materials').addEventListener('click',() => showStep(2));
+  $('materials-edit').addEventListener('click',() => showStep(0));
+  $('materials-next').addEventListener('click',() => showStep(3));
+  $('analysis-next').addEventListener('click',() => showStep(4));
+  $('report-next').addEventListener('click',() => showStep(5));
+  $('account-new').addEventListener('click',() => showStep(0));
+  $('download-report').addEventListener('click',downloadReport);
+  $('evidence-source').addEventListener('change',renderEvidenceList);
+  $('step-nav').addEventListener('click',(event) => { const button = event.target.closest('button[data-step]'); if (button && !button.disabled) showStep(Number(button.dataset.step)); });
+  document.addEventListener('click',(event) => { const button = event.target.closest('button[data-doc]'); if (button) inspectSource(button.dataset.doc); });
+  $('close-source').addEventListener('click',() => $('source-dialog').close());
+  $('source-dialog').addEventListener('click',(event) => { if (event.target === $('source-dialog')) { const rect = $('source-dialog').getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) $('source-dialog').close(); } });
+  $('scenario').addEventListener('change',() => {
+    const scene = scenes[$('scenario').value];
+    $('analysis-title').value = '青禾茶饮 · '+scene.title;
+    $('keywords').value = scene.keywords.join(', ');
+    $('draft-status').hidden = true;
+    formError('');
+  });
+  $('restore-keywords').addEventListener('click',() => { $('keywords').value = scenes[$('scenario').value].keywords.join(', '); formError(''); });
+  $('save-draft').addEventListener('click',() => {
+    const input = readInputs();
+    if (!input) return;
+    $('draft-status').textContent = `本页草稿已保存：${input.title} / ${scenes[input.sceneId].name} / ${input.keywords.length} 个关键词 / ${input.sources.length} 个来源。未创建任务，未扣额度，未启用周期监测或预警。刷新页面不保留。`;
+    $('draft-status').hidden = false;
+  });
+  document.querySelectorAll('[data-accounttab]').forEach((button) => {
+    button.addEventListener('click',() => setAccountTab(button.dataset.accounttab));
+    button.addEventListener('keydown',(event) => { if (['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) { event.preventDefault(); setAccountTab(event.key === 'Home' ? 'credits' : event.key === 'End' ? 'security' : button.dataset.accounttab === 'credits' ? 'security' : 'credits',true); } });
+  });
+  $('profile-form').addEventListener('submit',(event) => {
+    event.preventDefault();
+    const name = $('profile-name').value.trim() || '青禾运营';
+    $('profile-display').textContent = name;
+    $('profile-status').textContent = `已在本页保存「${name}」的演示设置，时区 ${$('profile-timezone').value}，任务邮件偏好${$('notify-preference').checked ? '开启' : '关闭'}。未修改真实账号，未发送邮件。`;
+  });
+  updateCredits();
+  updateNavigation();
+})();
+</script>
+</body>
+</html>

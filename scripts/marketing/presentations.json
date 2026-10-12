@@ -1,0 +1,330 @@
+{
+  "brand": "盘古舆情",
+  "version": "0.2.5-beta",
+  "updated": "2026-10-12",
+  "website": "https://yuqing2.pangu-cloud.com",
+  "font": "Noto Sans CJK SC",
+  "decks": [
+    {
+      "id": "customer",
+      "audience": "潜在客户",
+      "title": "盘古舆情 · 产品介绍",
+      "description": "6 页看懂公开信息检索、AI 研判、HTML 报告与报告额度。",
+      "slides": [
+        {
+          "kind": "hero",
+          "eyebrow": "从公开信息，到有据可查的舆情研判",
+          "title": "把公开信息，\n变成可回看的研判。",
+          "subtitle": "为品牌、产品与业务团队提供按次运行的公开网页检索、AI 多维分析与 HTML 报告。",
+          "items": [
+            {"title": "定问题", "body": "选择场景与关键词"},
+            {"title": "看证据", "body": "了解本次材料与来源"},
+            {"title": "读报告", "body": "归纳发现，回看依据"}
+          ],
+          "footnote": "0.2.5-beta · 适合一次问题、一次分析的业务工作流",
+          "notes": "当前介绍基于已部署 0.2.5-beta 的源代码与验收记录。分析使用 Bocha 返回的公开网页摘要／片段；不是全平台实时监测。实时供应商分析效果仍应通过具体用户任务验证。",
+          "sources": ["engines/common/scraper.py:145", "platform/internal/business/analysis/pipeline.go:266", "docs/ops/BETA_0.2.5_DEPLOYMENT_REPORT.html"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "业务场景",
+          "title": "先回答业务问题，再开始检索。",
+          "subtitle": "把宽泛的“看舆情”，变成团队可以讨论和复盘的问题。",
+          "items": [
+            {"title": "品牌口碑", "body": "公开材料反复提到什么？\n哪些观点值得进一步核实？"},
+            {"title": "新品上市", "body": "发布信息围绕哪些话题？\n目标卖点是否进入讨论？"},
+            {"title": "质量投诉", "body": "本次材料暴露哪些关注点？\n团队应优先回看哪些来源？"}
+          ],
+          "footnote": "支持事件、品牌、竞品、行业四种视角；场景选择用于组织单次分析。",
+          "notes": "三个问题为业务应用建议，不代表客户实证案例或实际处置效果。现有六种场景还包括竞品动态、突发危机和营销复盘。选场景不等于启用持续监测、预警或专属模板。",
+          "sources": ["web/src/lib/constants.ts:13", "web/src/lib/constants.ts:21", "platform/internal/business/monitorplan/catalog.go:7"]
+        },
+        {
+          "kind": "workflow",
+          "eyebrow": "核心工作流",
+          "title": "看到结论，也看到这次的证据。",
+          "subtitle": "从关键词到报告，保留材料范围、分析过程与可回看的来源。",
+          "items": [
+            {"title": "选择范围", "body": "场景、关键词\n与公开网页来源"},
+            {"title": "查看材料", "body": "候选、准入、有效数\n去重与来源链接"},
+            {"title": "多维研判", "body": "速览三维／研判五维\n情感、话题与摘要"},
+            {"title": "回看报告", "body": "任务详情与时间线\nHTML 阅读与下载"}
+          ],
+          "footnote": "当前来源：抖音、今日头条、西瓜视频、微博、公众号的公开网页搜索材料。样本不代表平台总声量。",
+          "notes": "最多 8 个关键词，按任一条件分别检索；使用搜索摘要而非完整正文或评论。实际材料数量以返回结果为准；有效材料不足两条时失败。维度依赖模型配置，部分维度失败会提示。任务可以查看进度、取消和重新运行。",
+          "sources": ["web/src/pages/AnalysisNewPage.tsx:186", "web/src/pages/AnalysisNewPage.tsx:244", "engines/query_engine/main.py:149", "web/src/pages/AnalysisDetailPage.tsx:404", "engines/insight_engine/main.py:141"]
+        },
+        {
+          "kind": "report",
+          "eyebrow": "报告结构 · 虚构展示",
+          "title": "把发现与来源，放进同一份报告。",
+          "subtitle": "示例品牌“青禾茶饮”：让团队先读结论，再回到材料核对。",
+          "sample_title": "青禾茶饮 · 新品讨论研判",
+          "sample_summary": "示例发现：新品口味与门店体验是值得回看的两个话题；涉及具体投诉的判断，需要核对原始来源。",
+          "items": [
+            {"title": "本次材料", "body": "标题、来源与可获得的发表时间"},
+            {"title": "观点与话题", "body": "情感分布、关注点与维度结论"},
+            {"title": "报告与回看", "body": "HTML 报告、来源链接与时间线"}
+          ],
+          "footnote": "本页内容均为虚构示例；HTML 是当前已接通的报告下载格式。",
+          "notes": "青禾茶饮不是实际客户；所有示例文案均为演示，不是供应商模型生成的验收结果。时间线仅展示已采集材料的可获得发表时间，不代表全网首发或传播关系。分析引用对照输入摘要核验；不构成全部结论事实验证。",
+          "sources": ["web/src/pages/AnalysisDetailPage.tsx:322", "web/src/pages/AnalysisDetailPage.tsx:524", "engines/insight_engine/main.py:412", "platform/internal/business/analysis/pipeline.go:479", "platform/internal/api/v1/reports.go:94"]
+        },
+        {
+          "kind": "pricing",
+          "eyebrow": "报告额度与账号管理",
+          "title": "按报告额度选择，让使用有记录。",
+          "subtitle": "公测目录参考价 · 每次创建或重跑消耗 1 次报告额度。",
+          "items": [
+            {"title": "速览版", "price": "¥99", "credits": "4 次报告额度", "body": "三维分析 · HTML 报告"},
+            {"title": "研判版", "price": "¥999", "credits": "10 次报告额度", "body": "五维分析 · HTML 报告"},
+            {"title": "旗舰版", "price": "¥4,999", "credits": "50 次报告额度", "body": "五维分析 · HTML 报告"}
+          ],
+          "strip": "余额与流水可查看 · 密码变更安全 · 账号与租户分开管理",
+          "footnote": "加购 ¥69／次。失败或取消按该轮回补。实际开通与支付渠道以产品页面为准。",
+          "notes": "这是报告额度目录，不承诺按月自动续费或清零；套餐名称与价格以服务端 billing.go 为准。真实商户支付未在本轮验收。用户中心包含资料、头像、时区、密码和七天注销撤回；真实邮箱／短信渠道待联调。",
+          "sources": ["platform/internal/platform/billing/billing.go:67", "platform/internal/platform/billing/billing.go:79", "platform/internal/platform/billing/billing.go:91", "platform/internal/platform/billing/billing.go:121", "platform/internal/platform/credit/reservation.go:38", "web/src/pages/UsagePage.tsx:44", "web/src/pages/SettingsPage.tsx:66"]
+        },
+        {
+          "kind": "cta",
+          "eyebrow": "从一个真实问题开始",
+          "title": "判断它是否适合你，只需一轮试用。",
+          "subtitle": "先看离线演示，再用你自己的问题体验单次分析。",
+          "items": [
+            {"title": "看演示", "body": "了解材料、研判、报告\n与账号管理的工作流"},
+            {"title": "定问题", "body": "选择一个明确场景\n准备关键词与目标来源"},
+            {"title": "读结果", "body": "检查本次证据与结论\n判断是否支持团队复盘"}
+          ],
+          "link_label": "注册体验 · 新注册团队赠送 1 次体验额度",
+          "link": "https://yuqing2.pangu-cloud.com/register",
+          "footnote": "盘古舆情 · https://yuqing2.pangu-cloud.com · 演示数据为虚构，真实分析依赖服务配置与返回材料。",
+          "notes": "注册团队获得一次体验额度，速览三维。邮箱验证不额外增加额度。离线演示不会连接生产、调用模型、发送通知或执行支付。建议客户以一条可核验的具体任务评估结果，不承诺固定耗时或覆盖范围。",
+          "sources": ["platform/internal/platform/credit/credit.go:33", "platform/internal/platform/billing/billing.go:55", "demo/demo.html"]
+        }
+      ]
+    },
+    {
+      "id": "partner",
+      "audience": "渠道合作伙伴",
+      "title": "盘古舆情 · 合作交流",
+      "description": "10 页介绍产品、渠道场景、建议分工和联合试点。",
+      "slides": [
+        {
+          "kind": "hero",
+          "eyebrow": "合作交流 · 试点建议",
+          "title": "让你的专业服务，\n拥有可回看的证据。",
+          "subtitle": "把公开网页材料、AI 研判与 HTML 报告，接入品牌咨询和业务复盘的交付过程。",
+          "items": [{"title": "产品", "body": "材料与报告工作流"}, {"title": "伙伴", "body": "场景与专业解读"}, {"title": "客户", "body": "业务判断与反馈"}],
+          "footnote": "0.2.5-beta · 合作方式、权益与服务条款需另行确认",
+          "notes": "本材料为合作讨论建议，不表示已有渠道协议、返点、折扣、SLA 或独立部署承诺。产品当前为按次运行的公开信息分析。",
+          "sources": ["engines/common/scraper.py:145", "platform/internal/business/analysis/pipeline.go:266"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "适配伙伴",
+          "title": "把产品用在你熟悉的客户问题上。",
+          "subtitle": "伙伴的场景理解，与产品的材料组织能力形成分工。",
+          "items": [{"title": "品牌与公关服务", "body": "围绕事件和品牌话题\n组织材料、核对判断依据"}, {"title": "营销与咨询团队", "body": "围绕新品、竞品与复盘\n增加公开信息的观察视角"}, {"title": "企业数字服务商", "body": "帮助客户建立按次分析\n和报告回看的使用习惯"}],
+          "footnote": "以上为建议合作场景，不是现有伙伴名单或已实现客户效果。",
+          "notes": "不提供虚构伙伴名称、客户背书或节省工时比例。伙伴可提供人工解读，不能把 AI 输出作为已核验的处置结论。",
+          "sources": ["web/src/lib/constants.ts:13", "web/src/lib/constants.ts:21"]
+        },
+        {
+          "kind": "workflow",
+          "eyebrow": "产品工作流",
+          "title": "用一轮分析，完成一次有依据的讨论。",
+          "subtitle": "入口简单，交付可回看；展示结果时同时说明材料范围。",
+          "items": [{"title": "定义问题", "body": "选场景与视角\n确定关键词和来源"}, {"title": "检索材料", "body": "摘要准入与去重\n查看本次有效材料"}, {"title": "读取研判", "body": "三维／五维分析\n情感、话题与摘要"}, {"title": "交付报告", "body": "HTML 阅读与下载\n保留原始来源链接"}],
+          "footnote": "当前检索公开网页搜索摘要；材料计数仅代表本次样本。",
+          "notes": "抖音、头条、西瓜、微博、公众号为当前新建分析可选公开网页来源。不是评论全文采集或全平台覆盖。部分维度失败会显示提示。",
+          "sources": ["web/src/pages/AnalysisNewPage.tsx:244", "engines/query_engine/main.py:149", "engines/insight_engine/main.py:141", "platform/internal/api/v1/reports.go:94"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "客户场景",
+          "title": "把报告交付嵌入现有服务。",
+          "subtitle": "从问题与材料出发，避免把一份样本报告当作总体结论。",
+          "items": [{"title": "新品复盘", "body": "整理公开材料中的关注点\n与营销团队已有观察对照"}, {"title": "品牌体检", "body": "以明确关键词运行分析\n列出值得人工回看的来源"}, {"title": "投诉研判", "body": "整理涉及质量与体验的话题\n帮助团队确定核实顺序"}],
+          "footnote": "场景方案支持问题组织；方案保存为草稿，不会自动持续运行。",
+          "notes": "上述为建议服务组合。场景方案只有编辑、保存、重新打开能力；不自动创建任务、扣次、调度或预警。",
+          "sources": ["web/src/pages/MonitorPlansPage.tsx:188", "platform/internal/api/v1/monitor_plans.go:15"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "可展示的产品价值",
+          "title": "让客户看得见分析的来路。",
+          "subtitle": "用可演示的工作流说明价值，而不是以效果承诺替代验证。",
+          "items": [{"title": "材料范围可见", "body": "候选、准入、有效材料数\n和来源链接一并展示"}, {"title": "研判维度可读", "body": "速览三维／研判五维\n显示部分失败与结果提示"}, {"title": "交付过程可回看", "body": "任务、报告与额度流水\n便于回顾每轮使用记录"}],
+          "footnote": "来源回溯不等于全部结论事实核验；AI 输出仍需结合业务知识审阅。",
+          "notes": "引语校验仅匹配输入搜索材料片段，不能宣称无幻觉或真实性保证。Dashboard 聚合用户已运行任务，不是实时全网声量。",
+          "sources": ["web/src/pages/AnalysisDetailPage.tsx:404", "engines/insight_engine/main.py:412", "web/src/pages/ReportHistoryPage.tsx:86", "web/src/pages/UsagePage.tsx:44"]
+        },
+        {
+          "kind": "pricing",
+          "eyebrow": "公测目录参考价",
+          "title": "围绕报告额度，讨论服务组合。",
+          "subtitle": "产品额度与伙伴的人工服务应分别说明，避免混淆报价。",
+          "items": [{"title": "速览版", "price": "¥99", "credits": "4 次报告额度", "body": "三维分析 · HTML 报告"}, {"title": "研判版", "price": "¥999", "credits": "10 次报告额度", "body": "五维分析 · HTML 报告"}, {"title": "旗舰版", "price": "¥4,999", "credits": "50 次报告额度", "body": "五维分析 · HTML 报告"}],
+          "strip": "加购 ¥69／次 · 每次创建或重跑扣 1 次 · 失败或取消按该轮回补",
+          "footnote": "实际开通与支付渠道以产品页面为准；渠道折扣、返点、服务费与结算方式需另行协商。",
+          "notes": "价格来自服务端目录；不是月费订阅或自动重置套餐。伙伴人工服务报价、返点和折扣尚未约定。不能宣传所有套餐单次成本都低于加购，也没有已验证利润率。",
+          "sources": ["platform/internal/platform/billing/billing.go:67", "platform/internal/platform/billing/billing.go:79", "platform/internal/platform/billing/billing.go:91", "platform/internal/platform/billing/billing.go:121", "platform/internal/platform/credit/reservation.go:38"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "建议分工 · 待双方确认",
+          "title": "职责清楚，试点更容易复盘。",
+          "subtitle": "先形成一个可交付的试点，再讨论规模化合作。",
+          "items": [{"title": "盘古舆情", "body": "提供产品工作流与使用说明\n记录问题并评估产品改进"}, {"title": "合作伙伴", "body": "定义客户场景和关键词\n审阅材料并提供专业解读"}, {"title": "试点客户", "body": "提供业务背景与判断标准\n反馈报告价值与使用问题"}],
+          "footnote": "数据授权、服务范围、结算、支持与保密要求须在试点前明确。",
+          "notes": "本页为分工建议，不代表现有义务或服务等级承诺。需分别确认公开信息使用范围、人工审阅责任、服务响应和商业条款。",
+          "sources": ["docs/marketing/pangu-partner-0.2.5.html", "AGENTS.md:Security & Documentation"]
+        },
+        {
+          "kind": "cta",
+          "eyebrow": "客户演示建议",
+          "title": "先演示工作流，再体验真实问题。",
+          "subtitle": "将演示数据、真实运行和人工审阅分开说明。",
+          "items": [{"title": "离线演示", "body": "用虚构“青禾茶饮”\n展示材料、研判和报告"}, {"title": "真实试用", "body": "由客户确认场景与关键词\n通过产品发起一轮分析"}, {"title": "共同复盘", "body": "回看来源和结果提示\n记录价值与改进建议"}],
+          "link_label": "产品入口 · 注册与登录",
+          "link": "https://yuqing2.pangu-cloud.com/register",
+          "footnote": "离线演示不会调用供应商、发送通知或执行支付；不承诺分析固定耗时。",
+          "notes": "demo/demo.html 展示内容是虚构且离线；不可当作实际客户案例。真实体验须使用合法、明确的业务查询和有效供应商配置。",
+          "sources": ["demo/demo.html", "platform/internal/business/analysis/pipeline.go:266"]
+        },
+        {
+          "kind": "boundary",
+          "eyebrow": "交付边界",
+          "title": "说清能演示什么，才能建立信任。",
+          "subtitle": "销售话术与客户演示遵循同一功能边界。",
+          "items": [{"title": "当前产品工作流", "body": "手动单次分析与公开摘要材料\n三维／五维研判与 HTML 报告\n账号、租户、额度与操作记录"}, {"title": "需配置、联调或另行约定", "body": "真实模型效果、邮件／短信与支付\n商业条款、服务等级与部署要求\n持续调度、预警与更多报告格式"}],
+          "footnote": "后列不作为当前交付承诺；已保存的场景草稿不会触发调度。",
+          "notes": "真实供应商送达及商户支付本轮未验收。定时监测与预警没有客户可用的执行路由。PDF／Word／Markdown 尚未构成当前客户导出闭环；不要宣传四专家辩论已接通。",
+          "sources": ["docs/ops/BETA_0.2.5_DEPLOYMENT_REPORT.html", "platform/internal/api/v1/monitor_plans.go:15", "platform/internal/api/v1/reports.go:94"]
+        },
+        {
+          "kind": "milestones",
+          "eyebrow": "联合试点建议",
+          "title": "用一个试点，验证双方的合作价值。",
+          "subtitle": "先对齐验收标准，再决定合作形式与后续投入。",
+          "items": [{"title": "对齐场景", "body": "明确客户问题、范围和责任\n确认材料与报告审阅标准"}, {"title": "完成体验", "body": "演示、单次分析、人工复核\n记录问题与客户反馈"}, {"title": "决定下一步", "body": "评估再次使用意愿与交付价值\n商议条款、支持与结算"}],
+          "footnote": "这是试点建议，不含已签约、客户数量、收益或转化率承诺。",
+          "notes": "没有编造渠道数、佣金、时限或试点结果。建议使用客户同意记录的反馈形成后续合作依据。联系路径通过产品站点发起，未虚构联系人或联系方式。",
+          "sources": ["https://yuqing2.pangu-cloud.com", "docs/marketing/pangu-partner-0.2.5.html"]
+        }
+      ]
+    },
+    {
+      "id": "investor",
+      "audience": "投资人",
+      "title": "盘古舆情 · 产品与商业验证",
+      "description": "10 页介绍产品阶段、商业模式与待验证的增长路径。",
+      "slides": [
+        {
+          "kind": "hero",
+          "eyebrow": "产品与商业验证 · 交流材料",
+          "title": "从一次业务问题，\n切入可回看的 AI 研判。",
+          "subtitle": "盘古舆情：面向品牌、产品与业务团队的公开网页分析和 HTML 报告工作流。",
+          "items": [{"title": "聚焦", "body": "单次问题分析"}, {"title": "证据", "body": "来源与材料范围"}, {"title": "验证", "body": "真实使用与复盘"}],
+          "footnote": "0.2.5-beta · 已发布产品基础，商业成效与增长路径待验证",
+          "notes": "源代码和部署验收表明产品基础已发布；不等于真实供应商效果、付费转化或规模化业务验证。本材料没有已核验收入、客户数、市场规模、团队履历或融资金额数据。",
+          "sources": ["docs/ops/BETA_0.2.5_DEPLOYMENT_REPORT.html", "platform/internal/business/analysis/pipeline.go:266"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "目标用户与问题假设",
+          "title": "信息很多，团队仍需知道先看什么。",
+          "subtitle": "围绕一条可核验的问题，把材料、结论和复盘放到一起。",
+          "items": [{"title": "品牌与公关团队", "body": "需要整理公开讨论\n并回看判断所依赖的来源"}, {"title": "产品与营销团队", "body": "需要围绕新品、竞品和投诉\n观察本次材料的关注点"}, {"title": "中小型服务团队", "body": "需要可反复使用的报告流程\n与人工审阅形成分工"}],
+          "footnote": "用户需求与付费意愿为待验证假设；不代表市场规模或客户实证。",
+          "notes": "目标客群由现有业务场景推导，需要用户访谈、试点和真实复用数据验证。不填入缺失的 TAM、增长率、客户画像统计或已签约品牌。",
+          "sources": ["web/src/lib/constants.ts:13", "web/src/lib/constants.ts:21"]
+        },
+        {
+          "kind": "workflow",
+          "eyebrow": "产品路径",
+          "title": "公开材料 → 多维分析 → 可回看报告。",
+          "subtitle": "让每轮分析有明确输入、有结果提示、可回到来源。",
+          "items": [{"title": "问题输入", "body": "场景、视角与关键词\n手动发起单次任务"}, {"title": "材料组织", "body": "搜索摘要、准入与去重\n本次材料范围可见"}, {"title": "AI 研判", "body": "三维／五维独立分析\n情感、话题与摘要"}, {"title": "报告留存", "body": "HTML 阅读和下载\n来源、时间线与任务记录"}],
+          "footnote": "不是完整评论抓取、全网总声量或持续实时监测。",
+          "notes": "真实采集路径为 Bocha summary/snippet。引用校验针对输入材料；部分维度失败会提示。Forum 引擎未接通客户工作流，因此不作为产品能力或技术壁垒宣传。",
+          "sources": ["engines/common/scraper.py:145", "engines/query_engine/main.py:149", "engines/insight_engine/main.py:141", "platform/internal/business/analysis/pipeline.go:479"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "当前阶段",
+          "title": "产品基础已发布，效果需要真实验证。",
+          "subtitle": "区分可用工作流、部署验收与商业验证，形成清晰的下一步。",
+          "items": [{"title": "分析与报告", "body": "任务进度、取消、重跑\n材料、维度与 HTML 报告"}, {"title": "账号与经营基础", "body": "账号／租户分开管理\n权限、额度、流水与审计"}, {"title": "待完成的实证", "body": "真实模型效果与用户复用\n供应商送达及商户支付联调"}],
+          "footnote": "已发布 0.2.5-beta；部署验收不能替代真实效果、送达与付费验证。",
+          "notes": "最新部署记录显示版本与七个服务健康，托管验收通过。此次没有重新进行生产浏览器／真实全分析、供应商送达或商户支付验收。这里故意不把测试数量当成商业牵引力。",
+          "sources": ["docs/ops/BETA_0.2.5_DEPLOYMENT_REPORT.html", "web/e2e/account-admin/admin-management.spec.ts:160", "web/e2e/account-admin/k9-account-credits.spec.ts:59"]
+        },
+        {
+          "kind": "architecture",
+          "eyebrow": "工程基础与可积累的价值",
+          "title": "将材料、研判和治理串成一个闭环。",
+          "subtitle": "长期价值需要在真实任务中积累，而不只来自模型调用。",
+          "items": [{"title": "材料层", "body": "公开搜索摘要\n准入、去重、来源保留"}, {"title": "研判层", "body": "三维／五维独立分析\n引语对照与结果提示"}, {"title": "产品治理层", "body": "任务与 HTML 报告\n账号、额度、流水与审计"}],
+          "strip": "可积累方向：业务场景定义 · 报告审阅方法 · 用户复盘反馈",
+          "footnote": "工程组合是现有基础；数据优势、模型优势与规模壁垒仍需实证。",
+          "notes": "平台 Go、引擎 Python/FastAPI、前端 React/TypeScript，PG 存储。没有把未接线 Forum、完整评论、设备管理或通用 SSO 纳入架构能力。产品改进应来自有授权的反馈和合适的数据保留范围。",
+          "sources": ["platform/internal/app/container.go", "engines/query_engine/main.py:149", "engines/insight_engine/main.py:412", "platform/internal/platform/credit/reservation.go:38", "web/src/pages/ReportHistoryPage.tsx:86"]
+        },
+        {
+          "kind": "pricing",
+          "eyebrow": "现有计费目录",
+          "title": "按报告额度计费，验证再次使用意愿。",
+          "subtitle": "从低门槛体验到多轮使用；商业模型以实际转化和成本记录验证。",
+          "items": [{"title": "速览版", "price": "¥99", "credits": "4 次报告额度", "body": "三维分析 · HTML 报告"}, {"title": "研判版", "price": "¥999", "credits": "10 次报告额度", "body": "五维分析 · HTML 报告"}, {"title": "旗舰版", "price": "¥4,999", "credits": "50 次报告额度", "body": "五维分析 · HTML 报告"}],
+          "strip": "新注册团队赠送 1 次体验额度 · 加购 ¥69／次 · 记录真实用量与供应商成本",
+          "footnote": "目录价格不代表已实现收入；支付联调、客单价、毛利和复购率均待验证。",
+          "notes": "报告额度模型，不是已验证月费订阅或自动周期重置。真实用量与供应商成本都有记录路径，未确认成本应显示待核对，不凭模型目录价格捏造毛利。没有编造收入、利润或财务预测。",
+          "sources": ["platform/internal/platform/billing/billing.go:67", "platform/internal/platform/billing/billing.go:79", "platform/internal/platform/billing/billing.go:91", "platform/internal/platform/credit/credit.go:33", "docs/dev/LLM_USAGE_BRIDGE_OPERATIONS.md"]
+        },
+        {
+          "kind": "cards",
+          "eyebrow": "获客路径 · 待验证假设",
+          "title": "先验证具体场景，再扩大触达。",
+          "subtitle": "三条路径围绕同一轮分析体验，避免先投入无法衡量的规模。",
+          "items": [{"title": "场景驱动直客", "body": "围绕品牌、新品与投诉\n以客户问题发起试用"}, {"title": "专业服务伙伴", "body": "与咨询、公关和营销团队\n讨论报告与人工审阅分工"}, {"title": "内容与产品演示", "body": "用明确标注的示例说明流程\n推动注册、体验与反馈"}],
+          "footnote": "渠道、获客成本、转化率与客户规模尚无已核验数据。",
+          "notes": "本页为市场进入假设，不是已有合同、增长渠道实证或已验证低获客成本。没有使用竞品对比倍数或未经验证的市场份额。",
+          "sources": ["docs/marketing/pangu-customer-0.2.5.html", "docs/marketing/pangu-partner-0.2.5.html", "demo/demo.html"]
+        },
+        {
+          "kind": "metrics",
+          "eyebrow": "商业验证计划",
+          "title": "用可观察的指标，替代增长故事。",
+          "subtitle": "先建立基线，记录失败和未确认项，再判断是否扩大投入。",
+          "items": [{"title": "材料与任务质量", "body": "有效材料比例、任务完成情况\n维度失败与用户核对问题"}, {"title": "报告使用价值", "body": "来源回看与报告下载\n访谈中的决策帮助反馈"}, {"title": "复用与付费", "body": "再次分析、额度使用\n体验到付费的真实路径"}, {"title": "单位经济性", "body": "真实供应商成本与服务成本\n收款、退款和支持投入"}],
+          "footnote": "以上为建议采集指标；尚未形成已核验商业基线，不展示虚构数值。",
+          "notes": "部分产品动作与成本已有记录路径，但指标尚需授权采集、完整归因和成本核对。需注明样本范围与统计口径，不把演示数据算作真实用户行为。",
+          "sources": ["web/src/pages/UsagePage.tsx:44", "docs/dev/LLM_USAGE_BRIDGE_OPERATIONS.md", "platform/internal/business/analysis/pipeline.go:266"]
+        },
+        {
+          "kind": "milestones",
+          "eyebrow": "下一阶段建议 · 未承诺时间表",
+          "title": "让每个里程碑回答一个验证问题。",
+          "subtitle": "以证据推进阶段，不把拟议事项写成已交付能力。",
+          "items": [{"title": "场景验证", "body": "完成真实业务试用与人工审阅\n形成材料质量和报告价值基线"}, {"title": "交易与渠道联调", "body": "验证授权通知与支付流程\n核对失败、回补和成本链路"}, {"title": "商业复用验证", "body": "观察再次使用和真实付费\n据证据调整产品与获客路径"}],
+          "footnote": "验收标准、资源、负责人和时间表需在下一阶段计划中确认。",
+          "notes": "这是拟议里程碑，不表示用户已经批准新增部署、真实支付或通知收件人。真实邮件／短信需要分别授权测试对象；不得将已有沙箱结果写成供应商送达。",
+          "sources": ["AGENTS.md:Security & Documentation", "docs/ops/BETA_0.2.5_RELEASE_NOTES.html", "docs/ops/BETA_0.2.5_DEPLOYMENT_REPORT.html"]
+        },
+        {
+          "kind": "cta",
+          "eyebrow": "希望讨论的支持",
+          "title": "寻找一条能够被验证的增长路径。",
+          "subtitle": "当前交流重点：真实场景、产品价值与下一阶段验证资源。",
+          "items": [{"title": "场景资源", "body": "引荐适合的品牌或服务团队\n验证具体业务问题"}, {"title": "专业反馈", "body": "审阅报告方法与交付边界\n完善客户验收标准"}, {"title": "阶段规划", "body": "讨论资源、指标与里程碑\n据证据确定投入方式"}],
+          "link_label": "查看产品与体验入口",
+          "link": "https://yuqing2.pangu-cloud.com",
+          "footnote": "本材料不设定融资金额、估值、回报承诺或未核验财务预测。",
+          "notes": "没有获得团队履历、资金需求、融资工具、股权条款或用途数据，因此不捏造融资 ask。下一步应以真实资料形成投资讨论所需的财务和团队补充材料。",
+          "sources": ["https://yuqing2.pangu-cloud.com", "docs/marketing/index.html"]
+        }
+      ]
+    }
+  ]
+}
