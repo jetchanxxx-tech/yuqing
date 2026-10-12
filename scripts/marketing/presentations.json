@@ -245,7 +245,7 @@
           "eyebrow": "产品路径",
           "title": "公开材料 → 多维分析 → 可回看报告。",
           "subtitle": "让每轮分析有明确输入、有结果提示、可回到来源。",
-          "items": [{"title": "问题输入", "body": "场景、视角与关键词\n手动发起单次任务"}, {"title": "材料组织", "body": "搜索摘要、准入与去重\n本次材料范围可见"}, {"title": "AI 研判", "body": "三维／五维独立分析\n情感、话题与摘要"}, {"title": "报告留存", "body": "HTML 阅读和下载\n来源、时间线与任务记录"}],
+          "items": [{"title": "问题输入", "body": "场景、视角与关键词\n手动发起单次任务"}, {"title": "材料组织", "body": "搜索摘要与去重\n本次材料范围可见"}, {"title": "AI 研判", "body": "三维／五维独立分析\n情感、话题与摘要"}, {"title": "报告留存", "body": "HTML 阅读和下载\n来源、时间线与记录"}],
           "footnote": "不是完整评论抓取、全网总声量或持续实时监测。",
           "notes": "真实采集路径为 Bocha summary/snippet。引用校验针对输入材料；部分维度失败会提示。Forum 引擎未接通客户工作流，因此不作为产品能力或技术壁垒宣传。",
           "sources": ["engines/common/scraper.py:145", "engines/query_engine/main.py:149", "engines/insight_engine/main.py:141", "platform/internal/business/analysis/pipeline.go:479"]

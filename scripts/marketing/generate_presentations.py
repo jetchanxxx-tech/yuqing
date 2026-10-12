@@ -260,6 +260,7 @@ def write_pptx(data: dict, deck: dict, output: Path) -> None:
     from pptx.dml.color import RGBColor
     from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
     from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
+    from pptx.oxml.ns import qn
     from pptx.oxml.xmlchemy import OxmlElement
     from pptx.util import Inches, Pt
 
@@ -276,6 +277,20 @@ def write_pptx(data: dict, deck: dict, output: Path) -> None:
 
     def rgb(color: str):
         return RGBColor.from_string(COLORS.get(color, color))
+
+    def flat_effects(shape):
+        """Suppress theme shadows in PowerPoint and LibreOffice alike."""
+        sp_pr = shape._element.spPr
+        for existing in list(sp_pr):
+            if existing.tag in (qn("a:effectLst"), qn("a:effectDag")):
+                sp_pr.remove(existing)
+        sp_pr.append(OxmlElement("a:effectLst"))
+        style = shape._element.find(qn("p:style"))
+        if style is not None:
+            effect_ref = style.find(qn("a:effectRef"))
+            if effect_ref is not None:
+                effect_ref.set("idx", "0")
+        return shape
 
     def text(slide, value, x, y, w, h, size=20, color="ink", bold=False, align=None, link=None):
         shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
@@ -304,9 +319,12 @@ def write_pptx(data: dict, deck: dict, output: Path) -> None:
                 node = OxmlElement(node_name)
                 node.set("typeface", font)
                 rpr.append(node)
-            if link:
-                run.hyperlink.address = link
-        return shape
+        if link:
+            # Run hyperlinks inherit the Office theme's blue link style, even
+            # over the white-on-red CTA. Make the complete text shape clickable
+            # so its authored text color remains intact in both office engines.
+            shape.click_action.hyperlink.address = link
+        return flat_effects(shape)
 
     def box(slide, x, y, w, h, fill="surface", border=None, radius=True):
         shape = slide.shapes.add_shape(
@@ -322,20 +340,20 @@ def write_pptx(data: dict, deck: dict, output: Path) -> None:
             shape.line.fill.background()
         if radius:
             shape.adjustments[0] = 0.08
-        return shape
+        return flat_effects(shape)
 
     def rule(slide, x1, y1, x2, y2, color="line", weight=1):
         shape = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
         shape.line.color.rgb = rgb(color)
         shape.line.width = Pt(weight)
-        return shape
+        return flat_effects(shape)
 
     def circle(slide, x, y, d, fill="accent"):
         shape = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x), Inches(y), Inches(d), Inches(d))
         shape.fill.solid()
         shape.fill.fore_color.rgb = rgb(fill)
         shape.line.fill.background()
-        return shape
+        return flat_effects(shape)
 
     def frame(slide, spec, number):
         slide.background.fill.solid()
