@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // This suite opens portable HTML files, with no backend or production traffic.
@@ -18,8 +19,8 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   timeout: 45_000,
-  outputDir: '../test-results/marketing/browser',
-  reporter: [['list'], ['json', { outputFile: '../test-results/marketing/browser-results.json' }]],
+  outputDir: join(workspace, 'test-results/marketing/browser'),
+  reporter: [['list'], ['json', { outputFile: join(workspace, 'test-results/marketing/browser-results.json') }]],
   use: {
     actionTimeout: 5_000,
     trace: 'retain-on-failure',
