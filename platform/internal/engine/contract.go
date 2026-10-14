@@ -40,6 +40,8 @@ type InsightAnalyzeReq struct {
 	AnalysisID   string     `json:"analysis_id"`
 	AnalysisType string     `json:"analysis_type"`
 	Title        string     `json:"title,omitempty"` // 分析任务名（供维度分析 prompt 用）
+	DateFrom     string     `json:"date_from,omitempty"`
+	DateTo       string     `json:"date_to,omitempty"`
 	APIKey       string     `json:"api_key,omitempty"`
 	// LLM 供应商可配置（后台「数据源配置」在线修改，零重启透传引擎）：
 	LLMBaseURL string `json:"llm_base_url,omitempty"`
@@ -97,6 +99,8 @@ type SentimentResp struct {
 type ReportGenerateReq struct {
 	RunID      string            `json:"run_id"`
 	Title      string            `json:"title"`
+	DateFrom   string            `json:"date_from,omitempty"`
+	DateTo     string            `json:"date_to,omitempty"`
 	TemplateID string            `json:"template_id"`
 	Format     string            `json:"format"` // html, markdown, pdf, docx
 	Documents  []Document        `json:"documents"`

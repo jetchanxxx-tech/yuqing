@@ -64,6 +64,8 @@ type InsightRequest struct {
 	TenantID     string
 	AnalysisID   string
 	AnalysisType string
+	DateFrom     string
+	DateTo       string
 	Title        string // 分析任务名，供维度分析 prompt 定位分析对象
 	Documents    []Document
 	// Mode 是套餐裁剪模式（"" / full = 5 维；quick = 3 维速览）。
@@ -84,6 +86,8 @@ type ReportRequest struct {
 	AnalysisID string
 	TemplateID string
 	Title      string
+	DateFrom   string
+	DateTo     string
 	Documents  []Document
 	Sentiments []Sentiment
 	Topics     []Topic

@@ -7,6 +7,8 @@ export interface CreateAnalysisPayload {
   analysis_type: AnalysisType;
   keywords: string[];
   sources: SourceKey[];
+  date_from?: string;
+  date_to?: string;
 }
 
 /** 列表元素（GET /analyses） */
@@ -42,6 +44,8 @@ export interface AnalysisStateResponse {
   state: AnalysisState;
   progress: number;
   created_at?: string;
+  date_from?: string;
+  date_to?: string;
   error_message?: string;
   error_code?: string;
   doc_count?: number;

@@ -29,6 +29,7 @@ import httpx
 from engines.common.llm_client import LLM_MODEL, build_client
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
+from engines.common.time_window import analysis_scope
 from engines.common.auth import InternalAuthMiddleware
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
@@ -53,6 +54,8 @@ class AnalyzeRequest(BaseModel):
     analysis_id: str = ""
     analysis_type: str = ""
     title: str = ""  # 分析任务名（可选，让 prompt 知道分析对象）
+    date_from: str = ""
+    date_to: str = ""
     api_key: str = ""
     # LLM 供应商可配置（后台「数据源配置」在线修改，经 Go 管线透传）：
     llm_base_url: str = ""  # 空 = 环境变量/默认（智谱）
@@ -607,7 +610,11 @@ async def analyze(req: AnalyzeRequest) -> dict:
     model = req.llm_model or LLM_MODEL
     briefs = _doc_briefs(req.documents)
 
+    scope = analysis_scope(req.date_from, req.date_to)
+    scoped_title = f"{req.title}\n{scope}" if scope else req.title
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
+    if scope:
+        context += "\n" + scope
     warnings = []
     deadline = asyncio.get_running_loop().time() + _ANALYZE_BUDGET_SECONDS
     work_deadline = deadline - _SUMMARY_RESERVE_SECONDS
@@ -625,7 +632,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                     {
                         "role": "user",
-                        "content": _SENTIMENT_TOPIC_PROMPT.format(
+                        "content": scope + _SENTIMENT_TOPIC_PROMPT.format(
                             docs=json.dumps(briefs, ensure_ascii=False)
                         ),
                     },
@@ -636,7 +643,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
 
     sentiment_task = asyncio.create_task(classify_sentiment_topics())
     dimensions_task = asyncio.create_task(_run_dimensions(
-        llm, req.documents, req.analysis_type, req.title, model, req.mode,
+        llm, req.documents, req.analysis_type, scoped_title, model, req.mode,
         gate, work_deadline,
     ))
     sentiments = []
@@ -683,7 +690,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     quote_retry_failures: list[str] = []
     if quote_retry_ids and not failed:
         retried, quote_retry_failures = await _run_dimensions(
-            llm, req.documents, req.analysis_type, req.title, model, req.mode,
+            llm, req.documents, req.analysis_type, scoped_title, model, req.mode,
             gate, work_deadline, quote_retry_ids, True,
         )
         retried_by_id = {str(d.get("id", "")): d for d in retried}

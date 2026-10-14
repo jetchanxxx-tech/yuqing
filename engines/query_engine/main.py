@@ -93,6 +93,8 @@ async def search(req: SearchRequest) -> SearchResponse:
                 max_per_source=per_source,
                 bocha_key=bocha_key,
                 coverage=stats,
+                date_from=date_from.isoformat() if date_from else "",
+                date_to=date_to.isoformat() if date_to else "",
             )
             results.extend(found)
             per_keyword.append({"keyword": keyword, "status": "ok", **stats,
@@ -108,7 +110,8 @@ async def search(req: SearchRequest) -> SearchResponse:
 
     exclude_words = [word.strip().casefold() for word in req.exclude_words if word.strip()]
     docs: list[ScrapedDocument] = []
-    unverifiable_date_count = 0
+    unverifiable_date_count = sum(row.get("unverifiable_date_count", 0) for row in per_keyword)
+    out_of_range_date_count = sum(row.get("out_of_range_date_count", 0) for row in per_keyword)
     excluded_word_count = 0
     duplicate_count = 0
     seen_urls: set[tuple[str, str]] = set()
@@ -126,6 +129,7 @@ async def search(req: SearchRequest) -> SearchResponse:
                 unverifiable_date_count += 1
                 continue
             if (date_from and published_date < date_from) or (date_to and published_date > date_to):
+                out_of_range_date_count += 1
                 continue
         url_key = (d.source_type, d.url)
         if (d.url and url_key in seen_urls) or (d.content_hash and d.content_hash in seen_ids):
@@ -171,6 +175,7 @@ async def search(req: SearchRequest) -> SearchResponse:
             "date_filter": ("partial" if unverifiable_date_count else "applied")
             if date_from or date_to else "not_requested",
             "unverifiable_date_count": unverifiable_date_count,
+            "out_of_range_date_count": out_of_range_date_count,
             "scanned_count": len(results),
             "excluded_word_count": excluded_word_count,
             "excluded_word_ratio": excluded_word_count / len(results) if results else 0.0,

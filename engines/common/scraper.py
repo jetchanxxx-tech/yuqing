@@ -11,6 +11,7 @@ import re
 from typing import Optional
 from urllib.parse import urlsplit
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import httpx
 from engines.common.relevance import admit
@@ -99,7 +100,8 @@ class PageScraper:
 
     async def search_and_fetch(self, keyword: str, sources: list[str],
                                 max_per_source: int = 5, bocha_key: str = "",
-                                coverage: dict | None = None) -> list[ScrapedDocument]:
+                                coverage: dict | None = None,
+                                date_from: str = "", date_to: str = "") -> list[ScrapedDocument]:
         """Search via Bocha API → fetch each URL via Scrapling → dedup.
 
         Falls back to preset test URLs if Bocha key is not available.
@@ -118,14 +120,19 @@ class PageScraper:
             include = "|".join(dict.fromkeys(
                 domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
             ))
-            found = await self._bocha_search(
-                keyword, key, include=include, count=min(50, max(20, max_per_source * 2))
-            )
+            options = {"include": include, "count": min(50, max(20, max_per_source * 2))}
+            # Only closed windows use the provider's documented syntax. Older
+            # one-sided requests keep their existing local bound semantics.
+            if date_from and date_to:
+                options["freshness"] = date_from if date_from == date_to else f"{date_from}..{date_to}"
+            found = await self._bocha_search(keyword, key, **options)
             if coverage is not None:
                 coverage["provider_candidates"] = len(found)
                 coverage["unusable_count"] = 0
                 coverage["irrelevant_count"] = 0
                 coverage["source_mismatch_count"] = 0
+                coverage["unverifiable_date_count"] = 0
+                coverage["out_of_range_date_count"] = 0
             # Bocha 返回通用网页结果，按 URL 域名分类（P0 修复）
             for item in found:
                 url = item.get("url", "")
@@ -160,6 +167,19 @@ class PageScraper:
                         field = "unusable_count" if decision.reason == "unusable_excerpt" else "irrelevant_count"
                         coverage[field] += 1
                     continue
+                # Filter before hash deduplication and quota truncation. Old or
+                # undated copies must not consume the current window's slots.
+                if date_from or date_to:
+                    try:
+                        published_day = datetime.fromisoformat(cand.get("published_at") or "").date().isoformat()
+                    except (ValueError, TypeError):
+                        if coverage is not None:
+                            coverage["unverifiable_date_count"] = coverage.get("unverifiable_date_count", 0) + 1
+                        continue
+                    if (date_from and published_day < date_from) or (date_to and published_day > date_to):
+                        if coverage is not None:
+                            coverage["out_of_range_date_count"] = coverage.get("out_of_range_date_count", 0) + 1
+                        continue
                 content_hash = _hash_content(content)
                 if content_hash in seen_hashes:
                     continue
@@ -179,7 +199,8 @@ class PageScraper:
 
         return results
 
-    async def _bocha_search(self, keyword: str, api_key: str, include: str = "", count: int = 20) -> list[dict]:
+    async def _bocha_search(self, keyword: str, api_key: str, include: str = "", count: int = 20,
+                            freshness: str = "noLimit") -> list[dict]:
         """调用 Bocha Web Search API，返回候选结果列表。
 
         实际响应结构（实测）：
@@ -195,7 +216,8 @@ class PageScraper:
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
-                    json={"query": keyword, "count": count, "summary": True, **({"include": include} if include else {})},
+                    json={"query": keyword, "count": count, "summary": True, "freshness": freshness,
+                          **({"include": include} if include else {})},
                 )
                 resp.raise_for_status()
                 body = resp.json()
