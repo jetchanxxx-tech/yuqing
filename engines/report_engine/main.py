@@ -170,7 +170,7 @@ def _materials_text(documents: list[dict], max_docs: int = 30) -> str:
             ] if v
         )
         parts.append(
-            f"[{i}] 标题：{d.get('title', '')}\n"
+            f"[{i}] id={d.get('id', '')} 标题：{d.get('title', '')}\n"
             f"来源：{meta}\n"
             f"正文：{(d.get('content') or '')[:2000]}"
         )
