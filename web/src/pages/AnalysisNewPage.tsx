@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
+import 'dayjs/locale/zh-cn';
 import datePickerLocale from 'antd/es/date-picker/locale/zh_CN';
 import { createAnalysis } from '../api/analyses';
 import { getCredits, getUsage } from '../api/billing';
@@ -50,7 +51,7 @@ const STEP_LABELS = ['选择场景或视角', '关键词与时间范围', '数�
 const DATE_RANGE_STYLES = `
   .analysis-date-field-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
   @media (max-width: 600px) {
-    .analysis-date-range-popup { max-width: calc(100vw - 24px); }
+    .analysis-date-range-popup { position: fixed !important; top: 12px !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: none !important; max-width: calc(100vw - 24px); }
     .analysis-date-range-popup .ant-picker-panel-container { width: min(340px, calc(100vw - 24px)); max-height: 72vh; overflow-y: auto; }
     .analysis-date-range-popup .ant-picker-panel-layout { flex-direction: column !important; }
     .analysis-date-range-popup .ant-picker-panels { flex-direction: column !important; }

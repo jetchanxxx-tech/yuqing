@@ -36,6 +36,7 @@ test('date calendar defaults to seven days and excludes future dates', async ({ 
   await expect(page.getByPlaceholder('结束日期', { exact: true })).toHaveValue(today);
   await page.getByPlaceholder('开始日期', { exact: true }).click();
   await expect(page.locator('.ant-picker-dropdown:visible')).toBeVisible();
+  await expect(page.locator('.ant-picker-dropdown:visible')).toHaveCSS('opacity', '1');
   const future = new Date(`${today}T00:00:00Z`);
   future.setUTCDate(future.getUTCDate() + 1);
   await expect(page.locator(`.ant-picker-dropdown:visible .ant-picker-cell-in-view[title="${future.toISOString().slice(0, 10)}"]`).first()).toHaveClass(/ant-picker-cell-disabled/);
@@ -71,6 +72,7 @@ test('mobile calendar stays within the viewport and a cleared range cannot submi
   await calendar.click();
   const popup = page.locator('.ant-picker-dropdown:visible');
   await expect(popup).toBeVisible();
+  await expect(popup).toHaveCSS('opacity', '1');
   const bounds = await popup.boundingBox();
   expect(bounds).not.toBeNull();
   expect(bounds!.width).toBeLessThanOrEqual(390);
