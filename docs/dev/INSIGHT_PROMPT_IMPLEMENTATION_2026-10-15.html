@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>盘古舆情 · 推理、证据与场景提示词实施记录</title>
+<style>body{font:16px/1.8 system-ui,sans-serif;max-width:1000px;margin:32px auto;padding:0 24px;color:#202634}h1,h2{line-height:1.4}table{border-collapse:collapse;width:100%}th,td{border:1px solid #dce1e9;padding:12px;text-align:left;vertical-align:top}code{overflow-wrap:anywhere}a{color:#175c9d}</style></head>
+<body><h1>推理参数、证据校验与场景 Prompt</h1>
+<p>2026-10-15 用户授权执行。范围：纠正现有推理参数、核验证据与分类统计、使四类业务视角和六类内置场景真实作用于单次分析。自定义模板及缓存、搜索、多模态、多供应商调度均暂缓。</p>
+<h2>执行步骤与验收</h2>
+<ol><li>先写回归用例：官方参数能被实际 HTTP 客户端接受；不对其他供应商发送 GLM 字段；无关 400 不丢参数重试。</li>
+<li>引用绑定文档和来源，分开核验标题与正文；旧格式只在能够唯一定位时补全。分类剔除非法 ID／枚举／数值，话题数量按真实唯一成员计算。</li>
+<li>场景 ID 经前端、创建 API、PG、管线和引擎传递。四视角／六场景共用固定输出契约，正文和摘要包含专项任务；报告沿用相同业务背景。</li>
+<li>GitHub 托管验证：Python 离线真实客户端与入口、Go race／vet、PG 并发／回滚／重建、前端构建与浏览器创建入口。真实供应商质量验收须另有固定语料和实际用量证据。</li></ol>
+<h2>状态</h2><p id="verification-status">已完成代码与回归用例编写。托管 RED：457672153ce2069c209f003bf3f27846459e60dc 的 Python 24 项预期失败、Go 创建入口缺少场景；6a9a0d63d2116c56bfc84ad2ebfdd23d024d190d 的 Python 26 项预期失败（含报告风险证据），其余 157 项通过。GitHub 认证已恢复，GREEN 待新提交验证。未部署，真实供应商质量未验收。</p>
+<h2>模型讨论范围</h2><p>实施后讨论 GLM、DeepSeek、MiniMax 等模型的中文分类／研判／写作适配、思考字段、JSON 模式、SSE 和 usage 差异、重试与计量。此讨论不实施第三阶段优化。</p>
+</body></html>

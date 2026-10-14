@@ -211,13 +211,14 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":                 a.ID,
-		"state":              a.State,
-		"doc_count":          len(docs),
-		"retrieval_coverage": a.RetrievalCoverage,
-		"documents":          docs,
-		"summary":            a.Summary,
-		"warning":            a.Warning,
+		"id":                   a.ID,
+		"scenario_template_id": a.ScenarioTemplateID,
+		"state":                a.State,
+		"doc_count":            len(docs),
+		"retrieval_coverage":   a.RetrievalCoverage,
+		"documents":            docs,
+		"summary":              a.Summary,
+		"warning":              a.Warning,
 		"sentiments": gin.H{
 			"positive": pos, "negative": neg, "neutral": neu,
 			"items": items,

@@ -218,7 +218,8 @@ def test_generate_tolerates_out_of_shape_llm_json(fake_llm):
     content = resp.json()["content"]
     assert "总体可控" in content
     assert "后排空间" in content
-    assert "差评有扩散趋势" in content
+    assert "差评有扩散趋势" not in content
+    assert "风险证据未通过核验" in content
     assert "发布官方回应" in content
 
 

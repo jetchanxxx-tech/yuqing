@@ -34,20 +34,21 @@ type MediaAnalyzeResp struct {
 
 // InsightAnalyzeReq requests deep analysis + sentiment + topics.
 type InsightAnalyzeReq struct {
-	RunID        string     `json:"run_id"`
-	DocumentIDs  []string   `json:"document_ids"`
-	Documents    []Document `json:"documents,omitempty"`
-	AnalysisID   string     `json:"analysis_id"`
-	AnalysisType string     `json:"analysis_type"`
-	Title        string     `json:"title,omitempty"` // 分析任务名（供维度分析 prompt 用）
-	DateFrom     string     `json:"date_from,omitempty"`
-	DateTo       string     `json:"date_to,omitempty"`
-	APIKey       string     `json:"api_key,omitempty"`
+	RunID              string     `json:"run_id"`
+	DocumentIDs        []string   `json:"document_ids"`
+	Documents          []Document `json:"documents,omitempty"`
+	AnalysisID         string     `json:"analysis_id"`
+	AnalysisType       string     `json:"analysis_type"`
+	ScenarioTemplateID string     `json:"scenario_template_id,omitempty"`
+	Title              string     `json:"title,omitempty"` // 分析任务名（供维度分析 prompt 用）
+	DateFrom           string     `json:"date_from,omitempty"`
+	DateTo             string     `json:"date_to,omitempty"`
+	APIKey             string     `json:"api_key,omitempty"`
 	// LLM 供应商可配置（后台「数据源配置」在线修改，零重启透传引擎）：
 	LLMBaseURL string `json:"llm_base_url,omitempty"`
 	LLMModel   string `json:"llm_model,omitempty"`
 	// Mode 是套餐裁剪模式："" / "full" = 5 维完整研判（思考型），
-	// "quick" = 3 维速览（热度/情感/原因，尝试关闭思考以压成本）。
+	// "quick" = 3 维速览（热度/情感/原因，支持的模型降低推理强度）。
 	// Lite/体验档传 quick。
 	Mode string `json:"mode,omitempty"`
 }
@@ -77,8 +78,9 @@ type DimensionResult struct {
 
 // QuoteResult is a verbatim quote from the source material with its platform.
 type QuoteResult struct {
-	Text   string `json:"text"`
-	Source string `json:"source"`
+	DocumentID string `json:"document_id,omitempty"`
+	Text       string `json:"text"`
+	Source     string `json:"source"`
 }
 
 // SentimentReq requests batched sentiment classification.
@@ -97,15 +99,17 @@ type SentimentResp struct {
 
 // ReportGenerateReq requests report generation from document IR.
 type ReportGenerateReq struct {
-	RunID      string            `json:"run_id"`
-	Title      string            `json:"title"`
-	DateFrom   string            `json:"date_from,omitempty"`
-	DateTo     string            `json:"date_to,omitempty"`
-	TemplateID string            `json:"template_id"`
-	Format     string            `json:"format"` // html, markdown, pdf, docx
-	Documents  []Document        `json:"documents"`
-	Sentiments []SentimentResult `json:"sentiments"`
-	Topics     []TopicResult     `json:"topics"`
+	AnalysisType       string            `json:"analysis_type,omitempty"`
+	ScenarioTemplateID string            `json:"scenario_template_id,omitempty"`
+	RunID              string            `json:"run_id"`
+	Title              string            `json:"title"`
+	DateFrom           string            `json:"date_from,omitempty"`
+	DateTo             string            `json:"date_to,omitempty"`
+	TemplateID         string            `json:"template_id"`
+	Format             string            `json:"format"` // html, markdown, pdf, docx
+	Documents          []Document        `json:"documents"`
+	Sentiments         []SentimentResult `json:"sentiments"`
+	Topics             []TopicResult     `json:"topics"`
 	// Dimensions 是分析引擎产出的五维度研判，报告基于它撰写。
 	Dimensions []DimensionResult `json:"dimensions,omitempty"`
 	AnalysisID string            `json:"analysis_id"`

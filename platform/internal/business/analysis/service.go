@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/yuqing/platform/internal/business/monitorplan"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -119,32 +120,34 @@ func NewPGService(pool *pgxpool.Pool, q queue.Queue, concurrency int) *Service {
 
 // CreateAnalysisRequest holds the parameters for a new analysis.
 type CreateAnalysisRequest struct {
-	APIKeyID          string   `json:"-"`
-	ActorTokenVersion *int64   `json:"-"`
-	TenantID          string   `json:"tenant_id"`
-	UserID            string   `json:"user_id"`
-	Name              string   `json:"name"`
-	AnalysisType      string   `json:"analysis_type"`
-	Keywords          []string `json:"keywords"`
-	Sources           []string `json:"sources"`
-	ExcludeWords      []string `json:"exclude_words,omitempty"`
-	DateFrom          string   `json:"date_from,omitempty"`
-	DateTo            string   `json:"date_to,omitempty"`
-	ReportTemplateID  string   `json:"report_template_id,omitempty"`
+	APIKeyID           string   `json:"-"`
+	ActorTokenVersion  *int64   `json:"-"`
+	TenantID           string   `json:"tenant_id"`
+	UserID             string   `json:"user_id"`
+	Name               string   `json:"name"`
+	AnalysisType       string   `json:"analysis_type"`
+	ScenarioTemplateID string   `json:"scenario_template_id,omitempty"`
+	Keywords           []string `json:"keywords"`
+	Sources            []string `json:"sources"`
+	ExcludeWords       []string `json:"exclude_words,omitempty"`
+	DateFrom           string   `json:"date_from,omitempty"`
+	DateTo             string   `json:"date_to,omitempty"`
+	ReportTemplateID   string   `json:"report_template_id,omitempty"`
 }
 
 // AnalysisResult is the full result of a completed analysis.
 type AnalysisResult struct {
-	CurrentRunID string    `json:"current_run_id,omitempty"`
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	AnalysisType string    `json:"analysis_type"`
-	State        State     `json:"state"`
-	Progress     int       `json:"progress"`
-	ErrorCode    string    `json:"error_code,omitempty"`
-	StartedAt    time.Time `json:"started_at,omitempty"`
-	FinishedAt   time.Time `json:"finished_at,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	CurrentRunID       string    `json:"current_run_id,omitempty"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	AnalysisType       string    `json:"analysis_type"`
+	ScenarioTemplateID string    `json:"scenario_template_id,omitempty"`
+	State              State     `json:"state"`
+	Progress           int       `json:"progress"`
+	ErrorCode          string    `json:"error_code,omitempty"`
+	StartedAt          time.Time `json:"started_at,omitempty"`
+	FinishedAt         time.Time `json:"finished_at,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
 	// CreatedBy is the user who created this analysis (迁移 0008).
 	CreatedBy string `json:"created_by,omitempty"`
 
@@ -204,22 +207,35 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 	if req.ReportTemplateID != "" && req.ReportTemplateID != "daily" && req.ReportTemplateID != "weekly" && req.ReportTemplateID != "event" {
 		return nil, fmt.Errorf("analysis: unsupported report_template_id %q", req.ReportTemplateID)
 	}
+	if req.ScenarioTemplateID != "" {
+		template, ok := monitorplan.LookupTemplate(req.ScenarioTemplateID, monitorplan.CatalogVersion)
+		if !ok {
+			return nil, pkgerrors.Wrap(pkgerrors.ErrBadRequest, "unsupported scenario_template_id")
+		}
+		if req.AnalysisType == "" {
+			req.AnalysisType = template.DefaultAnalysisType
+		}
+		if err := monitorplan.ValidateAnalysisType(req.AnalysisType); err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.ErrBadRequest, "unsupported scenario analysis_type")
+		}
+	}
 
 	now := time.Now().UTC()
 	result := &AnalysisResult{
-		ID:               id.New(),
-		Name:             req.Name,
-		AnalysisType:     req.AnalysisType,
-		State:            StateQueued,
-		Progress:         0,
-		CreatedAt:        now,
-		Keywords:         append([]string(nil), req.Keywords...),
-		Sources:          append([]string(nil), req.Sources...),
-		ExcludeWords:     append([]string(nil), req.ExcludeWords...),
-		DateFrom:         req.DateFrom,
-		DateTo:           req.DateTo,
-		ReportTemplateID: req.ReportTemplateID,
-		CreatedBy:        req.UserID,
+		ID:                 id.New(),
+		Name:               req.Name,
+		AnalysisType:       req.AnalysisType,
+		ScenarioTemplateID: req.ScenarioTemplateID,
+		State:              StateQueued,
+		Progress:           0,
+		CreatedAt:          now,
+		Keywords:           append([]string(nil), req.Keywords...),
+		Sources:            append([]string(nil), req.Sources...),
+		ExcludeWords:       append([]string(nil), req.ExcludeWords...),
+		DateFrom:           req.DateFrom,
+		DateTo:             req.DateTo,
+		ReportTemplateID:   req.ReportTemplateID,
+		CreatedBy:          req.UserID,
 	}
 	if _, ok := s.store.(*pgStore); ok {
 		actor := billingpolicy.Actor{UserID: req.UserID, APIKeyID: req.APIKeyID, TokenVersion: req.ActorTokenVersion, Permission: "analyses:create"}
