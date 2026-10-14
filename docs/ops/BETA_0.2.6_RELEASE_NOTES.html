@@ -1,0 +1,7 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>盘古舆情 0.2.6-beta 发行说明</title><style>body{max-width:900px;margin:36px auto;padding:0 24px;font:15px/1.8 "Microsoft YaHei",sans-serif;color:#303034}h1{font-size:28px}h2{font-size:20px;margin-top:28px}code{overflow-wrap:anywhere}a{color:#b71934}li{margin:8px 0}</style></head><body>
+<h1>盘古舆情 0.2.6-beta 发行说明</h1><p>2026-10-14 · 分析日期范围补全</p>
+<h2>用户可见变化</h2><ul><li>新建分析增加中文日期范围日历，默认最近 7 天，提供今天、最近 30 天和自选起止日期。</li><li>所选范围包含起止两天；未来日期不可选择，清空或未完成日期选择时不能提交。</li><li>确认页、任务详情和生成的 HTML 报告显示同一范围。参数作为任务快照保存，刷新和按原参数重跑保留该范围。</li></ul>
+<h2>检索与研判</h2><p>闭合日期范围传入博查 <code>freshness</code>，返回材料再按来源所示发布日期过滤。超期或日期无法识别的摘要在去重和截取数量之前排除，避免旧文章占满候选名额。情感、话题、独立维度和报告写作均使用选定范围内的材料，并明确区分材料中的历史背景。</p><p>搜索材料仍是本次返回的公开网页摘要。范围内结果不代表该周期的全部内容；不足两条有效材料时沿用失败与额度回补规则。历史未限定日期的任务和旧报告保留原有内容。</p>
+<h2>发布依据</h2><p>日期范围实现提交 <code>5b2ff9e4963361f0e55b0df172fc146d596e8e41</code> 的<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38526554588">七项 GitHub 托管作业</a>全部成功，包括 56 项浏览器和 157 项 Python 检查。版本提交与最终 prod 提交仍按分支流程重新接受完整云端检查；正式部署只使用准确 prod 提交的验证归档。</p><p>本次不新增数据库迁移，仍使用 schema 25。API、界面、包信息和运行时检查版本统一为 0.2.6-beta。保留原配置、运行时数据、账务规则与回滚产物。</p>
+<h2>验证范围</h2><p>接口、日期边界和报告契约使用离线供应商响应验证；不将云端沙箱结果表述为真实博查、模型、通知或付款联调。正式运行时及产物核验见部署后的发行报告。</p>
+</body></html>

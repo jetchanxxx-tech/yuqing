@@ -136,6 +136,8 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 		AnalysisID:   req.AnalysisID,
 		AnalysisType: req.AnalysisType,
 		Title:        req.Title,
+		DateFrom:     req.DateFrom,
+		DateTo:       req.DateTo,
 		Mode:         req.Mode,
 	})
 	if err != nil {
@@ -208,6 +210,8 @@ func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportR
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
 		RunID:            req.RunID,
 		Title:            req.Title,
+		DateFrom:         req.DateFrom,
+		DateTo:           req.DateTo,
 		TemplateID:       req.TemplateID,
 		Format:           "html",
 		Documents:        toEngineDocuments(req.Documents),

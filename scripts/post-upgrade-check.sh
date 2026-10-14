@@ -5,7 +5,7 @@ app_root="${YUQING_APP_ROOT:-/opt/yuqing}"
 database="${YUQING_PLATFORM_DB:-yuqing_platform}"
 api_base="${YUQING_API_BASE:-http://127.0.0.1:8080}"
 expected_version="${YUQING_EXPECTED_GOOSE_VERSION:-25}"
-expected_app_version="${YUQING_EXPECTED_APP_VERSION:-0.2.5-beta}"
+expected_app_version="${YUQING_EXPECTED_APP_VERSION:-0.2.6-beta}"
 health_file="$(mktemp)"
 trap 'rm -f -- "$health_file"' EXIT
 

@@ -191,6 +191,12 @@ export default function AnalysisDetailPage() {
               items={[
                 { key: 'id', label: '任务 ID', children: <Typography.Text code>{detail.id}</Typography.Text> },
                 ...(detail.created_at ? [{ key: 'at', label: '创建时间', children: formatDateTime(detail.created_at) }] : []),
+                ...(detail.date_from || detail.date_to ? [{
+                  key: 'period', label: '分析时间范围',
+                  children: detail.date_from && detail.date_to
+                    ? `${detail.date_from} 至 ${detail.date_to}`
+                    : detail.date_from ? `${detail.date_from} 起` : `截至 ${detail.date_to}`,
+                }] : []),
                 { key: 'progress', label: '进度', children: <span>{formatNum(detail.progress)}%</span> },
               ]}
             />
