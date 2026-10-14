@@ -45,7 +45,7 @@ DEFAULT_LLM_PAYLOAD = {
     }],
     "risk_points": [{
         "level": "高", "type": "短期",
-        "desc": "空间实测差评有扩散趋势", "evidence": "实测视频评论区负面居多",
+        "desc": "空间实测差评有扩散趋势", "evidence": "后排腿部空间局促。",
     }],
     "recommendations": [{
         "stage": "立即(0-24h)", "action": "发布官方后排空间实测回应", "rationale": "差评扩散速度快",
@@ -267,7 +267,7 @@ def test_generate_renders_structured_risk_table(fake_llm):
 
     content = resp.json()["content"]
     assert "空间实测差评有扩散趋势" in content  # 风险描述
-    assert "实测视频评论区负面居多" in content  # 佐证素材
+    assert "后排腿部空间局促。" in content  # 原始文档中的佐证素材
     assert "短期" in content  # 风险类型
     assert "高" in content  # 风险等级
 
