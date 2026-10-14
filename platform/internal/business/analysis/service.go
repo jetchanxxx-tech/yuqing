@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yuqing/platform/internal/business/monitorplan"
+	"github.com/yuqing/platform/internal/pkg/analysiscatalog"
 
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
@@ -208,14 +208,14 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		return nil, fmt.Errorf("analysis: unsupported report_template_id %q", req.ReportTemplateID)
 	}
 	if req.ScenarioTemplateID != "" {
-		template, ok := monitorplan.LookupTemplate(req.ScenarioTemplateID, monitorplan.CatalogVersion)
+		template, ok := analysiscatalog.Lookup(req.ScenarioTemplateID)
 		if !ok {
 			return nil, pkgerrors.Wrap(pkgerrors.ErrBadRequest, "unsupported scenario_template_id")
 		}
 		if req.AnalysisType == "" {
 			req.AnalysisType = template.DefaultAnalysisType
 		}
-		if err := monitorplan.ValidateAnalysisType(req.AnalysisType); err != nil {
+		if !analysiscatalog.IsAnalysisType(req.AnalysisType) {
 			return nil, pkgerrors.Wrap(pkgerrors.ErrBadRequest, "unsupported scenario analysis_type")
 		}
 	}
