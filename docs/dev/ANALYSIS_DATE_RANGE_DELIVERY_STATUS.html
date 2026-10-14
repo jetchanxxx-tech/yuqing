@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>盘古舆情 · 分析日期范围交付记录</title>
+  <style>
+    body{max-width:900px;margin:36px auto;padding:0 24px;background:#fafafa;color:#303034;font:15px/1.8 "Microsoft YaHei",sans-serif}h1{font-size:28px;line-height:1.4}h2{font-size:20px;margin-top:30px}a{color:#b71934}code{overflow-wrap:anywhere;font-size:13px}.card{background:#fff;border:1px solid #dededb;border-radius:12px;padding:20px;margin:18px 0}li{margin:8px 0}img{max-width:100%;height:auto;border:1px solid #dededb;border-radius:10px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:10px;border-bottom:1px solid #e5e5e5}@media(max-width:600px){body{padding:0 14px}h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <h1>分析日期范围交付记录</h1>
+  <p>盘古舆情 · 2026-10-14 · 新建分析、公开网页检索及报告时间范围补全</p>
+  <div class="card">
+    <h2>使用方式</h2>
+    <ol>
+      <li>在新建分析的“关键词与时间范围”步骤选择开始和结束日期。默认最近 7 天，也可选择今天、最近 30 天或通过日历自选日期。</li>
+      <li>时间范围包含起止两天。未来日期不可选择，清空或未完成日期选择时不能继续提交。</li>
+      <li>确认页、任务详情和生成的 HTML 报告显示同一时间范围；范围作为任务参数保存，刷新或按原参数重跑不会重新计算成另一组日期。</li>
+    </ol>
+  </div>
+  <h2>筛选如何生效</h2>
+  <p>日历通过现有 <code>date_from</code>／<code>date_to</code> 字段提交。查询引擎将闭合范围转换为博查 <code>freshness</code> 参数，单日使用 <code>YYYY-MM-DD</code>，其他范围使用 <code>YYYY-MM-DD..YYYY-MM-DD</code>。</p>
+  <p>返回材料还会按来源所示发布日期再次筛选，并在去重和截取数量之前排除超出范围或日期无法识别的材料。话题、维度分析与报告使用这批材料，并收到明确的时间范围；材料提及的过往事件只可作为标明的历史背景。</p>
+  <p>范围内搜索结果仍是本次返回的公开网页摘要，不代表该时间段的全部内容。材料不足时沿用失败与额度回补规则。历史未限定日期的任务保留原有参数和报告。</p>
+  <h2>源码及云端验收</h2>
+  <p>工作分支：<code>work/analysis-date-range-20261014</code>；已验收提交：<code>5b2ff9e4963361f0e55b0df172fc146d596e8e41</code>。</p>
+  <p><a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38526554588">GitHub 托管验收记录</a>；<a href="https://github.com/BochaAI/bocha-search-mcp/blob/master/README.md#L29">博查官方时间参数说明</a>。</p>
+  <div class="card" id="acceptance-status"><p>对应源提交的 7 个作业全部成功：Go 测试／vet／二进制构建、前端 lint／build、PostgreSQL、Python、实际计量桥接、浏览器验收及最终归档。157 项 Python 检查和 56 项浏览器检查通过，日历默认范围、自选日期提交与持久化、手机端弹层及清空范围阻止提交均通过。未合并生产分支或部署到生产站点。</p></div>
+  <h2>云端日历截图</h2>
+  <p>以下截图来自隔离的 GitHub 浏览器验收环境，账号为 example.invalid 测试账号。</p>
+  <p><a href="evidence/analysis-date-range/analysis-date-calendar-desktop.png">桌面日历截图</a> · <a href="evidence/analysis-date-range/analysis-date-calendar-mobile.png">手机日历截图</a> · <a href="evidence/analysis-date-range/acceptance.json">源提交与截图校验记录</a></p>
+  <img src="evidence/analysis-date-range/analysis-date-calendar-desktop.png" alt="新建分析页的中文双月日历，默认最近七天">
+  <p>所有编译、依赖准备和浏览器执行均在规定的 GitHub 托管工作流完成。本地仅编辑、轻量语法检查、格式化与产物校验。接口和模型响应使用离线契约材料，本次未调用真实博查或真实模型供应商。</p>
+</body>
+</html>

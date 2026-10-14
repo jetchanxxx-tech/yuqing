@@ -272,7 +272,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	if err := p.step(ctx, msg, StateAnalyzing, progressAnalyze); err != nil {
 		return p.fail(ctx, msg, "pipeline_error", err)
 	}
-	insight, warn := p.runInsight(ctx, msg, docs)
+	insight, warn := p.runInsight(ctx, msg, docs, a.DateFrom, a.DateTo)
 	if p.analyzer != nil && (warn != "" || !insightComplete(insight)) {
 		reason := warn
 		if reason == "" {
@@ -293,7 +293,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	// insightAvailable = 洞察「有产出」而非「零告警」：部分维度失败时
 	// 报告仍应基于已有结论撰写（并在报告内说明缺失），而不是整体降级。
-	reportWarning, fatal := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight))
+	reportWarning, fatal := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight), a.DateFrom, a.DateTo)
 	if fatal != nil {
 		return p.fail(ctx, msg, "accounting_durability_error", fatal)
 	}
@@ -411,7 +411,7 @@ func insightComplete(r InsightResult) bool {
 
 // runInsight 执行情感/话题/摘要分析。返回 warning 非空表示降级
 // （未配置或调用失败），此时 insight 为零值。
-func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Document) (InsightResult, string) {
+func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Document, dateFrom, dateTo string) (InsightResult, string) {
 	if p.analyzer == nil {
 		return InsightResult{}, "insight engine not configured"
 	}
@@ -421,6 +421,8 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		AnalysisID:   msg.AnalysisID,
 		AnalysisType: p.analysisType(ctx, msg),
 		Title:        p.analysisName(ctx, msg),
+		DateFrom:     dateFrom,
+		DateTo:       dateTo,
 		Documents:    docs,
 		Mode:         p.modeForTenant(msg.TenantID),
 	})
@@ -436,7 +438,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
 // insightAvailable = 洞察步骤是否成功（失败时报告引擎不得渲染 0/0/0）。
-func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool) (string, error) {
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool, dateFrom, dateTo string) (string, error) {
 	if p.generator == nil {
 		return "report engine not configured", nil
 	}
@@ -446,6 +448,8 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		AnalysisID:       msg.AnalysisID,
 		TemplateID:       templateID,
 		Title:            p.analysisName(ctx, msg) + " 舆情监测报告",
+		DateFrom:         dateFrom,
+		DateTo:           dateTo,
 		Documents:        docs,
 		Sentiments:       insight.Sentiments,
 		Topics:           insight.Topics,

@@ -1,0 +1,16 @@
+{
+  "source": "5b2ff9e4963361f0e55b0df172fc146d596e8e41",
+  "run": "38526554588",
+  "conclusion": "success",
+  "artifact": "account-admin-browser-evidence-5b2ff9e4963361f0e55b0df172fc146d596e8e41-1",
+  "zip_sha256": "5acd3e876205570576233843bd152279a6e9862cf4810ca574ca3bf17e4379f9",
+  "out": "/tmp/yuqing-analysis-date-20261014/artifact-11875688449",
+  "browser_cases": 56,
+  "python_cases": 157,
+  "hosted_jobs": 7,
+  "screenshots": {
+    "analysis-date-calendar-desktop.png": "0bc1857a0ace3845475c3baa5134be077580fb2856901bec82290f7bc2be0e55",
+    "analysis-date-calendar-mobile.png": "e3de5af34ef82f007ac648a3e5b6eeab8b0d2020c33da3944742464744147537"
+  },
+  "deployed": false
+}

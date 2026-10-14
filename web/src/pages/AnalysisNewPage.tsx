@@ -8,6 +8,7 @@ import {
   Checkbox,
   Col,
   Descriptions,
+  DatePicker,
   Input,
   Row,
   Select,
@@ -24,6 +25,9 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import dayjs, { type Dayjs } from 'dayjs';
+import 'dayjs/locale/zh-cn';
+import datePickerLocale from 'antd/es/date-picker/locale/zh_CN';
 import { createAnalysis } from '../api/analyses';
 import { getCredits, getUsage } from '../api/billing';
 import {
@@ -42,7 +46,20 @@ const BASE_TOKENS = 3000;
 
 const TYPE_ICONS = [SafetyOutlined, RocketOutlined, TeamOutlined, CompassOutlined];
 
-const STEP_LABELS = ['选择场景或视角', '关键词设置', '数据源选择', '确认提交'];
+const STEP_LABELS = ['选择场景或视角', '关键词与时间范围', '数据源选择', '确认提交'];
+
+const DATE_RANGE_STYLES = `
+  .analysis-date-field-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+  @media (max-width: 600px) {
+    .analysis-date-range-popup { position: fixed !important; top: 12px !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: none !important; max-width: calc(100vw - 24px); }
+    .analysis-date-range-popup .ant-picker-panel-container { width: min(340px, calc(100vw - 24px)); max-height: 72vh; overflow-y: auto; }
+    .analysis-date-range-popup .ant-picker-panel-layout { flex-direction: column !important; }
+    .analysis-date-range-popup .ant-picker-panels { flex-direction: column !important; }
+    .analysis-date-range-popup .ant-picker-presets { width: auto; min-width: 0; max-width: none; border-inline-end: 0; }
+    .analysis-date-range-popup .ant-picker-presets ul { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; }
+    .analysis-date-range-popup .ant-picker-presets li { margin: 0; }
+  }
+`;
 
 export default function AnalysisNewPage() {
   const { message } = App.useApp();
@@ -60,6 +77,14 @@ export default function AnalysisNewPage() {
     return kw ? [kw.trim()].filter(Boolean) : [];
   });
   const [sources, setSources] = useState<SourceKey[]>([]);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(() => {
+    const today = dayjs().startOf('day');
+    return [today.subtract(6, 'day'), today];
+  });
+  const validDateRange = !!dateRange?.[0]?.isValid() && !!dateRange?.[1]?.isValid()
+    && !dateRange[0].isAfter(dateRange[1], 'day') && !dateRange[1].isAfter(dayjs(), 'day');
+  const selectedPeriod = validDateRange
+    ? `${dateRange![0]!.format('YYYY-MM-DD')} 至 ${dateRange![1]!.format('YYYY-MM-DD')}` : '';
 
   const usageQ = useQuery({ queryKey: ['billing', 'usage'], queryFn: getUsage, staleTime: 30_000 });
   const creditsQ = useQuery({ queryKey: ['billing', 'credits'], queryFn: getCredits, staleTime: 30_000 });
@@ -77,19 +102,25 @@ export default function AnalysisNewPage() {
     current === 0
       ? name.trim().length >= 2 && entry !== null && (entry === 'manual' || templateId !== null)
       : current === 1
-        ? keywords.length >= 1
+        ? keywords.length >= 1 && validDateRange
         : current === 2
           ? sources.length >= 1
           : true;
 
   const createQ = useMutation({
-    mutationFn: () =>
-      createAnalysis({
+    mutationFn: () => {
+      if (!validDateRange || !dateRange?.[0] || !dateRange?.[1]) {
+        throw new Error('请选择完整且有效的分析时间范围');
+      }
+      return createAnalysis({
         name: name.trim(),
         analysis_type: type as AnalysisType,
         keywords: [...keywords],
         sources: sources.filter((source) => SELECTABLE_SOURCES.includes(source)),
-      }),
+        date_from: dateRange[0].format('YYYY-MM-DD'),
+        date_to: dateRange[1].format('YYYY-MM-DD'),
+      });
+    },
     onSuccess: (res) => {
       message.success('分析任务已创建，正在排队执行');
       void creditsQ.refetch();
@@ -109,7 +140,7 @@ export default function AnalysisNewPage() {
   const next = () => {
     if (!canNext) {
       if (current === 0) message.warning(name.trim().length < 2 ? '请填写分析名称（至少 2 个字）' : '请选择模板或手动创建');
-      else if (current === 1) message.warning('请至少输入 1 个关键词');
+      else if (current === 1) message.warning(keywords.length === 0 ? '请至少输入 1 个关键词' : '请选择完整且有效的分析时间范围');
       else message.warning('请至少选择 1 个数据源');
       return;
     }
@@ -158,6 +189,7 @@ export default function AnalysisNewPage() {
 
   return (
     <div style={{ maxWidth: 920, margin: '0 auto' }}>
+      <style>{DATE_RANGE_STYLES}</style>
       <Typography.Title level={4}>新建分析</Typography.Title>
       <Card style={{ borderRadius: 16, marginBottom: 16 }}>
         <Steps current={current} items={STEP_LABELS.map((title) => ({ title }))} style={{ marginBottom: 32 }} />
@@ -237,7 +269,31 @@ export default function AnalysisNewPage() {
               suffixIcon={null}
               style={{ width: '100%' }}
             />
-
+            <Typography.Title level={5} style={{ marginTop: 24 }}>分析时间范围</Typography.Title>
+            <label className="analysis-date-field-label" htmlFor="analysis-date-from">开始日期</label>
+            <label className="analysis-date-field-label" htmlFor="analysis-date-to">结束日期</label>
+            <DatePicker.RangePicker
+              className="analysis-date-range-picker"
+              classNames={{ popup: { root: 'analysis-date-range-popup' } }}
+              id={{ start: 'analysis-date-from', end: 'analysis-date-to' }}
+              locale={datePickerLocale}
+              format="YYYY-MM-DD"
+              placeholder={['开始日期', '结束日期']}
+              value={dateRange}
+              onChange={setDateRange}
+              onCalendarChange={setDateRange}
+              disabledDate={(date) => date.isAfter(dayjs(), 'day')}
+              presets={[
+                { label: '今天', value: [dayjs().startOf('day'), dayjs().startOf('day')] },
+                { label: '最近 7 天', value: [dayjs().startOf('day').subtract(6, 'day'), dayjs().startOf('day')] },
+                { label: '最近 30 天', value: [dayjs().startOf('day').subtract(29, 'day'), dayjs().startOf('day')] },
+              ]}
+              style={{ width: '100%', maxWidth: 490 }}
+              size="large"
+            />
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              按材料来源所示的发布日期筛选，包含开始和结束两天；无法识别日期的材料会排除。
+            </Typography.Paragraph>
           </div>
         )}
         {/* ③ 数据源 */}
@@ -291,6 +347,11 @@ export default function AnalysisNewPage() {
                   children: keywords.length ? keywords.join(' / ') : '-',
                 },
                 {
+                  key: 'period',
+                  label: '分析时间范围',
+                  children: selectedPeriod,
+                },
+                {
                   key: 'sources',
                   label: '数据源',
                   children: sources.length ? sources.map((s) => SOURCE_LABELS[s]).join('、') : '-',
@@ -335,7 +396,7 @@ export default function AnalysisNewPage() {
               type="primary"
               size="large"
               loading={createQ.isPending}
-              disabled={!canNext || keywords.length === 0 || sources.length === 0}
+              disabled={!canNext || !validDateRange || keywords.length === 0 || sources.length === 0}
               onClick={() => createQ.mutate()}
             >
               提交分析

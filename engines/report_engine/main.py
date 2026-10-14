@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from engines.common.llm_client import LLM_MODEL, build_client
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
+from engines.common.time_window import analysis_period, analysis_scope
 from engines.common.auth import InternalAuthMiddleware
 
 try:
@@ -44,6 +45,8 @@ if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
 class GenerateRequest(BaseModel):
     run_id: str = ""
     title: str = ""
+    date_from: str = ""
+    date_to: str = ""
     template_id: Literal["", "daily", "weekly", "event"] = ""
     format: str = "html"
     documents: list[dict] = []
@@ -272,7 +275,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                 {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                 {
                     "role": "user",
-                    "content": _LLM_PROMPT.format(
+                    "content": analysis_scope(req.date_from, req.date_to) + _LLM_PROMPT.format(
                         title=req.title,
                         stats_text=_stats_text(_sentiment_stats(req.sentiments)),
                         topics=req.topics,
@@ -507,13 +510,18 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     title = _esc(req.title)
     template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
+    period = analysis_period(req.date_from, req.date_to)
+    period_notice = (
+        f'<div class="notice">分析时间范围：{_esc(period)}（包含起止日期）。'
+        '以下研判仅依据本次范围内通过日期筛选的材料。</div>'
+    ) if period else ""
 
     if not req.documents:
         label = f"{template_names[req.template_id]} · 本次采集暂无数据" if req.template_id else "暂无数据"
-        body = f'<div class="empty">{label}</div>'
+        body = period_notice + f'<div class="empty">{label}</div>'
         return _TEMPLATE.substitute(title=title, generated_at=generated_at, body=body)
 
-    parts = []
+    parts = [period_notice] if period_notice else []
     if req.template_id:
         parts.append(f'<div class="notice">{template_names[req.template_id]} · 仅基于本次采集内容，不代表完整监测周期</div>')
     parts.append(_overview_cards(req, stats))
@@ -601,6 +609,9 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
         run.font.color.rgb = RGBColor(107, 114, 128)
 
     template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
+    period = analysis_period(req.date_from, req.date_to)
+    if period:
+        doc.add_paragraph(f"分析时间范围：{period}（包含起止日期），仅依据本次范围内通过日期筛选的材料。")
     if req.template_id:
         doc.add_paragraph(f"{template_names[req.template_id]} · 仅基于本次采集内容，不代表完整监测周期")
 
