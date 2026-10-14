@@ -17,8 +17,8 @@ async function newAnalysis(page: Page, request: APIRequestContext) {
   await page.getByPlaceholder('例如：新品发布会舆情监测').fill('窗口品牌日期范围验收');
   await page.getByRole('button', { name: '手动选择视角', exact: true }).click();
   await page.getByRole('button', { name: '下一步', exact: true }).click();
-  await page.getByPlaceholder('输入关键词后按回车，如：雅阁 后排舒适性').fill('窗口品牌');
-  await page.getByPlaceholder('输入关键词后按回车，如：雅阁 后排舒适性').press('Enter');
+  await page.getByRole('combobox').fill('窗口品牌');
+  await page.getByRole('combobox').press('Enter');
 }
 
 async function confirmAnalysis(page: Page) {
