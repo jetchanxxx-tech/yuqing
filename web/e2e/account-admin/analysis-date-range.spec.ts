@@ -78,7 +78,13 @@ test('mobile calendar stays within the viewport and a cleared range cannot submi
   expect(bounds!.width).toBeLessThanOrEqual(390);
   expect(bounds!.x).toBeGreaterThanOrEqual(-1);
   await page.screenshot({ path: 'test-results/account-admin/analysis-date-calendar-mobile.png' });
-  await page.keyboard.press('Escape');
-  await page.locator('.analysis-date-range-picker .ant-picker-clear').click({ force: true });
+  await calendar.press('Tab');
+  const ending = page.getByPlaceholder('结束日期', { exact: true });
+  await ending.press('Tab');
+  await expect(popup).toBeHidden();
+  await page.locator('.analysis-date-range-picker').hover();
+  await page.locator('.analysis-date-range-picker .ant-picker-clear').click();
+  await expect(calendar).toHaveValue('');
+  await expect(ending).toHaveValue('');
   await expect(page.getByRole('button', { name: '下一步', exact: true })).toBeDisabled();
 });
