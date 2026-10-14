@@ -1,0 +1,67 @@
+{
+  "source_sha": "67d9b29c2fe703f5abea3714aacd189d716eb9b1",
+  "run_id": 38618634837,
+  "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "Go tests and binaries",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116040088361",
+      "runner_name": "GitHub Actions 1000000840",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "Python engine billing sandbox",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116040088681",
+      "runner_name": "GitHub Actions 1000000841",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "PostgreSQL contract checks / PostgreSQL Store Tests",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116040088896",
+      "runner_name": "GitHub Actions 1000000842",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "Frontend build",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116040088993",
+      "runner_name": "GitHub Actions 1000000843",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "Actual Python Go PostgreSQL usage bridge",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116041452983",
+      "runner_name": "GitHub Actions 1000000844",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "Account and administrator acceptance",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116041770913",
+      "runner_name": "GitHub Actions 1000000845",
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "name": "Release archive",
+      "conclusion": "success",
+      "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38618634837/job/116044926934",
+      "runner_name": "GitHub Actions 1000000846",
+      "runner_group_name": "GitHub Actions"
+    }
+  ],
+  "pg_scene_contract": "passed",
+  "python": {
+    "tests": 183,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "supplier_quality": "not_tested",
+  "deployment": "not_performed",
+  "browser_scene_flows": "3 scenarios passed; original screenshots were loading frames and are not used as visual proof"
+}

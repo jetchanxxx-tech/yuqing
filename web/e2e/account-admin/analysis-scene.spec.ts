@@ -37,6 +37,7 @@ for (const [label, scene, perspective] of [
     expect(await response.json()).toMatchObject({ scenario_template_id: scene, analysis_type: perspective });
     await expect(page).toHaveURL(/\/analyses\/[^/]+$/);
     await page.reload();
+    await expect(page.getByRole('heading', { name: `${label}场景验收`, exact: true })).toBeVisible();
     const id = new URL(page.url()).pathname.split('/').at(-1);
     const persisted = await page.evaluate(async (analysisId) => {
       const token = localStorage.getItem('access_token');
