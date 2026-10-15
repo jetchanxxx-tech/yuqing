@@ -433,7 +433,9 @@ class FlakyDimLLM(DimensionFakeLLM):
                 if f'id={dim}' in prompt:
                     self.dim_calls[dim] = self.dim_calls.get(dim, 0) + 1
                     if dim == self.fail_dim and self.dim_calls[dim] <= self.fail_times:
-                        raise RuntimeError(f'dimension {dim} transient 429')
+                        request = httpx.Request('POST', 'https://offline.invalid/chat/completions')
+                        response = httpx.Response(429, request=request, json={'error': 'rate limited'})
+                        raise httpx.HTTPStatusError('rate limited', request=request, response=response)
                     return dict(DIMENSION_PAYLOAD)
         if '批判' in prompt:
             return {'critique': 'x', 'revised_summary': 'y'}

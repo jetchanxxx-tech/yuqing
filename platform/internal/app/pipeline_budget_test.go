@@ -32,7 +32,7 @@ func TestPipelineBudget_sumsConfiguredStageBudgets(t *testing.T) {
 			queryURL: "http://localhost:8000", queryTmo: "60s",
 			insightURL: "http://localhost:8002", insightTmo: "120s",
 			reportURL: "http://localhost:8003", reportTmo: "300s",
-			want: 480 * time.Second,
+			want: 2760 * time.Second,
 		},
 		{
 			name:     "未接线 insight/report：超时值仍在配置里但不计入",
@@ -98,8 +98,8 @@ func TestPipelineBudget_ignoresInvalidEntryOnly(t *testing.T) {
 	cfg.Engines.Report.URL = "http://localhost:8003"
 	cfg.Engines.Report.Timeout = "300s"
 
-	if got := pipelineBudget(cfg); got != 360*time.Second {
-		t.Errorf("pipelineBudget() = %v, want 6m (60s + 300s)", got)
+	if got := pipelineBudget(cfg); got != 2760*time.Second {
+		t.Errorf("pipelineBudget() = %v, want standard 46m for a fully wired semantic pipeline", got)
 	}
 }
 

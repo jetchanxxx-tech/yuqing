@@ -97,3 +97,25 @@ def test_report_context_sentiment_cannot_enter_target_statistics(monkeypatch):
     assert "正面 0 篇" in provider.calls[0][0]
     assert "负面 1 篇" in provider.calls[0][0]
     assert "共 1 篇文档" in provider.calls[0][0]
+
+
+def test_dimension_quote_location_points_to_the_read_long_article_chunk(monkeypatch):
+    class LocatedProvider(ReadingProvider):
+        async def chat_json(self, model, messages, **kwargs):
+            result = await super().chat_json(model, messages, **kwargs)
+            prompt = messages[-1]["content"]
+            if "【分析维度】" in prompt and "结束标记" in prompt:
+                result["quotes"] = [{"document_id": "d0", "text": "相同表达", "source": "wechat"}]
+            return result
+
+    provider = LocatedProvider()
+    monkeypatch.setattr(insight, "build_client", lambda *_args, **_kwargs: provider)
+    docs = _docs(2)
+    docs[0]["content"] = "相同表达。" + "正文。" * 4000 + "相同表达。结束标记"
+    expected_start = docs[0]["content"].rfind("相同表达")
+    response = TestClient(insight.app).post("/analyze", json={"api_key": "offline-key", "mode": "quick", "documents": docs})
+    assert response.status_code == 200
+    assert response.json()["warning"] == ""
+    for dimension in response.json()["dimensions"]:
+        assert dimension["quote_locations"][0]["start"] == expected_start
+        assert dimension["quote_locations"][0]["end"] == expected_start + len("相同表达")

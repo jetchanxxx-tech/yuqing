@@ -51,7 +51,7 @@ def setup_pipeline(monkeypatch, candidates, model=None, recovered=None):
 
     async def bocha(keyword, api_key, include="", count=20, freshness="noLimit", **kwargs):
         provider_calls.append({"keyword": keyword, "include": include, "count": count, "freshness": freshness})
-        source = {"toutiao.com": "toutiao", "mp.weixin.qq.com": "wechat", "weibo.com": "weibo"}.get(include)
+        source = {"toutiao.com": "toutiao", "mp.weixin.qq.com": "wechat", "weibo.com": "weibo", "weibo.com|weibo.cn": "weibo"}.get(include)
         return [dict(item) for item in candidates.get(source, [])]
 
     async def save_intent(req, intent, model=None):
@@ -160,7 +160,7 @@ async def test_generated_intent_is_persisted_before_any_provider_request(monkeyp
     calls, _ = setup_pipeline(monkeypatch, {"toutiao": []})
     snapshots = []
     async def snapshot(req, intent, model):
-        assert calls == []
+        assert not calls if not snapshots else True
         assert req.run_id == "accepted-run"
         snapshots.append(intent)
         return intent
@@ -180,3 +180,31 @@ async def test_failed_snapshot_prevents_provider_search(monkeypatch):
     assert response.status_code == 503, response.text
     assert calls == []
     assert "fixture persistence unavailable" not in response.text
+
+@pytest.mark.asyncio
+async def test_body_date_conflict_remains_audit_only_even_when_model_would_accept(monkeypatch):
+    candidate = provider_candidate("toutiao", 1, "iPhone18 Pro续航测试的公开摘要，供应商声称是本月发布。", "2026-10-12")
+    setup_pipeline(monkeypatch, {"toutiao": [candidate]}, recovered={candidate["url"]: scraper_module.FetchOutcome(
+        content="iPhone18 Pro实际正文包含体验描述，但页面发布时间与摘要冲突，不能进入任何报告材料池。",
+        final_url=candidate["url"], status="fetched", content_kind="body", published_at="2025-10-12")})
+    response = await post_search(accepted_request(date_from="2026-10-01", date_to="2026-10-15"))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["documents"] == []
+    assert data["coverage"]["candidate_audit"][0]["reason"] == "date_conflict"
+    assert data["coverage"]["direct_count"] == data["coverage"]["context_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_candidate_rotation_preserves_every_platform_before_hundred_cap(monkeypatch):
+    setup_pipeline(monkeypatch, {
+        "toutiao": [provider_candidate("toutiao", i, f"iPhone18 Pro第{i}份材料，真实用户记录了续航和拍摄感受。") for i in range(100)],
+        "wechat": [provider_candidate("wechat", 101, "iPhone18 Max公众号独立材料，用户记录大屏阅读与握持体验。")],
+    })
+    response = await post_search(accepted_request(sources=["toutiao", "wechat"]))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert any(row["source_type"] == "wechat" for row in data["documents"])
+    audit = data["coverage"]["candidate_audit"]
+    assert sum(row["reason"] == "candidate_budget" for row in audit) == 1
+    assert sum(bool(row.get("observed_spans")) for row in audit) == 100

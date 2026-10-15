@@ -125,6 +125,10 @@ func resetForRerun(a *AnalysisResult) {
 	a.ReportID = ""
 	a.ReportContent = ""
 	a.RetrievalCoverage = nil
+	a.ResearchIntent = nil
+	a.ResearchIntentVersion = ""
+	a.InsightMaterialCoverage = nil
+	a.ReportMaterialCoverage = nil
 }
 
 // syncRunTx commits terminal accounting and state in the same transaction.

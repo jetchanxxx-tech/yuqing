@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
+	"github.com/yuqing/platform/internal/pkg/retrieval"
 	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"log/slog"
 	"strings"
@@ -52,31 +53,25 @@ func looksLikeJSON(s string) bool {
 
 // FetchRequest 是一次采集请求。
 type FetchRequest struct {
-	RunID        string
-	TenantID     string
-	AnalysisID   string
-	Keywords     []string
-	Sources      []string
-	ExcludeWords []string
-	DateFrom     string
-	DateTo       string
-	MaxResults   int
-	ResearchIntent map[string]any
+	RunID                 string
+	TenantID              string
+	AnalysisID            string
+	Keywords              []string
+	Sources               []string
+	ExcludeWords          []string
+	DateFrom              string
+	DateTo                string
+	MaxResults            int
+	ResearchIntent        map[string]any
+	ResearchIntentVersion string
+	Title                 string
+	AnalysisType          string
+	ScenarioTemplateID    string
+	ResearchQuestion      string
 }
 
 // RetrievalCoverage is the versioned, tenant-scoped audit of this run's search candidates.
-type RetrievalCoverage struct {
-	AdmissionVersion    string           `json:"admission_version"`
-	ProviderCandidates  int              `json:"provider_candidates"`
-	UnusableCount       int              `json:"unusable_count"`
-	IrrelevantCount     int              `json:"irrelevant_count"`
-	SourceMismatchCount int              `json:"source_mismatch_count"`
-	AcceptedCount       int              `json:"accepted_count"`
-	CandidateTruncated  bool             `json:"candidate_truncated"`
-	DirectCount         int              `json:"direct_count,omitempty"`
-	ContextCount        int              `json:"context_count,omitempty"`
-	PerKeyword          []map[string]any `json:"per_keyword"`
-}
+type RetrievalCoverage = retrieval.Coverage
 
 type FetchResult struct {
 	Documents []Document
@@ -134,6 +129,7 @@ func NewPipeline(svc *Service, fetcher Fetcher, timeout time.Duration, log *slog
 	if log == nil {
 		log = slog.Default()
 	}
+	svc.taskTimeout = timeout
 	return &Pipeline{svc: svc, fetcher: fetcher, timeout: timeout, log: log}
 }
 
@@ -194,6 +190,11 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	if err != nil {
 		return fmt.Errorf("analysis: load task %s: %w", msg.AnalysisID, err)
 	}
+	if !a.StartedAt.IsZero() {
+		var deadlineCancel context.CancelFunc
+		ctx, deadlineCancel = context.WithDeadline(ctx, a.StartedAt.Add(p.timeout))
+		defer deadlineCancel()
+	}
 	// 幂等：任务已被取消或已完成后重复投递直接跳过
 	if IsTerminal(string(a.State)) {
 		if a.State == StateCompleted && a.ReportContent != "" {
@@ -222,16 +223,17 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return p.fail(ctx, msg, "pipeline_error", err)
 	}
 	fetchReq := FetchRequest{
-		RunID:        msg.RunID,
-		TenantID:     msg.TenantID,
-		AnalysisID:   msg.AnalysisID,
-		Keywords:     a.Keywords,
-		Sources:      a.Sources,
-		ExcludeWords: a.ExcludeWords,
-		DateFrom:     a.DateFrom,
-		DateTo:       a.DateTo,
-		MaxResults:   50,
-		ResearchIntent: a.ResearchIntent,
+		RunID:                 msg.RunID,
+		TenantID:              msg.TenantID,
+		AnalysisID:            msg.AnalysisID,
+		Keywords:              a.Keywords,
+		Sources:               a.Sources,
+		ExcludeWords:          a.ExcludeWords,
+		DateFrom:              a.DateFrom,
+		DateTo:                a.DateTo,
+		MaxResults:            50,
+		ResearchIntent:        a.ResearchIntent,
+		ResearchIntentVersion: a.ResearchIntentVersion, Title: a.Name, AnalysisType: a.AnalysisType, ScenarioTemplateID: a.ScenarioTemplateID, ResearchQuestion: a.ResearchQuestion,
 	}
 	var docs []Document
 	var coverageWarning string
@@ -242,46 +244,58 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	} else {
 		docs, err = p.fetcher.Fetch(ctx, fetchReq)
 	}
+	// Audit observed facts before handling a failed acquisition. A cancelled HTTP
+	// request must not erase candidates already paid for and collected.
+	if retrievalCoverage != nil {
+		auditCtx, auditCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		auditErr := p.svc.saveCoverage(auditCtx, msg, retrievalCoverage)
+		auditCancel()
+		if auditErr != nil {
+			return p.fail(ctx, msg, "coverage_store_failed", auditErr)
+		}
+	}
 	if err != nil {
 		return p.fail(ctx, msg, "fetch_failed", err)
 	}
 	if coverageWarning != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, coverageWarning)
 	}
+	semantic := retrievalCoverage != nil && retrievalCoverage.AdmissionVersion == retrieval.SemanticVersion
 	if retrievalCoverage != nil {
-		if retrievalCoverage.AdmissionVersion != "lexical-v1" && retrievalCoverage.AdmissionVersion != "semantic-v2" {
+		if (msg.RunID != "" && !semantic) || (retrievalCoverage.AdmissionVersion != "lexical-v1" && !semantic) || retrievalCoverage.AcceptedCount != len(docs) {
 			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("inconsistent search admission contract"))
 		}
-		if retrievalCoverage.AdmissionVersion == "semantic-v2" && retrievalCoverage.DirectCount < 0 {
-			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("invalid semantic direct count"))
-		}
-		if retrievalCoverage.AcceptedCount != len(docs) {
-			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("inconsistent search admission contract"))
-		}
-		if err := p.svc.store.mutate(ctx, msg.TenantID, msg.AnalysisID, func(a *AnalysisResult) error {
-			a.RetrievalCoverage = retrievalCoverage
-			return nil
-		}); err != nil {
-			return p.fail(ctx, msg, "coverage_store_failed", err)
+		if semantic {
+			if err := retrieval.ValidateResult(retrievalCoverage, boundaryMaterials(docs), retrieval.Bounds{}, false); err != nil {
+				return p.fail(ctx, msg, "admission_protocol_error", err)
+			}
 		}
 	}
-	docs, missingDates := filterFetchedDocuments(docs, a)
+	var missingDates int
+	if semantic {
+		docs = filterSemanticDocuments(docs, a, retrievalCoverage)
+	} else {
+		docs, missingDates = filterFetchedDocuments(docs, a)
+	}
 	if missingDates > 0 {
-		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID,
-			fmt.Sprintf("%d documents excluded: published_at missing or invalid; date coverage incomplete", missingDates))
+		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, fmt.Sprintf("%d documents excluded: published_at missing or invalid; date coverage incomplete", missingDates))
 	}
 	if err := p.svc.SaveDocuments(ctx, msg.TenantID, msg.AnalysisID, docs); err != nil {
 		return p.fail(ctx, msg, "document_store_failed", err)
 	}
-	p.setDocCount(ctx, msg, len(docs))
-	if retrievalCoverage != nil {
-		eligibleCount := len(docs)
-		if retrievalCoverage.AdmissionVersion == "semantic-v2" {
-			eligibleCount = retrievalCoverage.DirectCount
+	directDocs, contextDocs := docs, []Document{}
+	if semantic {
+		directDocs, contextDocs = partitionSemanticDocuments(docs)
+		retrievalCoverage.AcceptedCount = len(docs)
+		retrievalCoverage.DirectCount = len(directDocs)
+		retrievalCoverage.ContextCount = len(contextDocs)
+		if err := p.svc.saveCoverage(ctx, msg, retrievalCoverage); err != nil {
+			return p.fail(ctx, msg, "coverage_store_failed", err)
 		}
-		if eligibleCount < 2 {
-			return p.fail(ctx, msg, "insufficient_relevant_evidence", fmt.Errorf("only %d direct evidence documents; full report requires at least 2", eligibleCount))
-		}
+	}
+	p.setDocCount(ctx, msg, len(directDocs))
+	if retrievalCoverage != nil && len(directDocs) < 2 {
+		return p.fail(ctx, msg, "insufficient_relevant_evidence", fmt.Errorf("only %d direct evidence documents; full report requires at least 2", len(directDocs)))
 	}
 	p.log.Info("pipeline: fetched", slog.String("analysis_id", msg.AnalysisID), slog.Int("docs", len(docs)))
 
@@ -290,7 +304,15 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	if err := p.step(ctx, msg, StateAnalyzing, progressAnalyze); err != nil {
 		return p.fail(ctx, msg, "pipeline_error", err)
 	}
-	insight, warn := p.runInsight(ctx, msg, docs, a.DateFrom, a.DateTo)
+	insight, warn := p.runInsight(ctx, msg, directDocs, contextDocs, a.DateFrom, a.DateTo)
+	if semantic && p.analyzer != nil {
+		if err := p.svc.setMaterialCoverage(ctx, msg, "insight", insight.MaterialCoverage); err != nil {
+			return p.fail(ctx, msg, "coverage_store_failed", err)
+		}
+		if err := retrieval.ValidateConsumption(insight.MaterialCoverage, boundaryMaterials(docs)); err != nil {
+			return p.fail(ctx, msg, "insight_failed", err)
+		}
+	}
 	if p.analyzer != nil && (warn != "" || !insightComplete(insight)) {
 		reason := warn
 		if reason == "" {
@@ -298,7 +320,12 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		}
 		return p.fail(ctx, msg, "insight_failed", errors.New(reason))
 	}
-	if retrievalCoverage != nil && !topicsGrounded(insight.Topics, docs) {
+	if semantic && p.analyzer != nil {
+		if err := validateSemanticInsight(insight, directDocs, contextDocs); err != nil {
+			return p.fail(ctx, msg, "insight_evidence_invalid", err)
+		}
+	}
+	if retrievalCoverage != nil && !topicsGrounded(insight.Topics, directDocs) {
 		return p.fail(ctx, msg, "topic_evidence_invalid", fmt.Errorf("topic references are not grounded in admitted documents"))
 	}
 	if err := p.svc.SetInsight(ctx, msg.TenantID, msg.AnalysisID, insight); err != nil {
@@ -311,9 +338,13 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	// insightAvailable = 洞察「有产出」而非「零告警」：部分维度失败时
 	// 报告仍应基于已有结论撰写（并在报告内说明缺失），而不是整体降级。
-	reportWarning, fatal := p.runReport(ctx, msg, a.ReportTemplateID, docs, insight, insightHasOutput(insight), a.DateFrom, a.DateTo)
+	reportWarning, fatal := p.runReport(ctx, msg, a.ReportTemplateID, directDocs, contextDocs, insight, insightHasOutput(insight), a.DateFrom, a.DateTo)
 	if fatal != nil {
-		return p.fail(ctx, msg, "accounting_durability_error", fatal)
+		code := "report_failed"
+		if errors.Is(fatal, pkgerrors.ErrAccountingDurability) {
+			code = "accounting_durability_error"
+		}
+		return p.fail(ctx, msg, code, fatal)
 	}
 	if warn := reportWarning; warn != "" {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
@@ -429,7 +460,7 @@ func insightComplete(r InsightResult) bool {
 
 // runInsight 执行情感/话题/摘要分析。返回 warning 非空表示降级
 // （未配置或调用失败），此时 insight 为零值。
-func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Document, dateFrom, dateTo string) (InsightResult, string) {
+func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs, contextDocs []Document, dateFrom, dateTo string) (InsightResult, string) {
 	if p.analyzer == nil {
 		return InsightResult{}, "insight engine not configured"
 	}
@@ -443,7 +474,8 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		DateFrom:           dateFrom,
 		DateTo:             dateTo,
 		Documents:          docs,
-		Mode:               p.modeForTenant(msg.TenantID),
+		ContextDocuments:   contextDocs, ResearchIntent: p.researchIntent(ctx, msg),
+		Mode: p.modeForTenant(msg.TenantID),
 	})
 	if err != nil {
 		p.log.Warn("pipeline: insight analysis failed",
@@ -457,7 +489,7 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 
 // runReport 生成报告。warning 非空表示降级（报告未生成）。
 // insightAvailable = 洞察步骤是否成功（失败时报告引擎不得渲染 0/0/0）。
-func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs []Document, insight InsightResult, insightAvailable bool, dateFrom, dateTo string) (string, error) {
+func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID string, docs, contextDocs []Document, insight InsightResult, insightAvailable bool, dateFrom, dateTo string) (string, error) {
 	if p.generator == nil {
 		return "report engine not configured", nil
 	}
@@ -472,10 +504,11 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		DateFrom:           dateFrom,
 		DateTo:             dateTo,
 		Documents:          docs,
-		Sentiments:         insight.Sentiments,
-		Topics:             insight.Topics,
-		Dimensions:         insight.Dimensions,
-		InsightAvailable:   insightAvailable,
+		ContextDocuments:   contextDocs, ResearchIntent: p.researchIntent(ctx, msg), InsightMaterialCoverage: insight.MaterialCoverage,
+		Sentiments:       insight.Sentiments,
+		Topics:           insight.Topics,
+		Dimensions:       insight.Dimensions,
+		InsightAvailable: insightAvailable,
 	})
 	if err != nil {
 		if errors.Is(err, pkgerrors.ErrAccountingDurability) {
@@ -483,7 +516,21 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		}
 		p.log.Warn("pipeline: report generation failed",
 			slog.String("analysis_id", msg.AnalysisID), slog.String("err", err.Error()))
+		if current, loadErr := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID); loadErr == nil && current.RetrievalCoverage != nil && current.RetrievalCoverage.AdmissionVersion == retrieval.SemanticVersion {
+			return "", err
+		}
 		return "report generation failed: " + err.Error(), nil
+	}
+	if current, loadErr := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID); loadErr == nil && current.RetrievalCoverage != nil && current.RetrievalCoverage.AdmissionVersion == retrieval.SemanticVersion {
+		if err := p.svc.setMaterialCoverage(ctx, msg, "report", res.MaterialCoverage); err != nil {
+			return "", err
+		}
+		if res.Warning != "" {
+			return "", fmt.Errorf("report incomplete: %s", res.Warning)
+		}
+		if err := retrieval.ValidateConsumption(res.MaterialCoverage, boundaryMaterials(append(append([]Document{}, docs...), contextDocs...))); err != nil {
+			return "", err
+		}
 	}
 	if err := p.svc.SetReport(ctx, msg.TenantID, msg.AnalysisID, res.ReportID, res.Content); err != nil {
 		p.log.Warn("pipeline: store report failed", slog.String("err", err.Error()))

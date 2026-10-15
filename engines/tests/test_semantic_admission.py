@@ -54,3 +54,25 @@ def test_accepted_decision_requires_reason_and_nonempty_observed_evidence(classi
     result = validate_decisions([SemanticDecision("d1", classification, reason="", evidence_spans=())], {"d1": "原始正文"})
     assert not result.valid
     assert result.accepted == () and result.context == ()
+
+@pytest.mark.asyncio
+async def test_long_material_segments_are_all_observed_with_original_offsets():
+    import asyncio
+    import json
+    from engines.common.semantic_admission import classify_materials
+    calls = []
+    class Judge:
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = json.loads(messages[-1]["content"])
+            calls.append(prompt["materials"])
+            return {"decisions": [{"document_id": row["document_id"], "classification": "direct",
+                "reason": "当前片段包含目标材料", "evidence_spans": [row["content"][-20:]]} for row in prompt["materials"]]}
+    material = "iPhone18 Pro真实体验内容。" * 6000
+    outcome = await classify_materials(Judge(), "fixture-model", {"topic": "iPhone18系列"}, {"long": material},
+        deadline=asyncio.get_running_loop().time() + 20)
+    assert outcome.valid and len(calls) > 1
+    decision = outcome.accepted[0]
+    assert decision.observed_spans[0][0] == 0
+    assert decision.observed_spans[-1][1] == len(material)
+    assert all(left <= previous_end for (_, previous_end), (left, _) in zip(decision.observed_spans, decision.observed_spans[1:]))
+    assert all(span in material for span in decision.evidence_spans)

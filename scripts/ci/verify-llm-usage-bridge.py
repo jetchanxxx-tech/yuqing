@@ -34,7 +34,13 @@ def child(mode):
     llm_client.RETRY_DELAY_SECONDS = 0
     client = LLMClient("https://offline-provider.invalid/v1", transport=httpx.MockTransport(provider))
     try:
-        asyncio.run(client.chat_json("sandbox-model", [], usage_context={"run_id": os.environ["K4_RUN_ID"], "engine": "insight", "phase": "analyze"}))
+        asyncio.run(client.chat_json("sandbox-model", [], usage_context={"run_id": os.environ["K4_RUN_ID"],
+            "engine": os.environ.get("K4_ENGINE", "insight"), "phase": os.environ.get("K4_PHASE", "analyze")}))
+    except httpx.HTTPStatusError:
+        if mode != "denied":
+            raise
+        assert calls == [], "a canceled query run contacted the supplier"
+        return
     except ValueError:
         if mode != "retry-invalid":
             raise
@@ -156,7 +162,33 @@ def main():
             run_child("single", fixed_env)
             assert query("SELECT prompt_tokens,completion_tokens,quota_tokens,cost_micro_cny,billed_micro_cny,billing_exempt,user_id FROM usage_events WHERE run_id=%s", (fixed_analysis["current_run_id"],)) == [(400, 100, 0, 3200, 0, True, fixed_id)]
             assert query("SELECT count(*) FROM credit_transactions WHERE tenant_id=%s AND reason='consume'", (fixed["user"]["tenant_id"],)) == [(0,)]
+            # The new query planner and admission use the same durable bridge,
+            # exercised with real PG commits and deliberately lost ACKs.
+            query_user = request("POST", "/auth/register", {"email": "query-bridge@example.invalid", "name": "query bridge", "password": "K4-query-bridge-sandbox-password"})
+            query_task = request("POST", "/analyses", {"name": "query bridge accepted run", "keywords": ["iphone18", "iphone18pro"]}, query_user["access_token"])
+            query("UPDATE analyses SET state='fetching',started_at=now() WHERE id=%s", (query_task["id"],))
+            query("UPDATE analysis_runs SET state='fetching' WHERE id=%s", (query_task["current_run_id"],))
+            query_outbox = work / "query-outbox"
+            query_env = {**child_env, "YUQING_USAGE_OUTBOX_DIR": str(query_outbox),
+                "K4_RUN_ID": query_task["current_run_id"], "K4_ENGINE": "query"}
+            state["drop_ack"] = True
+            for phase in ["plan", "relevance"]:
+                run_child("single", {**query_env, "K4_PHASE": phase, "K4_SUPPLIER_CALLS": str(work / ("query-" + phase + "-calls"))})
+            assert len(list(query_outbox.glob("*.json"))) == 2
+            assert query("SELECT a.phase,e.prompt_tokens,e.completion_tokens,e.quota_tokens,e.billing_exempt FROM usage_events e JOIN llm_call_authorizations a ON a.call_id=e.call_id WHERE e.run_id=%s ORDER BY a.phase", (query_task["current_run_id"],)) == [("plan", 400, 100, 500, False), ("relevance", 400, 100, 500, False)]
+            request("POST", "/analyses/" + query_task["id"] + "/cancel", token=query_user["access_token"])
+            query("UPDATE users SET status='disabled' WHERE id=%s", (query_user["user"]["user_id"],))
+            assert query("SELECT balance FROM report_credits WHERE tenant_id=%s", (query_user["user"]["tenant_id"],)) == [(1,)]
+            state["drop_ack"] = False
+            server.terminate(); server.wait(timeout=15); server = start_server()
+            assert run_child("deliver", query_env) == "2"
+            assert list(query_outbox.glob("*.json")) == []
+            assert query("SELECT count(*) FROM usage_events WHERE run_id=%s", (query_task["current_run_id"],)) == [(2,)]
+            for phase in ["plan", "relevance"]:
+                run_child("denied", {**query_env, "K4_PHASE": phase, "K4_SUPPLIER_CALLS": str(work / "forbidden-query-call")})
+            assert not (work / "forbidden-query-call").exists()
             summary = {"result": "PASS", "normal_events": 2, "actual_tokens": 500, "normal_quota_tokens": 500, "normal_known_cost_micro_cny": 3200, "fixed_quota_tokens": 0, "fixed_known_cost_micro_cny": 3200, "provider_attempts_before_and_after_replay": 2, "go_restarted": True, "python_restarted": True, "late_cancel_and_disabled_actor_settled": True, "real_supplier_calls": 0}
+            summary.update(query_phases=["plan", "relevance"], query_events=2, query_ack_loss_replayed_after_cancel_and_disable=True, canceled_query_supplier_calls=0)
             (evidence / "result.json").write_text(json.dumps(summary, indent=2) + "\n")
             print(json.dumps(summary))
         finally:

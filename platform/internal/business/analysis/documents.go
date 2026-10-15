@@ -9,24 +9,26 @@ import (
 
 // Document 是采集到的原始内容（由 query 引擎返回）。
 type Document struct {
-	ID                string `json:"id"`
-	Title             string `json:"title"`
-	URL               string `json:"url"`
-	Content           string `json:"content"`
-	Author            string `json:"author,omitempty"`
-	SourceType        string `json:"source_type"`
-	SourceName        string `json:"source_name"`
-	PublishedAt       string `json:"published_at,omitempty"`
-	SourcePublishedAt string `json:"source_published_at,omitempty"` // source text without an asserted UTC instant
-	ContentHash       string `json:"content_hash,omitempty"`
-	ContentKind       string `json:"content_kind,omitempty"`
-	FetchStatus       string `json:"fetch_status,omitempty"`
-	FetchReason       string `json:"fetch_reason,omitempty"`
-	FinalURL          string `json:"final_url,omitempty"`
-	Truncated         bool   `json:"truncated,omitempty"`
-	SemanticClassification string `json:"semantic_classification,omitempty"`
-	SemanticReason    string `json:"semantic_reason,omitempty"`
-	EvidenceSpans     []string `json:"evidence_spans,omitempty"`
+	ID                     string            `json:"id"`
+	Title                  string            `json:"title"`
+	URL                    string            `json:"url"`
+	Content                string            `json:"content"`
+	Author                 string            `json:"author,omitempty"`
+	SourceType             string            `json:"source_type"`
+	SourceName             string            `json:"source_name"`
+	PublishedAt            string            `json:"published_at,omitempty"`
+	SourcePublishedAt      string            `json:"source_published_at,omitempty"` // source text without an asserted UTC instant
+	ContentHash            string            `json:"content_hash,omitempty"`
+	ContentKind            string            `json:"content_kind,omitempty"`
+	FetchStatus            string            `json:"fetch_status,omitempty"`
+	FetchReason            string            `json:"fetch_reason,omitempty"`
+	FinalURL               string            `json:"final_url,omitempty"`
+	Truncated              bool              `json:"truncated,omitempty"`
+	SemanticClassification string            `json:"semantic_classification,omitempty"`
+	SemanticReason         string            `json:"semantic_reason,omitempty"`
+	EvidenceSpans          []string          `json:"evidence_spans,omitempty"`
+	ObservedSpans          []map[string]int  `json:"observed_spans,omitempty"`
+	DateSources            map[string]string `json:"date_sources,omitempty"`
 }
 
 // documentStore 是采集文档的持久化契约：内存实现 memoryDocumentStore，
@@ -170,5 +172,11 @@ func (s *Service) AllDocuments(ctx context.Context, tenantID string) []Document 
 			slog.String("err", err.Error()))
 		return []Document{}
 	}
-	return docs
+	filtered := make([]Document, 0, len(docs))
+	for _, doc := range docs {
+		if doc.SemanticClassification != "context" {
+			filtered = append(filtered, doc)
+		}
+	}
+	return filtered
 }

@@ -77,6 +77,7 @@ export default function AnalysisNewPage() {
     return kw ? [kw.trim()].filter(Boolean) : [];
   });
   const [sources, setSources] = useState<SourceKey[]>([]);
+  const [researchQuestion, setResearchQuestion] = useState('');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(() => {
     const today = dayjs().startOf('day');
     return [today.subtract(6, 'day'), today];
@@ -117,6 +118,7 @@ export default function AnalysisNewPage() {
         analysis_type: type as AnalysisType,
         ...(entry === 'template' && selectedTemplate ? { scenario_template_id: selectedTemplate.id } : {}),
         keywords: [...keywords],
+        ...(researchQuestion.trim() ? { research_question: researchQuestion.trim() } : {}),
         sources: sources.filter((source) => SELECTABLE_SOURCES.includes(source)),
         date_from: dateRange[0].format('YYYY-MM-DD'),
         date_to: dateRange[1].format('YYYY-MM-DD'),
@@ -258,8 +260,9 @@ export default function AnalysisNewPage() {
               输入监测关键词
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-              输入后按回车确认，最多 8 个关键词；当前按“任一关键词”分别检索，请勿把限定词当作必须同时满足的条件。
+              输入后按回车确认，最多 8 个关键词。
             </Typography.Paragraph>
+            <Typography.Paragraph type="secondary">多个关键词共同描述同一研究主题，材料无需逐词命中。</Typography.Paragraph>
             <Select
               mode="tags"
               size="large"
@@ -270,6 +273,15 @@ export default function AnalysisNewPage() {
               suffixIcon={null}
               style={{ width: '100%' }}
             />
+            <Typography.Title level={5} style={{ marginTop: 24 }}>
+              <label htmlFor="analysis-research-question">关注问题（选填）</label>
+            </Typography.Title>
+            <Input.TextArea id="analysis-research-question" value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)}
+              maxLength={1000} showCount autoSize={{ minRows: 2, maxRows: 5 }}
+              placeholder="例如：了解 iPhone18 系列新品的续航与价格反馈；或雅阁后排的乘坐舒适性" />
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+              可补充型号关系、比较对象与关注点；系统会结合全部关键词理解本轮主题，并在任务详情展示。
+            </Typography.Paragraph>
             <Typography.Title level={5} style={{ marginTop: 24 }}>分析时间范围</Typography.Title>
             <label className="analysis-date-field-label" htmlFor="analysis-date-from">开始日期</label>
             <label className="analysis-date-field-label" htmlFor="analysis-date-to">结束日期</label>
@@ -322,7 +334,7 @@ export default function AnalysisNewPage() {
               })}
             </div>
             <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-              仅检索公开网页；搜索摘要不是视频正文或评论。
+              逐平台检索公开网页，并尝试补抓可访问的正文；视频描述、搜索摘要与正文分别标注，不代表完整视频或评论。
             </Typography.Paragraph>
           </div>
         )}
@@ -347,6 +359,7 @@ export default function AnalysisNewPage() {
                   label: '监测关键词',
                   children: keywords.length ? keywords.join(' / ') : '-',
                 },
+                { key: 'research-question', label: '关注问题', children: researchQuestion.trim() || '未填写，将结合全部关键词理解同一研究主题' },
                 {
                   key: 'period',
                   label: '分析时间范围',
@@ -366,7 +379,8 @@ export default function AnalysisNewPage() {
               message="成本预估"
               description={
                 <>
-                  预计耗时 <b>5-10 分钟</b>（采集 → 五维智能分析 → 报告生成）；
+                  依次执行检索与正文补抓、语义核验、智能研判及报告生成，最长 <b>46 分钟</b>（时间上限，通常会提前结束）；详情页展示实际进度与已用时。
+                  <br />
                   本次分析{creditsQ.data?.billing_exempt ? <b>免扣报告额度</b> : <>消耗 <b>1 次报告额度</b></>}
                   {creditsQ.data && (
                     <>，{creditsQ.data.billing_exempt ? '当前账号免次数限制，实际余额' : '当前剩余'} <b style={{ color: noCredits ? '#FF2442' : undefined }}>{creditsQ.data.balance}</b> 次</>

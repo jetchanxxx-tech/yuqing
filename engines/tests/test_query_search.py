@@ -1,384 +1,129 @@
-"""Synthetic /search contract fixtures; not a live-source verification."""
-import httpx
+"""Hard filters/quota/dedup on the actual authenticated semantic HTTP route."""
 import pytest
-
-from engines.common.scraper import ScrapedDocument
-from engines.common.semantic_admission import DecisionValidation, SemanticDecision
-from engines.query_engine import main
-
-
-class FixtureScraper:
-    def __init__(self, documents):
-        self.documents = documents
-
-    async def search_and_fetch(self, **kwargs):
-        return self.documents
-
-
-class KeywordScraper:
-    def __init__(self, results, failures=()):
-        self.results = results
-        self.failures = failures
-        self.calls = []
-
-    async def search_and_fetch(self, **kwargs):
-        self.calls.append(kwargs)
-        if kwargs["keyword"] in self.failures:
-            raise RuntimeError("synthetic upstream failure")
-        return self.results.get(kwargs["keyword"], [])[:kwargs["max_per_source"]]
-
-
-def doc(content, published_at="2026-09-15T10:00:00Z", source_type="news"):
-    return ScrapedDocument(content=content, published_at=published_at,
-                           source_type=source_type, content_hash=content)
+from engines.tests.test_query_semantic_http import (
+    TopicModel, accepted_request, post_search, provider_candidate, setup_pipeline,
+)
 
 
 @pytest.mark.asyncio
-async def test_exclude_words_match_original_content_case_insensitive(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
-        doc("含 噪声 的正文"), doc("Clean BODY"), doc("中文噪声原文"),
-    ]))
-    response = await main.search(main.SearchRequest(
-        sources=["news"], exclude_words=[" 噪声 ", "body"], bocha_api_key="fixture-key",
-    ))
-    assert response.documents == []
-    assert response.total_count == response.sources[0]["doc_count"] == 0
-    assert response.coverage["scanned_count"] == 3
-    assert response.coverage["excluded_word_count"] == 3
-    assert response.coverage["excluded_word_ratio"] == 1.0
-    assert "snippet" in response.coverage["filter_limitations"]
+async def test_exclude_words_match_available_material_case_insensitively(monkeypatch):
+    setup_pipeline(monkeypatch, {"toutiao": [
+        provider_candidate("toutiao", 1, "iPhone18 Pro含有噪声推广词，这是一篇足够长的公开网页摘要。"),
+        provider_candidate("toutiao", 2, "iPhone18 Max CLEAN BODY用户体验，续航和手感都有具体描述。"),
+        provider_candidate("toutiao", 3, "iPhone18标准版体验不错，拍摄一小时后电池仍有余量。"),
+    ]})
+    response = await post_search(accepted_request(exclude_words=[" 噪声 ", "body"]))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert len(data["documents"]) == 1
+    assert data["coverage"]["excluded_word_count"] == 2
+    assert data["sources"][0]["doc_count"] == 1
 
 
 @pytest.mark.asyncio
-async def test_date_window_includes_both_boundaries_and_excludes_unknown(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
-        doc("before", "2026-09-09T23:59:59Z"), doc("start", "2026-09-10"),
-        doc("end", "2026-09-20T23:59:59+08:00"), doc("after", "2026-09-21"),
-        doc("missing", ""), doc("malformed", "not-a-date"),
-    ]))
-    response = await main.search(main.SearchRequest(
-        date_from="2026-09-10", date_to="2026-09-20", bocha_api_key="fixture-key",
-    ))
-    assert [d["content"] for d in response.documents] == ["start", "end"]
-    assert response.total_count == response.sources[0]["doc_count"] == 2
-    assert response.coverage["unverifiable_date_count"] == 2
-    assert response.coverage["date_filter"] == "partial"
-    assert "before filtering" in response.coverage["filter_limitations"]
+async def test_duplicate_selected_platform_and_same_content_do_not_double_count(monkeypatch):
+    repeated = "iPhone18 Pro实测续航内容，长时间拍摄后电量仍然有余量。"
+    calls, _ = setup_pipeline(monkeypatch, {"toutiao": [
+        provider_candidate("toutiao", 1, repeated), provider_candidate("toutiao", 2, repeated),
+        provider_candidate("toutiao", 3, "iPhone18 Max独立材料：手机握持偏重但阅读屏幕很舒服。"),
+    ]})
+    response = await post_search(accepted_request(sources=["toutiao", "toutiao"]))
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert len(calls) == 1 and result["total_count"] == 2
+    assert result["coverage"]["duplicate_count"] == 1
+    assert len(result["sources"]) == 1
 
 
 @pytest.mark.asyncio
-async def test_source_counts_reflect_only_returned_documents_after_limit(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
-        doc("keep-news"), doc("drop-noise"), doc("keep-weibo", source_type="weibo"),
-        doc("over-limit", source_type="weibo"), doc("wrong-source", source_type="rss"),
-    ]))
-    response = await main.search(main.SearchRequest(
-        sources=["news", "weibo"], max_results=2, exclude_words=["noise"],
-        bocha_api_key="fixture-key",
-    ))
-    assert [d["content"] for d in response.documents] == ["keep-news", "keep-weibo"]
-    assert response.total_count == 2
-    assert [(s["name"], s["doc_count"]) for s in response.sources] == [
-        ("news", 1), ("weibo", 1),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_old_request_defaults_keep_undated_documents(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([doc("old", "")]))
-    response = await main.search(main.SearchRequest(bocha_api_key="fixture-key"))
-    assert [d["content"] for d in response.documents] == ["old"]
-    assert response.coverage["date_filter"] == "not_requested"
-
-
-@pytest.mark.asyncio
-async def test_duplicate_requested_source_does_not_double_count(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([doc("only")]))
-    response = await main.search(main.SearchRequest(
-        sources=["news", "news"], bocha_api_key="fixture-key",
-    ))
-    assert response.total_count == 1
-    assert [(s["name"], s["doc_count"]) for s in response.sources] == [("news", 1)]
-
-
-@pytest.mark.asyncio
-async def test_source_not_requested_cannot_enter_returned_documents(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
-        doc("unrequested", source_type="rss"), doc("requested"),
-    ]))
-    response = await main.search(main.SearchRequest(bocha_api_key="fixture-key"))
-    assert [d["content"] for d in response.documents] == ["requested"]
-    assert response.total_count == response.sources[0]["doc_count"] == 1
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("bounds", [
-    {"date_from": "bad"}, {"date_to": "2026-09-31"},
-    {"date_from": "2026-09-21", "date_to": "2026-09-20"},
+@pytest.mark.parametrize("changes", [
+    {"date_from": "bad"}, {"date_to": "2026-09-31"}, {"date_from": "2026-10-15", "date_to": "2026-10-01"},
+    {"sources": ["xiaohongshu"]}, {"sources": ["unknown"]}, {"keywords": [f"word-{i}" for i in range(9)]},
+    {"keywords": ["", " "]}, {"max_results": 0},
 ])
-async def test_invalid_window_rejected_before_fetch(monkeypatch, bounds):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([]))
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={**bounds, "bocha_api_key": "fixture-key"})
-    assert response.status_code == 422
+async def test_invalid_inputs_fail_before_paid_calls(monkeypatch, changes):
+    calls, model = setup_pipeline(monkeypatch, {})
+    response = await post_search(accepted_request(**changes))
+    assert response.status_code == 422, response.text
+    assert calls == [] and model.calls == []
 
 
 @pytest.mark.asyncio
-async def test_missing_real_search_key_never_falls_back_to_preset_urls(monkeypatch):
+async def test_missing_search_key_never_uses_test_presets(monkeypatch):
+    from engines.query_engine import main
+    calls, model = setup_pipeline(monkeypatch, {})
     monkeypatch.setattr(main, "DEFAULT_BOCHA_KEY", "")
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([]))
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={"keywords": ["example"]})
+    monkeypatch.delenv("BOCHA_API_KEY")
+    response = await post_search(accepted_request())
     assert response.status_code == 503
+    assert not calls and not model.calls
 
 
 @pytest.mark.asyncio
-async def test_all_distinct_nonempty_keywords_search_and_deduplicate_eligible_results(monkeypatch):
-    shared = doc("same URL original")
-    shared.url = "https://example.test/post/1"
-    url_duplicate = doc("different excerpt")
-    url_duplicate.url = shared.url
-    id_duplicate = doc("same URL original")
-    id_duplicate.url = "https://example.test/post/2"
-    second = doc("second original")
-    second.url = "https://example.test/post/3"
-    scraper = KeywordScraper({
-        "first": [shared, doc("exclude-noise"), doc("old", "2026-09-01")],
-        "second": [url_duplicate, id_duplicate, second],
-    })
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=[" ", "first", "second", "first", ""], max_results=6,
-        exclude_words=["noise"], date_from="2026-09-10", bocha_api_key="fixture-key",
-    ))
-    assert [call["keyword"] for call in scraper.calls] == ["first", "second"]
-    assert all(call["bocha_key"] == "fixture-key" for call in scraper.calls)
-    assert [item["content"] for item in response.documents] == ["same URL original", "second original"]
-    assert response.total_count == response.sources[0]["doc_count"] == 2
-    assert response.coverage["scanned_count"] == 6
-    assert response.coverage["duplicate_count"] == 2
-    assert response.coverage["keywords_searched"] == ["first", "second"]
+async def test_undated_material_allowed_only_when_date_window_not_requested(monkeypatch):
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro真实体验材料，没有日期但包含实际续航与拍摄描述。", "")]})
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert response.json()["total_count"] == 1
+    assert response.json()["coverage"]["date_filter"] == "not_requested"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("first_date", "first_content", "exclude_words", "missing_dates", "excluded"), [
-    ("2026-09-01", "same original", [], 0, 0),
-    ("", "same original", [], 1, 0),
-    ("2026-09-15", "noise excerpt", ["noise"], 0, 1),
-])
-async def test_filtered_copy_cannot_hide_later_eligible_url(
-    monkeypatch, first_date, first_content, exclude_words, missing_dates, excluded,
-):
-    first = doc(first_content, first_date)
-    valid = doc("clean original", "2026-09-15")
-    repeat = doc("clean original", "2026-09-15")
-    for item in (first, valid, repeat):
-        item.url = "https://example.test/original"
-        item.content_hash = "same-source-id"
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([first, valid, repeat]))
-
-    response = await main.search(main.SearchRequest(
-        date_from="2026-09-10", date_to="2026-09-20", exclude_words=exclude_words,
-        bocha_api_key="fixture-key",
-    ))
-
-    assert [item["content"] for item in response.documents] == ["clean original"]
-    assert response.coverage["scanned_count"] == 3
-    assert response.coverage["duplicate_count"] == 1
-    assert response.coverage["unverifiable_date_count"] == missing_dates
-    assert response.coverage["excluded_word_count"] == excluded
+async def test_large_requested_result_limit_is_capped_to_fifty_after_semantic(monkeypatch):
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", i,
+        f"iPhone18 Pro第{i}篇独立实际体验材料，本文记录续航与拍摄感受。") for i in range(70)]})
+    response = await post_search(accepted_request(max_results=500))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total_count"] == 50
+    assert data["coverage"]["result_limit"] == 50
+    assert data["coverage"]["truncated_count"] == 20
+    assert len(data["coverage"]["candidate_audit"]) == 70
 
 
 @pytest.mark.asyncio
-async def test_excluded_copy_cannot_hide_later_eligible_content_hash(monkeypatch):
-    first = doc("noise excerpt")
-    valid = doc("clean excerpt")
-    repeat = doc("clean excerpt")
-    for item, suffix in zip((first, valid, repeat), ("filtered", "valid", "repeat")):
-        item.url = f"https://example.test/{suffix}"
-        item.content_hash = "same-source-id"
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([first, valid, repeat]))
-
-    response = await main.search(main.SearchRequest(
-        exclude_words=["noise"], bocha_api_key="fixture-key",
-    ))
-
-    assert [item["url"] for item in response.documents] == ["https://example.test/valid"]
-    assert response.coverage["excluded_word_count"] == 1
-    assert response.coverage["duplicate_count"] == 1
-
-
-@pytest.mark.asyncio
-async def test_bounded_per_keyword_results_and_response_truncation_are_visible(monkeypatch):
-    scraper = KeywordScraper({
-        "first": [doc(f"first-{i}") for i in range(20)],
-        "second": [doc(f"second-{i}") for i in range(20)],
-    })
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=["first", "second"], max_results=3, bocha_api_key="fixture-key",
-    ))
-    assert len(scraper.calls) == 2
-    assert all(1 <= call["max_per_source"] <= 3 for call in scraper.calls)
-    assert response.total_count == 3
-    assert response.coverage["scanned_count"] == 4
-    assert response.coverage["truncated_count"] == 1
-    assert "before filtering" in response.coverage["filter_limitations"]
+async def test_one_platform_provider_failure_preserves_other_platform_results(monkeypatch):
+    from engines.query_engine import main
+    scraper_calls, _ = setup_pipeline(monkeypatch, {"wechat": [provider_candidate("wechat", 1,
+        "iPhone18 Max真实体验，本文记录大屏手感和阅读体验，供本轮研究使用。")]})
+    instance = main.get_scraper()
+    existing = instance._bocha_search
+    async def partial(*args, **kwargs):
+        if kwargs["include"] == "toutiao.com":
+            raise RuntimeError("fixture-secret-error-detail")
+        return await existing(*args, **kwargs)
+    monkeypatch.setattr(instance, "_bocha_search", partial)
+    response = await post_search(accepted_request(sources=["toutiao", "wechat"]))
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["total_count"] == 1
+    assert result["coverage"]["keyword_search"] == "partial"
+    assert "fixture-secret-error-detail" not in response.text
+    assert result["coverage"]["per_platform"][0]["status"] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_partial_keyword_failure_returns_data_and_explicit_warning(monkeypatch):
-    scraper = KeywordScraper({"good": [doc("real fixture")]}, failures={"bad"})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=["bad", "good"], bocha_api_key="fixture-key",
-    ))
-    assert [call["keyword"] for call in scraper.calls] == ["bad", "good"]
-    assert response.total_count == 1
-    assert response.coverage["failed_keywords"] == ["bad"]
-    assert response.coverage["keyword_search"] == "partial"
-    assert "bad" in response.coverage["warning"]
-    assert "synthetic upstream failure" not in response.coverage["warning"]
+async def test_all_platform_failure_is_typed_error_with_durable_audit(monkeypatch):
+    from engines.query_engine import main
+    setup_pipeline(monkeypatch, {})
+    async def failed(*args, **kwargs):
+        raise RuntimeError("fixture-secret-error-detail")
+    monkeypatch.setattr(main.get_scraper(), "_bocha_search", failed)
+    response = await post_search(accepted_request())
+    assert response.status_code == 502, response.text
+    assert response.json()["detail"]["coverage"]["admission_version"] == "semantic-v2"
+    assert "fixture-secret-error-detail" not in response.text
 
 
 @pytest.mark.asyncio
-async def test_all_keyword_failures_never_report_successful_zero_results(monkeypatch):
-    scraper = KeywordScraper({}, failures={"bad", "also-bad"})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={
-            "keywords": ["bad", "also-bad"], "bocha_api_key": "fixture-key",
-        })
-    assert [call["keyword"] for call in scraper.calls] == ["bad", "also-bad"]
-    assert response.status_code == 502
-    assert "synthetic upstream failure" not in response.text
-    assert response.json()["detail"]["failed_keywords"] == ["bad", "also-bad"]
-
-
-@pytest.mark.asyncio
-async def test_single_keyword_failure_is_not_a_successful_empty_search(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: KeywordScraper({}, failures={"bad"}))
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={"keywords": ["bad"], "bocha_api_key": "fixture-key"})
-    assert response.status_code == 502
-
-
-@pytest.mark.asyncio
-async def test_too_many_nonempty_keywords_rejected_not_silently_skipped(monkeypatch):
-    scraper = KeywordScraper({})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={
-            "keywords": [f"word-{i}" for i in range(9)], "bocha_api_key": "fixture-key",
-        })
-    assert response.status_code == 422
-    assert scraper.calls == []
-
-
-@pytest.mark.asyncio
-async def test_single_keyword_old_request_still_uses_original_per_source_limit(monkeypatch):
-    scraper = KeywordScraper({"only": [doc("retained")]})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=["only"], sources=["news", "weibo"], max_results=20,
-        bocha_api_key="fixture-key",
-    ))
-    assert len(scraper.calls) == 1
-    assert scraper.calls[0]["max_per_source"] == 10
-    assert response.total_count == 1
-
-
-@pytest.mark.asyncio
-async def test_large_result_request_is_capped_and_reports_the_cap(monkeypatch):
-    scraper = KeywordScraper({"only": [doc(f"item-{i}") for i in range(120)]})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=["only"], max_results=500, bocha_api_key="fixture-key",
-    ))
-    assert scraper.calls[0]["max_per_source"] <= 100
-    assert response.total_count <= 100
-    assert response.coverage["result_limit"] == 100
-    assert response.coverage["requested_max_results"] == 500
-    assert "limit" in response.coverage["warning"].lower()
-
-
-@pytest.mark.asyncio
-async def test_unrequested_source_does_not_hide_requested_same_original_id(monkeypatch):
-    scraper = KeywordScraper({
-        "first": [doc("same id", source_type="rss")],
-        "second": [doc("same id", source_type="news")],
-    })
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    response = await main.search(main.SearchRequest(
-        keywords=["first", "second"], sources=["news"], bocha_api_key="fixture-key",
-    ))
-    assert response.total_count == 1
-    assert response.documents[0]["source_type"] == "news"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("source", ["xiaohongshu", "bilibili", "unknown"])
-async def test_unavailable_source_rejected_before_provider_call(monkeypatch, source):
-    scraper = KeywordScraper({})
-    monkeypatch.setattr(main, "get_scraper", lambda: scraper)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-        response = await client.post("/search", json={"sources": [source], "bocha_api_key": "fixture-key"})
-    assert response.status_code == 422
-    assert scraper.calls == []
-
-
-@pytest.mark.asyncio
-async def test_search_coverage_reports_version_and_per_keyword_admission(monkeypatch):
-    class AdmissionScraper:
-        async def search_and_fetch(self, **kwargs):
-            kwargs["coverage"].update({
-                "provider_candidates": 3, "unusable_count": 1,
-                "irrelevant_count": 1, "source_mismatch_count": 0,
-                "accepted_before_limit": 1, "candidate_truncated": False,
-            })
-            return [doc("GS8 model discussion", source_type="douyin")]
-    monkeypatch.setattr(main, "get_scraper", lambda: AdmissionScraper())
-    response = await main.search(main.SearchRequest(
-        keywords=["gs8"], sources=["douyin"], bocha_api_key="fixture-key",
-    ))
-    assert response.coverage["admission_version"] == "lexical-v1"
-    assert response.coverage["provider_candidates"] == 3
-    assert response.coverage["unusable_count"] == 1
-    assert response.coverage["irrelevant_count"] == 1
-    assert response.coverage["accepted_count"] == 1
-    assert response.coverage["per_keyword"][0]["keyword"] == "gs8"
-
-
-@pytest.mark.asyncio
-async def test_semantic_intent_allows_one_related_model_variant_and_reports_direct_context(monkeypatch):
-    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
-        ScrapedDocument(
-            title="iPhone18 Pro续航体验", url="https://www.toutiao.com/article/1",
-            content="iPhone18 Pro续航体验优秀", source_type="toutiao",
-            source_name="今日头条", published_at="2026-10-10", content_hash="iphone-pro",
-        ),
-        ScrapedDocument(
-            title="iPhone17与iPhone18对比", url="https://www.toutiao.com/article/2",
-            content="iPhone17与iPhone18外观对比", source_type="toutiao",
-            source_name="今日头条", published_at="2026-10-10", content_hash="comparison",
-        ),
-    ]))
-
-    async def semantic(*args, **kwargs):
-        return DecisionValidation(
-            accepted=(SemanticDecision("iphone-pro", "direct", evidence_spans=("iPhone18 Pro续航体验优秀",)),),
-            context=(SemanticDecision("comparison", "context", evidence_spans=("iPhone17与iPhone18外观对比",)),),
-            rejected=(),
-        )
-
-    monkeypatch.setattr(main, "classify_materials", semantic)
-    response = await main.search(main.SearchRequest(
-        keywords=["iPhone18", "iPhone18pro", "iPhone18max"],
-        sources=["toutiao"], max_results=10, bocha_api_key="fixture-key",
-        run_id="run-semantic", research_intent={"topic": "iPhone18系列新品"},
-        llm_api_key="fixture-llm-key",
-    ))
-    assert response.coverage["admission_version"] == "semantic-v2"
-    assert response.coverage["direct_count"] == 1
-    assert response.coverage["context_count"] == 1
-    assert [item["semantic_classification"] for item in response.documents] == ["direct", "context"]
+async def test_unrequested_source_and_spoofed_domain_cannot_enter_semantic_pool(monkeypatch):
+    wrong = provider_candidate("wechat", 1, "iPhone18 Pro未选公众号的候选，正文再相关也不能放行。")
+    spoof = {**provider_candidate("toutiao", 2, "iPhone18 Pro伪造域名的候选，正文再相关也不能放行。"),
+             "url": "https://toutiao.com.evil.org/2"}
+    setup_pipeline(monkeypatch, {"toutiao": [wrong, spoof, provider_candidate("toutiao", 3,
+        "iPhone18 Pro所选平台真实域名的内容，包含实际续航体验与观察。")]})
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert response.json()["total_count"] == 1
+    assert response.json()["coverage"]["source_mismatch_count"] == 2

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yuqing/platform/internal/pkg/retrieval"
 	"io"
 	"net/http"
 	"time"
@@ -43,44 +44,36 @@ func NewRealCrawlerEngine(baseURL, authToken string, bochaKeyFunc func() string)
 		httpClient: &http.Client{
 			// 一次 /search = Bocha 搜索 + 逐 URL 抓正文（含慢站 30s 超时重试），
 			// 60s 会把总时长破线的成功采集误判为失败（生产实测），放宽到 180s
-			Timeout: 180 * time.Second,
+			Timeout: 960 * time.Second,
 		},
-		timeout: 180 * time.Second,
+		timeout: 960 * time.Second,
 	}
 }
 
 // searchReq matches the Python engine's SearchRequest model (v0.3.0).
 type searchReq struct {
-	RunID        string         `json:"run_id,omitempty"`
-	Keywords     []string `json:"keywords"`
-	Sources      []string `json:"sources"`
-	MaxResults   int      `json:"max_results"`
-	DateFrom     string   `json:"date_from,omitempty"`
-	DateTo       string   `json:"date_to,omitempty"`
-	AnalysisID   string   `json:"analysis_id"`
-	ExcludeWords []string `json:"exclude_words,omitempty"`
-	BochaAPIKey  string   `json:"bocha_api_key,omitempty"`
-	LLMBaseURL   string   `json:"llm_base_url,omitempty"`
-	LLMModel     string   `json:"llm_model,omitempty"`
-	LLMAPIKey    string   `json:"llm_api_key,omitempty"`
-	ResearchIntent map[string]any `json:"research_intent,omitempty"`
+	TenantID              string         `json:"tenant_id"`
+	Title                 string         `json:"title"`
+	AnalysisType          string         `json:"analysis_type"`
+	ScenarioTemplateID    string         `json:"scenario_template_id,omitempty"`
+	ResearchQuestion      string         `json:"research_question,omitempty"`
+	ResearchIntentVersion string         `json:"research_intent_version,omitempty"`
+	RunID                 string         `json:"run_id,omitempty"`
+	Keywords              []string       `json:"keywords"`
+	Sources               []string       `json:"sources"`
+	MaxResults            int            `json:"max_results"`
+	DateFrom              string         `json:"date_from,omitempty"`
+	DateTo                string         `json:"date_to,omitempty"`
+	AnalysisID            string         `json:"analysis_id"`
+	ExcludeWords          []string       `json:"exclude_words,omitempty"`
+	BochaAPIKey           string         `json:"bocha_api_key,omitempty"`
+	LLMBaseURL            string         `json:"llm_base_url,omitempty"`
+	LLMModel              string         `json:"llm_model,omitempty"`
+	LLMAPIKey             string         `json:"llm_api_key,omitempty"`
+	ResearchIntent        map[string]any `json:"research_intent,omitempty"`
 }
 
-type SearchCoverage struct {
-	AdmissionVersion      string           `json:"admission_version"`
-	ProviderCandidates    int              `json:"provider_candidates"`
-	UnusableCount         int              `json:"unusable_count"`
-	IrrelevantCount       int              `json:"irrelevant_count"`
-	SourceMismatchCount   int              `json:"source_mismatch_count"`
-	AcceptedCount         int              `json:"accepted_count"`
-	CandidateTruncated    bool             `json:"candidate_truncated"`
-	DirectCount           int              `json:"direct_count"`
-	ContextCount          int              `json:"context_count"`
-	PerKeyword            []map[string]any `json:"per_keyword"`
-	Warning               string           `json:"warning"`
-	FilterLimitations     string           `json:"filter_limitations"`
-	UnverifiableDateCount int              `json:"unverifiable_date_count"`
-}
+type SearchCoverage = retrieval.Coverage
 
 type SearchResult struct {
 	Documents  []Document     `json:"documents"`
@@ -96,14 +89,15 @@ func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Docume
 
 func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlReq) (SearchResult, error) {
 	body := searchReq{
-		RunID:        req.RunID,
-		Keywords:     req.Keywords,
-		Sources:      req.Sources,
-		MaxResults:   req.MaxDepth,
-		AnalysisID:   req.AnalysisID,
-		DateFrom:     req.DateFrom,
-		DateTo:       req.DateTo,
-		ExcludeWords: req.ExcludeWords,
+		TenantID: req.TenantID, Title: req.Title, AnalysisType: req.AnalysisType, ScenarioTemplateID: req.ScenarioTemplateID, ResearchQuestion: req.ResearchQuestion, ResearchIntentVersion: req.ResearchIntentVersion,
+		RunID:          req.RunID,
+		Keywords:       req.Keywords,
+		Sources:        req.Sources,
+		MaxResults:     req.MaxDepth,
+		AnalysisID:     req.AnalysisID,
+		DateFrom:       req.DateFrom,
+		DateTo:         req.DateTo,
+		ExcludeWords:   req.ExcludeWords,
 		ResearchIntent: req.ResearchIntent,
 	}
 	// Inject Bocha API key from admin-configurable platform settings.
@@ -136,20 +130,39 @@ func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlRe
 	}
 	defer resp.Body.Close()
 
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, (128<<20)+1))
+	if readErr != nil || len(data) > 128<<20 {
+		return SearchResult{}, fmt.Errorf("crawler: response read failed or exceeded evidence limit")
+	}
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return SearchResult{}, fmt.Errorf("crawler: engine returned %d: %s", resp.StatusCode, string(bodyBytes))
+		var problem struct {
+			Detail struct {
+				Code     string         `json:"code"`
+				Coverage SearchCoverage `json:"coverage"`
+			} `json:"detail"`
+		}
+		_ = json.Unmarshal(data, &problem)
+		return SearchResult{Coverage: problem.Detail.Coverage}, fmt.Errorf("crawler: engine returned %d (%s)", resp.StatusCode, problem.Detail.Code)
 	}
-
 	var result SearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return SearchResult{}, fmt.Errorf("crawler: decode response: %w", err)
+	if err := json.Unmarshal(data, &result); err != nil {
+		return result, fmt.Errorf("crawler: decode response: %w", err)
 	}
-	if result.Coverage.AdmissionVersion != "lexical-v1" && result.Coverage.AdmissionVersion != "semantic-v2" {
-		return SearchResult{}, fmt.Errorf("crawler: unsupported or missing admission protocol %q", result.Coverage.AdmissionVersion)
+	if result.Coverage.AdmissionVersion != "lexical-v1" && result.Coverage.AdmissionVersion != retrieval.SemanticVersion {
+		return result, fmt.Errorf("crawler: unsupported admission protocol %q", result.Coverage.AdmissionVersion)
 	}
-	if result.Documents == nil || result.Coverage.AcceptedCount != len(result.Documents) || result.TotalCount != len(result.Documents) {
-		return SearchResult{}, fmt.Errorf("crawler: inconsistent admitted document count")
+	if result.Documents == nil || result.TotalCount != len(result.Documents) || result.Coverage.AcceptedCount != len(result.Documents) {
+		return result, fmt.Errorf("crawler: inconsistent admitted document count")
+	}
+	if req.RunID != "" || result.Coverage.AdmissionVersion == retrieval.SemanticVersion {
+		materials := make([]retrieval.Material, 0, len(result.Documents))
+		for _, d := range result.Documents {
+			materials = append(materials, retrieval.Material{ID: d.ID, Title: d.Title, Content: d.Content, URL: d.URL, FinalURL: d.FinalURL, SourceType: d.SourceType, PublishedAt: d.PublishedAt, Classification: d.SemanticClassification, Reason: d.SemanticReason, EvidenceSpans: d.EvidenceSpans, ObservedSpans: d.ObservedSpans, DateSources: d.DateSources})
+		}
+		if err := retrieval.ValidateResult(&result.Coverage, materials, retrieval.Bounds{Sources: req.Sources, ExcludeWords: req.ExcludeWords, DateFrom: req.DateFrom, DateTo: req.DateTo}, true); err != nil {
+			result.Documents = nil
+			return result, fmt.Errorf("crawler: admission protocol: %w", err)
+		}
 	}
 	return result, nil
 }

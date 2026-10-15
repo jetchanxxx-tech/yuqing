@@ -214,9 +214,55 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  scrapling-runtime:
+    name: Scrapling static and Chromium runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare pinned browser on hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          mkdir -p test-results/scrapling-runtime
+          printf '%s\n' "${GITHUB_SHA}" > test-results/scrapling-runtime/BUILD_COMMIT
+          python -m pip install 'scrapling[fetchers]==0.4.15' 'playwright==1.63.0' 'httpx>=0.27.0' 'fastapi>=0.115.0'
+          export PLAYWRIGHT_BROWSERS_PATH="${RUNNER_TEMP}/yuqing-browser-runtime"
+          python -m playwright install --with-deps --no-shell chromium
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+      - name: Exercise actual isolated Scrapling static and dynamic fixture
+        run: python scripts/ci/verify-scrapling-runtime.py test-results/scrapling-runtime/result.json
+      - name: Package pinned runtime for offline deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p browser-artifacts
+          python -c 'import importlib.metadata,json,os;from pathlib import Path;Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"],"RUNTIME.json").write_text(json.dumps({"scrapling":importlib.metadata.version("scrapling"),"playwright":importlib.metadata.version("playwright"),"build_commit":os.environ["GITHUB_SHA"]},indent=2))'
+          tar -czf browser-artifacts/scrapling-browser-runtime.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" .
+          (cd browser-artifacts && sha256sum scrapling-browser-runtime.tar.gz > scrapling-browser-runtime.tar.gz.sha256)
+          python -m pip download --only-binary=:all: --no-deps --dest browser-artifacts/wheels 'scrapling[fetchers]==0.4.15' 'playwright==1.63.0'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scrapling-browser-runtime-${{ github.sha }}
+          path: browser-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve actual browser runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrapling-runtime-evidence-${{ github.sha }}
+          path: test-results/scrapling-runtime/
+          if-no-files-found: error
+          retention-days: 30
+
   package:
     name: Release archive
-    needs: [go, frontend, postgresql, account-admin, python, billing-bridge]
+    needs: [go, frontend, postgresql, account-admin, python, billing-bridge, scrapling-runtime]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -229,6 +275,10 @@ jobs:
         with:
           name: frontend-dist-${{ github.sha }}
           path: web/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: scrapling-browser-runtime-${{ github.sha }}
+          path: browser-artifacts
       - name: Package verified source and binaries
         shell: bash
         run: |
@@ -242,6 +292,10 @@ jobs:
           # and never compiles dependencies on the server.
           python3 -m pip download --only-binary=:all: --no-deps \
             --dest "$release_dir/deployment-wheels" 'python-docx==1.2.0'
+          (cd browser-artifacts && sha256sum -c scrapling-browser-runtime.tar.gz.sha256)
+          mkdir -p "$release_dir/browser-runtime"
+          tar -xzf browser-artifacts/scrapling-browser-runtime.tar.gz -C "$release_dir/browser-runtime"
+          cp browser-artifacts/wheels/*.whl "$release_dir/deployment-wheels/"
           cp -a platform/bin/. "$release_dir/platform/bin/"
           cp -a web/dist/. "$release_dir/web/dist/"
           chmod 755 "$release_dir/platform/bin/yuqing-"*
