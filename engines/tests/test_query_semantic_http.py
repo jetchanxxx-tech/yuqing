@@ -6,6 +6,7 @@ import pytest
 
 from engines.common import scraper as scraper_module
 from engines.query_engine import main as query
+from engines.tests.semantic_model_fixtures import source_prompt, source_text, first_unit_ids
 
 
 INTERNAL_TOKEN = "offline-internal-token"
@@ -25,7 +26,7 @@ class TopicModel:
 
     async def chat_json(self, model, messages, **kwargs):
         self.calls.append((messages, kwargs))
-        prompt = json.loads(messages[-1]["content"])
+        prompt = source_prompt(messages)
         if kwargs.get("usage_context", {}).get("phase") == "plan":
             return {"topic": "iPhone18系列新品反馈", "entities": ["iphone18", "iphone18pro", "iphone18max"],
                     "relations": ["用户列出的同系列研究对象，未核实官方型号"],
@@ -35,7 +36,7 @@ class TopicModel:
             return {"decisions": self.decisions(prompt["materials"])}
         return {"decisions": [
             {"document_id": item["document_id"], "classification": "direct", "reason": "讨论研究对象的具体体验",
-             "matched_entities": ["iPhone18 Pro"], "evidence_spans": [item["content"][:24]]}
+             "matched_entities": ["iPhone18 Pro"], "evidence_unit_ids": first_unit_ids(item)}
             for item in prompt["materials"]]}
 
 
@@ -113,8 +114,8 @@ async def test_search_queries_platforms_independently_and_keeps_later_direct_aft
     values = [provider_candidate("toutiao", i, f"旧款背景材料{i}：iPhone17是上一代产品，仅用于比较背景。") for i in range(49)]
     values += [provider_candidate("toutiao", 50, "iPhone 18 Pro直接体验材料：续航有余量。")]
     def decisions(items):
-        return [{"document_id": row["document_id"], "classification": "context" if "旧款" in row["content"] else "direct",
-                 "reason": "明确区分旧款背景与目标型号", "evidence_spans": [row["content"][:20]]} for row in items]
+        return [{"document_id": row["document_id"], "classification": "context" if "旧款" in source_text(row) else "direct",
+                 "reason": "明确区分旧款背景与目标型号", "evidence_unit_ids": first_unit_ids(row)} for row in items]
     calls, _ = setup_pipeline(monkeypatch, {"toutiao": values, "wechat": [
         provider_candidate("wechat", 51, "iPhone18 Max独立体验材料：大屏清晰、手感偏重。")
     ]}, TopicModel(decisions))
@@ -149,7 +150,7 @@ async def test_wrong_source_date_conflict_and_empty_evidence_cannot_enter_report
     wrong_source = provider_candidate("wechat", 2, "iPhone18 Pro来自未选择公众号的材料，不得进入报告。")
     old = provider_candidate("toutiao", 3, "iPhone18 Pro日期越界的材料，不得进入背景材料池。", "2025-01-01")
     def no_evidence(items):
-        return [{"document_id": row["document_id"], "classification": "direct", "reason": "没有证据", "evidence_spans": []} for row in items]
+        return [{"document_id": row["document_id"], "classification": "direct", "reason": "没有证据", "evidence_unit_ids": []} for row in items]
     setup_pipeline(monkeypatch, {"toutiao": [valid, wrong_source, old]}, TopicModel(no_evidence))
     response = await post_search(accepted_request(date_from="2026-10-01", date_to="2026-10-15"))
     assert response.status_code == 502, response.text
@@ -299,7 +300,7 @@ async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_du
     marker = "untrusted-model-secret-marker"
     def invalid(items):
         return [{"document_id": item["document_id"], "classification": "direct", "reason": marker,
-                 "evidence_spans": [marker]} for item in items]
+                 "evidence_unit_ids": [marker]} for item in items]
     setup_pipeline(monkeypatch, {"toutiao": [
         provider_candidate("toutiao", 1, "iPhone18 Pro公开体验正文，内容明确记录了续航表现与手感，没有模型臆造的证据文字。"),
         provider_candidate("toutiao", 2, ""),
@@ -326,10 +327,9 @@ async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_du
 async def test_query_persists_original_body_and_restored_quote_without_format_rewrite(monkeypatch):
     from copy import deepcopy
     body = "iPhone\n18\nPro续航实测，使用60\n瓦充电器，作者称之为“续航惊喜”。"
-    model_quote = 'iPhone 18 Pro续航实测，使用60 瓦充电器，作者称之为"续航惊喜"。'
     def formatted(items):
         return [{"document_id": item["document_id"], "classification": "direct", "reason": "研究对象实际体验",
-                 "evidence_spans": [model_quote]} for item in items]
+                 "evidence_unit_ids": first_unit_ids(item)} for item in items]
     setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1, body)]}, TopicModel(formatted))
     saved = []
     async def audit(req, coverage): saved.append(deepcopy(coverage))

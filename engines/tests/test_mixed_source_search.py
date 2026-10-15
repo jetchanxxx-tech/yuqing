@@ -6,6 +6,7 @@ import pytest
 from engines.common import scraper as module
 from engines.query_engine import main as query
 from engines.tests.test_query_semantic_http import setup_pipeline, accepted_request, post_search, TopicModel
+from engines.tests.semantic_model_fixtures import source_text, first_unit_ids
 
 
 @pytest.mark.asyncio
@@ -16,9 +17,9 @@ from engines.tests.test_query_semantic_http import setup_pipeline, accepted_requ
 ])
 async def test_selected_sources_form_union_without_bypassing_admission(monkeypatch, sources, expected_urls):
     def decisions(items):
-        return [{"document_id": item["document_id"], "classification": "irrelevant" if "特斯拉" in item["content"] else "direct",
-                 "reason": "研究对象不同" if "特斯拉" in item["content"] else "越7产品反馈",
-                 "evidence_spans": [] if "特斯拉" in item["content"] else [item["content"]]} for item in items]
+        return [{"document_id": item["document_id"], "classification": "irrelevant" if "特斯拉" in source_text(item) else "direct",
+                 "reason": "研究对象不同" if "特斯拉" in source_text(item) else "越7产品反馈",
+                 "evidence_unit_ids": [] if "特斯拉" in source_text(item) else first_unit_ids(item)} for item in items]
     class CarTopicModel(TopicModel):
         async def chat_json(self, model, messages, **kwargs):
             if kwargs.get("usage_context", {}).get("phase") == "plan":

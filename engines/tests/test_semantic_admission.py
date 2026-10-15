@@ -1,5 +1,7 @@
 import pytest
 
+from engines.tests.semantic_model_fixtures import source_prompt, first_unit_ids
+
 from engines.common.semantic_admission import (
     ADMISSION_VERSION,
     SemanticDecision,
@@ -63,10 +65,10 @@ async def test_long_material_segments_are_all_observed_with_original_offsets():
     calls = []
     class Judge:
         async def chat_json(self, model, messages, **kwargs):
-            prompt = json.loads(messages[-1]["content"])
+            prompt = source_prompt(messages)
             calls.append(prompt["materials"])
             return {"decisions": [{"document_id": row["document_id"], "classification": "direct",
-                "reason": "当前片段包含目标材料", "evidence_spans": [row["content"][-20:]]} for row in prompt["materials"]]}
+                "reason": "当前片段包含目标材料", "evidence_unit_ids": [row["source_units"][-1]["id"]]} for row in prompt["materials"]]}
     material = "iPhone18 Pro真实体验内容。" * 6000
     outcome = await classify_materials(Judge(), "fixture-model", {"topic": "iPhone18系列"}, {"long": material},
         deadline=asyncio.get_running_loop().time() + 20)
@@ -102,7 +104,7 @@ async def test_classifier_exception_preserves_validator_category_and_current_bat
     class InvalidJudge:
         async def chat_json(self, model, messages, **kwargs):
             return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "研究对象体验",
-                                    "evidence_spans": ["臆造文字"]}]}
+                                    "evidence_unit_ids": ["臆造文字"]}]}
     with pytest.raises(SemanticAdmissionIncomplete) as captured:
         await classify_materials(InvalidJudge(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"},
             deadline=asyncio.get_running_loop().time() + 20)
@@ -171,9 +173,9 @@ async def test_one_protocol_correction_can_complete_without_resetting_deadline_o
                 if first_failure == "missing_decision":
                     return {"decisions": []}
                 return {"decisions": [{"document_id": "known", "classification": "direct", "reason": marker,
-                                       "evidence_spans": [marker]}]}
+                                       "evidence_unit_ids": [marker]}]}
             return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标实际体验",
-                                   "evidence_spans": ["iPhone18 Pro真实续航体验"]}]}
+                                   "evidence_unit_ids": first_unit_ids(source_prompt(messages)["materials"][0])}]}
     deadline = asyncio.get_running_loop().time() + 10
     result = await classify_materials(CorrectingJudge(), "fixture-model", {"topic": "iPhone18系列"},
                                      {"known": "iPhone18 Pro真实续航体验"}, deadline=deadline)
@@ -199,7 +201,7 @@ async def test_persistent_bad_protocol_stops_after_two_and_keeps_final_safe_erro
         async def chat_json(self, model, messages, **kwargs):
             calls.append(messages)
             return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "任意无关模型文字",
-                                   "evidence_spans": ["不在原文的错误证据"]}]}
+                                   "evidence_unit_ids": ["不在原文的错误证据"]}]}
     with pytest.raises(SemanticAdmissionIncomplete) as captured:
         await classify_materials(InvalidJudge(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"},
                                  deadline=asyncio.get_running_loop().time() + 10)
@@ -220,7 +222,7 @@ async def test_transport_truncation_and_bad_protocol_share_two_actual_supplier_c
     def provider(request):
         calls.append(json.loads(request.content))
         response = {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标体验",
-                                    "evidence_spans": ["修改了原文的假引文"]}]}
+                                    "evidence_unit_ids": ["修改了原文的假引文"]}]}
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(response)},
             "finish_reason": "length" if len(calls) == 1 else "stop"}]})
     client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
@@ -246,7 +248,7 @@ async def test_protocol_correction_preserves_previously_verified_batch_on_final_
             first_prompt = json.loads(messages[1]["content"])
             rows = first_prompt["materials"]
             return {"decisions": [{"document_id": row["document_id"], "classification": "direct", "reason": "原文体验",
-                 "evidence_spans": [row["content"] if len(rows) == 12 else "最后一批错误改写引文"]} for row in rows]}
+                 "evidence_unit_ids": first_unit_ids(row) if len(rows) == 12 else ["最后一批错误改写引文"]} for row in rows]}
     with pytest.raises(SemanticAdmissionIncomplete) as captured:
         await classify_materials(LastBatchFails(), "fixture-model", {"topic": "研究主题"}, materials,
                                  deadline=asyncio.get_running_loop().time() + 10)
@@ -297,7 +299,7 @@ async def test_semantic_attempt_timeout_recovers_stalled_real_stream_inside_orig
         if len(requests) == 1:
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=StalledStream())
         result = {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标实际体验",
-                                 "evidence_spans": ["iPhone18 Pro真实续航体验"]}]}
+                                 "evidence_unit_ids": first_unit_ids(source_prompt(requests[-1]["messages"])["materials"][0])}]}
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result)}, "finish_reason": "stop"}]})
     client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
     loop = asyncio.get_running_loop()
@@ -336,7 +338,7 @@ async def test_stalled_stream_then_bad_quote_spends_two_total_calls_and_preserve
         if len(requests) == 1:
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=StalledStream())
         result = {"decisions": [{"document_id": "known", "classification": "direct", "reason": marker,
-                                 "evidence_spans": [marker]}]}
+                                 "evidence_unit_ids": [marker]}]}
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result)}, "finish_reason": "stop"}]})
     client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
     loop = asyncio.get_running_loop()
