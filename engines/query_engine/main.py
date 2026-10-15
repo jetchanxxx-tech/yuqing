@@ -31,6 +31,8 @@ class SearchRequest(BaseModel):
     analysis_id: str = ""
     exclude_words: list[str] = []
     bocha_api_key: str = ""  # 空则从环境变量 BOCHA_API_KEY 读取
+    run_id: str = ""
+    research_intent: dict = {}
 
 
 class SearchResponse(BaseModel):
@@ -206,4 +208,9 @@ def _doc_to_dict(doc: ScrapedDocument) -> dict:
         "published_at": doc.published_at,
         "content_hash": doc.content_hash,
         "media_url": doc.media_url,
+        "content_kind": doc.content_kind,
+        "fetch_status": doc.fetch_status,
+        "fetch_reason": doc.fetch_reason,
+        "final_url": doc.final_url or doc.url,
+        "truncated": doc.truncated,
     }
