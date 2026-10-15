@@ -34,9 +34,16 @@ for (const [label, scene, perspective] of [
     const response = await submitted;
     expect(response.status()).toBe(201);
     expect(response.request().postDataJSON()).toMatchObject({ scenario_template_id: scene, analysis_type: perspective });
-    expect(await response.json()).toMatchObject({ scenario_template_id: scene, analysis_type: perspective });
-    await expect(page).toHaveURL(/\/analyses\/[^/]+$/);
+    const created = await response.json();
+    expect(created).toMatchObject({ scenario_template_id: scene, analysis_type: perspective });
+    expect(created.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    await expect(page).toHaveURL(new RegExp(`/analyses/${created.id}$`));
+    const reloadedDetail = page.waitForResponse(value => value.url().endsWith(`/api/v1/analyses/${created.id}`)
+      && value.request().method() === 'GET');
     await page.reload();
+    const detailResponse = await reloadedDetail;
+    expect(detailResponse.status()).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({ id: created.id, name: `${label}场景验收`, scenario_template_id: scene, analysis_type: perspective });
     await expect(page.getByRole('heading', { name: `${label}场景验收`, exact: true })).toBeVisible();
     const id = new URL(page.url()).pathname.split('/').at(-1);
     const persisted = await page.evaluate(async (analysisId) => {

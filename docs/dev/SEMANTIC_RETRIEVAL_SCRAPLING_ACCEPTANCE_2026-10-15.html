@@ -10,15 +10,25 @@
 </head>
 <body>
   <h1>语义检索与 Scrapling 验收门禁</h1>
-  <p class="gate"><strong>状态：整改开发中，完整发布验收尚未通过。</strong> 2026-10-15 更新。线上基线 <code>92e1005a6f8ce4fb208437531933591dfc52c901</code> 是此前部署的不完整实现，不能作为本方案完成证据。当前修订仍在 dev 的 GitHub 托管测试及独立审查整改阶段；不得据此声称正文抓取、真实模型准入或完整报告已验收。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>。</p>
+  <p class="gate"><strong>状态：整改开发中，完整发布验收尚未通过。</strong> 2026-10-16 更新。线上基线 <code>92e1005a6f8ce4fb208437531933591dfc52c901</code> 是此前部署的不完整实现，不能作为本方案完成证据。当前修订仍在 dev 的 GitHub 托管测试及独立审查整改阶段；不得据此声称正文抓取、真实模型准入或完整报告已验收。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>。</p>
 
   <h2>当前核验记录（不是发布通过声明）</h2>
   <ul>
     <li>完整实现首轮提交 <code>3eb0a080f89f815a2148f91124667fb79a1b042c</code> 的 hosted run <code>38746700098</code>：前端构建通过，Python/Go/PG/浏览器取消检查失败，部署包未生成。</li>
     <li>独立审查要求修复：传输中断保留已存候选记录；空报告不可标记完成；引用恢复与传输重试共享两次供应商调用上限；前端逐字证据遵循真实字符串协议。</li>
     <li>新增失败用例已观察：<code>776e4a5ec97b6cc97af8361fca6c046ca83345a1</code> 下空报告、三次嵌套调用、未登记模型能力及 PG 中断丢失当前采集视图。</li>
-    <li>当前 100 条语义设计样本为独立合成参考，尚未经人工确认。不得把合成期望标签或离线替身测试包装为人工标注精确率、召回率或真实平台覆盖。</li>
+    <li>用户于 2026-10-16 回复“确认”保留 100 条合成样本的既有期望标签。人工确认仅覆盖固定合成集，不能把离线替身或合成集指标包装为真实文章准确率和真实平台覆盖；当前运行代码的供应商复测另行记录。</li>
     <li>已核对智谱官方 GLM-5.3-Flash 文档列出的 1M 上下文、128K 最大输出；真实已接纳 run 的参数、用量及完整报告对账仍待完成。</li>
+  </ul>
+
+  <h2>2026-10-16 当前证据与阻断</h2>
+  <ul>
+    <li>增量独立审查 <code>b0e2032..2e4213f</code> 无 Critical/Important 发现，两个次要改进见 <a href="reviews/SEMANTIC_RETRIEVAL_DELTA_REVIEW_2026-10-16.html">审查稿</a>。结构化引用错误中文展示已通过页面用例。</li>
+    <li>源码提交 <code>2e4213f990e5536ed69fdbeacbb844292e2eb14d</code>：Python 273 passed；push run <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774482330">38774482330</a> 的 Go、PG、实际用量桥、Chromium、前端构建通过，但页面套件 60 passed / 2 failed，部署包跳过。同源码树的 PR merge <code>005712896d4dc4260b79e13a8087fb7807e8c4e4</code> <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774492352">run 38774492352</a> 全部通过；不能用后者隐藏 push 失败或替代正式 prod 制品。</li>
+    <li>两项页面失败已由截图、trace 和 HTTP 200 正确响应定位：场景测试的宽 URL 表达式会提前匹配 /analyses/new，另有页面首次数据读取晚于断言开始。新提交将同步精确任务 ID 和目标 API 响应，保留原 UI 断言及 10 秒断言上限，尚待 hosted 验证。</li>
+    <li>真实 iPhone v3 run <code>01M508NHP43DT06E66WMH2WXCP</code> 首批纠正后核验出 8 个 direct 判断，但后续调用触及 240 秒语义期限；已获取供应商标识而未取得完整用量的事件记 unknown，未捏造零成本。没有生成报告。</li>
+    <li>真实雅阁 v3 run <code>01M508Z2433NRP3W1M6RJXPZN1</code> 的 58 份合格材料均判 irrelevant，未伪造证据补足门槛。8 次供应商对照确认请求回显正确、适配无串条；平台＋30 天约束下缺少目标材料，尚不能区分真实稀疏与供应商召回偏差。保持来源和日期边界。</li>
+    <li>对真实摘要批次的流式诊断 run <code>01M509AX1B6029CWX7YY6YN9R7</code> 无参数覆盖，首 chunk 小于 2 秒、两次语义调用约 23 / 20 秒完成，未复现长流停顿。重试仍受两次调用与原期限约束；这不是完整报告验收。</li>
   </ul>
 
   <h2>目标和边界</h2>

@@ -130,7 +130,12 @@ test('fixed account displays unlimited use with zero actual balance and pending 
   await page.goto('/settings');
   await expect(page.getByText('报告余额：0 次', { exact: true })).toBeVisible();
   await expect(page.getByText('当前固定账号免次数与消费限制；团队其他成员按套餐计费', { exact: true })).toBeVisible();
+  const loadedUsage = page.waitForResponse(response => response.url().endsWith('/api/v1/billing/usage')
+    && response.request().method() === 'GET');
   await page.goto('/usage');
+  const usageResponse = await loadedUsage;
+  expect(usageResponse.status()).toBe(200);
+  expect(await usageResponse.json()).toMatchObject({ billing_exempt: true, report_balance: 0, provider_cost_complete: false });
   await expect(page.getByText('当前固定账号免次数与消费限制', { exact: true })).toBeVisible();
   await expect(page.getByText('供应商成本仍有待核对记录', { exact: true })).toBeVisible();
   await expect(page.getByText('当前账号不扣报告次数', { exact: true })).toBeVisible();
