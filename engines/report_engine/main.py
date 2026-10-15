@@ -428,7 +428,7 @@ _TEMPLATE = Template("""<!DOCTYPE html>
   .card.doc { background: #eaf2ff; } .card.doc .num { color: #1677ff; }
   .card .lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; overflow-wrap: anywhere; }
   th { background: #f9fafb; }
   .notice { background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #ad6800; margin-top: 14px; }
   .empty { color: #9ca3af; text-align: center; padding: 30px 0; }
@@ -469,14 +469,32 @@ def _topic_rows(topics: list[dict]) -> list[str]:
     ]
 
 
+def _source_details(document: dict) -> list[tuple[str, str]]:
+    kinds = {"body": "已取得正文", "summary": "博查摘要（正文未取得）"}
+    dates = document.get("date_sources")
+    original = _safe_url(document.get("url"))
+    final = _safe_url(document.get("final_url"))
+    details = [
+        ("文档编号", str(document.get("id") or "未记录")),
+        ("材料类型", kinds.get(document.get("content_kind"), "历史材料（类型未记录）")),
+        ("发布日期", str(document.get("published_at") or "未记录")),
+        ("来源日期原文", str(document.get("source_published_at") or "未记录")),
+        ("日期依据", json.dumps(dates, ensure_ascii=False) if isinstance(dates, dict) and dates else "未记录"),
+        ("原始网址", original if original != "#" else "未记录"),
+        ("最终网址", final if final != "#" else "未记录"),
+    ]
+    if document.get("truncated"):
+        details.append(("保存范围", "正文达到保存上限；后续原文未核验"))
+    return details
+
+
 def _document_rows(documents: list[dict]) -> list[str]:
     """文档明细行。URL 限 http(s)，标题转义 —— 两者都来自第三方网页。"""
     return [
         f'<tr><td>{i + 1}</td>'
         f'<td><a href="{_esc(_safe_url(d.get("url")))}">{_esc(d.get("title", ""))}</a></td>'
         f"<td>{_esc(d.get('source_name') or d.get('source_type', ''))}"
-        f"<br>{_esc(d.get('content_kind') or '历史材料（类型未记录）')}"
-        + ("<br>正文达到保存上限；后续原文未核验" if d.get("truncated") else "") + "</td></tr>"
+        + "".join(f"<br>{_esc(label)}：{_esc(value)}" for label, value in _source_details(d)) + "</td></tr>"
         for i, d in enumerate([x for x in documents[:50] if isinstance(x, dict)])
     ]
 
@@ -973,12 +991,14 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
             row = doc_table.add_row().cells
             row[0].text = str(i)
             row[1].text = d.get("title", "")
-            row[2].text = d.get("source_name") or d.get("source_type", "")
+            row[2].text = (d.get("source_name") or d.get("source_type", "")) + "\n" + "\n".join(
+                f"{label}：{value}" for label, value in _source_details(d))
 
     if req.context_documents:
         doc.add_heading("背景／比较材料（不计入目标评价统计）", level=2)
         for document in req.context_documents:
-            doc.add_paragraph(f"{document.get('title', '')} · {document.get('source_name') or document.get('source_type', '')} · {document.get('url', '')}")
+            doc.add_paragraph(f"{document.get('title', '')} · {document.get('source_name') or document.get('source_type', '')}\n"
+                              + "\n".join(f"{label}：{value}" for label, value in _source_details(document)))
     doc.add_heading("材料处理记录", level=2)
     for engine, coverage in (("洞察", req.insight_material_coverage), ("报告", req.material_coverage)):
         for phase in coverage.get("phases", []):
