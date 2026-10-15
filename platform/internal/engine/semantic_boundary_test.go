@@ -94,3 +94,21 @@ func TestSemanticTransportAcceptsBoundEvidenceAndForwardsResearchContext(t *test
 		t.Fatalf("provenance lost at transport: %s", encoded)
 	}
 }
+
+func TestSemanticTransportRejectsBodyReboundToObservedCandidateID(t *testing.T) {
+	body := semanticSearchFixture()
+	original := body["coverage"].(map[string]any)["candidate_audit"].([]any)[0].(map[string]any)
+	rebound := map[string]any{}
+	for key, value := range original {
+		rebound[key] = value
+	}
+	rebound["content"] = "invented iPhone18 Pro evidence"
+	rebound["evidence_spans"] = []string{"invented iPhone18 Pro evidence"}
+	body["documents"] = []any{rebound}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(body) }))
+	defer server.Close()
+	_, err := NewRealCrawlerEngine(server.URL, "", nil).SearchWithCoverage(context.Background(), &CrawlReq{RunID: "accepted-run", Sources: []string{"toutiao"}})
+	if err == nil {
+		t.Fatal("returned document rewrote the observed candidate body under the same ID")
+	}
+}
