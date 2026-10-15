@@ -1,6 +1,7 @@
 """Actual engine entrypoints must distinguish background and account for every text span."""
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from engines.insight_engine import main as insight
@@ -119,3 +120,52 @@ def test_dimension_quote_location_points_to_the_read_long_article_chunk(monkeypa
     for dimension in response.json()["dimensions"]:
         assert dimension["quote_locations"][0]["start"] == expected_start
         assert dimension["quote_locations"][0]["end"] == expected_start + len("相同表达")
+
+
+@pytest.mark.parametrize("invalid", [{}, {"executive_summary": "", "topic_analyses": [], "risk_points": [], "recommendations": []},
+    {"executive_summary": "只有摘要而无完整报告结构"}])
+def test_report_empty_or_incomplete_model_output_is_not_marked_read_or_complete(monkeypatch, invalid):
+    class EmptyReportProvider(ReadingProvider):
+        async def chat_json(self, model, messages, **kwargs):
+            self.calls.append((messages[-1]["content"], kwargs))
+            return invalid
+
+    provider = EmptyReportProvider()
+    monkeypatch.setattr(report, "build_client", lambda *_args, **_kwargs: provider)
+    response = TestClient(report.app).post("/generate", json={"api_key": "offline-key", "documents": _docs(2)})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["warning"], "empty JSON was accepted as a completed report"
+    phase = body["material_coverage"]["phases"][0]
+    assert phase["read_spans"] == []
+    assert len(phase["unprocessed"]) == 2
+    assert "AI 研判不可用" in body["content"]
+    assert len(provider.calls) <= 2, "schema recovery has its own unbounded attempt counter"
+
+
+def test_dimension_quote_recovery_shares_prior_truncation_attempt_budget(monkeypatch):
+    class TruncatedThenInventedProvider(ReadingProvider):
+        def __init__(self):
+            super().__init__()
+            self.heat_calls = 0
+
+        async def chat_json(self, model, messages, **kwargs):
+            prompt = messages[-1]["content"]
+            if "【分析维度】id=heat" in prompt:
+                self.heat_calls += 1
+                if self.heat_calls == 1:
+                    from engines.common.llm_client import LLMOutputTruncated
+                    raise LLMOutputTruncated("output truncated")
+                return {"findings": "材料有续航争议", "data_points": [],
+                        "quotes": [{"document_id": "d0", "text": "原文根本没有的引语", "source": "wechat"}],
+                        "deep_read": "不得采用虚构引语", "trend": "未核实"}
+            return await super().chat_json(model, messages, **kwargs)
+
+    provider = TruncatedThenInventedProvider()
+    monkeypatch.setattr(insight, "build_client", lambda *_args, **_kwargs: provider)
+    response = TestClient(insight.app).post("/analyze", json={"api_key": "offline-key", "mode": "quick", "documents": _docs(2)})
+    assert response.status_code == 200
+    body = response.json()
+    assert provider.heat_calls == 2, "quote retry restarted an already exhausted supplier budget"
+    assert body["warning"]
+    assert all(not dimension["quotes"] for dimension in body["dimensions"])

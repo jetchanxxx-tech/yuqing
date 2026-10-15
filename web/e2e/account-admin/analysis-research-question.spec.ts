@@ -62,7 +62,7 @@ test('semantic audit distinguishes empty results, failed platforms, background a
       candidate_audit: [{ id: 'candidate-rejected', title: '其他品牌续航广告', url: 'https://weibo.com/original', final_url: 'https://weibo.com/final',
         source_type: 'weibo', content_kind: 'body', fetch_status: 'success', status: 'rejected', reason: 'semantic_irrelevant',
         semantic_classification: 'irrelevant', semantic_reason: '材料只讨论其他品牌，与本轮研究对象无关',
-        date_sources: { provider: '2026-10-10', body: '2026-10-10' }, evidence_spans: [{ start: 0, end: 6, text: '其他品牌广告' }] }],
+        date_sources: { provider: '2026-10-10', body: '2026-10-10' }, evidence_spans: ['其他品牌广告'] }],
     },
   } }));
   await page.route('**/api/v1/analyses/semantic-audit-fixture/timeline*', route => route.fulfill({ json: {
@@ -76,5 +76,6 @@ test('semantic audit distinguishes empty results, failed platforms, background a
   await expect(page.getByText('已检索，无候选', { exact: true })).toBeVisible();
   await page.getByText('候选材料与处理原因', { exact: true }).click();
   await expect(page.getByText('材料只讨论其他品牌，与本轮研究对象无关', { exact: true })).toBeVisible();
+  await expect(page.getByText('其他品牌广告', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/account-admin/analysis-semantic-audit.png' });
 });
