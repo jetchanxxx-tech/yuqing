@@ -48,3 +48,9 @@ def test_hard_boundary_rejection_is_separate_from_model_relevance():
     )
     assert not result.valid
     assert "hard_boundary_violation:d1" in result.errors
+
+@pytest.mark.parametrize("classification", ["direct", "context"])
+def test_accepted_decision_requires_reason_and_nonempty_observed_evidence(classification):
+    result = validate_decisions([SemanticDecision("d1", classification, reason="", evidence_spans=())], {"d1": "原始正文"})
+    assert not result.valid
+    assert result.accepted == () and result.context == ()

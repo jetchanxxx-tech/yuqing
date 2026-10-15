@@ -1,0 +1,1405 @@
+{
+  "label_source": "Explicit design-reference cases authored before production classifier; independent of evaluated model output, synthetic and pending human audit",
+  "cases": [
+    {
+      "id": "design-001",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone 18 Pro续航体验优秀，连续拍摄一小时后电量还有余量。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-002",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18 Max机身偏重，长时间单手握持容易累。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-003",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18标准版价格偏高，用户说升级意愿不强。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-004",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "我的iPhone 18 Pro开启高亮度看视频，两小时后电量剩一半。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-005",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18 Max的大屏阅读很舒服，出门装口袋却不方便。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-006",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone 18的日常拍照速度不错，用户反馈夜间成片仍有噪点。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-007",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18 Pro重度游戏时机身明显发热，这是个人试用感受。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-008",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18 Max充电速度在我的测试中没有预期快。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-009",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18新机到手后触控很顺，电量表现要继续观察。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-010",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone 18 Pro线下试握，边框触感比预期舒服。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-011",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "关于iPhone18 Max的论坛体验贴称，扬声器音量大但低音一般。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-012",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18标准款用户抱怨基础存储不够用，价格升级不划算。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-013",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "一位作者称iPhone18 Pro实际到手价格合适，并说明只是个人购买体验。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-014",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18系列疑似涨价，文中明确表示这是未经证实的传闻，不是发布确认。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-015",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone 18 Pro短期试用：相机启动快，晚上拍孩子依然有运动模糊。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-016",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座靠背偏直，长途乘坐觉得累。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-017",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁坐在第二排腿部空间大，坐垫承托一般。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-018",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座中间地台高，中间乘客脚不好放。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-019",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁第二排坐垫较软，短途坐起来舒服。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-020",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座悬架过减速带有些颠，孩子容易晕车。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-021",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后边座位头部空间略局促，身高一米八坐着顶头。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-022",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁第二排的空调出风量够，夏天乘车不闷。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-023",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座隔音一般，高速路噪会影响休息。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-024",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "乘客说雅阁后边座椅包裹感不足，转弯时身体容易滑。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-025",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后排长途坐了三小时，腰背支撑不太够。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-026",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "试乘雅阁时第二排脚能伸到前座下面，坐姿自然。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-027",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座座垫长度够，腿部承托比预想好。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-028",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后边车窗附近风噪明显，乘客交谈要提高声音。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-029",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁第二排座椅角度不能调，休息时姿势受限。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-030",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后座三个成年人一起坐略挤，肩部活动有限。",
+      "expected": "direct"
+    },
+    {
+      "id": "design-031",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone17用了两年，电池开始衰减；本文没有iPhone18的使用体验。",
+      "expected": "context"
+    },
+    {
+      "id": "design-032",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone17与iPhone18的纸面参数对照，作者未拿到新机。",
+      "expected": "context"
+    },
+    {
+      "id": "design-033",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "回顾iPhone16首发价格，供讨论新一代定价时参考。",
+      "expected": "context"
+    },
+    {
+      "id": "design-034",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "苹果智能手机近年销量变化，属于行业背景，没有iPhone18用户评价。",
+      "expected": "context"
+    },
+    {
+      "id": "design-035",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "讨论iPhone18预期售价时引用了iPhone17上市价格，原文只提供旧款价格事实。",
+      "expected": "context"
+    },
+    {
+      "id": "design-036",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone17 Pro镜头配置回顾，没有评价iPhone18系列表现。",
+      "expected": "context"
+    },
+    {
+      "id": "design-037",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "高端手机行业竞争加剧，文章提到iPhone18会面对同价位竞品，未给新机体验。",
+      "expected": "context"
+    },
+    {
+      "id": "design-038",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone17 Max老用户如何选择换机，文章只列当前设备的不足。",
+      "expected": "context"
+    },
+    {
+      "id": "design-039",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "苹果供应链投资概况，文末提到市场关注iPhone18，不包含产品体验。",
+      "expected": "context"
+    },
+    {
+      "id": "design-040",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18与上一代的产品线名称对照，未给续航和手感反馈。",
+      "expected": "context"
+    },
+    {
+      "id": "design-041",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁本月销量增长，文章只统计销量，没有乘坐体验。",
+      "expected": "context"
+    },
+    {
+      "id": "design-042",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁新车车身尺寸和轴距参数发布，作者没有试乘后座。",
+      "expected": "context"
+    },
+    {
+      "id": "design-043",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁经销商优惠价格公布，没有后排评价。",
+      "expected": "context"
+    },
+    {
+      "id": "design-044",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁全系配置表回顾，为本轮试乘报告提供车型背景。",
+      "expected": "context"
+    },
+    {
+      "id": "design-045",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁新款外观采用新的尾灯设计，没有乘坐反馈。",
+      "expected": "context"
+    },
+    {
+      "id": "design-046",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁售后网点数量增加，属于品牌服务信息。",
+      "expected": "context"
+    },
+    {
+      "id": "design-047",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁保值率统计，仅提供二手市场背景。",
+      "expected": "context"
+    },
+    {
+      "id": "design-048",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁动力系统参数解读，没有第二排体验。",
+      "expected": "context"
+    },
+    {
+      "id": "design-049",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁汽车生产基地扩产，文中只有产能信息。",
+      "expected": "context"
+    },
+    {
+      "id": "design-050",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁车系历史沿革，供识别不同代际使用，未评价后座感受。",
+      "expected": "context"
+    },
+    {
+      "id": "design-051",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "另一品牌手机Max版有18种配色，Pro用户很喜欢。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-052",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPad Pro平板屏幕体验，全文没有iPhone18。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-053",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone17实际续航评测，全文不涉及新品对比或换机背景。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-054",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "华为新机拍照体验，全文没有iPhone或比较研究。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-055",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "小米18 Pro手机电池很好，全文只讨论小米。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-056",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "荣耀Max音箱低音很强，18号开放预约。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-057",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "洗衣机Pro Max版有18种洗涤模式。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-058",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "关于18岁青年阅读习惯的调查，不讨论任何手机。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-059",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "某餐馆iPhone抽奖海报，文章与手机产品体验无关。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-060",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "MacBook Pro电池测试，没有任何iPhone18信息。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-061",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "游戏版本18更新了Max模式，没有手机产品讨论。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-062",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "汽车Pro Max款18万元起售，内容只谈汽车。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-063",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "电视盒子Max系列固件18更新，和iPhone无关。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-064",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "电动工具Pro版18伏电池评价，只涉及工具。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-065",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "这是摄影镜头18毫米Pro滤镜评测，没有手机内容。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-066",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "凯美瑞后座靠背偏直，乘客长途累；全文没有雅阁。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-067",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "天籁第二排坐垫软，全文只讨论天籁，不涉及雅阁对比。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-068",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "家用沙发靠背舒适性评测，文章未涉及汽车。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-069",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "飞机经济舱后排乘坐体验，没有雅阁。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-070",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "办公室后排座位看不清屏幕，与汽车无关。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-071",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁是一家餐馆名，文章评价饭菜口味。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-072",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "某住宅小区雅阁楼盘户型介绍，不谈汽车。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-073",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "图书馆靠后排座椅装修，内容与雅阁无关。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-074",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "公交车后排颠簸体验，没有目标车型。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-075",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "儿童安全座椅商品说明，不含安装在雅阁的描述。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-076",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "车型广告只写广汽品牌，没有雅阁或乘坐信息。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-077",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "皮卡后排空间评测，没有目标车型和比较研究。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-078",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "自行车后座坐垫设计，全文不涉及汽车。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-079",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "足球比赛后排观众席视野讨论，没有汽车内容。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-080",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "本文介绍一位叫雅阁的音乐人，内容是演出安排。",
+      "expected": "irrelevant"
+    },
+    {
+      "id": "design-081",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18，好像不错。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-082",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "据说那个Pro很强，但文章未说明是哪家或哪一代。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-083",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18体验全文请登录后查看，页面只剩标题。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-084",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "标题是iPhone18测试，正文只有广告链接，没有测试结论。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-085",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18 Max怎么样？文章只有提问，没有任何可核验材料。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-086",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "18 Pro机身重，摘要缺失品牌和上下文。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-087",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "iPhone18资料已删除，仅有无意义占位符。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-088",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "用户只发了一串表情和iPhone18标签，没有体验内容。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-089",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "搜索摘要只说iPhone18，后续内容被省略无法判断用途。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-090",
+      "intent": {
+        "topic": "iPhone18、iPhone18pro、iPhone18max系列新品体验",
+        "original_keywords": [
+          "iphone18",
+          "iphone18pro",
+          "iphone18max"
+        ],
+        "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景"
+      },
+      "content": "文中称新机电池不错，但没有明确型号，与iPhone18的关系无法核验。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-091",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后排怎么样？本文只是提问。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-092",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁乘坐评测请登录，正文未显示。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-093",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "标题写雅阁后排，但正文是一段乱码。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-094",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁坐着还行，未说明前座后座或具体观察。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-095",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "这台车后座难受，文章没有品牌车型上下文。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-096",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后排相关资料已删除，只留下标题。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-097",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁用户发了一个座椅表情，没有体验描述。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-098",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "摘要只有雅阁和舒适两个词，无法核验完整意思。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-099",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "车主说后边有问题，未说明问题内容或目标车型。",
+      "expected": "uncertain"
+    },
+    {
+      "id": "design-100",
+      "intent": {
+        "topic": "雅阁后排舒适性",
+        "original_keywords": [
+          "雅阁",
+          "后排",
+          "舒适性"
+        ],
+        "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价"
+      },
+      "content": "雅阁后排全文加载失败，请稍后重试。",
+      "expected": "uncertain"
+    }
+  ]
+}
