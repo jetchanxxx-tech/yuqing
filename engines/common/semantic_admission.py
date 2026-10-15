@@ -8,6 +8,34 @@ from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
 
 ADMISSION_VERSION = "semantic-v2"
 DECISION_TYPES = frozenset({"direct", "context", "irrelevant", "uncertain"})
+_PROTOCOL_CATEGORIES = frozenset({
+    "decision_not_object", "invalid_evidence_shape", "unknown_document_id", "duplicate_document_id",
+    "invalid_classification", "hard_boundary_violation", "missing_reason", "missing_evidence",
+    "evidence_not_in_document", "missing_decision",
+})
+MAX_PROTOCOL_ERRORS = 32
+
+
+def _safe_protocol_errors(errors, known_ids):
+    """Expose bounded categories/known IDs, never arbitrary model output."""
+    allowed_ids = set(known_ids)
+    result = []
+    for error in errors:
+        if isinstance(error, Mapping):
+            category = error.get("category")
+            document_id = error.get("document_id")
+        else:
+            category, _, document_id = str(error).partition(":")
+        if category not in _PROTOCOL_CATEGORIES:
+            continue
+        value = {"category": category}
+        if document_id in allowed_ids:
+            value["document_id"] = document_id
+        if value not in result:
+            result.append(value)
+        if len(result) >= MAX_PROTOCOL_ERRORS:
+            break
+    return tuple(result)
 CHUNK_CHARS = 16_000
 BATCH_BYTES = 80_000
 
@@ -28,6 +56,7 @@ class DecisionValidation:
     context: tuple[SemanticDecision, ...]
     rejected: tuple[SemanticDecision, ...]
     errors: tuple[str, ...] = field(default_factory=tuple)
+    protocol_errors: tuple[dict, ...] = field(default_factory=tuple)
 
     @property
     def valid(self):
@@ -35,10 +64,12 @@ class DecisionValidation:
 
 
 class SemanticAdmissionIncomplete(RuntimeError):
-    def __init__(self, reason, decisions=(), observed=None):
+    def __init__(self, reason, decisions=(), observed=None, *, protocol_errors=(), batch_document_ids=()):
         super().__init__(reason)
         self.decisions = decisions
         self.observed = observed or {}
+        self.batch_document_ids = tuple(dict.fromkeys(batch_document_ids))[:100]
+        self.protocol_errors = _safe_protocol_errors(protocol_errors, self.batch_document_ids)
 
 
 def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], materials: Mapping[str, str], eligible_ids=None):
@@ -54,7 +85,8 @@ def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], material
             if not isinstance(raw_spans, list) or not isinstance(raw_entities, list) or any(
                 not isinstance(part, str) for part in raw_spans + raw_entities
             ):
-                errors.append("invalid_evidence_shape")
+                known_id = item.get("document_id")
+                errors.append(f"invalid_evidence_shape:{known_id}" if isinstance(known_id, str) and known_id in materials else "invalid_evidence_shape")
                 continue
             decision = SemanticDecision(str(item.get("document_id") or ""), str(item.get("classification") or ""),
                 str(item.get("reason") or ""), tuple(raw_entities), tuple(raw_spans))
@@ -86,7 +118,7 @@ def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], material
         normalized.append(decision)
     errors.extend(f"missing_decision:{document_id}" for document_id in sorted(set(materials) - seen))
     if errors:
-        return DecisionValidation((), (), (), tuple(errors))
+        return DecisionValidation((), (), (), tuple(errors), _safe_protocol_errors(errors, materials))
     return DecisionValidation(tuple(x for x in normalized if x.classification == "direct"),
         tuple(x for x in normalized if x.classification == "context"),
         tuple(x for x in normalized if x.classification in {"irrelevant", "uncertain"}))
@@ -168,7 +200,8 @@ async def classify_materials(llm, model, intent, materials, usage_context=None, 
             ], deadline=deadline, temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
             result = validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], seen_materials)
             if not result.valid:
-                raise SemanticAdmissionIncomplete("semantic_protocol_rejected", _aggregate(materials, decisions, observed), observed)
+                raise SemanticAdmissionIncomplete("semantic_protocol_rejected", _aggregate(materials, decisions, observed), observed,
+                    protocol_errors=result.protocol_errors, batch_document_ids=tuple(seen_materials))
         except asyncio.CancelledError:
             raise
         except SemanticAdmissionIncomplete:

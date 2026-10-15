@@ -375,7 +375,18 @@ async def _execute(req):
                     return
                 result = scraper.fetch_candidate(row["url"], row["source_type"], "static", deadline=body_end, before_fetch=lambda: persist_research_intent(req, intent, model))
                 result = await result if inspect.isawaitable(result) else result
-                if result.status != "fetched" and scraper._source_mode(row["source_type"]) != "static":
+                # Reject hard network/source failures before considering a
+                # browser. Rendering must never retry a forbidden target.
+                attempted_final_url = _canonical_url(result.final_url or row["url"])
+                refused = result.reason.startswith("unsafe") or result.reason in {"source_redirect_mismatch", "source_mismatch"}
+                final_mismatch = not _is_public_http_url(attempted_final_url) or _classify_by_domain(attempted_final_url) != row["source_type"]
+                if refused or final_mismatch:
+                    row.update(fetch_status=result.status, fetch_reason=result.reason, final_url=attempted_final_url,
+                               status="filtered", reason="source_redirect_mismatch" if final_mismatch or "source" in result.reason else "unsafe_url")
+                    return
+                needs_render = result.reason in {"empty_body", "verification_or_shell"} or (
+                    result.status == "fetched" and not usable_excerpt(result.content))
+                if needs_render or (result.status != "fetched" and scraper._source_mode(row["source_type"]) != "static"):
                     if dynamic_count < 20 and loop.time() < body_end:
                         dynamic_count += 1
                         result = scraper.fetch_candidate(row["url"], row["source_type"], "dynamic", deadline=body_end, before_fetch=lambda: persist_research_intent(req, intent, model))
@@ -451,9 +462,13 @@ async def _execute(req):
                     deadline=semantic_end, on_batch=batch_observed,
                     material_metadata={row["id"]: {"title": row["title"], "content_kind": row["content_kind"]} for row in eligible})
                 if not validation.valid:
-                    raise SemanticAdmissionIncomplete("semantic_protocol_rejected")
+                    raise SemanticAdmissionIncomplete("semantic_protocol_rejected",
+                        protocol_errors=validation.protocol_errors, batch_document_ids=tuple(row["id"] for row in eligible))
             except SemanticAdmissionIncomplete as exc:
                 coverage["semantic_admission_status"] = "incomplete"
+                if exc.protocol_errors:
+                    coverage["semantic_protocol_errors"] = {
+                        "batch_document_ids": list(exc.batch_document_ids), "errors": list(exc.protocol_errors)}
                 _apply_decisions(exc.decisions, eligible, partial=True)
                 for row in eligible:
                     row.update(status="unprocessed", reason="semantic_deadline" if "incomplete" in str(exc) else "semantic_protocol_rejected")

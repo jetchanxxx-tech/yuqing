@@ -300,8 +300,11 @@ async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_du
     def invalid(items):
         return [{"document_id": item["document_id"], "classification": "direct", "reason": marker,
                  "evidence_spans": [marker]} for item in items]
-    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
-        "iPhone18 Pro公开体验正文，内容明确记录了续航表现与手感，没有模型臆造的证据文字。") ]}, TopicModel(invalid))
+    setup_pipeline(monkeypatch, {"toutiao": [
+        provider_candidate("toutiao", 1, "iPhone18 Pro公开体验正文，内容明确记录了续航表现与手感，没有模型臆造的证据文字。"),
+        provider_candidate("toutiao", 2, ""),
+        provider_candidate("wechat", 3, "未选择来源不会抓取，也不能冒充已取得摘要正文。"),
+    ]}, TopicModel(invalid))
     persisted = []
     async def audit(req, coverage):
         persisted.append(deepcopy(coverage))
@@ -317,3 +320,24 @@ async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_du
     assert marker not in response.text
     assert marker not in json.dumps(persisted)
     assert coverage["accepted_count"] == 0
+    assert coverage["per_platform"][0]["summary_count"] == 1
+
+@pytest.mark.asyncio
+async def test_query_persists_original_body_and_restored_quote_without_format_rewrite(monkeypatch):
+    from copy import deepcopy
+    body = "iPhone\n18\nPro续航实测，使用60\n瓦充电器，作者称之为“续航惊喜”。"
+    model_quote = 'iPhone 18 Pro续航实测，使用60 瓦充电器，作者称之为"续航惊喜"。'
+    def formatted(items):
+        return [{"document_id": item["document_id"], "classification": "direct", "reason": "研究对象实际体验",
+                 "evidence_spans": [model_quote]} for item in items]
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1, body)]}, TopicModel(formatted))
+    saved = []
+    async def audit(req, coverage): saved.append(deepcopy(coverage))
+    monkeypatch.setattr(query, "persist_candidate_audit", audit)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    document = response.json()["documents"][0]
+    assert document["content"] == body
+    assert document["evidence_spans"] == [body]
+    assert saved[-1]["candidate_audit"][0]["content"] == body
+    assert saved[-1]["candidate_audit"][0]["evidence_spans"] == [body]

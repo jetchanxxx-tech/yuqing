@@ -109,3 +109,47 @@ async def test_classifier_exception_preserves_validator_category_and_current_bat
     assert captured.value.batch_document_ids == ("known",)
     assert list(captured.value.protocol_errors) == [{"category": "evidence_not_in_document", "document_id": "known"}]
     assert str(captured.value) == "semantic_protocol_rejected"
+
+@pytest.mark.parametrize("content,model_span,original_span", [
+    ("正文：iPhone\n18\nPro续航实测，使用60\n瓦充电器。", "iPhone 18 Pro续航实测，使用60 瓦充电器。",
+     "iPhone\n18\nPro续航实测，使用60\n瓦充电器。"),
+    ("作者说“续航很稳”，也认为‘手感不错’。", '作者说"续航很稳"，也认为\'手感不错\'。',
+     "作者说“续航很稳”，也认为‘手感不错’。"),
+    ("正文：iPhone\n18 Pro让作者称之为“续航惊喜”。", 'iPhone 18 Pro让作者称之为"续航惊喜"。',
+     "iPhone\n18 Pro让作者称之为“续航惊喜”。"),
+])
+def test_format_only_evidence_is_restored_to_exact_contiguous_original_body(content, model_span, original_span):
+    materials = {"known": content}
+    saved = dict(materials)
+    result = validate_decisions([SemanticDecision("known", "direct", "正文直接讨论研究对象",
+                                                evidence_spans=(model_span,))], materials)
+    assert result.valid, result.errors
+    assert result.accepted[0].evidence_spans == (original_span,)
+    assert original_span in content
+    assert materials == saved  # Restoration never rewrites saved content.
+
+
+@pytest.mark.parametrize("model_span", [
+    "iPhone18 Pro使用80瓦充电器，作者称之为“续航惊喜”。",  # Changed number.
+    "iPhone18 Pro使用60瓦充电器，作者称之为“充电惊喜”。",  # Changed word.
+    'iPhone18 Pro使用60瓦充电器,作者称之为"续航惊喜"。',  # Punctuation is not interchangeable.
+    "iPhone18 Pro使用60瓦充电器作者称之为续航惊喜",  # Arbitrary punctuation removal.
+    "iPhone18 Pro续航惊喜",  # Omitted interior text / stitched fragments.
+    '"iPhone18 Pro使用60瓦充电器，作者称之为“续航惊喜”。"',  # Added quote wrappers.
+])
+def test_restoration_never_changes_words_numbers_punctuation_or_stitches_fragments(model_span):
+    content = "iPhone18 Pro使用60瓦充电器，作者称之为“续航惊喜”。"
+    result = validate_decisions([SemanticDecision("known", "direct", "模型给了候选引文",
+                                                evidence_spans=(model_span,))], {"known": content})
+    assert not result.valid
+    assert result.accepted == ()
+    assert result.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "known"},)
+
+
+def test_format_restoration_never_borrows_quote_from_another_document():
+    result = validate_decisions([
+        SemanticDecision("one", "direct", "不能错绑证据", evidence_spans=('作者称iPhone 18 Pro为"续航惊喜"。',)),
+        SemanticDecision("two", "irrelevant", "另一个文档不能给前文提供引文"),
+    ], {"one": "雅阁后座坐垫偏软，长途乘坐舒服。", "two": "作者称iPhone\n18\nPro为“续航惊喜”。"})
+    assert not result.valid
+    assert result.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "one"},)
