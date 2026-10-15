@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, replace
 import json
 from typing import Iterable, Mapping
 
-from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
+from engines.common.model_budget import AttemptBudget, chat_json_bounded, glm_reasoning_options
 
 ADMISSION_VERSION = "semantic-v2"
 DECISION_TYPES = frozenset({"direct", "context", "irrelevant", "uncertain"})
@@ -232,21 +232,47 @@ async def classify_materials(llm, model, intent, materials, usage_context=None, 
                 "evidence_spans必须逐字复制对应content；title等元信息仅辅助，不替代正文证据。",
             ],
         }
+        # Transport recovery and semantic correction spend the same two-call
+        # allowance. A truncation already consuming both attempts cannot start
+        # a third supplier call merely because the resulting quote is invalid.
+        attempt_budget = AttemptBudget()
+        protocol_errors = ()
+        messages = [
+            {"role": "system", "content": "你是证据准入审查员。围绕统一研究主题分析原文证据。只输出JSON对象。"},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+        ]
         try:
-            response = await chat_json_bounded(llm, model, [
-                {"role": "system", "content": "你是证据准入审查员。围绕统一研究主题分析原文证据。只输出JSON对象。"},
-                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-            ], deadline=deadline, temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
-            result = validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], seen_materials)
-            if not result.valid:
-                raise SemanticAdmissionIncomplete("semantic_protocol_rejected", _aggregate(materials, decisions, observed), observed,
-                    protocol_errors=result.protocol_errors, batch_document_ids=tuple(seen_materials))
+            while True:
+                response = await chat_json_bounded(llm, model, messages, deadline=deadline,
+                    attempt_budget=attempt_budget, temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
+                result = validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], seen_materials)
+                if result.valid:
+                    break
+                protocol_errors = result.protocol_errors
+                if not attempt_budget.remaining:
+                    raise SemanticAdmissionIncomplete("semantic_protocol_rejected", _aggregate(materials, decisions, observed), observed,
+                        protocol_errors=protocol_errors, batch_document_ids=tuple(seen_materials))
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("semantic_correction_deadline")
+                # Do not replay the rejected model message. Only known batch
+                # IDs, finite validator categories and fixed instructions enter
+                # the correction; the original material prompt stays intact.
+                correction = {"protocol_correction": {
+                    "batch_document_ids": list(seen_materials), "errors": list(protocol_errors),
+                    "rules": [
+                        "只返回严格JSON对象，完整decisions覆盖本批全部document_id，每个已知ID恰好一次。",
+                        "direct/context的evidence_spans必须逐字复制对应content原文，不改字词、数字、标点，不省略拼接。",
+                        "无法确认相关性或找不到原文证据时用uncertain并说明理由，不编造引文，仍返回该ID的决定。",
+                    ],
+                }}
+                messages = [*messages, {"role": "user", "content": json.dumps(correction, ensure_ascii=False)}]
         except asyncio.CancelledError:
             raise
         except SemanticAdmissionIncomplete:
             raise
         except Exception as exc:
-            raise SemanticAdmissionIncomplete("semantic_admission_incomplete", _aggregate(materials, decisions, observed), observed) from exc
+            raise SemanticAdmissionIncomplete("semantic_admission_incomplete", _aggregate(materials, decisions, observed), observed,
+                protocol_errors=protocol_errors, batch_document_ids=tuple(seen_materials)) from exc
         for key, start, end in batch:
             observed.setdefault(key, []).append((start, end))
         for item in result.accepted + result.context + result.rejected:

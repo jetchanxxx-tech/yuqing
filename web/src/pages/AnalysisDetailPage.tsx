@@ -319,7 +319,9 @@ export default function AnalysisDetailPage() {
                       分析失败
                     </Typography.Title>
                     <Typography.Paragraph type="secondary">
-                      可重新运行任务；若反复失败请前往账单页确认额度
+                      {detail.error_code === 'fetch_failed'
+                        ? '采集未完成，请检查关键词、所选来源及采集记录后重试。'
+                        : '本次分析未完整交付，请查看错误提示与处理记录后重试。'}
                     </Typography.Paragraph>
                   </>
                 ) : (
@@ -501,7 +503,25 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
     out_of_range_date: '发布日期超出范围', unverifiable_date: '发布日期无法核验', date_conflict: '发布日期冲突',
     source_mismatch: '链接不属于所选平台', unusable: '未取得可用文本', duplicate: '内容重复',
     candidate_limit: '候选处理数量上限，未核验', deadline: '阶段时限内未核验', excluded: '命中排除词',
+    semantic_protocol_failed: '语义核验未完成，材料未采纳',
   };
+  const protocolReasons: Record<string, string> = {
+    unknown_document_id: '判断结果包含未知材料标识', duplicate_document_id: '同一材料出现重复判断',
+    invalid_classification: '相关性分类无效', hard_boundary_violation: '材料未通过来源、日期或排除词核验',
+    missing_reason: '缺少相关性判断理由', missing_evidence: '缺少可核验原文引用',
+    evidence_not_in_document: '引用未能对应原文', missing_decision: '材料尚未完成相关性判断',
+    invalid_evidence_shape: '原文引用格式无效', decision_not_object: '材料判断结果格式无效',
+  };
+  const protocol = coverage.semantic_protocol_errors;
+  const batchIds = Array.from(new Set(protocol?.batch_document_ids || []));
+  const candidates = new Map<string, CandidateAudit>((coverage.candidate_audit || []).map((candidate) => [candidate.id, candidate]));
+  const protocolIssues = (protocol?.errors || []).flatMap((error) => {
+    const reason = protocolReasons[error.category];
+    if (typeof reason !== 'string') return [];
+    const ids = error.document_id && batchIds.includes(error.document_id) ? [error.document_id] : batchIds;
+    const materials = ids.map((documentId) => candidates.get(documentId)?.title || documentId).join('、');
+    return [`${reason}：${materials || '该批次材料'}`];
+  });
   const platformStatus = (row: PlatformCoverage) => {
     if (row.status === 'failed') return '检索失败';
     if (row.status === 'unprocessed') return '尚未检索／时限未处理';
@@ -531,6 +551,13 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
         {semantic ? '正文、页面描述和搜索摘要按实际获取情况标注；背景材料不计入目标评价统计，也不能补足两篇直接证据门槛。' : '该历史任务采用旧准入规则，材料为搜索摘要，未补做语义判断。'}
         {coverage.candidate_truncated ? ' 本次存在因数量或时间限制未处理的候选，不能将其视为不相关。' : ''}
       </Typography.Paragraph>
+      {semantic && protocol && <Alert type="warning" showIcon message="语义核验未完成" style={{ marginTop: 12 }}
+        description={<>
+          <p style={{ margin: '0 0 8px' }}>该批次材料未通过核验，未采纳为本轮研判或报告证据。</p>
+          {protocolIssues.length ? <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {protocolIssues.map((issue, index) => <li key={index}>{issue}</li>)}
+          </ul> : '判断结果未通过校验，请查看候选材料与处理记录后重试。'}
+        </>} />}
       {!!coverage.per_platform?.length && <Table<PlatformCoverage> size="small" pagination={false} rowKey="source"
         dataSource={coverage.per_platform} scroll={{ x: 800 }} style={{ marginTop: 16 }} columns={[
           { title: '平台', dataIndex: 'source', render: (source: string) => sourceLabel(source) },
@@ -548,7 +575,8 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
           renderItem={(candidate) => <List.Item key={candidate.id} style={{ display: 'block' }}>
             <Typography.Text strong>{candidate.title || candidate.id}</Typography.Text>
             <div><Tag>{sourceLabel(candidate.source_type)}</Tag><Tag>{contentKindLabel(candidate.content_kind)}</Tag>
-              <Tag>{({ direct: '直接相关', context: '背景／比较', irrelevant: '不相关', uncertain: '信息不足' } as Record<string, string>)[candidate.semantic_classification || ''] || candidate.status || '未核验'}</Tag>
+              <Tag>{({ direct: '直接相关', context: '背景／比较', irrelevant: '不相关', uncertain: '信息不足' } as Record<string, string>)[candidate.semantic_classification || '']
+                || ({ unprocessed: '未完成，未采纳', rejected: '已排除' } as Record<string, string>)[candidate.status || ''] || candidate.status || '未核验'}</Tag>
               {candidate.truncated && <Tag color="orange">正文达到保存上限</Tag>}
             </div>
             {candidate.requested_source && candidate.requested_source !== candidate.source_type && <Typography.Paragraph type="secondary">请求平台：{sourceLabel(candidate.requested_source)}；链接实际平台：{sourceLabel(candidate.source_type)}</Typography.Paragraph>}

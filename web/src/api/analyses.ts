@@ -44,6 +44,15 @@ export interface RetrievalCoverage {
   per_keyword?: { keyword: string; status: string; returned_count: number }[];
   per_platform?: PlatformCoverage[];
   candidate_audit?: CandidateAudit[];
+  semantic_protocol_errors?: {
+    batch_document_ids: string[];
+    errors: {
+      category: 'unknown_document_id' | 'duplicate_document_id' | 'invalid_classification'
+        | 'hard_boundary_violation' | 'missing_reason' | 'missing_evidence'
+        | 'evidence_not_in_document' | 'missing_decision' | 'invalid_evidence_shape' | 'decision_not_object';
+      document_id?: string;
+    }[];
+  };
 }
 
 export interface ResearchIntent {
