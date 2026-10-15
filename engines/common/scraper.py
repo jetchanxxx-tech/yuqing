@@ -5,9 +5,11 @@ Wraps Scrapling's adaptive fetching + Bocha AI search with dedup and error handl
 Requirements: pip install scrapling[fetchers] httpx
 """
 import hashlib
+import asyncio
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from urllib.parse import urlsplit
 from dataclasses import dataclass, field
@@ -37,7 +39,7 @@ SOURCE_DOMAINS = {
 # Lazy import — Scrapling may not be installed in dev.
 _scrapling_available = False
 try:
-    from scrapling.fetchers import Fetcher, DynamicFetcher  # type: ignore
+    from scrapling.fetchers import Fetcher, DynamicFetcher, StealthyFetcher  # type: ignore
     _scrapling_available = True
 except ImportError:
     logger.warning("Scrapling not installed. PageScraper will return empty results. "
@@ -57,6 +59,23 @@ class ScrapedDocument:
     content_hash: str = ""     # SHA256 hex[:16] for dedup
     media_url: str = ""
     error: str = ""            # non-empty if fetch failed
+    content_kind: str = "summary"  # body | summary
+    fetch_status: str = "not_attempted"  # fetched | failed | not_attempted
+    fetch_reason: str = ""
+    final_url: str = ""
+    truncated: bool = False
+
+
+@dataclass
+class FetchOutcome:
+    """Bounded body recovery result; never claims a video/comment transcript."""
+    content: str = ""
+    final_url: str = ""
+    status: str = "failed"
+    reason: str = ""
+    content_kind: str = "summary"
+    published_at: str = ""
+    truncated: bool = False
 
 
 class PageScraper:
@@ -85,26 +104,61 @@ class PageScraper:
         try:
             if mode == "dynamic":
                 page = DynamicFetcher.fetch(url, headless=self.headless,
-                                            network_idle=True, timeout=self.timeout)
+                                            network_idle=False, timeout=25_000,
+                                            disable_resources=True)
             elif mode == "stealth":
-                # StealthyFetcher requires extra dep; fall back to dynamic
-                page = DynamicFetcher.fetch(url, headless=self.headless,
-                                            solve_cloudflare=True, timeout=self.timeout)
+                page = StealthyFetcher.fetch(url, headless=self.headless,
+                                             network_idle=False, timeout=25_000,
+                                             disable_resources=True)
             else:
-                page = Fetcher.get(url, timeout=self.timeout)
+                page = Fetcher.get(url, timeout=min(self.timeout, 15))
 
-            return self._extract(page, url, source_type)
+            doc = self._extract(page, url, source_type)
+            doc.content_kind = "body" if doc.content else "summary"
+            doc.fetch_status = "fetched" if doc.content else "failed"
+            doc.final_url = str(getattr(page, "url", "") or url)
+            return doc
         except Exception as e:
             logger.warning(f"Scrapling fetch failed for {url}: {e}")
-            return ScrapedDocument(url=url, source_type=source_type, error=str(e))
+            return ScrapedDocument(url=url, source_type=source_type, error=str(e),
+                                   fetch_status="failed", fetch_reason=type(e).__name__)
+
+    def fetch_candidate(self, url: str, source_type: str, mode: str = "static") -> FetchOutcome:
+        """Fetch and clean one candidate with platform-aware bounded limits."""
+        if not _is_public_http_url(url):
+            return FetchOutcome(reason="unsafe_url")
+        if not self._available:
+            return FetchOutcome(reason="scrapling_unavailable")
+        try:
+            if mode in {"dynamic", "stealth"}:
+                fetcher = StealthyFetcher if mode == "stealth" else DynamicFetcher
+                page = fetcher.fetch(url, headless=self.headless, network_idle=False,
+                                     timeout=25_000, disable_resources=True)
+            else:
+                page = Fetcher.get(url, timeout=min(self.timeout, 15))
+            final_url = str(getattr(page, "url", "") or url)
+            if not _is_public_http_url(final_url):
+                return FetchOutcome(final_url=final_url, reason="unsafe_redirect")
+            text = _extract_clean_body(page, source_type)
+            if not text:
+                return FetchOutcome(final_url=final_url, reason="empty_body")
+            truncated = len(text) > 200_000
+            return FetchOutcome(
+                content=text[:200_000], final_url=final_url, status="fetched",
+                reason="", content_kind="body", truncated=truncated,
+            )
+        except Exception as exc:
+            return FetchOutcome(reason=type(exc).__name__)
 
     async def search_and_fetch(self, keyword: str, sources: list[str],
                                 max_per_source: int = 5, bocha_key: str = "",
                                 coverage: dict | None = None,
-                                date_from: str = "", date_to: str = "") -> list[ScrapedDocument]:
-        """Search via Bocha API → fetch each URL via Scrapling → dedup.
+                                date_from: str = "", date_to: str = "",
+                                research_intent: dict | None = None) -> list[ScrapedDocument]:
+        """Search Bocha, admit summary/snippet excerpts, then deduplicate.
 
-        Falls back to preset test URLs if Bocha key is not available.
+        The query HTTP entrypoint requires a real Bocha key. This path does
+        not call fetch() or retrieve full articles, videos, or comments.
         """
         results: list[ScrapedDocument] = []
         seen_hashes: set[str] = set()
@@ -117,17 +171,26 @@ class PageScraper:
         if key:
             # 有 key 时 Bocha 失败必须抛错 —— 绝不静默降级为空/假数据
             #（生产上 key 失效若静默，会产出「看起来成功」的假报告）
-            include = "|".join(dict.fromkeys(
-                domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
-            ))
-            options = {"include": include, "count": min(50, max(20, max_per_source * 2))}
-            # Only closed windows use the provider's documented syntax. Older
-            # one-sided requests keep their existing local bound semantics.
-            if date_from and date_to:
-                options["freshness"] = date_from if date_from == date_to else f"{date_from}..{date_to}"
-            found = await self._bocha_search(keyword, key, **options)
+            # News already searches across domains. A mixed selection is a
+            # union: social domains must not exclude its news candidates.
+            # The selected-source check below still applies to every result.
+            # Query each selected platform independently. Bocha does not
+            # guarantee a fair split for a multi-domain include expression.
+            found: list[dict] = []
+            provider_calls = 0
+            for source in dict.fromkeys(sources):
+                include = "|".join(SOURCE_DOMAINS.get(source, ()))
+                options = {"include": include, "count": min(50, max(20, max_per_source * 2))}
+                if date_from and date_to:
+                    options["freshness"] = date_from if date_from == date_to else f"{date_from}..{date_to}"
+                source_found = await self._bocha_search(keyword, key, **options)
+                provider_calls += 1
+                for item in source_found:
+                    item["_requested_source"] = source
+                found.extend(source_found)
             if coverage is not None:
                 coverage["provider_candidates"] = len(found)
+                coverage["provider_calls"] = provider_calls
                 coverage["unusable_count"] = 0
                 coverage["irrelevant_count"] = 0
                 coverage["source_mismatch_count"] = 0
@@ -161,12 +224,51 @@ class PageScraper:
                 url = cand.get("url") or ""
                 if not url:
                     continue
+                # First use the summary as a cheap candidate gate. Semantic-v2
+                # replaces this decision once the run supplies an intent and
+                # an accepted usage context; this compatibility path remains
+                # deterministic for legacy lexical-v1 callers.
                 decision = admit(keyword, cand.get("title") or "", content)
+                semantic_candidate = bool(research_intent)
+                if semantic_candidate:
+                    # Semantic-v2 decides relevance downstream. Recover body
+                    # text before returning the candidate, while retaining a
+                    # sufficient summary fallback when body recovery fails.
+                    recovered = await asyncio.to_thread(
+                        self.fetch_candidate, url, stype, self._source_mode(stype)
+                    )
+                    if recovered.status == "fetched":
+                        content = recovered.content
+                        cand["_final_url"] = recovered.final_url
+                        cand["_fetch_status"] = recovered.status
+                        cand["_fetch_reason"] = recovered.reason
+                        cand["_content_kind"] = recovered.content_kind
+                        cand["_truncated"] = recovered.truncated
+                    elif not content or not usable_excerpt(content):
+                        if coverage is not None:
+                            coverage["unusable_count"] += 1
+                        continue
+                    decision = type("Decision", (), {"accepted": True, "reason": "semantic_pending"})()
                 if not decision.accepted:
+                    # A usable URL may still contain the evidence in its body.
+                    # Attempt one bounded recovery before rejecting the excerpt.
+                    recovered = await asyncio.to_thread(
+                        self.fetch_candidate, url, stype, self._source_mode(stype)
+                    )
+                    if recovered.status == "fetched":
+                        content = recovered.content
+                        cand["_body_content"] = content
+                        cand["_final_url"] = recovered.final_url
+                        cand["_fetch_status"] = recovered.status
+                        cand["_fetch_reason"] = recovered.reason
+                        cand["_content_kind"] = recovered.content_kind
+                        cand["_truncated"] = recovered.truncated
+                        decision = admit(keyword, cand.get("title") or "", content)
                     if coverage is not None:
                         field = "unusable_count" if decision.reason == "unusable_excerpt" else "irrelevant_count"
                         coverage[field] += 1
-                    continue
+                    if not decision.accepted:
+                        continue
                 # Filter before hash deduplication and quota truncation. Old or
                 # undated copies must not consume the current window's slots.
                 if date_from or date_to:
@@ -188,6 +290,11 @@ class PageScraper:
                     title=cand.get("title") or "", url=url, content=content,
                     source_type=stype, source_name=cand.get("site_name") or _source_display_name(stype),
                     published_at=cand.get("published_at") or "", content_hash=content_hash,
+                    content_kind=cand.get("_content_kind", "summary"),
+                    fetch_status=cand.get("_fetch_status", "not_attempted"),
+                    fetch_reason=cand.get("_fetch_reason", ""),
+                    final_url=cand.get("_final_url", url),
+                    truncated=bool(cand.get("_truncated", False)),
                 ))
 
         # 全局截断：无论选几个源，最多返回 max_per_source 条（P0 bug 修复）
@@ -346,6 +453,33 @@ class PageScraper:
 def _hash_content(content: str) -> str:
     """SHA256 hex digest, truncated to 16 chars for URL-safe dedup."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+
+def _is_public_http_url(url: str) -> bool:
+    parsed = urlsplit(str(url or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower().rstrip(".")
+    if host in {"localhost", "metadata.google.internal"}:
+        return False
+    if re.fullmatch(r"127(?:\.\d{1,3}){3}", host) or host.startswith("10.") or host.startswith("192.168."):
+        return False
+    return True
+
+
+def _extract_clean_body(page, source_type: str) -> str:
+    """Select article text, excluding scripts/styles/navigation boilerplate."""
+    selectors = {
+        "wechat": "#js_content ::text, article ::text",
+        "toutiao": "article ::text, .article-content ::text, .pgc-article ::text",
+        "news": "article ::text, .article-content ::text, main ::text",
+        "weibo": "article ::text, .WB_text ::text, main ::text",
+    }
+    text_nodes = page.css(selectors.get(source_type, "article ::text, main ::text")).getall()
+    if not text_nodes:
+        text_nodes = page.css("body ::text").getall()
+    cleaned = " ".join(re.sub(r"\s+", " ", str(x)).strip() for x in text_nodes if str(x).strip())
+    return cleaned[:200_000]
 
 
 def _source_display_name(source: str) -> str:

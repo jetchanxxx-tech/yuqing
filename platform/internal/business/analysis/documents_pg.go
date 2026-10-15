@@ -39,19 +39,20 @@ const (
 	// 幂等，跨租户/跨分析互不冲突 —— 两个租户抓到同一篇内容都能入库。
 	insertDocumentSQL = `INSERT INTO raw_documents (
 	id, tenant_id, analysis_id, title, url, content, author,
-	source_type, source_name, published_at, content_hash, source_published_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	source_type, source_name, published_at, content_hash, source_published_at,
+	content_kind, fetch_status, fetch_reason, final_url, truncated, semantic_classification, semantic_reason, evidence_spans
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 ON CONFLICT (tenant_id, analysis_id, id) DO NOTHING`
 
 	selectDocumentsSQL = `SELECT id, title, url, content, author, source_type, source_name,
-	published_at, content_hash, COALESCE(source_published_at,'')
+	published_at, content_hash, COALESCE(source_published_at,''), content_kind, fetch_status, fetch_reason, final_url, truncated, semantic_classification, semantic_reason, evidence_spans
 FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2
 ORDER BY id`
 
 	countDocumentsSQL = `SELECT count(*) FROM raw_documents WHERE tenant_id = $1 AND analysis_id = $2`
 
 	listByTenantSQL = `SELECT id, title, url, content, author, source_type, source_name,
-	published_at, content_hash, COALESCE(source_published_at,'')
+	published_at, content_hash, COALESCE(source_published_at,''), content_kind, fetch_status, fetch_reason, final_url, truncated, semantic_classification, semantic_reason, evidence_spans
 	FROM raw_documents WHERE tenant_id = $1
 	ORDER BY published_at DESC NULLS LAST, id`
 
@@ -94,10 +95,14 @@ func (d *pgDocumentStore) list(ctx context.Context, tenantID, analysisID string)
 			doc         Document
 			publishedAt *time.Time
 		)
+		var evidence []byte
 		if err := rows.Scan(&doc.ID, &doc.Title, &doc.URL, &doc.Content, &doc.Author,
-			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt); err != nil {
+			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt,
+			&doc.ContentKind, &doc.FetchStatus, &doc.FetchReason, &doc.FinalURL, &doc.Truncated,
+			&doc.SemanticClassification, &doc.SemanticReason, &evidence); err != nil {
 			return nil, pgInternal(err)
 		}
+		if err := unmarshalJSON(evidence, &doc.EvidenceSpans); err != nil { return nil, pgInternal(err) }
 		// TIMESTAMPTZ → RFC3339（不带小数秒）。写入时按 RFC3339 解析、
 		// 读回统一成 UTC 表示，因此带 +08:00 的时间会显示为同一时刻的 Z 形式。
 		if publishedAt != nil {
@@ -134,10 +139,14 @@ func (d *pgDocumentStore) ListByTenant(ctx context.Context, tenantID string) ([]
 			doc         Document
 			publishedAt *time.Time
 		)
+		var evidence []byte
 		if err := rows.Scan(&doc.ID, &doc.Title, &doc.URL, &doc.Content, &doc.Author,
-			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt); err != nil {
+			&doc.SourceType, &doc.SourceName, &publishedAt, &doc.ContentHash, &doc.SourcePublishedAt,
+			&doc.ContentKind, &doc.FetchStatus, &doc.FetchReason, &doc.FinalURL, &doc.Truncated,
+			&doc.SemanticClassification, &doc.SemanticReason, &evidence); err != nil {
 			return nil, pgInternal(err)
 		}
+		if err := unmarshalJSON(evidence, &doc.EvidenceSpans); err != nil { return nil, pgInternal(err) }
 		if publishedAt != nil {
 			doc.PublishedAt = publishedAt.UTC().Format(time.RFC3339)
 		}
@@ -159,6 +168,8 @@ func documentArgs(tenantID, analysisID string, doc Document) []any {
 	return []any{
 		docID, tenantID, analysisID, doc.Title, doc.URL, doc.Content, doc.Author,
 		doc.SourceType, doc.SourceName, nullablePublishedAt(doc.PublishedAt), doc.ContentHash, sourcePublishedAt(doc),
+		doc.ContentKind, doc.FetchStatus, doc.FetchReason, doc.FinalURL, doc.Truncated,
+		doc.SemanticClassification, doc.SemanticReason, marshalJSON(doc.EvidenceSpans),
 	}
 }
 

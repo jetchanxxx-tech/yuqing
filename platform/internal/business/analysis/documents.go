@@ -19,6 +19,14 @@ type Document struct {
 	PublishedAt       string `json:"published_at,omitempty"`
 	SourcePublishedAt string `json:"source_published_at,omitempty"` // source text without an asserted UTC instant
 	ContentHash       string `json:"content_hash,omitempty"`
+	ContentKind       string `json:"content_kind,omitempty"`
+	FetchStatus       string `json:"fetch_status,omitempty"`
+	FetchReason       string `json:"fetch_reason,omitempty"`
+	FinalURL          string `json:"final_url,omitempty"`
+	Truncated         bool   `json:"truncated,omitempty"`
+	SemanticClassification string `json:"semantic_classification,omitempty"`
+	SemanticReason    string `json:"semantic_reason,omitempty"`
+	EvidenceSpans     []string `json:"evidence_spans,omitempty"`
 }
 
 // documentStore 是采集文档的持久化契约：内存实现 memoryDocumentStore，

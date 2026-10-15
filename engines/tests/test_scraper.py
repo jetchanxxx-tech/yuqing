@@ -141,10 +141,12 @@ class TestBochaSourceScope:
     async def test_request_uses_documented_include_and_summary(self, monkeypatch):
         import httpx
         from engines.common import scraper as scraper_module
+        includes = []
 
         def handler(request):
             body = __import__("json").loads(request.content)
-            assert body["include"] == "weibo.com|mp.weixin.qq.com"
+            includes.append(body["include"])
+            assert body["include"] in {"weibo.com", "mp.weixin.qq.com"}
             assert body["summary"] is True
             assert body["count"] <= 50
             return httpx.Response(200, json={"data": {"webPages": {"value": [{
@@ -158,6 +160,7 @@ class TestBochaSourceScope:
         scraper = PageScraper()
         docs = await scraper.search_and_fetch("test", ["weibo", "wechat"], bocha_key="fixture-key")
         assert len(docs) == 1
+        assert includes == ["weibo.com", "mp.weixin.qq.com"]
         assert (docs[0].content, docs[0].published_at) == (
             "test summary", "2026-09-30T10:00:00+08:00")
 

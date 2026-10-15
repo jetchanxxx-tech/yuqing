@@ -1,0 +1,91 @@
+{
+  "checked_at": "2026-10-15T08:00:09.966863+00:00",
+  "production_commit": "e427127b32b30df079a5c59e2f5df19ba69545e5",
+  "bettafish": {
+    "repo": "https://github.com/666ghj/BettaFish",
+    "commit": "b67928ff1ce515dd7672408221fb1e9500d0972d",
+    "files": [
+      {
+        "path": "QueryEngine/prompts/prompts.py",
+        "sha256": "a5c65cd5197d935dae2083c2e1e1d1f683f88931f79c707306f8bbca761834f6",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/QueryEngine/prompts/prompts.py"
+      },
+      {
+        "path": "QueryEngine/agent.py",
+        "sha256": "ea0386b565e94b47f73f380b9c4867002a4ef553e71505d4be47704feae11476",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/QueryEngine/agent.py"
+      },
+      {
+        "path": "QueryEngine/tools/search.py",
+        "sha256": "957027132cdf4a9b763bf043547c2fc4072e53936efc1847bd7918a89d32537b",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/QueryEngine/tools/search.py"
+      },
+      {
+        "path": "QueryEngine/llms/base.py",
+        "sha256": "fa765c9e38f24efbdb13b310cb08038da87788ef2da4b3e74911b77d4bf49560",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/QueryEngine/llms/base.py"
+      },
+      {
+        "path": "InsightEngine/nodes/search_node.py",
+        "sha256": "51a1448240fae38b5ff0b434b63f3fbb2ea599cd1f5cc4e1e0ba54774733f716",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/InsightEngine/nodes/search_node.py"
+      },
+      {
+        "path": "InsightEngine/tools/search.py",
+        "sha256": "2111e43c50c0990a4cda4429b02c2f61e51e0492c3ecb650674dbc337d4d2cf3",
+        "url": "https://github.com/666ghj/BettaFish/blob/b67928ff1ce515dd7672408221fb1e9500d0972d/InsightEngine/tools/search.py"
+      }
+    ],
+    "query_search_provider": "Tavily",
+    "model_generates_search_query": true,
+    "bounded_reflection_search": true,
+    "directly_copied_product_code": false
+  },
+  "scrapling_probe": {
+    "service_user": "yuqing",
+    "scrapling_version": "0.4.15",
+    "playwright_version": "1.63.0",
+    "dynamic_timeout_unit": "milliseconds",
+    "browser_cache_entries": [
+      "chromium_headless_shell-1243",
+      "ffmpeg-1011"
+    ],
+    "required_dynamic_executable_present": false,
+    "cases": [
+      {
+        "source": "wechat",
+        "url": "https://mp.weixin.qq.com/s/QMJNzTRF8ZGqsRd1TFfhBg",
+        "mode": "static",
+        "elapsed_seconds": 2.21,
+        "http_status": 200,
+        "title": "",
+        "article_chars": 136,
+        "body_text_chars": 3014864,
+        "has_js_shell": false,
+        "has_login_or_verification": false,
+        "topic_keyword_found": true
+      },
+      {
+        "source": "douyin",
+        "url": "https://jingxuan.douyin.com/m/video/7568445467013532969",
+        "mode": "dynamic",
+        "elapsed_seconds": 0.68,
+        "error_type": "Error",
+        "error_summary": "BrowserType.launch_persistent_context: Executable doesn't exist at /opt/yuqing/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome"
+      }
+    ]
+  },
+  "existing_timeouts_seconds": {
+    "configured_query": 180,
+    "configured_insight": 1200,
+    "configured_report": 420,
+    "go_insight_http": 1320,
+    "python_insight_stage": 1200
+  },
+  "changes": {
+    "runtime_source_changed": false,
+    "browser_installed": false,
+    "production_task_created_or_rerun": false,
+    "live_llm_called": false
+  }
+}

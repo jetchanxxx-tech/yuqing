@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>语义检索与 Scrapling 验收门禁</title>
+  <style>
+    body{max-width:1100px;margin:32px auto;padding:0 20px;color:#203036;background:#f7f8f6;font:15px/1.7 system-ui,sans-serif}h1,h2,h3{line-height:1.35}h2{margin-top:32px;border-bottom:1px solid #d5dfda;padding-bottom:6px}table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #d5dfda;padding:9px;vertical-align:top;text-align:left}.gate{padding:14px;background:#fff4e6;border-left:4px solid #d9822b}.ok{padding:14px;background:#e9f4ed;border-left:4px solid #16735b}code{overflow-wrap:anywhere}li{margin:4px 0}.small{color:#5c6b66}
+  </style>
+</head>
+<body>
+  <h1>语义检索与 Scrapling 验收门禁</h1>
+  <p class="gate"><strong>状态：开发门禁文档。</strong> 2026-10-15 编制。当前仓库尚未实施 semantic-v2 或恢复生产正文补抓；本页不是“已部署”证明。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>。</p>
+
+  <h2>目标和边界</h2>
+  <p>同一任务中的多个关键词被视为一个研究主题。材料可以只出现系列中的一个型号或关注点的同义表达，但必须由模型结合主题和原文证据判断。系统逐平台检索、按界限补抓正文、验证来源和日期，再进行有计量的语义准入。</p>
+  <p>本版本不做自定义模板、开放式多轮 Agent、模型路由、缓存、自动重跑旧任务或第三阶段优化。历史 lexical-v1 任务保持原审计事实；新 run 使用 semantic-v2。</p>
+
+  <h2>验收标准</h2>
+  <table>
+    <thead><tr><th>领域</th><th>必须观察到的结果</th><th>阻断条件</th></tr></thead>
+    <tbody>
+      <tr><td>主题理解</td><td><code>iPhone18/iPhone18 Pro/iPhone18 Max</code> 中只出现一个型号的真实材料可判 direct；其他品牌仅命中泛词被判 irrelevant；对象与关注点同义表达可被识别。</td><td>要求每个词面全部出现，或泛词误召回进入 direct。</td></tr>
+      <tr><td>平台覆盖</td><td>每个选定平台有独立查询、候选、抓取、准入计数；混选不会把全部结果贴成第一个平台；未查询/失败与无相关材料分开。</td><td>只发一次混合查询、来源标签来自请求顺序、平台失败被伪装为零结果。</td></tr>
+      <tr><td>正文补抓</td><td>摘要为页面壳时尝试一次有界 Scrapling；正文清洗去除脚本/样式/导航；静态 15 秒、动态 25,000 毫秒、8 MiB/200,000 字符上限、取消后无后台抓取。</td><td>把页面壳当证据、使用未验证的浏览器参数、超时后进程残留或把视频页面称作转写。</td></tr>
+      <tr><td>硬边界</td><td>最终 URL、来源平台、公网地址、排除词和发布日期在模型前校验；越界/冲突/无法核验日期只留候选审计。</td><td>LLM 以理由覆盖硬边界，或用抓取时间替代原始发布日期。</td></tr>
+      <tr><td>语义协议</td><td>每份材料恰好一条 direct/context/irrelevant/uncertain 决策；ID、逐字证据、平台和日期均可回溯；非法 JSON/ID/引语 fail closed。</td><td>缺失决策默认通过，引用跨文档拼接，或模型结果无法绑定真实材料。</td></tr>
+      <tr><td>证据门槛</td><td>至少两条不同 URL 的 direct 材料才生成完整研判/报告；context 不计入目标产品评价分母；0/1 direct 留下候选审计并显示真实原因。</td><td>用 context、重复 URL、模型生成内容或摘要壳凑足两条。</td></tr>
+      <tr><td>预算和计量</td><td>主题规划、query/relevance、洞察、报告均有 run_id、授权、持久 outbox、实际用量/失败状态；输出初始目标 16,384，截断只在剩余时限内重试一次至 32,768。</td><td>无 run_id 直连供应商、丢失 ACK 删除 outbox、通过降低 max_tokens 隐藏超时。</td></tr>
+      <tr><td>时间和 UI</td><td>显示阶段、已用时、材料进度、失败/未处理和最长时限；刷新不重启；不再承诺固定“5–10 分钟”。</td><td>固定文案与真实上限不一致，或取消后继续产生网络/LLM调用。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>RED → GREEN 证据</h2>
+  <ol>
+    <li>先提交失败测试：Python 主题边界/平台隔离/Scrapling fixture/语义协议，Go transport/pipeline/PG 并发与回滚，React/Playwright 状态与来源展示。</li>
+    <li>在 GitHub-hosted runner 上确认 RED；本地不得执行 Go build/test/vet、npm build/tsc 或依赖编译。</li>
+    <li>按 workstream ownership 实施最小改动，逐任务在 hosted runner 变绿；证据必须包含测试名称、提交 SHA、workflow run ID 和日志摘要。</li>
+    <li>人工标注集至少 30 direct、20 context、30 irrelevant、20 uncertain。发布集 direct precision ≥95%、recall ≥90%；来源/日期/引用越权放行必须为 0。展示误判样本，不用被测模型生成标签。</li>
+    <li>真实对账使用专用测试任务：至少一个系列任一型号入选、一个关注点不逐字出现但有原文依据的材料入选，并记录每个选定平台的候选/正文/准入/未处理计数。不能修改用户历史任务或伪造结果。</li>
+</ol>
+
+  <h2>Hosted CI 门禁</h2>
+  <ul>
+    <li><code>build-release.yml</code>：Go race tests/vet/三个 linux/amd64 二进制、Python 全量测试、前端 lint/build、Playwright。</li>
+    <li><code>postgresql-tests.yml</code>：最新迁移、store 重建、租户隔离、并发/回滚、billing usage outbox 与旧 lexical-v1 数据读取。</li>
+    <li>必须核对同一提交 SHA 的所有 job 为 success；跳过 PG、缺浏览器 fixture、失败的真实 Bocha/LLM 对账或未达到人工标注阈值均阻断发布。</li>
+    <li>构建包必须通过外部归档 <code>.sha256</code>、<code>BUILD_COMMIT</code> 和解包后的 <code>SHA256SUMS</code>；浏览器产物也要有固定版本和哈希。</li>
+  </ul>
+
+  <h2>部署与回滚</h2>
+  <ol>
+    <li>在 <code>dev</code> 完成评审后创建 <code>dev → prod</code> PR；合并后只使用精确 prod SHA 的成功产物。</li>
+    <li>服务器先备份 PostgreSQL、源码、配置、二进制和前端，停止写入服务，校验归档和 <code>SHA256SUMS</code>，解包到带 SHA 的 release 目录。</li>
+    <li>先用同一构建包内的 CLI 执行迁移和 schema 校验，再原子安装二进制/哈希前端、启动服务并执行健康检查。缺产物时立即失败，服务器不编译。</li>
+    <li>部署后运行专用真实 smoke：Bocha、至少两个所选平台、Scrapling 正文/摘要回退、语义 direct/context、报告文档 ID 和 usage 事件。保留 JSON/HTML 证据。</li>
+    <li>任一门禁失败：停止新服务，恢复上一份已验证 release/config，按数据库备份程序处理不可逆迁移；保留失败 SHA 和日志，不强制回滚数据库结构或覆盖用户数据。</li>
+  </ol>
+
+  <h2>责任与风险</h2>
+  <table>
+    <thead><tr><th>责任人</th><th>负责文件/结果</th><th>主要风险及处理</th></tr></thead>
+    <tbody>
+      <tr><td>Python retrieval</td><td><code>engines/common</code>、<code>query_engine</code>、fixtures</td><td>平台反爬/浏览器缺失；记录真实失败，不伪造覆盖，保持有界并发。</td></tr>
+      <tr><td>Go platform</td><td>engine contract、analysis pipeline/store、migration</td><td>版本不一致、跨租户或计费泄漏；先持久化 coverage，协议 fail closed，PG 并发/回滚必测。</td></tr>
+      <tr><td>Web/report</td><td>API types、创建/详情页、报告来源</td><td>把未处理显示成无结果；分开候选、失败、context、direct，数组保持非 null。</td></tr>
+      <tr><td>Release/Ops</td><td>Actions、artifact、runbook、evidence</td><td>错 SHA/缺浏览器/迁移晚于启动；精确 SHA 校验、备份、先迁移后启动、保留上一版。</td></tr>
+    </tbody>
+  </table>
+
+  <p class="ok"><strong>交付判定：</strong>只有当上述验收证据、精确 SHA 的 hosted CI、真实 provider smoke、artifact 校验、迁移/健康检查和回滚材料全部齐全，才可在发布记录中标记“已部署”。目前本页仅定义门禁。</p>
+</body>
+</html>

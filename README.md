@@ -14,7 +14,7 @@ AI 原生 SaaS 舆情监测平台 — 面向中小企业与个人品牌，用多
 
 | 传统舆情工具 | 盘古舆情 |
 |-------------|---------|
-| ¥3-8万/年，商务谈判 | **¥0-499/月**，自助注册 |
+| ¥3-8万/年，商务谈判 | **¥0-999/月**，自助注册 |
 | 监测数据 → 人工总结 | **多 Agent 辩论** → AI 研判报告 |
 | 文本为主 | 文本 + 短视频 + 图片 **多模态** |
 | 模板固定，周期长 | LLM 驱动，注册后 **5 分钟出报告** |
@@ -167,8 +167,6 @@ PUT    /api/v1/admin/settings        更新配置
 # 一键部署（幂等，已安装组件自动跳过）
 sudo YUQING_DOMAIN=your-domain.com bash scripts/deploy.sh
 
-# 当前生产环境：yuqing2.pangu-cloud.com (101.96.209.90:22352)
-# CentOS Stream 9 / oneinstack 栈，详见 docs/ops/DEPLOYMENT_RUNBOOK.md §9
 
 # 手动步骤
 cd platform && make build              # Go → bin/

@@ -1,10 +1,12 @@
-"""Query Engine — Bocha AI search + Scrapling content fetching."""
+"""Query Engine — Bocha web search excerpts with source/date admission."""
 from datetime import date, datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from engines.common.scraper import PageScraper, ScrapedDocument, BOCHA_API_KEY as DEFAULT_BOCHA_KEY
 from engines.common.relevance import ADMISSION_VERSION
+from engines.common.semantic_admission import ADMISSION_VERSION as SEMANTIC_ADMISSION_VERSION, classify_materials
+from engines.common.llm_client import LLM_MODEL, build_client
 
 app = FastAPI(title="Query Engine", version="0.3.0")
 
@@ -31,6 +33,12 @@ class SearchRequest(BaseModel):
     analysis_id: str = ""
     exclude_words: list[str] = []
     bocha_api_key: str = ""  # 空则从环境变量 BOCHA_API_KEY 读取
+    run_id: str = ""
+    research_intent: dict = {}
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
 
 
 class SearchResponse(BaseModel):
@@ -56,7 +64,7 @@ async def health():
 
 @app.post("/search")
 async def search(req: SearchRequest) -> SearchResponse:
-    """抓取后按原文和可核验的发布日期筛选，再返回可入库的原文。"""
+    """按所选来源、关键词和可核验的发布日期筛选博查网页摘要。"""
     bocha_key = req.bocha_api_key or DEFAULT_BOCHA_KEY
     if not bocha_key:
         raise HTTPException(status_code=503, detail="Bocha API key required; preset test URLs are not real sources")
@@ -95,6 +103,7 @@ async def search(req: SearchRequest) -> SearchResponse:
                 coverage=stats,
                 date_from=date_from.isoformat() if date_from else "",
                 date_to=date_to.isoformat() if date_to else "",
+                research_intent=req.research_intent or None,
             )
             results.extend(found)
             per_keyword.append({"keyword": keyword, "status": "ok", **stats,
@@ -142,6 +151,25 @@ async def search(req: SearchRequest) -> SearchResponse:
         docs.append(d)
 
     doc_dicts = [_doc_to_dict(d) for d in docs[:result_limit]]
+    semantic_validation = None
+    if req.research_intent:
+        if not req.run_id or not req.llm_api_key:
+            raise HTTPException(status_code=503, detail="semantic admission requires an accepted run and model key")
+        llm = build_client(req.llm_api_key, req.llm_base_url, timeout=900)
+        semantic_validation = await classify_materials(
+            llm, req.llm_model or LLM_MODEL, {**req.research_intent, "keywords": keywords},
+            {item["id"]: item["content"] for item in doc_dicts},
+            usage_context={"run_id": req.run_id, "engine": "query", "phase": "relevance"},
+            timeout=900,
+        )
+        if not semantic_validation.valid:
+            raise HTTPException(status_code=502, detail={"message": "semantic admission protocol rejected", "errors": semantic_validation.errors})
+        allowed_ids = {item.document_id for item in semantic_validation.accepted + semantic_validation.context}
+        decisions = {item.document_id: item for item in semantic_validation.accepted + semantic_validation.context}
+        doc_dicts = [{**item, "semantic_classification": decisions[item["id"]].classification,
+                      "semantic_reason": decisions[item["id"]].reason,
+                      "evidence_spans": list(decisions[item["id"]].evidence_spans)}
+                     for item in doc_dicts if item["id"] in allowed_ids]
     source_stats: dict[str, int] = {}
     for d in doc_dicts:
         source_stats[d["source_type"]] = source_stats.get(d["source_type"], 0) + 1
@@ -157,13 +185,15 @@ async def search(req: SearchRequest) -> SearchResponse:
         total_count=len(doc_dicts),
         sources=sources_info,
         coverage={
-            "admission_version": ADMISSION_VERSION,
+            "admission_version": SEMANTIC_ADMISSION_VERSION if semantic_validation is not None else ADMISSION_VERSION,
             "provider_candidates": sum(row.get("provider_candidates", row.get("returned_count", 0)) for row in per_keyword),
             "unusable_count": sum(row.get("unusable_count", 0) for row in per_keyword),
             "irrelevant_count": sum(row.get("irrelevant_count", 0) for row in per_keyword),
             "source_mismatch_count": sum(row.get("source_mismatch_count", 0) for row in per_keyword),
             "candidate_truncated": any(row.get("candidate_truncated", False) for row in per_keyword),
             "accepted_count": len(doc_dicts),
+            "direct_count": len(semantic_validation.accepted) if semantic_validation is not None else len(doc_dicts),
+            "context_count": len(semantic_validation.context) if semantic_validation is not None else 0,
             "per_keyword": per_keyword,
             "keywords_searched": keywords,
             "failed_keywords": failed_keywords,
@@ -206,4 +236,9 @@ def _doc_to_dict(doc: ScrapedDocument) -> dict:
         "published_at": doc.published_at,
         "content_hash": doc.content_hash,
         "media_url": doc.media_url,
+        "content_kind": doc.content_kind,
+        "fetch_status": doc.fetch_status,
+        "fetch_reason": doc.fetch_reason,
+        "final_url": doc.final_url or doc.url,
+        "truncated": doc.truncated,
     }

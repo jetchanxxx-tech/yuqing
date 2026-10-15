@@ -146,6 +146,7 @@ type ForumRunResp struct {
 
 // CrawlReq schedules a platform-managed crawl.
 type CrawlReq struct {
+	RunID        string         `json:"run_id,omitempty"`
 	Sources      []string `json:"sources"`
 	Keywords     []string `json:"keywords"`
 	AnalysisID   string   `json:"analysis_id"`
@@ -153,6 +154,7 @@ type CrawlReq struct {
 	DateFrom     string   `json:"date_from,omitempty"`
 	DateTo       string   `json:"date_to,omitempty"`
 	ExcludeWords []string `json:"exclude_words,omitempty"`
+	ResearchIntent map[string]any `json:"research_intent,omitempty"`
 }
 
 // Shared types used across engine contracts.
@@ -168,6 +170,14 @@ type Document struct {
 	PublishedAt string `json:"published_at,omitempty"`
 	ContentHash string `json:"content_hash"`
 	MediaURL    string `json:"media_url,omitempty"`
+	ContentKind string `json:"content_kind,omitempty"`
+	FetchStatus string `json:"fetch_status,omitempty"`
+	FetchReason string `json:"fetch_reason,omitempty"`
+	FinalURL    string `json:"final_url,omitempty"`
+	Truncated   bool   `json:"truncated,omitempty"`
+	SemanticClassification string `json:"semantic_classification,omitempty"`
+	SemanticReason string `json:"semantic_reason,omitempty"`
+	EvidenceSpans []string `json:"evidence_spans,omitempty"`
 }
 
 type MediaResult struct {

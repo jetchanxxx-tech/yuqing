@@ -10,6 +10,7 @@ export interface CreateAnalysisPayload {
   sources: SourceKey[];
   date_from?: string;
   date_to?: string;
+  research_question?: string;
 }
 
 /** 列表元素（GET /analyses） */

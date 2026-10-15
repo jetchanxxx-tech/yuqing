@@ -159,7 +159,7 @@ Python 引擎**不是**同等完成度。改动前先确认：
 
 | 引擎 | 端口 | 状态 |
 |------|------|------|
-| `query_engine` | 8000 | ✅ **真实实现** — Bocha 搜索 + Scrapling 抓取，实测收集 19 条真实中文文档 |
+| `query_engine` | 8000 | **当前采集路径** — Bocha 网页摘要，经所选来源、关键词与发布日期准入；不抓取完整网页、视频或评论。检索与准入数量以每次任务记录为准 |
 | `insight_engine` | 8002 | ✅ **真实实现** — LLM 情感/话题（temp 0）+ **五维度独立分析**（专属人设×5 + 五段骨架，并发闸门 3）+ 批判重写摘要；确定性 trend + 引用保真校验 |
 | `report_engine` | 8003 | ✅ **真实实现** — LLM 研判 + HTML 模板渲染；LLM 失败降级为纯数据报告；**v0.1.2+ 支持 docx 流式生成**（python-docx） |
 | `forum_engine` | 8004 | ✅ **真实实现** (v0.3.0) — **4个专家Agent × 3轮辩论**（事实核查员/情绪分析师/传播专家/处置建议官），三层差异化设计（人设对立+维度分工+温度0.2-0.5），智谱GLM-4-flash，成本¥0.021/次，38秒完成，完整审计链路（3张数据库表） |
@@ -169,20 +169,23 @@ Python 引擎**不是**同等完成度。改动前先确认：
 
 ## Key Design Patterns
 
-### 数据采集链路（Scrapling + Bocha）
+### 报告数据采集链路（Bocha 网页摘要）
 
 ```
 Go Pipeline (state=fetching)
   → engineFetcher → RealCrawlerEngine.Search()  [HTTP, bochaKeyFunc 注入]
   → Python query_engine /search
-     1. Bocha API 搜索关键词 → URL 列表
-     2. Scrapling 抓取正文 (Fetcher 静态 / DynamicFetcher JS / StealthyFetcher 反爬)
-     3. adaptive=True 自适应选择器 + content_hash 去重
-     4. 正文抓取失败 → 退回用 Bocha snippet 兜底，保证结果不丢
-  → []Document 回传 Go → Service.AddDocuments() 存入 documentStore
+     1. 逐关键词调用 Bocha Web Search，传入保存的日期范围与来源约束
+     2. 取 summary，缺失时取 snippet；不调用 Scrapling fetch()
+     3. lexical-v1 校验摘要可用性、关键词、所选来源与可核验发布日期
+     4. 去重与数量限制，返回入选摘要及覆盖统计
+  → []Document 回传 Go → 保存材料 → 研判与报告
 ```
 
-- `engines/common/scraper.py` `PageScraper` — Scrapling 封装（错误降级、去重、source 路由）
+- 新建／重跑重新检索；查看／导出已有报告不重新检索。报告采集不自动使用 RSSHub 热榜；至少两条相关材料才可进入完整研判。
+- `PageScraper.fetch()` 保留独立抓取能力，但不在当前报告检索路径内。查询 HTTP 入口未配置 Bocha key 时拒绝请求，不使用预置测试 URL。
+- 仅选社交平台时用供应商域名限制；选新闻（含混选）时保留新闻单选的检索范围，随后逐条检查所选来源。未知域名不自动标为新闻，不能以放宽日期／来源来掩盖材料不足。2026-10-15 排查与修复验证见 `docs/dev/BOCHA_RETRIEVAL_DIAGNOSIS_2026-10-15.html`；部署状态以该记录和线上证据为准。
+- **界面与来源覆盖的实测边界（2026-10-15）**：创建页当前只开放抖音／今日头条／西瓜视频／微博／公众号；news 是历史／后端枚举，不能建议用户在界面单选新闻。一次多域名混搜不能保证各平台均有材料；实测单选公众号可过2篇，同词混选5源却全部返回头条。单关键词、5源、请求50篇会在现有采集层被缩到10篇，分组后全局截取也存在偏置；这些问题尚未实施修复。见 `docs/dev/BOCHA_PLATFORM_SOURCE_AUDIT_2026-10-15.html`，勿声称多选即多平台覆盖或旧报告来源标签均正确。
 - **Bocha 接口事实**（踩坑后确认）：端点 `https://api.bochaai.com/v1/web-search`（**不是** `/v1/ai/search`，那个返回 404）；响应结构 `data.webPages.value[]`，字段是 `name`/`url`/`snippet`（**不是** `title`）
 - Bocha key 三级来源：环境变量 `BOCHA_API_KEY` → 平台 settings（`PUT /api/v1/admin/settings`，零重启生效）→ 请求参数。Admin UI 在「管理后台 → 数据源配置」
 - 文档存在 `analysis.documentStore`（内存），`Documents()` 返回 `[]` 而非 nil —— 前端 `.map()` 遇 null 会崩
