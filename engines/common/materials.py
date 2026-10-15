@@ -4,6 +4,9 @@ Characters are Python Unicode code points, measured against the stored content;
 neither whitespace trimming nor generated summaries change that coordinate space.
 """
 from collections import deque
+import json
+
+from engines.common.evidence_units import document_units
 
 
 CHUNK_CHARS = 8000
@@ -52,7 +55,7 @@ def material_batches(documents: list[dict], context_documents: list[dict] = ()) 
     return batches
 
 
-def materials_text(documents: list[dict]) -> str:
+def materials_text(documents: list[dict], *, numbered: bool = False) -> str:
     parts = []
     for document in documents:
         content = str(document.get("content") or "")
@@ -66,7 +69,8 @@ def materials_text(documents: list[dict]) -> str:
             f"来源：{document.get('source_name') or document.get('source_type', '')} | {document.get('published_at', '')}\n"
             f"材料类别：{label}；内容类型：{document.get('content_kind') or '历史材料'}；原文片段[{start}:{end}]\n"
             f"保存范围：{completeness}\n"
-            f"正文：{content}"
+            + ("编号原文 source_units：" + json.dumps(list(document_units(document)), ensure_ascii=False)
+               if numbered else f"正文：{content}")
         )
     return "\n\n".join(parts) or "（无文档素材）"
 

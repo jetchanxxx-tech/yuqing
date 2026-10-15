@@ -6,6 +6,7 @@ import json
 from typing import Iterable, Mapping
 
 from engines.common.model_budget import AttemptBudget, chat_json_bounded, glm_reasoning_options
+from engines.common.evidence_units import MAX_UNIT_CHARS, source_units as _source_units
 
 ADMISSION_VERSION = "semantic-v2"
 DECISION_TYPES = frozenset({"direct", "context", "irrelevant", "uncertain"})
@@ -166,28 +167,12 @@ def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], material
         tuple(x for x in normalized if x.classification in {"irrelevant", "uncertain"}))
 
 
-MAX_UNIT_CHARS = 400
 _SYSTEM_PROMPT = "你是证据准入审查员。围绕统一研究主题分析原文证据。只输出JSON对象。"
 _CORRECTION_RULES = [
     "只返回严格JSON对象，完整decisions覆盖本批全部document_id，每个已知ID恰好一次。",
     "direct/context的evidence_unit_ids必须选择对应文档本批source_units中真实存在的编号；原文由程序引用，不输出改写引文。",
     "无法确认相关性或找不到原文证据时用uncertain并说明理由，不编造编号，仍返回该ID的决定。",
 ]
-
-
-def _source_units(document_id, text):
-    """Global immutable Unicode positions; sentence boundaries never trim text."""
-    start = 0
-    while start < len(text):
-        end = min(start + MAX_UNIT_CHARS, len(text))
-        if end < len(text):
-            # Pack short sentences instead of turning every line into a unit.
-            # A long sentence still has a strict 400-codepoint upper bound.
-            boundary = max((index + 1 for index in range(start + 149, end)
-                            if text[index] in "\n。！？!?"), default=end)
-            end = boundary
-        yield {"id": f"{document_id}@{start}:{end}", "text": text[start:end], "start": start, "end": end}
-        start = end
 
 
 def _messages(intent, batch, metadata):
