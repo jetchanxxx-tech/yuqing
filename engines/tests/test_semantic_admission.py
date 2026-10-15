@@ -76,3 +76,36 @@ async def test_long_material_segments_are_all_observed_with_original_offsets():
     assert decision.observed_spans[-1][1] == len(material)
     assert all(left <= previous_end for (_, previous_end), (left, _) in zip(decision.observed_spans, decision.observed_spans[1:]))
     assert all(span in material for span in decision.evidence_spans)
+
+@pytest.mark.parametrize("items,expected", [
+    ([{"document_id": "known", "classification": "direct", "reason": "目标体验", "evidence_spans": ["不存在的引文"]}],
+     [{"category": "evidence_not_in_document", "document_id": "known"}]),
+    ([{"document_id": "known", "classification": "invented-model-class", "reason": "任意模型文本", "evidence_spans": []}],
+     [{"category": "invalid_classification", "document_id": "known"}]),
+    ([{"document_id": "model-unknown-secret", "classification": "direct", "reason": "任意模型文本", "evidence_spans": []}],
+     [{"category": "unknown_document_id"}, {"category": "missing_decision", "document_id": "known"}]),
+])
+def test_validator_exposes_finite_diagnostics_bound_only_to_known_ids(items, expected):
+    import json
+    outcome = validate_decisions(items, {"known": "真实的研究材料正文"})
+    assert not outcome.valid
+    assert list(outcome.protocol_errors) == expected
+    serialized = json.dumps(outcome.protocol_errors)
+    for raw in ("model-unknown-secret", "invented-model-class", "任意模型文本", "不存在的引文"):
+        assert raw not in serialized
+
+
+@pytest.mark.asyncio
+async def test_classifier_exception_preserves_validator_category_and_current_batch_ids():
+    import asyncio
+    from engines.common.semantic_admission import classify_materials, SemanticAdmissionIncomplete
+    class InvalidJudge:
+        async def chat_json(self, model, messages, **kwargs):
+            return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "研究对象体验",
+                                    "evidence_spans": ["臆造文字"]}]}
+    with pytest.raises(SemanticAdmissionIncomplete) as captured:
+        await classify_materials(InvalidJudge(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"},
+            deadline=asyncio.get_running_loop().time() + 20)
+    assert captured.value.batch_document_ids == ("known",)
+    assert list(captured.value.protocol_errors) == [{"category": "evidence_not_in_document", "document_id": "known"}]
+    assert str(captured.value) == "semantic_protocol_rejected"

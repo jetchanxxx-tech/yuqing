@@ -236,3 +236,84 @@ async def test_query_other_models_receive_no_glm_thinking_options(monkeypatch, c
     assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
     assert all("thinking" not in kwargs and "reasoning_effort" not in kwargs for _, kwargs in llm.calls)
     assert all(kwargs["max_tokens"] == 16384 for _, kwargs in llm.calls)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("static_reason", ["empty_body", "verification_or_shell"])
+async def test_toutiao_static_empty_or_shell_gets_one_bounded_dynamic_recovery(monkeypatch, static_reason):
+    item = provider_candidate("toutiao", 1,
+        "We're sorry but react app doesn't work properly without JavaScript enabled.")
+    setup_pipeline(monkeypatch, {"toutiao": [item]})
+    calls = []
+    body = "iPhone18 Pro实际正文已经动态加载，用户记录了连续拍摄后的续航表现与握持体验。"
+    async def recover(url, source_type, mode="static", **kwargs):
+        calls.append((mode, kwargs["deadline"]))
+        if mode == "static":
+            return scraper_module.FetchOutcome(reason=static_reason)
+        return scraper_module.FetchOutcome(content=body, final_url=url, status="fetched", content_kind="body")
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", recover)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert [mode for mode, _ in calls] == ["static", "dynamic"]
+    assert calls[0][1] == calls[1][1]
+    assert response.json()["documents"][0]["content"] == body
+    assert response.json()["coverage"]["dynamic_fetches"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("static_reason", ["unsafe_destination", "unsafe_redirect", "unsafe_or_unselected_url", "source_redirect_mismatch"])
+async def test_security_rejected_candidate_never_retries_through_dynamic_browser(monkeypatch, static_reason):
+    item = provider_candidate("weibo", 1, "iPhone18 Pro有效网页摘要也不得绕过静态出站安全拒绝，相关性不解除硬边界。")
+    setup_pipeline(monkeypatch, {"weibo": [item]})
+    modes = []
+    async def rejected(url, source_type, mode="static", **kwargs):
+        modes.append(mode)
+        return scraper_module.FetchOutcome(reason=static_reason)
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", rejected)
+    response = await post_search(accepted_request(sources=["weibo"]))
+    assert response.status_code == 200, response.text
+    assert modes == ["static"]
+    assert response.json()["documents"] == []
+    assert response.json()["coverage"]["dynamic_fetches"] == 0
+
+
+@pytest.mark.asyncio
+async def test_toutiao_dynamic_recovery_keeps_existing_twenty_page_task_budget(monkeypatch):
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", index,
+        f"iPhone18 Pro第{index}条公开摘要足够用于语义判断，但静态正文为空，需要有界动态补抓。") for index in range(23)]})
+    calls = []
+    async def empty(url, source_type, mode="static", **kwargs):
+        calls.append(mode)
+        return scraper_module.FetchOutcome(reason="empty_body")
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", empty)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert calls.count("static") == 23
+    assert calls.count("dynamic") == response.json()["coverage"]["dynamic_fetches"] == 20
+    assert sum(row.get("dynamic_unprocessed_reason") == "browser_budget"
+               for row in response.json()["coverage"]["candidate_audit"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_durable_audit(monkeypatch):
+    from copy import deepcopy
+    marker = "untrusted-model-secret-marker"
+    def invalid(items):
+        return [{"document_id": item["document_id"], "classification": "direct", "reason": marker,
+                 "evidence_spans": [marker]} for item in items]
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro公开体验正文，内容明确记录了续航表现与手感，没有模型臆造的证据文字。") ]}, TopicModel(invalid))
+    persisted = []
+    async def audit(req, coverage):
+        persisted.append(deepcopy(coverage))
+    monkeypatch.setattr(query, "persist_candidate_audit", audit)
+    response = await post_search(accepted_request())
+    assert response.status_code == 502, response.text
+    coverage = response.json()["detail"]["coverage"]
+    candidate_id = coverage["candidate_audit"][0]["id"]
+    expected = {"batch_document_ids": [candidate_id],
+                "errors": [{"category": "evidence_not_in_document", "document_id": candidate_id}]}
+    assert coverage.get("semantic_protocol_errors") == expected
+    assert persisted[-1].get("semantic_protocol_errors") == expected
+    assert marker not in response.text
+    assert marker not in json.dumps(persisted)
+    assert coverage["accepted_count"] == 0
