@@ -16,6 +16,19 @@ class ModelContextExceeded(ValueError):
     pass
 
 
+def glm_reasoning_options(model, effort="low"):
+    """Verified GLM 5.3 options for bounded planning/admission work.
+
+    This family requires thinking and supports low/high/max effort. Keep
+    provider-specific fields away from other models; output budgets are separate.
+    """
+    if model.lower() not in {"glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"}:
+        return {}
+    if effort not in {"low", "high", "max"}:
+        raise ValueError("unsupported verified GLM reasoning effort")
+    return {"thinking": {"type": "enabled"}, "reasoning_effort": effort}
+
+
 @dataclass
 class AttemptBudget:
     """Supplier allowance shared by transport and semantic output recovery."""

@@ -2,7 +2,7 @@
 import json
 from typing import Mapping
 
-from engines.common.model_budget import chat_json_bounded
+from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
 
 VERSION = "semantic-v2"
 
@@ -50,6 +50,6 @@ async def plan_research_intent(llm, model, request, *, deadline):
     output = await chat_json_bounded(llm, model, [
         {"role": "system", "content": "你是盘古舆情研究规划员。关键词是同一研究主题的关联线索。只输出JSON对象，不补事实。"},
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-    ], deadline=deadline, temperature=0,
+    ], deadline=deadline, temperature=0, **glm_reasoning_options(model),
        usage_context={"run_id": request.run_id, "engine": "query", "phase": "plan"})
     return validate_intent(output, request, model)

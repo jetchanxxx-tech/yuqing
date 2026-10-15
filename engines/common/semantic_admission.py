@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import json
 from typing import Iterable, Mapping
 
-from engines.common.model_budget import chat_json_bounded
+from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
 
 ADMISSION_VERSION = "semantic-v2"
 DECISION_TYPES = frozenset({"direct", "context", "irrelevant", "uncertain"})
@@ -165,7 +165,7 @@ async def classify_materials(llm, model, intent, materials, usage_context=None, 
             response = await chat_json_bounded(llm, model, [
                 {"role": "system", "content": "你是证据准入审查员。围绕统一研究主题分析原文证据。只输出JSON对象。"},
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-            ], deadline=deadline, temperature=0, usage_context=usage_context)
+            ], deadline=deadline, temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
             result = validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], seen_materials)
             if not result.valid:
                 raise SemanticAdmissionIncomplete("semantic_protocol_rejected", _aggregate(materials, decisions, observed), observed)
