@@ -1,0 +1,67 @@
+{
+  "red": {
+    "commit": "81fc49915c740842866e7ca3c3609939e3e40fad",
+    "run_id": 38673383659,
+    "python_failed": 1,
+    "python_passed": 186,
+    "failure": "mixed selection loses news candidates"
+  },
+  "green": {
+    "id": 38673713732,
+    "name": "Build and Package",
+    "branch": "dev",
+    "sha": "c1987cac0de27a2918576eee52b596c13273b5e3",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/38673713732",
+    "jobs": [
+      {
+        "id": 116222438639,
+        "name": "Frontend build",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116222438706,
+        "name": "Go tests and binaries",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116222438811,
+        "name": "Python engine billing sandbox",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116222438887,
+        "name": "PostgreSQL contract checks / PostgreSQL Store Tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116222989322,
+        "name": "Actual Python Go PostgreSQL usage bridge",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116223356502,
+        "name": "Account and administrator acceptance",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 116224968667,
+        "name": "Release archive",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "python_passed": 187,
+  "python_failed": 0,
+  "python_skipped": 0,
+  "python_test_warnings": 1,
+  "production_deployed": false
+}

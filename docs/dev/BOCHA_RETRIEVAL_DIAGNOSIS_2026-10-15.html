@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>盘古舆情 · 博查30天检索排查</title>
+  <style>
+    body{max-width:960px;margin:36px auto;padding:0 20px;color:#203036;background:#f7f8f6;font:16px/1.8 system-ui,sans-serif}
+    h1,h2{line-height:1.4}h2{margin-top:30px;font-size:21px}table{width:100%;border-collapse:collapse;background:white}th,td{border:1px solid #d8e1de;padding:10px;text-align:left}code{overflow-wrap:anywhere}a{color:#126356}.note{padding:16px;background:#e9f3ed;border-left:4px solid #126356}
+  </style>
+</head>
+<body>
+  <h1>博查30天检索排查</h1>
+  <p>检查日期：2026-10-15。对象：<a href="https://yuqing2.pangu-cloud.com/analyses/01M4YPYJV13FMD3ZMA0ER66008">用户提供的“新车”任务</a>。生产基线：<code>e427127b32b30df079a5c59e2f5df19ba69545e5</code>（0.2.7-beta）。</p>
+  <p class="note">该任务的30天参数已正确保存；直接失败原因是博查返回的3条候选均不相关。另外发现独立程序缺陷：混选新闻与社交平台时，社交域名限制排除了新闻。检查和修复过程不重跑或更改原任务。</p>
+
+  <h2>原任务的实际结果</h2>
+  <p>关键词为“越7”“广汽”“gs8”；来源为抖音、微博、公众号；日期为2026-09-16至2026-10-15，包含起止日，共30天。生产记录保存每个词各1条候选、各1条不相关、有效证据0条；无效摘要、来源不匹配、无法核验日期和日期越界计数均为0。过滤在关键词准入阶段结束，尚未进入日期校验。</p>
+  <p>同参数直接调用生产使用的博查接口，每个词都返回同一篇<a href="https://mp.weixin.qq.com/s/Y52M3obppbj4EUiaOdbYlg">“不用开电脑了，特玩小程序上线生成 AI 涂装！”</a>，来源显示发布日期为2026-10-12。该篇不包含所搜车型或品牌，被排除符合当前规则。这只能说明本次博查返回不足，不能据此判断这些平台实际上没有相关内容。</p>
+  <p>原运行在采集阶段终止，无模型调用授权、无模型用量事件、无报告。本次运行的账本模式为exempt，没有额度扣减交易；没有虚构退款记录。<a href="evidence/bocha-20261015/original-task.json">脱敏的生产任务与账本只读证据</a>保留上述计数。排查仅发起有限次搜索／查询引擎请求，未触发收费研判或修改业务数据。</p>
+
+  <h2>真实供应商对照</h2>
+  <table>
+    <thead><tr><th>查询条件</th><th>观测结果</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>三个原关键词＋原30天＋抖音／微博／公众号</td><td>每词1条，均为上述无关公众号文章</td><td>复现原任务的0条有效材料</td></tr>
+      <tr><td>广汽＋相同平台＋<code>oneMonth</code></td><td>仍为同一篇无关文章</td><td>更换相对月份参数未改善</td></tr>
+      <tr><td>广汽＋原30天，分别限定微博／抖音／公众号</td><td>微博0，抖音0，公众号1条无关文章</td><td>并非仅多域名拼接导致</td></tr>
+      <tr><td>广汽＋公众号＋不限日期</td><td>返回34条；顶部样本日期为2018、2023、2024年</td><td>不限日期会混入旧材料，不能替代用户选择的30天</td></tr>
+      <tr><td>三个原关键词＋原30天＋不限制域名</td><td>越7为23条、广汽为19条、gs8为22条</td><td>可检索到汽车媒体等其他站点；不等于全部通过本项目准入</td></tr>
+      <tr><td>生产查询引擎：原关键词＋原30天＋仅新闻</td><td>64条候选，6条入选，57条来源不匹配，1条不相关</td><td>新闻单选路径可取得有效材料，仍有分类覆盖限制</td></tr>
+      <tr><td>生产查询引擎：原关键词＋原30天＋新闻／抖音／微博／公众号</td><td>3条候选，0条入选</td><td>新增来源反而丢失新闻，确认程序缺陷</td></tr>
+    </tbody>
+  </table>
+  <p>博查官方文档列出了<code>YYYY-MM-DD..YYYY-MM-DD</code>和<code>oneMonth</code>两种合法参数：<a href="https://github.com/BochaAI/bocha-search-mcp/blob/master/README.md">官方MCP说明</a>。对照还发现，直接在关键词中拼接<code>site:</code>未可靠限定返回域名，不作为修复方案。</p>
+
+  <h2>每份报告的数据实际从哪里来</h2>
+  <p>新建任务／重跑 → Go管线读取已保存的关键词、来源与日期 → Python查询引擎逐词调用<code>https://api.bochaai.com/v1/web-search</code> → 获取网页标题、URL、<code>summary</code>（缺失时取<code>snippet</code>）及<code>datePublished</code> → 校验所选来源、摘要可用性、关键词、发布日期 → 去重和数量限制 → 保存入选材料 → 基于这批材料进行研判和报告。</p>
+  <p>当前这条报告采集路径使用博查网页摘要，未逐条抓取完整网页、视频内容或评论。预置测试URL在生产查询入口被禁止；该路径没有自动使用RSSHub热榜。已有报告的查看／导出使用已保存结果，不会每次重新检索。新建／重跑会重新搜索，历史任务的材料不会自动补齐。</p>
+  <p>每关键词供应商候选最多50条；入选材料还受单词与全任务数量限制；相关性采用确定性<code>lexical-v1</code>，不会自动推断同义词。关键词不相关、无效摘要、来源不符、无法核验日期和范围外材料仍应排除。两条材料只是最低准入条件，不证明覆盖完整或所有事实已核验。</p>
+
+  <h2>本次修复与边界</h2>
+  <p>根因位于<code>engines/common/scraper.py</code>：组装<code>include</code>时只拼接已选社交平台域名，新闻没有域名表项；混选时整个博查请求因此被限制到社交域名。修复使包含新闻的组合沿用新闻单选的检索范围，再以现有规则逐条检查所选来源；仅选社交平台时保留供应商域名约束。</p>
+  <p>不自动加入新闻、不改原任务、不放宽30天、不降低至少两条证据门槛、不使用抓取日期冒充发布日期。该修复解决来源组合错误，不能让原任务的纯社交来源凭空获得材料。当前新闻分类只有有限域名表，未识别的站点仍归为custom_web；此次不扩大分类目录或把全部未知网站标为新闻。</p>
+
+  <h2>验证与发布状态</h2>
+  <p id="verification">实际查询HTTP入口回归已添加：新闻与社交混选、仅新闻、仅社交三组；同时覆盖未选平台、未知站点、无关摘要、日期边界、旧闻及无日期材料。<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38673383659">托管RED</a>：提交<code>81fc49915c740842866e7ca3c3609939e3e40fad</code>，1项预期失败（混选时新闻缺失）、186项通过。<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38673713732">实现验证</a>：提交<code>c1987cac0de27a2918576eee52b596c13273b5e3</code>，Python 187项通过、零失败、零跳过，1项已有Starlette弃用警告；全部7项托管作业成功：Go race／vet／构建、前端lint／构建、Python、真实PostgreSQL契约、实际用量桥、浏览器验收、发布包归档。<a href="evidence/bocha-20261015/hosted-source-checks.json">精确修复提交的托管检查记录</a>。修复已提交dev，未合并prod、未部署；此文档不构成已部署声明。</p>
+  <p>本地仅编辑、Git和AST语法检查；编译、打包、完整测试均由GitHub托管工作流执行。</p>
+
+  <h2>当前可用操作</h2>
+  <p>如果接受新闻作为材料来源，可新建同参数任务并<strong>只选择新闻</strong>；这一路径的采集已实测得到6条有效材料，但本次未触发完整研判，不能承诺报告一定完成。如果必须只看抖音／微博／公众号，应继续明确显示覆盖不足，并评估这些平台的实际数据接入能力；不能将公开网页搜索包装成完整社交舆情采集。</p>
+</body>
+</html>
