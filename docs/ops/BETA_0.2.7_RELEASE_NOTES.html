@@ -1,0 +1,6 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>盘古舆情 0.2.7-beta 发布说明</title><style>body{max-width:960px;margin:36px auto;padding:0 24px;font:16px/1.8 system-ui,sans-serif;color:#303034}h1,h2{line-height:1.4}code{overflow-wrap:anywhere}a{color:#b71934}</style></head><body>
+<h1>盘古舆情 0.2.7-beta 发布说明</h1><p>2026-10-15。状态：发布候选，等待受保护生产 PR、精确 prod SHA 构建及实际服务器部署核验；此页不是已上线声明。</p>
+<h2>场景与研判</h2><p>事件、品牌、竞品和行业四种视角增加具体分析要求；品牌日常口碑、新品上市、质量投诉、竞品动态、突发危机、营销复盘六类场景任务随单次分析保存，作用于维度研判、摘要与报告。自定义模板、自动周期监测和多模型调度未纳入。</p>
+<h2>推理参数与证据</h2><p>GLM-5.3 系列速览采用 enabled＋reasoning_effort=low，其他模型不套用该参数。普通 400 不再直接删除思考参数重试。维度引用核验真实文档、连续原文和来源；话题数量按真实唯一成员计算。报告素材提供真实文档 ID，无法核验的风险项移除并显示提示。</p>
+<h2>升级与边界</h2><p>新增迁移 0026：analyses.scenario_template_id，默认空字符串兼容历史任务。先用本次 GitHub 预编译 CLI 执行平台迁移，再启动新服务。保留原配置、文件、账务与旧版回滚产物；前端先安装新 hash 资源，最后原子替换 index.html。</p><p>功能源码 f98f733 的七项 GitHub 托管检查通过，Python 184 项无失败／跳过，真实 PG 并发／回滚／重建、浏览器与用量桥契约通过。版本候选和正式 prod 仍各自需要精确 SHA 检查。真实模型质量、供应商搜索／通知／支付联调不由离线契约替代；自由文本摘要／话题尚无逐句语义事实核验。</p>
+<p><a href="../dev/INSIGHT_PROMPT_IMPLEMENTATION_2026-10-15.html">实施与验收记录</a>；<a href="../planning/DOMESTIC_LLM_COMPATIBILITY_DISCUSSION_2026-10-15.html">国内模型兼容讨论稿</a>。</p></body></html>
