@@ -21,7 +21,7 @@ import threading
 import time
 from urllib.parse import urlsplit, urlunsplit, urljoin
 
-from engines.common.platform_extractors import MAX_BODY_BYTES, extract_page
+from engines.common.platform_extractors import MAX_BODY_BYTES, extract_page, body_selectors
 
 
 class UnsafeDestination(ValueError):
@@ -201,8 +201,52 @@ def fetch_in_worker(url, source_type, mode="static"):
                 else:
                     return {"status": "failed", "reason": "redirect_limit"}
             else:
+                # Navigation, guarded redirects and asynchronous rendering
+                # share one budget, including browser startup time. The outer
+                # worker keeps its separate 28-second cleanup allowance.
+                dynamic_deadline = time.monotonic() + 25
+                render_state = {"ready": False, "reason": "empty_body"}
+
+                def remaining_ms():
+                    value = int((dynamic_deadline - time.monotonic()) * 1000)
+                    if value <= 0:
+                        raise TimeoutError("dynamic_page_deadline")
+                    return value
+
+                def await_body(page):
+                    try:
+                        while True:
+                            remaining = remaining_ms()
+                            if proxy.blocked_reason:
+                                return
+                            page.set_default_timeout(remaining)
+                            html = page.content()
+                            if len(html.encode("utf-8")) > MAX_BODY_BYTES:
+                                proxy.blocked_reason = "response_body_limit"
+                                return
+                            snapshot = Selector(html, url=page.url)
+                            # An already attached empty article/main is not a
+                            # readiness signal. Parse with the actual platform
+                            # rules so scripts/nav/login shells cannot satisfy it.
+                            if any(snapshot.css(selector) for selector in body_selectors(source_type)):
+                                extracted = extract_page(snapshot, source_type)
+                                if extracted["content"]:
+                                    render_state["ready"] = True
+                                    return
+                                render_state["reason"] = extracted["reason"]
+                                if extracted["reason"] == "response_body_limit":
+                                    return
+                            page.wait_for_timeout(min(100, remaining_ms()))
+                    except TimeoutError:
+                        if render_state["reason"] != "verification_or_shell":
+                            render_state["reason"] = "fetch_timeout"
+                    except Exception:
+                        render_state["reason"] = "dynamic_body_wait_failed"
+
                 def setup(page):
                     try:
+                        page.set_default_navigation_timeout(remaining_ms())
+                        page.set_default_timeout(remaining_ms())
                         def guard(route):
                             target = route.request.url
                             if not is_public_http_url(target):
@@ -215,7 +259,7 @@ def fetch_in_worker(url, source_type, mode="static"):
                                     return route.abort()
                                 # Fetch this hop only. A redirect is inspected
                                 # before the browser can reach its destination.
-                                response = route.fetch(max_redirects=0, timeout=25_000,
+                                response = route.fetch(max_redirects=0, timeout=remaining_ms(),
                                                        headers={**route.request.headers, "accept-encoding": "identity"})
                                 location = response.headers.get("location", "")
                                 if response.status in {301, 302, 303, 307, 308} and location:
@@ -242,7 +286,7 @@ def fetch_in_worker(url, source_type, mode="static"):
                         raise
                 page = DynamicFetcher.fetch(
                     url, headless=True, proxy=proxy_url, network_idle=False, timeout=25_000,
-                    disable_resources=True, page_setup=setup, retries=1, google_search=False,
+                    disable_resources=True, page_setup=setup, page_action=await_body, retries=1, google_search=False,
                     extra_flags=["--proxy-bypass-list=<-loopback>", "--disable-quic",
                                  "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
                     additional_args={"service_workers": "block", "accept_downloads": False},
@@ -252,6 +296,8 @@ def fetch_in_worker(url, source_type, mode="static"):
                 return {"status": "failed", "reason": proxy.blocked_reason, "final_url": final_url}
             if not is_public_http_url(final_url) or _classify_by_domain(final_url) != source_type:
                 return {"status": "failed", "reason": "unsafe_redirect", "final_url": final_url}
+            if mode != "static" and not render_state["ready"]:
+                return {"status": "failed", "reason": render_state["reason"], "final_url": final_url}
             status_code = getattr(page, "status", 200)
             if status_code not in range(200, 300):
                 return {"status": "failed", "reason": f"http_{status_code}", "final_url": final_url}

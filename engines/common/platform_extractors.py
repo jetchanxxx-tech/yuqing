@@ -18,6 +18,11 @@ _NOISE = re.compile(r"(?:^|[\s_-])(?:nav|footer|header|recommend(?:ation)?s?|rel
 _BLOCKS = {"article", "section", "div", "p", "li", "h1", "h2", "h3", "h4", "br"}
 
 
+def body_selectors(source_type):
+    """The same article/description nodes define extraction and readiness."""
+    return _SELECTORS.get(source_type, _SELECTORS["news"])
+
+
 class _CleanText(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -71,7 +76,7 @@ def extract_page(page, source_type):
     if size > MAX_BODY_BYTES:
         return {"content": "", "reason": "response_body_limit", "truncated": True, "published_at": ""}
     fragments = []
-    for selector in _SELECTORS.get(source_type, _SELECTORS["news"]):
+    for selector in body_selectors(source_type):
         selected = page.css(selector)
         if selected:
             fragments = [str(node.html_content) for node in selected]

@@ -1,6 +1,6 @@
 """Evidence-bound semantic decisions over all observed material segments."""
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 from typing import Iterable, Mapping
 
@@ -72,10 +72,44 @@ class SemanticAdmissionIncomplete(RuntimeError):
         self.protocol_errors = _safe_protocol_errors(protocol_errors, self.batch_document_ids)
 
 
+_QUOTE_FONTS = {"“": '"', "”": '"', "‘": "'", "’": "'"}
+
+
+def _evidence_signature(value):
+    """Index only whitespace/quote-font equivalence back to original text."""
+    chars = []
+    positions = []
+    for index, char in enumerate(value):
+        if char.isspace():
+            continue
+        chars.append(_QUOTE_FONTS.get(char, char))
+        positions.append(index)
+    return "".join(chars), positions
+
+
+def _restore_evidence_span(span, content, indexed):
+    if not span.strip():
+        return None
+    if span in content:
+        return span
+    needle, _ = _evidence_signature(span)
+    if not needle:
+        return None
+    signature, positions = indexed
+    start = signature.find(needle)
+    if start < 0:
+        return None
+    # Store the actual uninterrupted source substring, including its original
+    # newlines and curved quotes. Words, numbers and other punctuation remain
+    # exact; neither source text nor its content hash is rewritten.
+    return content[positions[start]:positions[start + len(needle) - 1] + 1]
+
+
 def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], materials: Mapping[str, str], eligible_ids=None):
     normalized = []
     errors = []
     seen = set()
+    signatures = {}
     for item in decisions:
         if isinstance(item, SemanticDecision):
             decision = item
@@ -112,10 +146,15 @@ def validate_decisions(decisions: Iterable[SemanticDecision | Mapping], material
         if decision.classification in {"direct", "context"} and not decision.evidence_spans:
             errors.append(f"missing_evidence:{decision.document_id}")
             continue
-        if any(not span.strip() or span not in materials[decision.document_id] for span in decision.evidence_spans):
+        content = materials[decision.document_id]
+        if decision.document_id not in signatures:
+            signatures[decision.document_id] = _evidence_signature(content)
+        restored = tuple(_restore_evidence_span(span, content, signatures[decision.document_id])
+                         for span in decision.evidence_spans)
+        if any(span is None for span in restored):
             errors.append(f"evidence_not_in_document:{decision.document_id}")
             continue
-        normalized.append(decision)
+        normalized.append(replace(decision, evidence_spans=restored))
     errors.extend(f"missing_decision:{document_id}" for document_id in sorted(set(materials) - seen))
     if errors:
         return DecisionValidation((), (), (), tuple(errors), _safe_protocol_errors(errors, materials))

@@ -215,7 +215,7 @@ def _coverage(coverage):
             queries=len(queries), provider_candidates=sum(row.get("provider_candidates", 0) for row in queries),
             processed_count=sum(row.get("fetch_status") in {"fetched", "failed"} for row in source_rows),
             body_count=sum(row.get("content_kind") == "body" for row in source_rows),
-            summary_count=sum(row.get("content_kind") == "summary" and row.get("status") in {"accepted", "rejected", "semantic_pending"} for row in source_rows),
+            summary_count=sum(row.get("content_kind") == "summary" and usable_excerpt(row.get("content", "")) for row in source_rows),
             direct_count=sum(row.get("semantic_classification") == "direct" and row["status"] == "accepted" for row in source_rows),
             context_count=sum(row.get("semantic_classification") == "context" and row["status"] == "accepted" for row in source_rows),
             rejected_count=sum(row["status"] in {"filtered", "rejected"} for row in source_rows),

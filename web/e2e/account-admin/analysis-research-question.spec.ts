@@ -50,10 +50,12 @@ test('semantic audit distinguishes empty results, failed platforms, background a
   await expect(page).toHaveURL(/\/dashboard$/);
   // This renderer fixture deliberately contains distinct failures; actual API persistence is verified above.
   await page.route('**/api/v1/analyses/semantic-audit-fixture', route => route.fulfill({ json: {
-    id: 'semantic-audit-fixture', name: '多平台采集审计', state: 'failed', progress: 25, doc_count: 1,
+    id: 'semantic-audit-fixture', name: '多平台采集审计', state: 'failed', error_code: 'fetch_failed', progress: 25, doc_count: 1,
     research_intent: { version: 'semantic-v2', topic: 'iPhone18系列续航研究', entities: ['iPhone18 Pro'], focus: ['续航'] },
     retrieval_coverage: { admission_version: 'semantic-v2', provider_candidates: 4, accepted_count: 2, direct_count: 1, context_count: 1,
       unusable_count: 0, irrelevant_count: 1, source_mismatch_count: 0,
+      semantic_protocol_errors: { batch_document_ids: ['candidate-unverified'],
+        errors: [{ category: 'evidence_not_in_document', document_id: 'candidate-unverified' }] },
       per_platform: [
         { source: 'weibo', status: 'queried', queries: 1, provider_candidates: 4, processed_count: 3, body_count: 2, summary_count: 1, direct_count: 1, context_count: 1, rejected_count: 1, unprocessed_count: 1, failed_count: 0 },
         { source: 'douyin', status: 'failed', queries: 1, provider_candidates: 0, processed_count: 0, direct_count: 0, context_count: 0, failed_count: 1 },
@@ -62,7 +64,10 @@ test('semantic audit distinguishes empty results, failed platforms, background a
       candidate_audit: [{ id: 'candidate-rejected', title: '其他品牌续航广告', url: 'https://weibo.com/original', final_url: 'https://weibo.com/final',
         source_type: 'weibo', content_kind: 'body', fetch_status: 'success', status: 'rejected', reason: 'semantic_irrelevant',
         semantic_classification: 'irrelevant', semantic_reason: '材料只讨论其他品牌，与本轮研究对象无关',
-        date_sources: { provider: '2026-10-10', body: '2026-10-10' }, evidence_spans: ['其他品牌广告'] }],
+        date_sources: { provider: '2026-10-10', body: '2026-10-10' }, evidence_spans: ['其他品牌广告'] },
+      { id: 'candidate-unverified', title: 'iPhone18 Pro续航体验待核验', url: 'https://weibo.com/unverified', source_type: 'weibo',
+        content_kind: 'body', fetch_status: 'success', status: 'unprocessed', reason: 'semantic_protocol_failed',
+        published_at: '2026-10-10', evidence_spans: [] }],
     },
   } }));
   await page.route('**/api/v1/analyses/semantic-audit-fixture/timeline*', route => route.fulfill({ json: {
@@ -74,10 +79,26 @@ test('semantic audit distinguishes empty results, failed platforms, background a
   await expect(page.getByText('背景材料 1 条', { exact: true })).toBeVisible();
   await expect(page.getByText('检索失败', { exact: true })).toBeVisible();
   await expect(page.getByText('已检索，无候选', { exact: true })).toBeVisible();
+  const protocolFailure = page.getByRole('alert').filter({ hasText: '引用未能对应原文' }).first();
+  await expect(protocolFailure).toBeVisible();
+  await expect(protocolFailure).toContainText('iPhone18 Pro续航体验待核验');
+  await expect(protocolFailure).toContainText('未完成');
+  await expect(protocolFailure).toContainText('未采纳');
   await page.getByText('候选材料与处理原因', { exact: true }).click();
   await expect(page.getByText('材料只讨论其他品牌，与本轮研究对象无关', { exact: true })).toBeVisible();
   await expect(page.getByText('其他品牌广告', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/account-admin/analysis-semantic-audit.png' });
+  await page.route('**/api/v1/analyses/semantic-generic-failure-fixture', route => route.fulfill({ json: {
+    id: 'semantic-generic-failure-fixture', name: '无结构诊断的采集失败', state: 'failed', error_code: 'fetch_failed', progress: 25,
+  } }));
+  await page.route('**/api/v1/analyses/semantic-generic-failure-fixture/timeline*', route => route.fulfill({ json: {
+    nodes: [], edges: [], unlocated: [], coverage: { scope: 'fixture', source_count: 0, duplicate_count: 0, timed_count: 0, unlocated_count: 0, relation_reason: '' }, warnings: [], next_cursor: '',
+  } }));
+  await page.goto('/analyses/semantic-generic-failure-fixture');
+  await expect(page.getByRole('heading', { name: '无结构诊断的采集失败', exact: true })).toBeVisible();
+  await expect(page.getByText('采集未完成，请检查关键词、所选来源及采集记录后重试。', { exact: true })).toBeVisible();
+  await expect(page.getByText('引用未能对应原文', { exact: false })).toHaveCount(0);
+  await expect(page.getByText('可重新运行任务；若反复失败请前往账单页确认额度', { exact: true })).toHaveCount(0);
 });
 
 test('legacy deterministic intent is not presented as a metered semantic understanding', async ({ page, request }) => {
