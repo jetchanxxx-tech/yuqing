@@ -153,3 +153,122 @@ def test_format_restoration_never_borrows_quote_from_another_document():
     ], {"one": "雅阁后座坐垫偏软，长途乘坐舒服。", "two": "作者称iPhone\n18\nPro为“续航惊喜”。"})
     assert not result.valid
     assert result.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "one"},)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_failure", ["missing_decision", "rewritten_quote"])
+async def test_one_protocol_correction_can_complete_without_resetting_deadline_or_output_budget(first_failure):
+    import asyncio
+    import copy
+    import json
+    from engines.common.semantic_admission import classify_materials
+    from engines.common.model_budget import AttemptBudget
+    calls = []
+    marker = "untrusted-model-text-must-not-enter-correction"
+    class CorrectingJudge:
+        async def chat_json(self, model, messages, **kwargs):
+            calls.append({"messages": copy.deepcopy(messages), "kwargs": dict(kwargs)})
+            if len(calls) == 1:
+                if first_failure == "missing_decision":
+                    return {"decisions": []}
+                return {"decisions": [{"document_id": "known", "classification": "direct", "reason": marker,
+                                       "evidence_spans": [marker]}]}
+            return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标实际体验",
+                                   "evidence_spans": ["iPhone18 Pro真实续航体验"]}]}
+    deadline = asyncio.get_running_loop().time() + 10
+    result = await classify_materials(CorrectingJudge(), "fixture-model", {"topic": "iPhone18系列"},
+                                     {"known": "iPhone18 Pro真实续航体验"}, deadline=deadline)
+    assert result.valid and result.accepted[0].document_id == "known"
+    assert len(calls) == 2
+    assert all(call["kwargs"]["max_tokens"] >= 16384 for call in calls)
+    correction = json.loads(calls[1]["messages"][-1]["content"])
+    assert correction["protocol_correction"]["batch_document_ids"] == ["known"]
+    expected_category = "missing_decision" if first_failure == "missing_decision" else "evidence_not_in_document"
+    assert correction["protocol_correction"]["errors"] == [{"category": expected_category, "document_id": "known"}]
+    rules = " ".join(correction["protocol_correction"]["rules"])
+    assert "JSON" in rules and "decisions" in rules and "uncertain" in rules
+    assert "原文" in rules or "verbatim" in rules
+    assert marker not in json.dumps(calls[1]["messages"])
+
+
+@pytest.mark.asyncio
+async def test_persistent_bad_protocol_stops_after_two_and_keeps_final_safe_error():
+    import asyncio
+    from engines.common.semantic_admission import classify_materials, SemanticAdmissionIncomplete
+    calls = []
+    class InvalidJudge:
+        async def chat_json(self, model, messages, **kwargs):
+            calls.append(messages)
+            return {"decisions": [{"document_id": "known", "classification": "direct", "reason": "任意无关模型文字",
+                                   "evidence_spans": ["不在原文的错误证据"]}]}
+    with pytest.raises(SemanticAdmissionIncomplete) as captured:
+        await classify_materials(InvalidJudge(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"},
+                                 deadline=asyncio.get_running_loop().time() + 10)
+    assert len(calls) == 2
+    assert captured.value.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "known"},)
+    assert captured.value.batch_document_ids == ("known",)
+    assert captured.value.decisions == ()
+
+
+@pytest.mark.asyncio
+async def test_transport_truncation_and_bad_protocol_share_two_actual_supplier_calls_total():
+    import asyncio
+    import json
+    import httpx
+    from engines.common.llm_client import LLMClient
+    from engines.common.semantic_admission import classify_materials, SemanticAdmissionIncomplete
+    calls = []
+    def provider(request):
+        calls.append(json.loads(request.content))
+        response = {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标体验",
+                                    "evidence_spans": ["修改了原文的假引文"]}]}
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(response)},
+            "finish_reason": "length" if len(calls) == 1 else "stop"}]})
+    client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
+    with pytest.raises(SemanticAdmissionIncomplete) as captured:
+        await classify_materials(client, "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"},
+                                 deadline=asyncio.get_running_loop().time() + 10)
+    assert len(calls) == 2
+    assert [request["max_tokens"] for request in calls] == [16384, 32768]
+    assert captured.value.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "known"},)
+    assert all("attempt_budget" not in request for request in calls)
+
+
+@pytest.mark.asyncio
+async def test_protocol_correction_preserves_previously_verified_batch_on_final_failure():
+    import asyncio
+    import json
+    from engines.common.semantic_admission import classify_materials, SemanticAdmissionIncomplete
+    calls = []
+    materials = {f"doc-{index}": f"第{index}条实际原文，记录研究对象的具体体验。" for index in range(13)}
+    class LastBatchFails:
+        async def chat_json(self, model, messages, **kwargs):
+            calls.append(messages)
+            first_prompt = json.loads(messages[1]["content"])
+            rows = first_prompt["materials"]
+            return {"decisions": [{"document_id": row["document_id"], "classification": "direct", "reason": "原文体验",
+                 "evidence_spans": [row["content"] if len(rows) == 12 else "最后一批错误改写引文"]} for row in rows]}
+    with pytest.raises(SemanticAdmissionIncomplete) as captured:
+        await classify_materials(LastBatchFails(), "fixture-model", {"topic": "研究主题"}, materials,
+                                 deadline=asyncio.get_running_loop().time() + 10)
+    assert len(calls) == 3  # First batch succeeds once; last batch gets at most two.
+    assert {item.document_id for item in captured.value.decisions} == {f"doc-{index}" for index in range(12)}
+    assert captured.value.batch_document_ids == ("doc-12",)
+    assert captured.value.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "doc-12"},)
+    assert set(captured.value.observed) == {f"doc-{index}" for index in range(12)}
+
+
+@pytest.mark.asyncio
+async def test_protocol_correction_never_extends_original_expired_deadline():
+    import asyncio
+    from engines.common.semantic_admission import classify_materials, SemanticAdmissionIncomplete
+    calls = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 0.03
+    class SlowFirstProtocol:
+        async def chat_json(self, model, messages, **kwargs):
+            calls.append(messages)
+            await asyncio.sleep(0.06)
+            return {"decisions": []}
+    with pytest.raises(SemanticAdmissionIncomplete):
+        await classify_materials(SlowFirstProtocol(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"}, deadline=deadline)
+    assert len(calls) == 1
