@@ -59,6 +59,15 @@ def classification_phase(body):
 
 def test_overlapping_topic_output_is_corrected_before_statistics_are_marked_complete(monkeypatch):
     provider = ProtocolProvider()
+    original_chat = insight._chat_json_smart
+    deadlines = []
+
+    async def observe_deadline(llm, model, messages, **kwargs):
+        if any("文档列表（JSON）" in message["content"] for message in messages):
+            deadlines.append(kwargs["deadline"])
+        return await original_chat(llm, model, messages, **kwargs)
+
+    monkeypatch.setattr(insight, "_chat_json_smart", observe_deadline)
     body = analyze(monkeypatch, provider)
     assert body["warning"] == ""
     assert [row["document_id"] for row in body["sentiments"]] == ["d1", "d2"]
@@ -68,7 +77,7 @@ def test_overlapping_topic_output_is_corrected_before_statistics_are_marked_comp
     correction = provider.classification_calls[1]["messages"][-1]["content"]
     assert "d1" in correction and "d2" in correction
     assert "MODEL_CONTENT_NEVER_ECHO" not in correction and "unknown-model-id" not in correction
-    assert provider.classification_calls[0]["kwargs"]["deadline"] == provider.classification_calls[1]["kwargs"]["deadline"]
+    assert len(deadlines) == 2 and deadlines[0] == deadlines[1]
 
 
 @pytest.mark.parametrize("second", ["invalid", "malformed", "transport"])
