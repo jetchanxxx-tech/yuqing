@@ -1,6 +1,6 @@
 {
-  "analysis_id": "01M50MGCPJRPSZ9BFEK54MZ5FY",
-  "run_id": "01M50MGCPMSYG7Z3V2VKPJ2A9T",
+  "analysis_id": "01M50NNZ15CX1Q9KDA3K8SPK7T",
+  "run_id": "01M50NNZ17H8DAJ8P60D2QMVWY",
   "state": "completed",
   "doc_count": 50,
   "context_count": 0,
@@ -11,8 +11,8 @@
     "summary": 50
   },
   "dimension_count": 3,
-  "verified_dimension_quotes": 38,
-  "verified_report_risks": 13,
+  "verified_dimension_quotes": 39,
+  "verified_report_risks": 14,
   "phases_complete": [
     "classification",
     "dimension:heat",
@@ -21,9 +21,10 @@
     "summary",
     "report"
   ],
-  "report_id": "rep-cce96e86a6664e34",
-  "report_sha256": "8ccee08d3a4c6ec0f846d5078be8a379db40b74a5c5047bcd2390797f9cb8390",
-  "report_bytes": 123529,
+  "verified_export_sources": 50,
+  "report_id": "rep-b41c331cd49946d1",
+  "report_sha256": "76d19a89748ebf7c5f5f834ea516dbeecc3ee05f740a064065c06792994ebd28",
+  "report_bytes": 139325,
   "ledger": {
     "run": {
       "state": "completed",
@@ -43,9 +44,9 @@
         "usage_status": "reported",
         "cost_status": "pending",
         "billing_exempt": false,
-        "calls": 16,
-        "input_tokens": 175278,
-        "output_tokens": 18342,
+        "calls": 15,
+        "input_tokens": 162072,
+        "output_tokens": 17423,
         "known_cost_micro_cny": null
       },
       {
@@ -55,8 +56,8 @@
         "cost_status": "pending",
         "billing_exempt": false,
         "calls": 8,
-        "input_tokens": 52090,
-        "output_tokens": 8437,
+        "input_tokens": 50144,
+        "output_tokens": 10588,
         "known_cost_micro_cny": null
       },
       {
@@ -65,9 +66,9 @@
         "usage_status": "reported",
         "cost_status": "pending",
         "billing_exempt": false,
-        "calls": 4,
-        "input_tokens": 65875,
-        "output_tokens": 8877,
+        "calls": 3,
+        "input_tokens": 49903,
+        "output_tokens": 6548,
         "known_cost_micro_cny": null
       }
     ],
@@ -75,18 +76,8 @@
     "candidate_materials": 80,
     "audits": 13
   },
-  "missing_export_source_ids": [
-    "233e8dc962f44d1e",
-    "4a8ffb50c0ddd51c",
-    "4b2c26b4755e6c15",
-    "660e565fc5618c86",
-    "6ca309a256091182",
-    "e98130e1ce3f1871"
-  ],
-  "export_provenance_complete": false,
-  "scope": "preliminary reconciliation; normal real-provider task; source/quote/coverage/accounting reconciliation, not article truth or online accuracy",
-  "runtime_commit": "2e3e8335e526f479b2db2a2c01fb70f1a982d4aa",
-  "export_fix_commit": "b0c6108ead93a79e84fa11f578955ab8b057ff17",
-  "export_fix_hosted_python": "334 passed; full workflow 38805179975 pending final inspection",
-  "new_full_report_validation": "V11 running; no acceptance claimed"
+  "scope": "normal real-provider task; source/quote/coverage/accounting reconciliation, not article truth or online accuracy",
+  "runtime_commit": "b0c6108ead93a79e84fa11f578955ab8b057ff17",
+  "export_provenance_complete": true,
+  "scope_note": "Independent isolated real-model pipeline; runtime sources identical to dev e420 except documentation."
 }
