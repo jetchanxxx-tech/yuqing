@@ -26,7 +26,7 @@ from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_period, analysis_scope
 from engines.common.auth import InternalAuthMiddleware
 from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials
-from engines.common.model_budget import chat_json_bounded
+from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
 
 try:
     from docx import Document
@@ -351,6 +351,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                      materials=materials_text(batch, numbered=True), dimensions=notes)}],
                 temperature=0.3, max_tokens=16384, deadline=deadline,
                 validate_result=_validate_report_output,
+                **glm_reasoning_options(req.llm_model or LLM_MODEL),
             )
             coverage.read("report", batch)
             if index < len(dimension_chunks):
