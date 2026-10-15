@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+from dataclasses import dataclass
 
 import httpx
 
@@ -15,7 +16,24 @@ class ModelContextExceeded(ValueError):
     pass
 
 
-def _check_capacity(model, messages, output_tokens):
+@dataclass
+class AttemptBudget:
+    """Supplier allowance shared by transport and semantic output recovery."""
+
+    limit: int = 2
+    used: int = 0
+    output_tokens: int = OUTPUT_TOKENS
+
+    def __post_init__(self):
+        if self.limit not in (1, 2) or not 0 <= self.used <= self.limit:
+            raise ValueError("supplier attempt budget must be one or two")
+
+    @property
+    def remaining(self):
+        return self.limit - self.used
+
+
+def _check_capacity(client, model, messages, output_tokens):
     """Explicit operator capabilities; never silently reduce requested output.
 
     UTF-8 bytes are a conservative input envelope, not a claimed exact token
@@ -24,7 +42,11 @@ def _check_capacity(model, messages, output_tokens):
     catalog = json.loads(os.environ.get("YUQING_MODEL_CAPABILITIES_JSON", "{}"))
     limits = catalog.get(model) or catalog.get(model.lower())
     if limits is None:
-        return
+        # Offline provider-boundary fixtures cannot contact a live supplier.
+        # Real clients must have an operator-verified entry before spending.
+        if not isinstance(client, LLMClient) or client._transport is not None:
+            return
+        raise ModelContextExceeded("model capabilities have not been verified for this configured model")
     if output_tokens > limits["max_output_tokens"]:
         raise ModelContextExceeded("configured model cannot support the requested output budget")
     input_envelope = len(json.dumps(messages, ensure_ascii=False).encode("utf-8"))
@@ -32,7 +54,8 @@ def _check_capacity(model, messages, output_tokens):
         raise ModelContextExceeded("material batch exceeds the verified model context; split the batch")
 
 
-async def chat_json_bounded(client, model, messages, *, deadline=None, **kwargs):
+async def chat_json_bounded(client, model, messages, *, deadline=None,
+                            attempt_budget=None, validate_result=None, **kwargs):
     """At most two supplier attempts, all bounded by the same deadline.
 
     A truncation or malformed JSON gets a larger output allowance. Transient
@@ -44,21 +67,27 @@ async def chat_json_bounded(client, model, messages, *, deadline=None, **kwargs)
         deadline = loop.time() + 900
     parameters = dict(kwargs)
     parameters.pop("max_tokens", None)
-    output_tokens = OUTPUT_TOKENS
-    for attempt in (1, 2):
+    budget = attempt_budget if attempt_budget is not None else AttemptBudget()
+    if not budget.remaining:
+        raise ValueError("supplier attempt budget exhausted")
+    while budget.remaining:
         remaining = deadline - loop.time()
         if remaining <= 0:
             raise TimeoutError("model phase deadline expired")
-        _check_capacity(model, messages, output_tokens)
-        options = {**parameters, "max_tokens": output_tokens}
+        _check_capacity(client, model, messages, budget.output_tokens)
+        budget.used += 1
+        options = {**parameters, "max_tokens": budget.output_tokens}
         if isinstance(client, LLMClient):
-            options.update(_max_attempts=1, _attempt_offset=attempt - 1)
+            options.update(_max_attempts=1, _attempt_offset=budget.used - 1)
         try:
-            return await asyncio.wait_for(client.chat_json(model, messages, **options), timeout=min(900, remaining))
+            result = await asyncio.wait_for(client.chat_json(model, messages, **options), timeout=min(900, remaining))
+            if validate_result is not None:
+                validate_result(result)
+            return result
         except ModelContextExceeded:
             raise
         except (httpx.HTTPError, ValueError) as exc:
-            if attempt == 2:
+            if not budget.remaining:
                 raise
             retry = False
             if isinstance(exc, httpx.HTTPStatusError):
@@ -69,7 +98,7 @@ async def chat_json_bounded(client, model, messages, *, deadline=None, **kwargs)
                     parameters.pop("reasoning_effort", None)
                     retry = True
             if isinstance(exc, ValueError):
-                output_tokens = TRUNCATED_OUTPUT_TOKENS
+                budget.output_tokens = TRUNCATED_OUTPUT_TOKENS
                 retry = True
             elif _is_transient(exc):
                 retry = True

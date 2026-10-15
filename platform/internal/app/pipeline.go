@@ -124,7 +124,13 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 			warnings = append(warnings, "query engine did not report filter coverage")
 		}
 	}
-	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; "), Coverage: &result.Coverage}, fetchErr
+	var coverage *analysis.RetrievalCoverage
+	// A broken connection has no new audit fact. Preserve the query engine's
+	// already committed same-run checkpoint instead of writing a zero value.
+	if result.Coverage.AdmissionVersion != "" {
+		coverage = &result.Coverage
+	}
+	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; "), Coverage: coverage}, fetchErr
 }
 
 // engineInsightAdapter 把引擎客户端适配为 analysis.InsightAnalyzer。

@@ -15,6 +15,7 @@
 话题 trend 由代码按发布时间确定性计算（LLM 拿不到时间信息时只能瞎猜）。
 """
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -34,7 +35,7 @@ from engines.common.auth import InternalAuthMiddleware
 from engines.common.evidence import normalize_quote, resolve_quote, sample_stats, validate_classification
 from engines.common.prompt_catalog import ScenarioID, EVIDENCE_RULES, analysis_context
 from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials
-from engines.common.model_budget import chat_json_bounded
+from engines.common.model_budget import AttemptBudget, chat_json_bounded
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
@@ -397,6 +398,7 @@ async def _analyze_one_dimension(
     llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str,
     llm_model: str = "", mode: str = "", quote_retry: bool = False, scenario_template_id: str = "",
     research_intent: dict | None = None, deadline: float | None = None,
+    attempt_budget: AttemptBudget | None = None,
 ) -> dict:
     """单个维度的独立分析调用。异常由调用方捕获。"""
     prompt = _DIMENSION_PROMPT.format(
@@ -431,6 +433,7 @@ async def _analyze_one_dimension(
         temperature=0.6,
         max_tokens=16384,
         deadline=deadline,
+        attempt_budget=attempt_budget,
     )
     if not isinstance(data, dict):
         raise ValueError(f"dimension {spec.id} returned non-object")
@@ -484,6 +487,8 @@ async def _run_dimensions(
     context_documents: list[dict] | None = None,
     research_intent: dict | None = None,
     coverage: MaterialCoverage | None = None,
+    attempt_budgets: dict | None = None,
+    batch_results: dict | None = None,
 ) -> tuple[list[dict], list[str]]:
     """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
     返回 (成功的维度, 失败原因列表)。"""
@@ -492,6 +497,8 @@ async def _run_dimensions(
         specs = [d for d in specs if d.id in dimension_ids]
     sem = gate if gate is not None else asyncio.Semaphore(_DIMENSION_CONCURRENCY)
     batches = material_batches(documents, context_documents or [])
+    budgets = attempt_budgets if attempt_budgets is not None else {}
+    cached_results = batch_results if batch_results is not None else {}
     if coverage is not None:
         for spec in specs:
             coverage.prepare(f"dimension:{spec.id}", batches)
@@ -499,15 +506,28 @@ async def _run_dimensions(
     async def guarded(spec: DimensionSpec) -> dict:
         pieces = []
         for batch in batches:
+            batch_key = (spec.id, tuple((str(item.get("id", "")), item.get("_content_start", 0), item.get("_content_end", 0)) for item in batch))
+            previous = cached_results.get(batch_key)
+            # A quote repair does not re-spend already verified batches.
+            if quote_retry and previous is not None and all(
+                not quote.get("_chunk_unverified") and resolve_quote(quote, batch) is not None
+                for quote in previous.get("quotes", [])
+            ):
+                pieces.append(previous)
+                continue
+            budget = budgets.setdefault(batch_key, AttemptBudget(limit=2))
             async with sem:
                 try:
                     piece = await _analyze_one_dimension(
                         llm, spec, batch, analysis_type, title, llm_model, mode,
-                        quote_retry, scenario_template_id, research_intent, deadline,
+                        quote_retry, scenario_template_id, research_intent, deadline, budget,
                     )
                     if coverage is not None:
                         coverage.read(f"dimension:{spec.id}", batch)
                     pieces.append(piece)
+                    # Quote verification strips invalid entries from the public
+                    # result; keep the original validation flags for recovery.
+                    cached_results[batch_key] = copy.deepcopy(piece)
                 except AccountingDurabilityError:
                     raise
                 except Exception as exc:
@@ -679,6 +699,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
     # 情感/话题与维度分析互不依赖，共享三路闸门并行执行。摘要仍等两者完成。
     # 失败不致命：维度分析比情感分类更有价值，容许降级。
     gate = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
+    dimension_attempts = {}
+    dimension_batches = {}
 
     sentiment_task = asyncio.create_task(_classify_documents(llm, model, req, scope, gate, work_deadline, coverage))
     dimensions_task = asyncio.create_task(_run_dimensions(
@@ -686,6 +708,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         gate, work_deadline,
         scenario_template_id=req.scenario_template_id,
         context_documents=req.context_documents, research_intent=req.research_intent, coverage=coverage,
+        attempt_budgets=dimension_attempts, batch_results=dimension_batches,
     ))
     sentiments = []
     topics = []
@@ -733,6 +756,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
             gate, work_deadline, quote_retry_ids, True,
             scenario_template_id=req.scenario_template_id,
             context_documents=req.context_documents, research_intent=req.research_intent, coverage=coverage,
+            attempt_budgets=dimension_attempts, batch_results=dimension_batches,
         )
         retried_by_id = {str(d.get("id", "")): d for d in retried}
         dimensions = [retried_by_id.get(str(d.get("id", "")), d) for d in dimensions]

@@ -61,6 +61,48 @@ async def test_persistent_truncation_does_not_create_nested_retries():
 
 
 @pytest.mark.asyncio
+async def test_semantic_recovery_cannot_restart_exhausted_supplier_attempts():
+    from engines.common.model_budget import AttemptBudget, chat_json_bounded
+    calls = []
+
+    def provider(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ready":true}'},
+            "finish_reason": "length" if len(calls) == 1 else "stop"}]})
+
+    client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
+    budget = AttemptBudget()
+    assert await chat_json_bounded(client, "fixture-model", [], attempt_budget=budget) == {"ready": True}
+    with pytest.raises(ValueError, match="attempt budget exhausted"):
+        await chat_json_bounded(client, "fixture-model", [], attempt_budget=budget)
+    assert len(calls) == 2
+    assert budget.remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_output_validation_uses_same_supplier_allowance():
+    from engines.common.model_budget import AttemptBudget, chat_json_bounded
+    calls = []
+
+    def provider(request):
+        calls.append(json.loads(request.content))
+        content = '{}' if len(calls) == 1 else '{"executive_summary":"Evidence-backed findings"}'
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}, "finish_reason": "stop"}]})
+
+    def substantive(data):
+        if not data.get("executive_summary"):
+            raise ValueError("empty report")
+
+    client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
+    budget = AttemptBudget()
+    result = await chat_json_bounded(client, "fixture-model", [], attempt_budget=budget, validate_result=substantive)
+    assert result["executive_summary"] == "Evidence-backed findings"
+    assert [r["max_tokens"] for r in calls] == [16384, 32768]
+    assert all("attempt_budget" not in r and "validate_result" not in r for r in calls)
+    assert budget.used == 2
+
+
+@pytest.mark.asyncio
 async def test_expired_deadline_spends_nothing():
     from engines.common.model_budget import chat_json_bounded
     calls = []

@@ -277,6 +277,33 @@ def _topic_analyses(value) -> list[tuple[str, str]]:
     return out
 
 
+def _validate_report_output(data) -> None:
+    """Only a substantive, structurally usable report can complete a batch."""
+    if not isinstance(data, dict):
+        raise ValueError("报告模型返回非对象")
+    summary = data.get("executive_summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("报告缺少有效执行摘要")
+    for field, required in (
+        ("topic_analyses", ("topic", "analysis")),
+        ("risk_points", ("level", "type", "desc", "evidence")),
+        ("recommendations", ("stage", "action", "rationale")),
+    ):
+        rows = data.get(field)
+        if not isinstance(rows, list):
+            raise ValueError(f"报告字段 {field} 缺失或不是数组")
+        for row in rows:
+            if not isinstance(row, dict) or any(not isinstance(row.get(key), str) or not row[key].strip() for key in required):
+                raise ValueError(f"报告字段 {field} 含不完整条目")
+    choices = {
+        "event_nature": {"产品质量型", "服务投诉型", "价格争议型", "谣言驱动型", "价值观冲突型", "营销活动型", "其他"},
+        "action_advice": {"介入", "关注", "规避"},
+    }
+    for field, allowed in choices.items():
+        if field in data and (not isinstance(data[field], str) or data[field] not in allowed):
+            raise ValueError(f"报告字段 {field} 不是有效选项")
+
+
 async def _llm_insight(req: GenerateRequest) -> dict | None:
     """LLM 研判。Key 缺失、调用失败或返回非对象时返回 None（降级渲染）。"""
     coverage = MaterialCoverage()
@@ -317,9 +344,8 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                      stats_text=f"情感分类覆盖 {len(req.sentiments)}/{len(req.documents)} 篇直接证据。" + _stats_text(_sentiment_stats(req.sentiments)), topics=req.topics,
                      materials=_materials_text(batch), dimensions=notes)}],
                 temperature=0.3, max_tokens=16384, deadline=deadline,
+                validate_result=_validate_report_output,
             )
-            if not isinstance(data, dict):
-                raise ValueError("报告模型返回非对象")
             coverage.read("report", batch)
             if index < len(dimension_chunks):
                 derived_reads.append({"start": index * 4000, "end": min((index + 1) * 4000, len(dimensions)),

@@ -66,21 +66,22 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
-def group_members(group):
-    output = []
-    for path in Path("/proc").glob("[0-9]*/stat"):
-        try:
-            value = path.read_text()
-            fields = value[value.rfind(")") + 2:].split()
-            if int(fields[2]) == group and fields[0] != "Z":
-                output.append(int(path.parent.name))
-        except (OSError, ValueError, IndexError):
-            pass
-    return output
+def living_owned(identities):
+    import engines.common.safe_fetch as safe
+    alive = []
+    for pid, (started, _) in identities.items():
+        if safe._same_process(pid, started):
+            try:
+                raw = Path(f"/proc/{pid}/stat").read_text()
+                if raw[raw.rfind(")") + 2:].split()[0] != "Z":
+                    alive.append(pid)
+            except OSError:
+                pass
+    return alive
 
 
 async def cancellation_probe(port):
-    from engines.common.safe_fetch import run_fetch_subprocess
+    from engines.common.safe_fetch import run_fetch_subprocess, process_tree
     with tempfile.TemporaryDirectory(prefix="yuqing-browser-cleanup-") as directory:
         pidfile = Path(directory) / "pid"
         task = asyncio.create_task(run_fetch_subprocess(f"http://{HOST}/hang", "weibo", "dynamic",
@@ -93,10 +94,11 @@ async def cancellation_probe(port):
         assert pidfile.exists(), "fetch process did not start"
         group = int(pidfile.read_text())
         for _ in range(100):
-            if len(group_members(group)) >= 4:
+            if len(process_tree(group)) >= 4:
                 break
             await asyncio.sleep(0.05)
-        before = group_members(group)
+        identities = process_tree(group)
+        before = living_owned(identities)
         assert len(before) >= 4, "actual browser children did not start"
         task.cancel()
         try:
@@ -104,10 +106,10 @@ async def cancellation_probe(port):
         except asyncio.CancelledError:
             pass
         for _ in range(50):
-            if not group_members(group):
+            if not living_owned(identities):
                 break
             await asyncio.sleep(0.05)
-        assert group_members(group) == [], "browser group survived cancellation"
+        assert living_owned(identities) == [], "detached browser descendants survived cancellation"
         return {"actual_processes_before_cancel": len(before), "running_processes_after_cancel": 0}
 
 
@@ -144,9 +146,13 @@ def main():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--worker":
-        from engines.common.safe_fetch import fetch_in_worker
+        from engines.common.safe_fetch import fetch_in_worker, enable_subreaper, reap_worker_descendants
+        enable_subreaper()
         Path(sys.argv[3]).write_text(str(os.getpid()))
-        with fixture_network(int(sys.argv[2])):
-            print(json.dumps(fetch_in_worker(f"http://{HOST}/hang", "weibo", "dynamic")))
+        try:
+            with fixture_network(int(sys.argv[2])):
+                print(json.dumps(fetch_in_worker(f"http://{HOST}/hang", "weibo", "dynamic")))
+        finally:
+            reap_worker_descendants()
     else:
         main()

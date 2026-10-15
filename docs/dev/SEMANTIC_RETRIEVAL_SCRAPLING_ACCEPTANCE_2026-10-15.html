@@ -10,7 +10,16 @@
 </head>
 <body>
   <h1>语义检索与 Scrapling 验收门禁</h1>
-  <p class="gate"><strong>状态：开发门禁与部署后的限制记录。</strong> 2026-10-15 编制。semantic-v2/provenance 代码已部署；动态浏览器资产仍是明确限制，完整真实 LLM semantic-v2 smoke 尚待专用授权 run。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>，部署证据见 <code>docs/ops/BETA_0.2.7_SEMANTIC_RETRIEVAL_DEPLOYMENT.html</code>。</p>
+  <p class="gate"><strong>状态：整改开发中，完整发布验收尚未通过。</strong> 2026-10-15 更新。线上基线 <code>92e1005a6f8ce4fb208437531933591dfc52c901</code> 是此前部署的不完整实现，不能作为本方案完成证据。当前修订仍在 dev 的 GitHub 托管测试及独立审查整改阶段；不得据此声称正文抓取、真实模型准入或完整报告已验收。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>。</p>
+
+  <h2>当前核验记录（不是发布通过声明）</h2>
+  <ul>
+    <li>完整实现首轮提交 <code>3eb0a080f89f815a2148f91124667fb79a1b042c</code> 的 hosted run <code>38746700098</code>：前端构建通过，Python/Go/PG/浏览器取消检查失败，部署包未生成。</li>
+    <li>独立审查要求修复：传输中断保留已存候选记录；空报告不可标记完成；引用恢复与传输重试共享两次供应商调用上限；前端逐字证据遵循真实字符串协议。</li>
+    <li>新增失败用例已观察：<code>776e4a5ec97b6cc97af8361fca6c046ca83345a1</code> 下空报告、三次嵌套调用、未登记模型能力及 PG 中断丢失当前采集视图。</li>
+    <li>当前 100 条语义设计样本为独立合成参考，尚未经人工确认。不得把合成期望标签或离线替身测试包装为人工标注精确率、召回率或真实平台覆盖。</li>
+    <li>已核对智谱官方 GLM-5.3-Flash 文档列出的 1M 上下文、128K 最大输出；真实已接纳 run 的参数、用量及完整报告对账仍待完成。</li>
+  </ul>
 
   <h2>目标和边界</h2>
   <p>同一任务中的多个关键词被视为一个研究主题。材料可以只出现系列中的一个型号或关注点的同义表达，但必须由模型结合主题和原文证据判断。系统逐平台检索、按界限补抓正文、验证来源和日期，再进行有计量的语义准入。</p>
@@ -51,7 +60,7 @@
   <h2>部署与回滚</h2>
   <ol>
     <li>在 <code>dev</code> 完成评审后创建 <code>dev → prod</code> PR；合并后只使用精确 prod SHA 的成功产物。</li>
-    <li>服务器先备份 PostgreSQL、源码、配置、二进制和前端，停止写入服务，校验归档和 <code>SHA256SUMS</code>，解包到带 SHA 的 release 目录。</li>
+    <li>服务器先保存源码、配置、二进制和前端回滚包，再停止写入服务并备份 PostgreSQL，校验归档和 <code>SHA256SUMS</code>，解包到带 SHA 的 release 目录。</li>
     <li>先用同一构建包内的 CLI 执行迁移和 schema 校验，再原子安装二进制/哈希前端、启动服务并执行健康检查。缺产物时立即失败，服务器不编译。</li>
     <li>部署后运行专用真实 smoke：Bocha、至少两个所选平台、Scrapling 正文/摘要回退、语义 direct/context、报告文档 ID 和 usage 事件。保留 JSON/HTML 证据。</li>
     <li>任一门禁失败：停止新服务，恢复上一份已验证 release/config，按数据库备份程序处理不可逆迁移；保留失败 SHA 和日志，不强制回滚数据库结构或覆盖用户数据。</li>

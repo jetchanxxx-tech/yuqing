@@ -9,6 +9,7 @@ from engines.query_engine import main as query
 
 
 INTERNAL_TOKEN = "offline-internal-token"
+ASGI_CLIENT = httpx.AsyncClient
 
 
 def provider_candidate(source, index, text, published="2026-10-12"):
@@ -68,7 +69,7 @@ def setup_pipeline(monkeypatch, candidates, model=None, recovered=None):
 
 
 async def post_search(payload, token=INTERNAL_TOKEN):
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=query.app), base_url="http://query.test") as client:
+    async with ASGI_CLIENT(transport=httpx.ASGITransport(app=query.app), base_url="http://query.test") as client:
         return await client.post("/search", json=payload, headers={"X-Internal-Token": token} if token else {})
 
 

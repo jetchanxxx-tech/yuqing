@@ -289,6 +289,23 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		retrievalCoverage.AcceptedCount = len(docs)
 		retrievalCoverage.DirectCount = len(directDocs)
 		retrievalCoverage.ContextCount = len(contextDocs)
+		// Per-platform direct/context counts describe the final retained pool;
+		// provider and extraction counters remain the original retrieval funnel.
+		for _, platform := range retrievalCoverage.PerPlatform {
+			source, _ := platform["source"].(string)
+			direct, background := 0, 0
+			for _, doc := range docs {
+				if doc.SourceType == source {
+					if doc.SemanticClassification == "direct" {
+						direct++
+					} else if doc.SemanticClassification == "context" {
+						background++
+					}
+				}
+			}
+			platform["direct_count"] = direct
+			platform["context_count"] = background
+		}
 		if err := p.svc.saveCoverage(ctx, msg, retrievalCoverage); err != nil {
 			return p.fail(ctx, msg, "coverage_store_failed", err)
 		}

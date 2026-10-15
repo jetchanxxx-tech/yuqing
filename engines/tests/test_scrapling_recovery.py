@@ -50,3 +50,47 @@ async def test_cancelled_isolated_fetch_reaps_the_entire_worker_group(monkeypatc
         await task
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [True, False])
+async def test_fetch_reaps_detached_session_child_on_cancel_and_normal_exit(monkeypatch, tmp_path, cancel):
+    import asyncio
+    import os
+    import sys
+    from engines.common.safe_fetch import run_fetch_subprocess, _same_process
+    worker = tmp_path / "detached_worker.py"
+    pidfile = tmp_path / "detached"
+    worker.write_text('''import json,os,subprocess,sys,time,pathlib
+from engines.common.safe_fetch import enable_subreaper,reap_worker_descendants
+enable_subreaper()
+child=subprocess.Popen([sys.executable,"-c","import time;time.sleep(60)"],start_new_session=True)
+pathlib.Path(os.environ["FIXTURE_PIDFILE"]).write_text(str(child.pid))
+try:
+ if os.environ["FIXTURE_CANCEL"] == "1": time.sleep(60)
+ else: print(json.dumps({"status":"fetched","content":"fixture"}),flush=True)
+finally: reap_worker_descendants()
+''')
+    monkeypatch.setenv("FIXTURE_PIDFILE", str(pidfile))
+    monkeypatch.setenv("FIXTURE_CANCEL", "1" if cancel else "0")
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[2]))
+    task = asyncio.create_task(run_fetch_subprocess("https://weibo.com/one", "weibo", "dynamic",
+        deadline=asyncio.get_running_loop().time() + 20, command=[sys.executable, str(worker)]))
+    for _ in range(200):
+        if pidfile.exists(): break
+        await asyncio.sleep(0.01)
+    assert pidfile.exists()
+    child = int(pidfile.read_text())
+    if cancel:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError): await task
+    else:
+        assert (await task)["status"] == "fetched"
+    for _ in range(100):
+        try:
+            raw = Path(f"/proc/{child}/stat").read_text()
+            alive = raw[raw.rfind(")") + 2:].split()[0] != "Z"
+        except FileNotFoundError:
+            alive = False
+        if not alive: break
+        await asyncio.sleep(0.01)
+    assert not alive, "detached session child survived fetch cleanup"

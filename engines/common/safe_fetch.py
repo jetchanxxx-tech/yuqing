@@ -5,10 +5,13 @@ uses this proxy. The worker owns its complete browser process group; deadline
 or cancellation reaps it before returning. No provider credentials are inherited.
 """
 import asyncio
+import ctypes
+from pathlib import Path
 from contextlib import contextmanager
 import ipaddress
 import json
 import os
+import resource
 import select
 import signal
 import socket
@@ -167,6 +170,7 @@ def fetch_in_worker(url, source_type, mode="static"):
         parsed = urlsplit(url)
         resolve_public_addresses(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
         from scrapling.fetchers import Fetcher, DynamicFetcher
+        from scrapling import Selector
         with guarded_proxy() as (proxy_url, proxy):
             # curl's environment must not silently bypass the guarded proxy.
             os.environ["NO_PROXY"] = ""
@@ -174,8 +178,19 @@ def fetch_in_worker(url, source_type, mode="static"):
             if mode == "static":
                 target = url
                 for redirect_count in range(6):
+                    chunks = []
+                    received = 0
+                    def bounded_content(chunk):
+                        nonlocal received
+                        received += len(chunk)
+                        if received > MAX_BODY_BYTES:
+                            proxy.blocked_reason = "response_body_limit"
+                            return 0
+                        chunks.append(bytes(chunk))
+                        return len(chunk)
                     page = Fetcher.get(target, proxy=proxy_url, timeout=15, retries=1, max_redirects=0,
-                                       headers={"Accept-Encoding": "identity"}, follow_redirects=False)
+                                       headers={"Accept-Encoding": "identity"}, accept_encoding="identity",
+                                       follow_redirects=False, content_callback=bounded_content)
                     if getattr(page, "status", 200) not in {301, 302, 303, 307, 308}:
                         break
                     headers = getattr(page, "headers", {})
@@ -240,7 +255,8 @@ def fetch_in_worker(url, source_type, mode="static"):
             status_code = getattr(page, "status", 200)
             if status_code not in range(200, 300):
                 return {"status": "failed", "reason": f"http_{status_code}", "final_url": final_url}
-            extracted = extract_page(page, source_type)
+            parsed_page = Selector(b"".join(chunks), url=final_url) if mode == "static" else page
+            extracted = extract_page(parsed_page, source_type)
             return {**extracted, "status": "fetched" if extracted["content"] else "failed", "final_url": final_url,
                     "content_kind": "body" if extracted["content"] else "summary"}
     except UnsafeDestination:
@@ -254,6 +270,95 @@ def fetch_in_worker(url, source_type, mode="static"):
         name = type(exc).__name__
         reason = "browser_missing" if "Executable doesn't exist" in str(exc) else "fetch_timeout" if "Timeout" in name else name
         return {"status": "failed", "reason": reason}
+
+
+def process_tree(root_pid):
+    """Linux process identities including detached browser sessions/groups."""
+    table = {}
+    for path in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            raw = path.read_text()
+            fields = raw[raw.rfind(")") + 2:].split()
+            table[int(path.parent.name)] = (int(fields[1]), int(fields[19]), fields[0])
+        except (OSError, ValueError, IndexError):
+            continue
+    owned = {root_pid}
+    while True:
+        additions = {pid for pid, (parent, _, _) in table.items() if parent in owned}
+        if additions <= owned:
+            break
+        owned |= additions
+    return {pid: (table[pid][1], table[pid][2]) for pid in owned if pid in table}
+
+
+def _same_process(pid, started):
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text()
+        fields = raw[raw.rfind(")") + 2:].split()
+        return int(fields[19]) == started
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+def terminate_process_tree(root_pid):
+    """Freeze owners first, enumerate to a fixed point, then kill all sessions.
+
+    Playwright launches Chromium detached=true, so a process-group-only kill
+    is insufficient. Start times prevent PID reuse from targeting others.
+    """
+    owned = process_tree(root_pid)
+    for _ in range(8):
+        for pid, (started, _) in owned.items():
+            if _same_process(pid, started):
+                try:
+                    os.kill(pid, signal.SIGSTOP)
+                except ProcessLookupError:
+                    pass
+        found = process_tree(root_pid)
+        new = {pid: identity for pid, identity in found.items() if pid not in owned}
+        if not new:
+            break
+        owned.update(new)
+    for pid, (started, _) in sorted(owned.items(), key=lambda item: item[0] == root_pid):
+        if _same_process(pid, started):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    # Also terminate any ordinary worker-group descendants whose leader may
+    # already have exited. Detached browser ownership uses the PPID tree above.
+    try:
+        os.killpg(root_pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def enable_subreaper():
+    """Orphaned detached browser descendants remain children of this worker."""
+    if sys.platform == "linux":
+        if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+            raise OSError("could not enable isolated worker child ownership")
+
+
+def reap_worker_descendants():
+    owned = process_tree(os.getpid())
+    owned.pop(os.getpid(), None)
+    for pid, (started, _) in owned.items():
+        if _same_process(pid, started):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    until = time.monotonic() + 2
+    while time.monotonic() < until:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+            if pid == 0:
+                time.sleep(0.01)
+            elif pid < 0:
+                break
+        except ChildProcessError:
+            break
 
 
 async def run_fetch_subprocess(url, source_type, mode="static", *, deadline=None, command=None):
@@ -283,15 +388,17 @@ async def run_fetch_subprocess(url, source_type, mode="static", *, deadline=None
     except asyncio.TimeoutError:
         return {"status": "failed", "reason": "fetch_timeout"}
     finally:
-        # Kill the group even if its leader exited while a browser child lived.
-        try:
-            os.killpg(worker.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        terminate_process_tree(worker.pid)
         await asyncio.shield(worker.wait())
 
 
 if __name__ == "__main__":
-    request = json.loads(sys.stdin.buffer.read(65536))
-    result = fetch_in_worker(request["url"], request["source_type"], request.get("mode", "static"))
-    print(json.dumps(result, ensure_ascii=False))
+    enable_subreaper()
+    # Hard per-worker file cap also bounds browser download/temp-file abuse.
+    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_BODY_BYTES, MAX_BODY_BYTES))
+    try:
+        request = json.loads(sys.stdin.buffer.read(65536))
+        result = fetch_in_worker(request["url"], request["source_type"], request.get("mode", "static"))
+        print(json.dumps(result, ensure_ascii=False))
+    finally:
+        reap_worker_descendants()

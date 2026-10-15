@@ -382,7 +382,7 @@ async def _execute(req):
                         result = await result if inspect.isawaitable(result) else result
                     elif dynamic_count >= 20:
                         row["dynamic_unprocessed_reason"] = "browser_budget"
-                row.update(fetch_status=result.status, fetch_reason=result.reason, final_url=result.final_url or row["url"], truncated=result.truncated)
+                row.update(fetch_status=result.status, fetch_reason=result.reason, final_url=_canonical_url(result.final_url or row["url"]), truncated=result.truncated)
                 if result.reason in {"unsafe_destination", "unsafe_redirect", "unsafe_or_unselected_url", "source_redirect_mismatch"}:
                     row.update(status="filtered", reason="source_redirect_mismatch" if "source" in result.reason else "unsafe_url")
                     return

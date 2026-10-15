@@ -285,6 +285,18 @@ func ValidateResult(c *Coverage, docs []Material, b Bounds, strictAudit bool) er
 			if classification != doc.Classification {
 				return fmt.Errorf("audit classification mismatch")
 			}
+			// The ID must identify the exact observed body. Verbatim quotes in a
+			// substituted response body do not prove that body was ever fetched.
+			if original, ok := candidate["content"].(string); ok && original != "" {
+				if original != doc.Content {
+					return fmt.Errorf("admitted body differs from observed candidate")
+				}
+			} else if expected, ok := candidate["content_sha256"].(string); ok && expected != "" {
+				sum := sha256.Sum256([]byte(doc.Content))
+				if expected != hex.EncodeToString(sum[:]) {
+					return fmt.Errorf("admitted body does not match observed content hash")
+				}
+			}
 		}
 	}
 	if direct != c.DirectCount || background != c.ContextCount {
