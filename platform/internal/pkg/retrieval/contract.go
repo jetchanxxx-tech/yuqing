@@ -12,10 +12,29 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 const SemanticVersion = "semantic-v2"
+
+func SourceLabel(source string) string {
+	return map[string]string{"news": "新闻", "weibo": "微博", "wechat": "公众号", "douyin": "抖音", "toutiao": "今日头条", "xigua": "西瓜视频", "xiaohongshu": "小红书", "bilibili": "B站"}[source]
+}
+func NormalizeQuote(value string) string {
+	text := strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
+	pairs := map[rune]rune{'"': '"', '\'': '\'', '“': '”', '‘': '’', '「': '」', '『': '』', '«': '»'}
+	characters := []rune(text)
+	for len(characters) >= 2 && pairs[characters[0]] == characters[len(characters)-1] {
+		characters = characters[1 : len(characters)-1]
+	}
+	return string(characters)
+}
 
 type Coverage struct {
 	AdmissionVersion        string                     `json:"admission_version"`

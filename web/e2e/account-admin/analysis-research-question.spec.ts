@@ -79,3 +79,22 @@ test('semantic audit distinguishes empty results, failed platforms, background a
   await expect(page.getByText('其他品牌广告', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/account-admin/analysis-semantic-audit.png' });
 });
+
+test('legacy deterministic intent is not presented as a metered semantic understanding', async ({ page, request }) => {
+  const email = `research-history-${randomBytes(7).toString('hex')}@example.invalid`;
+  const password = 'Research-hosted-sandbox-only-2026!';
+  expect((await request.post('http://127.0.0.1:8080/api/v1/auth/register', { data: { email, password, name: '历史主题验收' } })).status()).toBe(201);
+  await page.goto('/login');
+  await page.getByLabel('邮箱', { exact: true }).fill(email);
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /^登\s*录$/ }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.route('**/api/v1/analyses/legacy-intent-fixture', route => route.fulfill({ json: {
+    id: 'legacy-intent-fixture', name: '历史规则任务', state: 'queued', progress: 0,
+    research_intent_version: 'deterministic-v1', research_intent: { version: 'deterministic-v1', topic: '不能冒充已计量语义理解' },
+  } }));
+  await page.goto('/analyses/legacy-intent-fixture');
+  await expect(page.getByRole('heading', { name: '历史规则任务', exact: true })).toBeVisible();
+  await expect(page.getByText('系统理解（本轮主题）', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('不能冒充已计量语义理解', { exact: true })).toHaveCount(0);
+});

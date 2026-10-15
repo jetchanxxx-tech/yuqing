@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -308,19 +307,12 @@ func validateSemanticInsight(insight InsightResult, direct, background []Documen
 	if len(seen) != len(directIDs) {
 		return fmt.Errorf("direct sentiment classification is incomplete")
 	}
-	normalize := func(value string) string {
-		return strings.Map(func(r rune) rune {
-			if unicode.IsSpace(r) {
-				return -1
-			}
-			return r
-		}, value)
-	}
+	normalize := retrieval.NormalizeQuote
 	for _, dimension := range insight.Dimensions {
 		for _, quote := range dimension.Quotes {
 			doc, exists := allowed[quote.DocumentID]
 			text := normalize(quote.Text)
-			if !exists || text == "" || strings.TrimSpace(quote.Source) == "" || (!strings.Contains(normalize(doc.Content), text) && !strings.Contains(normalize(doc.Title), text)) || (quote.Source != doc.SourceType && quote.Source != doc.SourceName) {
+			if !exists || text == "" || strings.TrimSpace(quote.Source) == "" || (!strings.Contains(normalize(doc.Content), text) && !strings.Contains(normalize(doc.Title), text)) || (quote.Source != doc.SourceType && quote.Source != doc.SourceName && quote.Source != retrieval.SourceLabel(doc.SourceType)) {
 				return fmt.Errorf("insight quote is not bound to its source document")
 			}
 		}

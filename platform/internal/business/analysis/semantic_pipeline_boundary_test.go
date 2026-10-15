@@ -91,3 +91,24 @@ func TestSemanticInsightAcceptsCanonicalPlatformQuotesWithWrappers(t *testing.T)
 		t.Fatal("quote moved to a different platform")
 	}
 }
+
+func TestSemanticPipelinePerPlatformCountsFollowActualRetainedDocuments(t *testing.T) {
+	docs := semanticBoundaryDocs()[:2]
+	docs[1].PublishedAt = "2026-09-01"
+	coverage := RetrievalCoverage{AdmissionVersion: "semantic-v2", ProviderCandidates: 2, AcceptedCount: 2, DirectCount: 2, PerKeyword: []map[string]any{}, PerPlatform: []map[string]any{{"source": "toutiao", "direct_count": 2, "context_count": 0}}, CandidateAudit: []map[string]any{{"id": "direct-1", "semantic_classification": "direct", "source_type": "toutiao", "status": "accepted"}, {"id": "direct-2", "semantic_classification": "direct", "source_type": "toutiao", "status": "accepted"}}}
+	p, svc := newTestPipeline(t, &admissionFetcher{documents: docs, coverage: coverage}, 5*time.Second)
+	a, err := svc.Create(context.Background(), CreateAnalysisRequest{TenantID: "t1", Name: "platform count", Keywords: []string{"iphone18"}, Sources: []string{"toutiao"}, DateFrom: "2026-10-01", DateTo: "2026-10-15"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.Handle(context.Background(), TaskMessage{TenantID: "t1", AnalysisID: a.ID}); err == nil {
+		t.Fatal("one direct evidence must not produce full report")
+	}
+	current, err := svc.Get(context.Background(), "t1", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.RetrievalCoverage.DirectCount != 1 || current.RetrievalCoverage.PerPlatform[0]["direct_count"] != 1 {
+		t.Fatalf("per-platform accepted counts inflated after hardbound filter: %+v", current.RetrievalCoverage)
+	}
+}

@@ -184,10 +184,10 @@ def test_generate_escapes_html_from_title_documents_and_topics(fake_llm):
 
 def test_generate_escapes_llm_generated_markup(fake_llm):
     fake_llm.payload = {
+        **DEFAULT_LLM_PAYLOAD,
         "executive_summary": '<script>alert("summary")</script>摘要',
         "topic_analyses": [{"topic": "<b>t</b>", "analysis": "<i>a</i>"}],
-        "risk_points": ["<script>alert('risk')</script>"],
-        "recommendations": ['<img src=x onerror=alert("rec")>'],
+        "recommendations": [{"stage": "立即(0-24h)", "action": '<img src=x onerror=alert("rec")>', "rationale": "检查转义"}],
     }
     resp = client.post("/generate", json={**REQ, "api_key": "sk-x"})
 
@@ -216,11 +216,13 @@ def test_generate_tolerates_out_of_shape_llm_json(fake_llm):
 
     assert resp.status_code == 200, resp.text
     content = resp.json()["content"]
-    assert "总体可控" in content
+    assert "总体可控" not in content, "malformed output must not masquerade as a complete AI report"
     assert "后排空间" in content
     assert "差评有扩散趋势" not in content
-    assert "风险证据未通过核验" in content
-    assert "发布官方回应" in content
+    assert "发布官方回应" not in content
+    assert "AI 研判不可用" in content
+    assert resp.json()["warning"]
+    assert resp.json()["material_coverage"]["phases"][0]["read_spans"] == []
 
 
 def test_generate_tolerates_non_dict_llm_payload(fake_llm):
