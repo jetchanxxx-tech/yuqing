@@ -111,6 +111,18 @@ async def test_report_invalid_unit_cannot_be_rescued_by_a_parallel_valid_quote(m
     assert len(provider.calls) == 1
 
 
+def test_report_http_exposes_rejected_evidence_to_the_actual_go_strict_gate(monkeypatch):
+    provider = UnitProvider({**GOOD, "unit_id": "unknown@0:17", "text": TEXT})
+    install_provider(monkeypatch, report, provider)
+    response = TestClient(report.app).post("/generate", json={"api_key": "offline-key", "documents": DOCS})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["warning"], "Go only consumes GenerateResponse.warning; an HTML-only rejection silently marks a partial report complete"
+    assert "风险证据未通过核验" in body["warning"]
+    assert "后排舒适性需核实" not in body["content"]
+    assert len(provider.calls) == 1
+
+
 def test_numbered_quote_repair_uses_the_existing_two_attempt_budget(monkeypatch):
     provider = UnitProvider({**GOOD, "unit_id": "unknown@0:17"}, repair=True)
     install_provider(monkeypatch, insight, provider)
