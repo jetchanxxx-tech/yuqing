@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>语义检索部署证据</title><style>body{max-width:1000px;margin:32px auto;padding:0 20px;color:#203036;background:#f7f8f6;font:15px/1.7 system-ui,sans-serif}h1,h2{line-height:1.35}h2{margin-top:28px}table{border-collapse:collapse;width:100%;background:#fff}td,th{border:1px solid #d5dfda;padding:9px;text-align:left}.ok{padding:14px;background:#e9f4ed;border-left:4px solid #16735b}.warn{padding:14px;background:#fff4e6;border-left:4px solid #d9822b}code{overflow-wrap:anywhere}a{color:#126356}</style></head>
+<body>
+<h1>语义检索与 Scrapling 部署证据</h1>
+<p class="ok"><strong>已部署：</strong>生产 <code>https://yuqing2.pangu-cloud.com</code> 已切换到精确 SHA <code>92e1005a6f8ce4fb208437531933591dfc52c901</code>。该 SHA 是合并 PR #15 后的 prod 提交。</p>
+<h2>发布与归档</h2>
+<table><tr><th>项目</th><th>证据</th></tr><tr><td>开发提交 hosted CI</td><td><a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38729228580">36390b7 hosted Build and Package</a>：7 项成功</td></tr><tr><td>prod 合并</td><td><a href="https://github.com/jetchanxxx-tech/yuqing/pull/15">PR #15</a>，merge commit <code>92e1005a6f8ce4fb208437531933591dfc52c901</code></td></tr><tr><td>精确 prod CI</td><td><a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38734181251">Run 38734181251</a>：Go、Python、前端、PG、用量桥、账户验收、Release archive 全部成功</td></tr><tr><td>归档</td><td>Artifact <code>11973395804</code>；归档 SHA256 <code>496ee6b23e6f6a84330f51f6d8a774da772572815efa66a76ecb807f60e277e2</code>；<code>BUILD_COMMIT</code> 一致；解包 <code>SHA256SUMS</code> 795 行全部通过</td></tr></table>
+<h2>服务器切换</h2>
+<ul><li>备份目录：<code>/root/yuqing-backups/semantic-92e1005a6f8ce4fb208437531933591dfc52c901-20261015T124625Z</code>，包含 PG dump、旧源码、配置、二进制和前端。</li><li>部署前停止写入服务、执行维护旗标；用归档内 CLI 先应用 <code>0027_analysis_research_intent.sql</code> 与 <code>0028_document_provenance.sql</code>，再切换源码、二进制和静态资源。</li><li>当前 8 个服务 active；维护旗标已移除。健康端点：query/insight/report 均 200，Go <code>/api/v1/health</code> 200，公网同一路径 200。</li></ul>
+<h2>真实烟测</h2>
+<p>在服务器本地查询引擎执行真实 Bocha 搜索（关键词“广汽 汽车 销量”，日期 2026-09-16 至 2026-10-15，选择今日头条与公众号），HTTP 200；coverage 记录 provider_candidates=19、provider_calls=2、头条5篇、公众号0篇 partial。结果如实保留平台不足，没有触发 LLM、额度消费或用户任务重跑。</p>
+<p class="warn"><strong>保留限制：</strong>服务器当前没有 <code>/opt/yuqing/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome</code>，所以动态浏览器补抓不能宣称已通过生产验收；静态 Scrapling 路径可用，动态候选会记录失败并按合格摘要回退。完整 semantic-v2 真实 LLM 任务烟测未用无用户授权的临时任务伪造，需后续专用已授权测试 run 验证。</p>
+<h2>回滚</h2><p>旧版本 release 与备份保留；若语义准入、动态抓取或模型桥出现异常，停止新服务，恢复上一份已校验 release/config，并按备份程序处理迁移，不在服务器编译。</p>
+</body></html>
