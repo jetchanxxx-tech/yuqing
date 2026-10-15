@@ -185,6 +185,7 @@ Go Pipeline (state=fetching)
 - 新建／重跑重新检索；查看／导出已有报告不重新检索。报告采集不自动使用 RSSHub 热榜；至少两条相关材料才可进入完整研判。
 - `PageScraper.fetch()` 保留独立抓取能力，但不在当前报告检索路径内。查询 HTTP 入口未配置 Bocha key 时拒绝请求，不使用预置测试 URL。
 - 仅选社交平台时用供应商域名限制；选新闻（含混选）时保留新闻单选的检索范围，随后逐条检查所选来源。未知域名不自动标为新闻，不能以放宽日期／来源来掩盖材料不足。2026-10-15 排查与修复验证见 `docs/dev/BOCHA_RETRIEVAL_DIAGNOSIS_2026-10-15.html`；部署状态以该记录和线上证据为准。
+- **界面与来源覆盖的实测边界（2026-10-15）**：创建页当前只开放抖音／今日头条／西瓜视频／微博／公众号；news 是历史／后端枚举，不能建议用户在界面单选新闻。一次多域名混搜不能保证各平台均有材料；实测单选公众号可过2篇，同词混选5源却全部返回头条。单关键词、5源、请求50篇会在现有采集层被缩到10篇，分组后全局截取也存在偏置；这些问题尚未实施修复。见 `docs/dev/BOCHA_PLATFORM_SOURCE_AUDIT_2026-10-15.html`，勿声称多选即多平台覆盖或旧报告来源标签均正确。
 - **Bocha 接口事实**（踩坑后确认）：端点 `https://api.bochaai.com/v1/web-search`（**不是** `/v1/ai/search`，那个返回 404）；响应结构 `data.webPages.value[]`，字段是 `name`/`url`/`snippet`（**不是** `title`）
 - Bocha key 三级来源：环境变量 `BOCHA_API_KEY` → 平台 settings（`PUT /api/v1/admin/settings`，零重启生效）→ 请求参数。Admin UI 在「管理后台 → 数据源配置」
 - 文档存在 `analysis.documentStore`（内存），`Documents()` 返回 `[]` 而非 nil —— 前端 `.map()` 遇 null 会崩

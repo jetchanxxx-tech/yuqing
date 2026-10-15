@@ -1,0 +1,933 @@
+{
+  "checked_at": "2026-10-15T03:48:22.816830+00:00",
+  "production_commit": "e427127b32b30df079a5c59e2f5df19ba69545e5",
+  "test_keyword": "广汽 汽车 销量",
+  "supplier_cases": [
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "douyin.com|iesdouyin.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "douyin": 20
+      },
+      "accepted_platforms": {},
+      "rejection_reasons": {
+        "unusable_excerpt": 20
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://jingxuan.douyin.com/m/video/7568445467013532969",
+          "provider_site": "抖音",
+          "classified_source": "douyin",
+          "independent_platform": "douyin",
+          "title": "新能源市场卷疯了,手持15万有哪些永远不会错的选项? 上市至今,比亚迪海狮06EV已经连续两个月销量突破3万台, 这些数字背后,是市场的选择、是口碑的认可、 更是用户对“实用价值”与“驾驶体验”最真实的投票。-抖音精选",
+          "published_at": "2025-11-03T00:00:00+08:00",
+          "admission": "unusable_excerpt"
+        },
+        {
+          "rank": 2,
+          "url": "https://jingxuan.douyin.com/m/video/7543995318187101450",
+          "provider_site": "抖音",
+          "classified_source": "douyin",
+          "independent_platform": "douyin",
+          "title": "中国制造真香!别克昂科威11年,让美国人改观的SUV 成都昂科威11周年!这款由中国上汽通用泛亚中心主导设计的SUV,不仅是“中国特供”,更是首款返销美国的合资车型,成为中国汽车工业里程碑。它凭借超高性价比与豪华配置,扭转了欧美市场对“中国制造”的偏见,证明了本土研发的世界级水准,是当之无愧的“破冰者”。-抖音精选",
+          "published_at": "2025-08-29T13:15:00+08:00",
+          "admission": "unusable_excerpt"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "toutiao.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "toutiao": 20
+      },
+      "accepted_platforms": {
+        "toutiao": 20
+      },
+      "rejection_reasons": {},
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www.toutiao.com/article/7468878029402440233/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "广汽集团1月销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-08T11:01:00+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://www.toutiao.com/article/7468690062675345935/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "2025年1月广汽集团1月汽车终端销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-07T22:52:00+08:00",
+          "admission": "keyword_match"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "ixigua.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "xigua": 20
+      },
+      "accepted_platforms": {},
+      "rejection_reasons": {
+        "irrelevant": 20
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www-hl.ixigua.com/7410071416151982603?&",
+          "provider_site": "www-hl.ixigua.com",
+          "classified_source": "xigua",
+          "independent_platform": "xigua",
+          "title": "刘大悦,你别分手,我不允许#刘大悦 #意想不到的结局 #这是一个悲伤的故事 #刘大悦er # - 西瓜视频",
+          "published_at": "2024-09-02T13:22:12+08:00",
+          "admission": "irrelevant"
+        },
+        {
+          "rank": 2,
+          "url": "https://www-hl.ixigua.com/7447855153077551666?&",
+          "provider_site": "www-hl.ixigua.com",
+          "classified_source": "xigua",
+          "independent_platform": "xigua",
+          "title": "时隔六年胖东来韭菜终于上市了,但是这价格也是超乎我们想象的! - 西瓜视频",
+          "published_at": "2024-12-13T11:21:49+08:00",
+          "admission": "irrelevant"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "weibo.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 19,
+      "platforms": {
+        "weibo": 19
+      },
+      "accepted_platforms": {},
+      "rejection_reasons": {
+        "irrelevant": 19
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://overseas.weibo.com/",
+          "provider_site": "微博国际版",
+          "classified_source": "weibo",
+          "independent_platform": "weibo",
+          "title": "微博国际站 - 随时随地发现新鲜事",
+          "published_at": "2025-04-06T22:33:07+08:00",
+          "admission": "irrelevant"
+        },
+        {
+          "rank": 2,
+          "url": "https://hk.weibo.com/",
+          "provider_site": "微博香港",
+          "classified_source": "weibo",
+          "independent_platform": "weibo",
+          "title": "微博香港站 - 隨時隨地發現新鮮事",
+          "published_at": "2025-04-06T22:34:57+08:00",
+          "admission": "irrelevant"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "wechat": 20
+      },
+      "accepted_platforms": {
+        "wechat": 2
+      },
+      "rejection_reasons": {
+        "irrelevant": 18
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://mp.weixin.qq.com/s/QMJNzTRF8ZGqsRd1TFfhBg",
+          "provider_site": "微信公众平台",
+          "classified_source": "wechat",
+          "independent_platform": "wechat",
+          "title": "数据简报 2024年1-6月前十位SUV生产企业销售情况简析",
+          "published_at": "2024-06-01T17:06:09+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://mp.weixin.qq.com/s/fpLteu4APBSSD35MaiO97g",
+          "provider_site": "微信公众平台",
+          "classified_source": "wechat",
+          "independent_platform": "wechat",
+          "title": "数据简报  2024年1-6月前十位轿车生产企业销售情况简析",
+          "published_at": "2024-06-01T18:46:13+08:00",
+          "admission": "irrelevant"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "douyin.com|iesdouyin.com|toutiao.com|ixigua.com|weibo.com|mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "toutiao": 20
+      },
+      "accepted_platforms": {
+        "toutiao": 20
+      },
+      "rejection_reasons": {},
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www.toutiao.com/article/7468878029402440233/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "广汽集团1月销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-08T11:01:00+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://www.toutiao.com/article/7468690062675345935/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "2025年1月广汽集团1月汽车终端销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-07T22:52:00+08:00",
+          "admission": "keyword_match"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "腾势 N8",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "douyin.com|iesdouyin.com|toutiao.com|ixigua.com|weibo.com|mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "腾势 N8"
+      },
+      "count": 20,
+      "platforms": {
+        "toutiao": 20
+      },
+      "accepted_platforms": {
+        "toutiao": 17
+      },
+      "rejection_reasons": {
+        "irrelevant": 3
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www.toutiao.com/article/7260899103066931768/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "腾势X继任者,腾势N8将于8月5日上市,提供1.5T插电混动/纯电动-今日头条",
+          "published_at": "2023-07-28T23:59:00+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://m.toutiao.com/article/7264223584355189288/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "腾势N8公布市场售价 31.98万元-32.68万元 D9同步加推插混新车型",
+          "published_at": "2023-08-07T06:57:00+08:00",
+          "admission": "keyword_match"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 50,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "douyin.com|iesdouyin.com|toutiao.com|ixigua.com|weibo.com|mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 50,
+      "platforms": {
+        "toutiao": 50
+      },
+      "accepted_platforms": {
+        "toutiao": 49
+      },
+      "rejection_reasons": {
+        "irrelevant": 1
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www.toutiao.com/article/7468878029402440233/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "广汽集团1月销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-08T11:01:00+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://www.toutiao.com/article/7468690062675345935/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "2025年1月广汽集团1月汽车终端销量15.1万辆 - 今日头条",
+          "published_at": "2025-02-07T22:52:00+08:00",
+          "admission": "keyword_match"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "douyin.com|iesdouyin.com|ixigua.com|weibo.com|mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 20,
+      "platforms": {
+        "douyin": 20
+      },
+      "accepted_platforms": {},
+      "rejection_reasons": {
+        "unusable_excerpt": 20
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://jingxuan.douyin.com/m/video/7568445467013532969",
+          "provider_site": "抖音",
+          "classified_source": "douyin",
+          "independent_platform": "douyin",
+          "title": "新能源市场卷疯了,手持15万有哪些永远不会错的选项? 上市至今,比亚迪海狮06EV已经连续两个月销量突破3万台, 这些数字背后,是市场的选择、是口碑的认可、 更是用户对“实用价值”与“驾驶体验”最真实的投票。-抖音精选",
+          "published_at": "2025-11-03T00:00:00+08:00",
+          "admission": "unusable_excerpt"
+        },
+        {
+          "rank": 2,
+          "url": "https://jingxuan.douyin.com/m/video/7543995318187101450",
+          "provider_site": "抖音",
+          "classified_source": "douyin",
+          "independent_platform": "douyin",
+          "title": "中国制造真香!别克昂科威11年,让美国人改观的SUV 成都昂科威11周年!这款由中国上汽通用泛亚中心主导设计的SUV,不仅是“中国特供”,更是首款返销美国的合资车型,成为中国汽车工业里程碑。它凭借超高性价比与豪华配置,扭转了欧美市场对“中国制造”的偏见,证明了本土研发的世界级水准,是当之无愧的“破冰者”。-抖音精选",
+          "published_at": "2025-08-29T13:15:00+08:00",
+          "admission": "unusable_excerpt"
+        }
+      ]
+    },
+    {
+      "request": {
+        "query": "广汽 汽车 销量",
+        "count": 20,
+        "summary": true,
+        "freshness": "2026-09-16..2026-10-15",
+        "include": "douyin.com|iesdouyin.com|toutiao.com|ixigua.com|weibo.com|mp.weixin.qq.com"
+      },
+      "code": 200,
+      "query_context": {
+        "originalQuery": "广汽 汽车 销量"
+      },
+      "count": 18,
+      "platforms": {
+        "toutiao": 18
+      },
+      "accepted_platforms": {
+        "toutiao": 11
+      },
+      "rejection_reasons": {
+        "irrelevant": 7
+      },
+      "mismatch_count": 0,
+      "samples": [
+        {
+          "rank": 1,
+          "url": "https://www.toutiao.com/article/7694603447022338603/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "广汽集团:2026年9月汽车销量12.86万辆,同比下降25.72% - 今日头条",
+          "published_at": "2026-10-09T17:51:00+08:00",
+          "admission": "keyword_match"
+        },
+        {
+          "rank": 2,
+          "url": "https://www.toutiao.com/article/7694602944569721344/",
+          "provider_site": "今日头条",
+          "classified_source": "toutiao",
+          "independent_platform": "toutiao",
+          "title": "广汽集团:2026年9月汽车销量12.86万辆,同比下降25.72% - 今日头条",
+          "published_at": "2026-10-09T17:49:00+08:00",
+          "admission": "keyword_match"
+        }
+      ]
+    }
+  ],
+  "raw_return_records_including_duplicates": 227,
+  "raw_social_label_mismatch_count": 0,
+  "actual_query_cases": [
+    {
+      "sources": [
+        "douyin"
+      ],
+      "max_results": 10,
+      "count": 0,
+      "source_counts": {},
+      "sources_info": [
+        {
+          "name": "douyin",
+          "doc_count": 0,
+          "status": "partial"
+        }
+      ],
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 20,
+        "unusable_count": 20,
+        "irrelevant_count": 0,
+        "source_mismatch_count": 0,
+        "candidate_truncated": false,
+        "accepted_count": 0,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 20,
+            "unusable_count": 20,
+            "irrelevant_count": 0,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 0,
+            "candidate_truncated": false,
+            "returned_count": 0
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 10,
+        "result_limit": 10,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 0,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      },
+      "error": null
+    },
+    {
+      "sources": [
+        "toutiao"
+      ],
+      "max_results": 10,
+      "count": 10,
+      "source_counts": {
+        "toutiao": 10
+      },
+      "sources_info": [
+        {
+          "name": "toutiao",
+          "doc_count": 10,
+          "status": "ok"
+        }
+      ],
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 20,
+        "unusable_count": 0,
+        "irrelevant_count": 0,
+        "source_mismatch_count": 0,
+        "candidate_truncated": true,
+        "accepted_count": 10,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 20,
+            "unusable_count": 0,
+            "irrelevant_count": 0,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 19,
+            "candidate_truncated": true,
+            "returned_count": 10
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 10,
+        "result_limit": 10,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 10,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      },
+      "error": null
+    },
+    {
+      "sources": [
+        "xigua"
+      ],
+      "max_results": 10,
+      "count": 0,
+      "source_counts": {},
+      "sources_info": [
+        {
+          "name": "xigua",
+          "doc_count": 0,
+          "status": "partial"
+        }
+      ],
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 20,
+        "unusable_count": 0,
+        "irrelevant_count": 20,
+        "source_mismatch_count": 0,
+        "candidate_truncated": false,
+        "accepted_count": 0,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 20,
+            "unusable_count": 0,
+            "irrelevant_count": 20,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 0,
+            "candidate_truncated": false,
+            "returned_count": 0
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 10,
+        "result_limit": 10,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 0,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      },
+      "error": null
+    },
+    {
+      "sources": [
+        "weibo"
+      ],
+      "max_results": 10,
+      "count": 0,
+      "source_counts": {},
+      "sources_info": [
+        {
+          "name": "weibo",
+          "doc_count": 0,
+          "status": "partial"
+        }
+      ],
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 19,
+        "unusable_count": 0,
+        "irrelevant_count": 19,
+        "source_mismatch_count": 0,
+        "candidate_truncated": false,
+        "accepted_count": 0,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 19,
+            "unusable_count": 0,
+            "irrelevant_count": 19,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 0,
+            "candidate_truncated": false,
+            "returned_count": 0
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 10,
+        "result_limit": 10,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 0,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      },
+      "error": null
+    },
+    {
+      "sources": [
+        "wechat"
+      ],
+      "max_results": 10,
+      "count": 2,
+      "source_counts": {
+        "wechat": 2
+      },
+      "sources_info": [
+        {
+          "name": "wechat",
+          "doc_count": 2,
+          "status": "ok"
+        }
+      ],
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 20,
+        "unusable_count": 0,
+        "irrelevant_count": 18,
+        "source_mismatch_count": 0,
+        "candidate_truncated": false,
+        "accepted_count": 2,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 20,
+            "unusable_count": 0,
+            "irrelevant_count": 18,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 2,
+            "candidate_truncated": false,
+            "returned_count": 2
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 10,
+        "result_limit": 10,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 2,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      },
+      "error": null
+    },
+    {
+      "sources": [
+        "douyin",
+        "toutiao",
+        "xigua",
+        "weibo",
+        "wechat"
+      ],
+      "max_results": null,
+      "count": null,
+      "source_counts": null,
+      "sources_info": null,
+      "coverage": null,
+      "error": "HTTPError"
+    },
+    {
+      "kind": "mixed_retry_after_rate_limit",
+      "sources": [
+        "douyin",
+        "toutiao",
+        "xigua",
+        "weibo",
+        "wechat"
+      ],
+      "status": 200,
+      "count": 10,
+      "source_counts": {
+        "toutiao": 10
+      },
+      "coverage": {
+        "admission_version": "lexical-v1",
+        "provider_candidates": 20,
+        "unusable_count": 0,
+        "irrelevant_count": 0,
+        "source_mismatch_count": 0,
+        "candidate_truncated": true,
+        "accepted_count": 10,
+        "per_keyword": [
+          {
+            "keyword": "广汽 汽车 销量",
+            "status": "ok",
+            "provider_candidates": 20,
+            "unusable_count": 0,
+            "irrelevant_count": 0,
+            "source_mismatch_count": 0,
+            "unverifiable_date_count": 0,
+            "out_of_range_date_count": 0,
+            "accepted_before_limit": 19,
+            "candidate_truncated": true,
+            "returned_count": 10
+          }
+        ],
+        "keywords_searched": [
+          "广汽 汽车 销量"
+        ],
+        "failed_keywords": [],
+        "keyword_search": "applied",
+        "requested_max_results": 50,
+        "result_limit": 50,
+        "truncated_count": 0,
+        "duplicate_count": 0,
+        "date_filter": "not_requested",
+        "unverifiable_date_count": 0,
+        "out_of_range_date_count": 0,
+        "scanned_count": 10,
+        "excluded_word_count": 0,
+        "excluded_word_ratio": 0.0,
+        "filter_limitations": "",
+        "warning": ""
+      }
+    }
+  ],
+  "history_summaries_without_user_or_task_identifiers": [
+    {
+      "created_date": "2026-10-13",
+      "selected_sources": [
+        "douyin",
+        "toutiao",
+        "xigua",
+        "weibo",
+        "wechat"
+      ],
+      "date_filter_present": false,
+      "document_count": 10,
+      "stored_source_counts": {
+        "toutiao": 10
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-10-13",
+      "selected_sources": [
+        "douyin",
+        "toutiao",
+        "xigua",
+        "weibo",
+        "wechat"
+      ],
+      "date_filter_present": false,
+      "document_count": 10,
+      "stored_source_counts": {
+        "toutiao": 10
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-10-13",
+      "selected_sources": [
+        "toutiao",
+        "douyin",
+        "wechat"
+      ],
+      "date_filter_present": false,
+      "document_count": 16,
+      "stored_source_counts": {
+        "toutiao": 16
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-10-12",
+      "selected_sources": [
+        "douyin",
+        "weibo",
+        "toutiao",
+        "wechat",
+        "xigua"
+      ],
+      "date_filter_present": false,
+      "document_count": 32,
+      "stored_source_counts": {
+        "toutiao": 32
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-10-08",
+      "selected_sources": [
+        "douyin",
+        "weibo",
+        "toutiao",
+        "wechat",
+        "xigua"
+      ],
+      "date_filter_present": false,
+      "document_count": 10,
+      "stored_source_counts": {
+        "toutiao": 10
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-09-30",
+      "selected_sources": [
+        "douyin"
+      ],
+      "date_filter_present": false,
+      "document_count": 20,
+      "stored_source_counts": {
+        "douyin": 20
+      },
+      "social_labels_inconsistent_with_url_host": 0
+    },
+    {
+      "created_date": "2026-09-30",
+      "selected_sources": [
+        "weibo",
+        "wechat",
+        "news"
+      ],
+      "date_filter_present": false,
+      "document_count": 38,
+      "stored_source_counts": {
+        "weibo": 38
+      },
+      "social_labels_inconsistent_with_url_host": 38
+    }
+  ],
+  "observed_transient_error": {
+    "supplier_http_status": 429,
+    "query_http_status": 502,
+    "retry_query_http_status": 200
+  },
+  "runtime_code_changed": false,
+  "production_business_data_changed": false,
+  "complete_analysis_or_llm_called": false
+}
