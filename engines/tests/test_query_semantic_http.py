@@ -1,0 +1,343 @@
+"""Accepted-run /search contracts: one topic, real candidate boundaries, no lexical bypass."""
+import json
+
+import httpx
+import pytest
+
+from engines.common import scraper as scraper_module
+from engines.query_engine import main as query
+from engines.tests.semantic_model_fixtures import source_prompt, source_text, first_unit_ids
+
+
+INTERNAL_TOKEN = "offline-internal-token"
+ASGI_CLIENT = httpx.AsyncClient
+
+
+def provider_candidate(source, index, text, published="2026-10-12"):
+    hosts = {"toutiao": "www.toutiao.com", "wechat": "mp.weixin.qq.com", "weibo": "weibo.com"}
+    return {"url": f"https://{hosts[source]}/article/{index}", "title": f"材料 {index}",
+            "summary": text, "snippet": text, "published_at": published, "site_name": source}
+
+
+class TopicModel:
+    def __init__(self, decisions=None):
+        self.calls = []
+        self.decisions = decisions
+
+    async def chat_json(self, model, messages, **kwargs):
+        self.calls.append((messages, kwargs))
+        prompt = source_prompt(messages)
+        if kwargs.get("usage_context", {}).get("phase") == "plan":
+            return {"topic": "iPhone18系列新品反馈", "entities": ["iphone18", "iphone18pro", "iphone18max"],
+                    "relations": ["用户列出的同系列研究对象，未核实官方型号"],
+                    "focus": ["体验与反馈"], "aliases": [], "non_assumptions": ["不推断已经发布"],
+                    "search_queries": ["iPhone18 系列 体验"]}
+        if self.decisions is not None:
+            return {"decisions": self.decisions(prompt["materials"])}
+        return {"decisions": [
+            {"document_id": item["document_id"], "classification": "direct", "reason": "讨论研究对象的具体体验",
+             "matched_entities": ["iPhone18 Pro"], "evidence_unit_ids": first_unit_ids(item)}
+            for item in prompt["materials"]]}
+
+
+def setup_pipeline(monkeypatch, candidates, model=None, recovered=None):
+    model = model or TopicModel()
+    provider_calls = []
+    scraper = scraper_module.PageScraper()
+    monkeypatch.setenv("YUQING_BILLING_SERVICE_TOKEN", INTERNAL_TOKEN)
+    monkeypatch.setenv("LLM_API_KEY", "offline-model-key")
+    monkeypatch.setenv("BOCHA_API_KEY", "offline-search-key")
+    monkeypatch.setattr(query, "DEFAULT_BOCHA_KEY", "offline-search-key")
+    monkeypatch.setattr(query, "get_scraper", lambda: scraper)
+    monkeypatch.setattr(query, "build_client", lambda *args, **kwargs: model)
+
+    async def bocha(keyword, api_key, include="", count=20, freshness="noLimit", **kwargs):
+        provider_calls.append({"keyword": keyword, "include": include, "count": count, "freshness": freshness})
+        source = {"toutiao.com": "toutiao", "mp.weixin.qq.com": "wechat", "weibo.com": "weibo", "weibo.com|weibo.cn": "weibo"}.get(include)
+        return [dict(item) for item in candidates.get(source, [])]
+
+    async def save_intent(req, intent, model=None):
+        return intent
+
+    monkeypatch.setattr(scraper, "_bocha_search", bocha)
+    monkeypatch.setattr(scraper, "fetch_candidate", lambda url, source_type, mode="static", **kwargs:
+                        recovered.get(url, scraper_module.FetchOutcome(reason="fixture_body_unavailable"))
+                        if recovered is not None else scraper_module.FetchOutcome(reason="fixture_body_unavailable"))
+    # Persistence is a boundary to the actual Go/PG contract, independently tested there.
+    monkeypatch.setattr(query, "persist_research_intent", save_intent, raising=False)
+    monkeypatch.setattr(query, "persist_candidate_audit", save_intent, raising=False)
+    return provider_calls, model
+
+
+async def post_search(payload, token=INTERNAL_TOKEN):
+    async with ASGI_CLIENT(transport=httpx.ASGITransport(app=query.app), base_url="http://query.test") as client:
+        return await client.post("/search", json=payload, headers={"X-Internal-Token": token} if token else {})
+
+
+def accepted_request(**changes):
+    return {"keywords": ["iphone18", "iphone18pro", "iphone18max"], "sources": ["toutiao"],
+            "analysis_id": "accepted-analysis", "run_id": "accepted-run", "max_results": 50,
+            "research_question": "同一系列的新品体验", "analysis_type": "product", **changes}
+
+
+@pytest.mark.asyncio
+async def test_real_search_plans_all_related_keywords_and_admits_one_variant(monkeypatch):
+    calls, llm = setup_pipeline(monkeypatch, {"toutiao": [
+        provider_candidate("toutiao", 1, "iPhone 18 Pro续航体验不错，长时间拍摄仍有余量。"),
+        provider_candidate("toutiao", 2, "iPhone18 Max机身手感偏重，但大屏阅读体验不错。"),
+    ]})
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert len(data["documents"]) == 2
+    assert data["coverage"]["admission_version"] == "semantic-v2"
+    assert data["coverage"]["research_intent"]["original_keywords"] == ["iphone18", "iphone18pro", "iphone18max"]
+    assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
+    assert all(kwargs["usage_context"]["run_id"] == "accepted-run" for _, kwargs in llm.calls)
+    assert all(kwargs["max_tokens"] == 16384 for _, kwargs in llm.calls)
+    assert calls[0]["keyword"] == "iPhone18 系列 体验"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload,token", [(accepted_request(run_id=""), INTERNAL_TOKEN), (accepted_request(), ""),
+                                          (accepted_request(), "wrong-token")])
+async def test_live_lexical_or_unauthenticated_path_cannot_search_or_fetch(monkeypatch, payload, token):
+    calls, model = setup_pipeline(monkeypatch, {})
+    response = await post_search(payload, token)
+    assert response.status_code in {401, 403, 422}, response.text
+    assert not calls
+    assert not model.calls
+
+
+@pytest.mark.asyncio
+async def test_search_queries_platforms_independently_and_keeps_later_direct_after_context(monkeypatch):
+    values = [provider_candidate("toutiao", i, f"旧款背景材料{i}：iPhone17是上一代产品，仅用于比较背景。") for i in range(49)]
+    values += [provider_candidate("toutiao", 50, "iPhone 18 Pro直接体验材料：续航有余量。")]
+    def decisions(items):
+        return [{"document_id": row["document_id"], "classification": "context" if "旧款" in source_text(row) else "direct",
+                 "reason": "明确区分旧款背景与目标型号", "evidence_unit_ids": first_unit_ids(row)} for row in items]
+    calls, _ = setup_pipeline(monkeypatch, {"toutiao": values, "wechat": [
+        provider_candidate("wechat", 51, "iPhone18 Max独立体验材料：大屏清晰、手感偏重。")
+    ]}, TopicModel(decisions))
+    response = await post_search(accepted_request(sources=["toutiao", "wechat"]))
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert {item["include"] for item in calls} == {"toutiao.com", "mp.weixin.qq.com"}
+    assert len(result["documents"]) == 50
+    assert sum(row["semantic_classification"] == "direct" for row in result["documents"]) == 2
+    assert {row["source_type"] for row in result["documents"]} == {"toutiao", "wechat"}
+    assert len(result["coverage"]["candidate_audit"]) == 51
+    assert {row["source"] for row in result["coverage"]["per_platform"]} == {"toutiao", "wechat"}
+
+
+@pytest.mark.asyncio
+async def test_shell_summary_is_recovered_before_semantic_not_discarded(monkeypatch):
+    item = provider_candidate("toutiao", 1, "We're sorry but react app doesn't work properly without JavaScript enabled.")
+    body = "iPhone 18 Pro续航实测：录像一小时后仍有充足电量，本文为用户测试感受。"
+    setup_pipeline(monkeypatch, {"toutiao": [item]}, recovered={item["url"]: scraper_module.FetchOutcome(
+        content=body, final_url=item["url"], status="fetched", content_kind="body")})
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    document = response.json()["documents"][0]
+    assert document["content"] == body
+    assert document["content_kind"] == "body"
+    assert document["fetch_status"] == "fetched"
+
+
+@pytest.mark.asyncio
+async def test_wrong_source_date_conflict_and_empty_evidence_cannot_enter_report_pool(monkeypatch):
+    valid = provider_candidate("toutiao", 1, "iPhone18 Pro续航实际测试反馈，供本轮研究讨论。")
+    wrong_source = provider_candidate("wechat", 2, "iPhone18 Pro来自未选择公众号的材料，不得进入报告。")
+    old = provider_candidate("toutiao", 3, "iPhone18 Pro日期越界的材料，不得进入背景材料池。", "2025-01-01")
+    def no_evidence(items):
+        return [{"document_id": row["document_id"], "classification": "direct", "reason": "没有证据", "evidence_unit_ids": []} for row in items]
+    setup_pipeline(monkeypatch, {"toutiao": [valid, wrong_source, old]}, TopicModel(no_evidence))
+    response = await post_search(accepted_request(date_from="2026-10-01", date_to="2026-10-15"))
+    assert response.status_code == 502, response.text
+    assert "documents" not in response.json().get("detail", {})
+    assert "offline-model-key" not in response.text and "offline-search-key" not in response.text
+
+@pytest.mark.asyncio
+async def test_generated_intent_is_persisted_before_any_provider_request(monkeypatch):
+    calls, _ = setup_pipeline(monkeypatch, {"toutiao": []})
+    snapshots = []
+    async def snapshot(req, intent, model):
+        assert not calls if not snapshots else True
+        assert req.run_id == "accepted-run"
+        snapshots.append(intent)
+        return intent
+    monkeypatch.setattr(query, "persist_research_intent", snapshot, raising=False)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert snapshots and snapshots[0]["original_keywords"] == accepted_request()["keywords"]
+
+
+@pytest.mark.asyncio
+async def test_failed_snapshot_prevents_provider_search(monkeypatch):
+    calls, _ = setup_pipeline(monkeypatch, {})
+    async def snapshot(*args, **kwargs):
+        raise RuntimeError("fixture persistence unavailable")
+    monkeypatch.setattr(query, "persist_research_intent", snapshot, raising=False)
+    response = await post_search(accepted_request())
+    assert response.status_code == 503, response.text
+    assert calls == []
+    assert "fixture persistence unavailable" not in response.text
+
+@pytest.mark.asyncio
+async def test_body_date_conflict_remains_audit_only_even_when_model_would_accept(monkeypatch):
+    candidate = provider_candidate("toutiao", 1, "iPhone18 Pro续航测试的公开摘要，供应商声称是本月发布。", "2026-10-12")
+    setup_pipeline(monkeypatch, {"toutiao": [candidate]}, recovered={candidate["url"]: scraper_module.FetchOutcome(
+        content="iPhone18 Pro实际正文包含体验描述，但页面发布时间与摘要冲突，不能进入任何报告材料池。",
+        final_url=candidate["url"], status="fetched", content_kind="body", published_at="2025-10-12")})
+    response = await post_search(accepted_request(date_from="2026-10-01", date_to="2026-10-15"))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["documents"] == []
+    assert data["coverage"]["candidate_audit"][0]["reason"] == "date_conflict"
+    assert data["coverage"]["direct_count"] == data["coverage"]["context_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_candidate_rotation_preserves_every_platform_before_hundred_cap(monkeypatch):
+    setup_pipeline(monkeypatch, {
+        "toutiao": [provider_candidate("toutiao", i, f"iPhone18 Pro第{i}份材料，真实用户记录了续航和拍摄感受。") for i in range(100)],
+        "wechat": [provider_candidate("wechat", 101, "iPhone18 Max公众号独立材料，用户记录大屏阅读与握持体验。")],
+    })
+    response = await post_search(accepted_request(sources=["toutiao", "wechat"]))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert any(row["source_type"] == "wechat" for row in data["documents"])
+    audit = data["coverage"]["candidate_audit"]
+    assert sum(row["reason"] == "candidate_budget" for row in audit) == 1
+    assert sum(bool(row.get("observed_spans")) for row in audit) == 100
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_model", [
+    "glm-5.3", "GLM-5.3-Flash", "glm-5.3-flashx",
+])
+async def test_query_plan_and_relevance_set_verified_glm_thinking_low_without_reducing_output(monkeypatch, configured_model):
+    _, llm = setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro续航实际测试反馈，连续拍摄后电量仍有余量。") ]})
+    response = await post_search(accepted_request(llm_model=configured_model))
+    assert response.status_code == 200, response.text
+    assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
+    for _, kwargs in llm.calls:
+        assert kwargs.get("thinking") == {"type": "enabled"}
+        assert kwargs.get("reasoning_effort") == "low"
+        assert kwargs["max_tokens"] == 16384
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_model", ["deepseek-chat", "deepseek-reasoner", "minimax-m2.5", "custom-unverified-model", "glm-5.4-future"])
+async def test_query_other_models_receive_no_glm_thinking_options(monkeypatch, configured_model):
+    _, llm = setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro续航实际测试反馈，连续拍摄后电量仍有余量。") ]})
+    response = await post_search(accepted_request(llm_model=configured_model))
+    assert response.status_code == 200, response.text
+    assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
+    assert all("thinking" not in kwargs and "reasoning_effort" not in kwargs for _, kwargs in llm.calls)
+    assert all(kwargs["max_tokens"] == 16384 for _, kwargs in llm.calls)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("static_reason", ["empty_body", "verification_or_shell"])
+async def test_toutiao_static_empty_or_shell_gets_one_bounded_dynamic_recovery(monkeypatch, static_reason):
+    item = provider_candidate("toutiao", 1,
+        "We're sorry but react app doesn't work properly without JavaScript enabled.")
+    setup_pipeline(monkeypatch, {"toutiao": [item]})
+    calls = []
+    body = "iPhone18 Pro实际正文已经动态加载，用户记录了连续拍摄后的续航表现与握持体验。"
+    async def recover(url, source_type, mode="static", **kwargs):
+        calls.append((mode, kwargs["deadline"]))
+        if mode == "static":
+            return scraper_module.FetchOutcome(reason=static_reason)
+        return scraper_module.FetchOutcome(content=body, final_url=url, status="fetched", content_kind="body")
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", recover)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert [mode for mode, _ in calls] == ["static", "dynamic"]
+    assert calls[0][1] == calls[1][1]
+    assert response.json()["documents"][0]["content"] == body
+    assert response.json()["coverage"]["dynamic_fetches"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("static_reason", ["unsafe_destination", "unsafe_redirect", "unsafe_or_unselected_url", "source_redirect_mismatch"])
+async def test_security_rejected_candidate_never_retries_through_dynamic_browser(monkeypatch, static_reason):
+    item = provider_candidate("weibo", 1, "iPhone18 Pro有效网页摘要也不得绕过静态出站安全拒绝，相关性不解除硬边界。")
+    setup_pipeline(monkeypatch, {"weibo": [item]})
+    modes = []
+    async def rejected(url, source_type, mode="static", **kwargs):
+        modes.append(mode)
+        return scraper_module.FetchOutcome(reason=static_reason)
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", rejected)
+    response = await post_search(accepted_request(sources=["weibo"]))
+    assert response.status_code == 200, response.text
+    assert modes == ["static"]
+    assert response.json()["documents"] == []
+    assert response.json()["coverage"]["dynamic_fetches"] == 0
+
+
+@pytest.mark.asyncio
+async def test_toutiao_dynamic_recovery_keeps_existing_twenty_page_task_budget(monkeypatch):
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", index,
+        f"iPhone18 Pro第{index}条公开摘要足够用于语义判断，但静态正文为空，需要有界动态补抓。") for index in range(23)]})
+    calls = []
+    async def empty(url, source_type, mode="static", **kwargs):
+        calls.append(mode)
+        return scraper_module.FetchOutcome(reason="empty_body")
+    monkeypatch.setattr(query.get_scraper(), "fetch_candidate", empty)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    assert calls.count("static") == 23
+    assert calls.count("dynamic") == response.json()["coverage"]["dynamic_fetches"] == 20
+    assert sum(row.get("dynamic_unprocessed_reason") == "browser_budget"
+               for row in response.json()["coverage"]["candidate_audit"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_protocol_failure_retains_safe_known_id_diagnostics_in_http_and_durable_audit(monkeypatch):
+    from copy import deepcopy
+    marker = "untrusted-model-secret-marker"
+    def invalid(items):
+        return [{"document_id": item["document_id"], "classification": "direct", "reason": marker,
+                 "evidence_unit_ids": [marker]} for item in items]
+    setup_pipeline(monkeypatch, {"toutiao": [
+        provider_candidate("toutiao", 1, "iPhone18 Pro公开体验正文，内容明确记录了续航表现与手感，没有模型臆造的证据文字。"),
+        provider_candidate("toutiao", 2, ""),
+        provider_candidate("wechat", 3, "未选择来源不会抓取，也不能冒充已取得摘要正文。"),
+    ]}, TopicModel(invalid))
+    persisted = []
+    async def audit(req, coverage):
+        persisted.append(deepcopy(coverage))
+    monkeypatch.setattr(query, "persist_candidate_audit", audit)
+    response = await post_search(accepted_request())
+    assert response.status_code == 502, response.text
+    coverage = response.json()["detail"]["coverage"]
+    candidate_id = coverage["candidate_audit"][0]["id"]
+    expected = {"batch_document_ids": [candidate_id],
+                "errors": [{"category": "evidence_not_in_document", "document_id": candidate_id}]}
+    assert coverage.get("semantic_protocol_errors") == expected
+    assert persisted[-1].get("semantic_protocol_errors") == expected
+    assert marker not in response.text
+    assert marker not in json.dumps(persisted)
+    assert coverage["accepted_count"] == 0
+    assert coverage["per_platform"][0]["summary_count"] == 1
+
+@pytest.mark.asyncio
+async def test_query_persists_original_body_and_restored_quote_without_format_rewrite(monkeypatch):
+    from copy import deepcopy
+    body = "iPhone\n18\nPro续航实测，使用60\n瓦充电器，作者称之为“续航惊喜”。"
+    def formatted(items):
+        return [{"document_id": item["document_id"], "classification": "direct", "reason": "研究对象实际体验",
+                 "evidence_unit_ids": first_unit_ids(item)} for item in items]
+    setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1, body)]}, TopicModel(formatted))
+    saved = []
+    async def audit(req, coverage): saved.append(deepcopy(coverage))
+    monkeypatch.setattr(query, "persist_candidate_audit", audit)
+    response = await post_search(accepted_request())
+    assert response.status_code == 200, response.text
+    document = response.json()["documents"][0]
+    assert document["content"] == body
+    assert document["evidence_spans"] == [body]
+    assert saved[-1]["candidate_audit"][0]["content"] == body
+    assert saved[-1]["candidate_audit"][0]["evidence_spans"] == [body]

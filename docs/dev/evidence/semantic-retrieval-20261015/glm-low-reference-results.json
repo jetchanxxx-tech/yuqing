@@ -1,0 +1,2553 @@
+[
+  {
+    "type": "actual_provider_on_synthetic_design_references",
+    "human_labels_confirmed": false,
+    "experimental_parameter_override": {
+      "thinking": {
+        "type": "enabled"
+      },
+      "reasoning_effort": "low"
+    },
+    "source_commit": "b884c5ffc20dcfc5fd319c7a1550abcfa188a153",
+    "analysis_id": "01M501MVGYW95YR036YCD677Q1",
+    "run_id": "01M501MVGZ5WAPCSXZSRD3P6SM",
+    "cases": [
+      {
+        "id": "design-001",
+        "content": "iPhone 18 Pro续航体验优秀，连续拍摄一小时后电量还有余量。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-001",
+          "classification": "direct",
+          "reason": "直接讨论iPhone 18 Pro续航体验，属于关注点实际续航表现。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "iPhone 18 Pro续航体验优秀，连续拍摄一小时后电量还有余量。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              35
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-002",
+        "content": "iPhone18 Max机身偏重，长时间单手握持容易累。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-002",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18 Max手感（偏重、握持易累）。",
+          "matched_entities": [
+            "iphone18max"
+          ],
+          "evidence_spans": [
+            "iPhone18 Max机身偏重，长时间单手握持容易累。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-003",
+        "content": "iPhone18标准版价格偏高，用户说升级意愿不强。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-003",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18标准版价格与用户反馈。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone18标准版价格偏高，用户说升级意愿不强。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              26
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-004",
+        "content": "我的iPhone 18 Pro开启高亮度看视频，两小时后电量剩一半。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-004",
+          "classification": "direct",
+          "reason": "直接提供iPhone 18 Pro续航实测数据。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "iPhone 18 Pro开启高亮度看视频，两小时后电量剩一半。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              34
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-005",
+        "content": "iPhone18 Max的大屏阅读很舒服，出门装口袋却不方便。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-005",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18 Max手感与大屏使用体验。",
+          "matched_entities": [
+            "iphone18max"
+          ],
+          "evidence_spans": [
+            "iPhone18 Max的大屏阅读很舒服，出门装口袋却不方便。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              31
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-006",
+        "content": "iPhone 18的日常拍照速度不错，用户反馈夜间成片仍有噪点。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-006",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18拍照表现与用户反馈。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone 18的日常拍照速度不错，用户反馈夜间成片仍有噪点。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              32
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-007",
+        "content": "iPhone18 Pro重度游戏时机身明显发热，这是个人试用感受。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-007",
+          "classification": "direct",
+          "reason": "直接讨论iPhone 18 Pro使用体验（发热），并保留个人试用限定。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "iPhone18 Pro重度游戏时机身明显发热，这是个人试用感受。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              33
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-008",
+        "content": "iPhone18 Max充电速度在我的测试中没有预期快。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-008",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18 Max充电测试反馈。",
+          "matched_entities": [
+            "iphone18max"
+          ],
+          "evidence_spans": [
+            "iPhone18 Max充电速度在我的测试中没有预期快。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-009",
+        "content": "iPhone18新机到手后触控很顺，电量表现要继续观察。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-009",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18新机手感与电量反馈，续航部分保留继续观察的限定。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone18新机到手后触控很顺，电量表现要继续观察。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-010",
+        "content": "iPhone 18 Pro线下试握，边框触感比预期舒服。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-010",
+          "classification": "direct",
+          "reason": "直接讨论iPhone 18 Pro手感（试握触感）。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "iPhone 18 Pro线下试握，边框触感比预期舒服。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-011",
+        "content": "关于iPhone18 Max的论坛体验贴称，扬声器音量大但低音一般。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-011",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18 Max扬声器体验，保留论坛体验贴的传闻限定。",
+          "matched_entities": [
+            "iphone18max"
+          ],
+          "evidence_spans": [
+            "关于iPhone18 Max的论坛体验贴称，扬声器音量大但低音一般。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              34
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-012",
+        "content": "iPhone18标准款用户抱怨基础存储不够用，价格升级不划算。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-012",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18标准款存储与价格反馈。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone18标准款用户抱怨基础存储不够用，价格升级不划算。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              31
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-013",
+        "content": "一位作者称iPhone18 Pro实际到手价格合适，并说明只是个人购买体验。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-013",
+          "classification": "direct",
+          "reason": "直接给出iPhone18 Pro的价格体验反馈，属用户个人购买评价。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "一位作者称iPhone18 Pro实际到手价格合适，并说明只是个人购买体验。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              38
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-014",
+        "content": "iPhone18系列疑似涨价，文中明确表示这是未经证实的传闻，不是发布确认。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-014",
+          "classification": "direct",
+          "reason": "直接讨论iPhone18系列价格，且保留传闻限定。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone18系列疑似涨价，文中明确表示这是未经证实的传闻，不是发布确认。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              38
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-015",
+        "content": "iPhone 18 Pro短期试用：相机启动快，晚上拍孩子依然有运动模糊。",
+        "expected": "direct",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-015",
+          "classification": "uncertain",
+          "reason": "提到iPhone 18 Pro短期试用，但内容是相机表现，未涉及续航、手感、价格或反馈，关注点不匹配。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [
+            "iPhone 18 Pro短期试用：相机启动快，晚上拍孩子依然有运动模糊。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              37
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-031",
+        "content": "iPhone17用了两年，电池开始衰减；本文没有iPhone18的使用体验。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-031",
+          "classification": "context",
+          "reason": "iPhone17旧款电池衰减，仅作比较背景，无iPhone18体验。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone17用了两年，电池开始衰减；本文没有iPhone18的使用体验。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              38
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-032",
+        "content": "iPhone17与iPhone18的纸面参数对照，作者未拿到新机。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-032",
+          "classification": "context",
+          "reason": "纸面参数对照且作者未拿到新机，属背景信息。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone17与iPhone18的纸面参数对照，作者未拿到新机。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              33
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-033",
+        "content": "回顾iPhone16首发价格，供讨论新一代定价时参考。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-033",
+          "classification": "context",
+          "reason": "旧款首发价格作为新一代定价讨论背景。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "回顾iPhone16首发价格，供讨论新一代定价时参考。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              27
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-034",
+        "content": "苹果智能手机近年销量变化，属于行业背景，没有iPhone18用户评价。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-034",
+          "classification": "irrelevant",
+          "reason": "行业销量背景，无iPhone18相关评价或关注点。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              35
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-035",
+        "content": "讨论iPhone18预期售价时引用了iPhone17上市价格，原文只提供旧款价格事实。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-035",
+          "classification": "context",
+          "reason": "用iPhone17上市价格作为iPhone18预期售价的背景参考。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "讨论iPhone18预期售价时引用了iPhone17上市价格，原文只提供旧款价格事实。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              43
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-036",
+        "content": "iPhone17 Pro镜头配置回顾，没有评价iPhone18系列表现。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-036",
+          "classification": "irrelevant",
+          "reason": "iPhone17 Pro镜头回顾，不评价iPhone18系列。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              36
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-037",
+        "content": "高端手机行业竞争加剧，文章提到iPhone18会面对同价位竞品，未给新机体验。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-037",
+          "classification": "context",
+          "reason": "行业竞争背景中提及iPhone18面临竞品，无新机体验。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "高端手机行业竞争加剧，文章提到iPhone18会面对同价位竞品，未给新机体验。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              39
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-038",
+        "content": "iPhone17 Max老用户如何选择换机，文章只列当前设备的不足。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-038",
+          "classification": "irrelevant",
+          "reason": "iPhone17 Max用户换机考量，仅列旧机不足，无iPhone18信息。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              34
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-039",
+        "content": "苹果供应链投资概况，文末提到市场关注iPhone18，不包含产品体验。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-039",
+          "classification": "irrelevant",
+          "reason": "供应链投资概况，仅市场关注提及，无产品体验或价格续航反馈。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              35
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-040",
+        "content": "iPhone18与上一代的产品线名称对照，未给续航和手感反馈。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-040",
+          "classification": "context",
+          "reason": "涉及iPhone18产品线名称对照，可作为背景比较，但未涉及续航、手感、价格或反馈",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [
+            "iPhone18与上一代的产品线名称对照，未给续航和手感反馈"
+          ],
+          "observed_spans": [
+            [
+              0,
+              31
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-051",
+        "content": "另一品牌手机Max版有18种配色，Pro用户很喜欢。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-051",
+          "classification": "irrelevant",
+          "reason": "讨论另一品牌手机Max版配色，非iPhone18系列，泛词命中不证明对象相关",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              26
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-052",
+        "content": "iPad Pro平板屏幕体验，全文没有iPhone18。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-052",
+          "classification": "irrelevant",
+          "reason": "iPad Pro平板屏幕体验，全文无iPhone18信息",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-053",
+        "content": "iPhone17实际续航评测，全文不涉及新品对比或换机背景。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-053",
+          "classification": "irrelevant",
+          "reason": "iPhone17实际续航评测，未涉及新品对比或换机背景，不构成比较背景",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              30
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-054",
+        "content": "华为新机拍照体验，全文没有iPhone或比较研究。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-054",
+          "classification": "irrelevant",
+          "reason": "华为新机拍照体验，无iPhone或比较研究",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              25
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-055",
+        "content": "小米18 Pro手机电池很好，全文只讨论小米。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-055",
+          "classification": "irrelevant",
+          "reason": "小米18 Pro电池讨论，对象为小米，非iPhone18系列",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-056",
+        "content": "荣耀Max音箱低音很强，18号开放预约。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-056",
+          "classification": "irrelevant",
+          "reason": "荣耀Max音箱，非手机产品",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-057",
+        "content": "洗衣机Pro Max版有18种洗涤模式。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-057",
+          "classification": "irrelevant",
+          "reason": "洗衣机Pro Max版，非手机产品",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-058",
+        "content": "关于18岁青年阅读习惯的调查，不讨论任何手机。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-058",
+          "classification": "irrelevant",
+          "reason": "18岁青年阅读习惯调查，与手机无关",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-059",
+        "content": "某餐馆iPhone抽奖海报，文章与手机产品体验无关。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-059",
+          "classification": "irrelevant",
+          "reason": "餐馆抽奖海报，与手机产品体验无关",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              26
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-060",
+        "content": "MacBook Pro电池测试，没有任何iPhone18信息。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-060",
+          "classification": "irrelevant",
+          "reason": "MacBook Pro电池测试，无iPhone18信息",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              31
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-061",
+        "content": "游戏版本18更新了Max模式，没有手机产品讨论。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-061",
+          "classification": "irrelevant",
+          "reason": "游戏版本更新Max模式，无手机产品讨论",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-062",
+        "content": "汽车Pro Max款18万元起售，内容只谈汽车。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-062",
+          "classification": "irrelevant",
+          "reason": "内容为汽车售价，与iPhone18系列手机无关，仅泛词Max/18/Pro命中。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-063",
+        "content": "电视盒子Max系列固件18更新，和iPhone无关。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-063",
+          "classification": "irrelevant",
+          "reason": "电视盒子固件更新，明确与iPhone无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              26
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-064",
+        "content": "电动工具Pro版18伏电池评价，只涉及工具。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-064",
+          "classification": "irrelevant",
+          "reason": "电动工具电池评价，仅泛词Pro/18命中，与手机无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-065",
+        "content": "这是摄影镜头18毫米Pro滤镜评测，没有手机内容。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-065",
+          "classification": "irrelevant",
+          "reason": "摄影滤镜评测，无手机内容。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              25
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-081",
+        "content": "iPhone18，好像不错。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-081",
+          "classification": "uncertain",
+          "reason": "仅提及iPhone18并含模糊好评，未涉及续航、手感、价格或反馈等具体关注点，无法核验。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              14
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-082",
+        "content": "据说那个Pro很强，但文章未说明是哪家或哪一代。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-082",
+          "classification": "uncertain",
+          "reason": "传闻限定但未说明品牌或型号，不能确认为iPhone18 Pro。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-083",
+        "content": "iPhone18体验全文请登录后查看，页面只剩标题。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-083",
+          "classification": "uncertain",
+          "reason": "正文需登录查看，无可用证据内容。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              26
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-084",
+        "content": "标题是iPhone18测试，正文只有广告链接，没有测试结论。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-084",
+          "classification": "uncertain",
+          "reason": "正文仅有广告，无测试结论或关注点信息。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              30
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-085",
+        "content": "iPhone18 Max怎么样？文章只有提问，没有任何可核验材料。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-085",
+          "classification": "uncertain",
+          "reason": "只有提问，无可核验材料。",
+          "matched_entities": [
+            "iphone18max"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              33
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-086",
+        "content": "18 Pro机身重，摘要缺失品牌和上下文。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-086",
+          "classification": "uncertain",
+          "reason": "涉及机身重量（手感相关），但缺失品牌和上下文，无法确认是iPhone18 Pro。",
+          "matched_entities": [
+            "iphone18pro"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-087",
+        "content": "iPhone18资料已删除，仅有无意义占位符。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-087",
+          "classification": "uncertain",
+          "reason": "资料已删除，仅剩占位符，无实质内容。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-088",
+        "content": "用户只发了一串表情和iPhone18标签，没有体验内容。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-088",
+          "classification": "uncertain",
+          "reason": "仅表情和标签，无体验内容。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              28
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-089",
+        "content": "搜索摘要只说iPhone18，后续内容被省略无法判断用途。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-089",
+          "classification": "uncertain",
+          "reason": "仅提及iPhone18但内容被省略，无法核验其与续航、手感、价格、反馈等关注点的关系。",
+          "matched_entities": [
+            "iphone18"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              29
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-090",
+        "content": "文中称新机电池不错，但没有明确型号，与iPhone18的关系无法核验。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-090",
+          "classification": "uncertain",
+          "reason": "称新机电池不错但未明确型号，与iPhone18的关联无法核验，传闻性信息保留限定。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              35
+            ]
+          ]
+        }
+      }
+    ],
+    "provider_calls": [
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 32,
+          "completion_tokens": 11,
+          "total_tokens": 43,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 4
+          }
+        },
+        "provider_request_id": "20261015230717f2348c0739554f99",
+        "finish_reason": "stop",
+        "elapsed_seconds": 3.054
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 32768,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 32,
+          "completion_tokens": 18,
+          "total_tokens": 50,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 11
+          }
+        },
+        "provider_request_id": "202610152307204d2217c326304eef",
+        "finish_reason": "stop",
+        "elapsed_seconds": 1.097
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 292,
+          "completion_tokens": 291,
+          "total_tokens": 583,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "202610152307215c1fe343f2ac49c6",
+        "finish_reason": "stop",
+        "elapsed_seconds": 6.877
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 1034,
+          "completion_tokens": 705,
+          "total_tokens": 1739,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "20261015230728fbd88c12d1bd458c",
+        "finish_reason": "stop",
+        "elapsed_seconds": 10.034
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 1060,
+          "completion_tokens": 676,
+          "total_tokens": 1736,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "2026101523073817bd27c49ae74214",
+        "finish_reason": "stop",
+        "elapsed_seconds": 9.593
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 1004,
+          "completion_tokens": 597,
+          "total_tokens": 1601,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "20261015230747b9d8016edecf4e47",
+        "finish_reason": "stop",
+        "elapsed_seconds": 8.54
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 1006,
+          "completion_tokens": 538,
+          "total_tokens": 1544,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "202610152307560cb5ea8a7af649d8",
+        "finish_reason": "stop",
+        "elapsed_seconds": 7.911
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 734,
+          "completion_tokens": 132,
+          "total_tokens": 866,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "2026101523080480ddb07592174ca6",
+        "finish_reason": "stop",
+        "elapsed_seconds": 3.128
+      }
+    ],
+    "research_intent": {
+      "version": "semantic-v2",
+      "original_keywords": [
+        "iphone18",
+        "iphone18pro",
+        "iphone18max"
+      ],
+      "research_question": "关注系列各型号的实际续航、手感、价格和反馈；传闻保留限定，旧款只作为比较背景",
+      "title": "独立合成参考样本实际模型核验",
+      "analysis_type": "",
+      "scenario_template_id": "",
+      "topic": "iPhone18系列各型号续航、手感、价格与用户反馈研究（传闻限定，旧款仅作比较背景）",
+      "entities": [
+        "iphone18",
+        "iphone18pro",
+        "iphone18max"
+      ],
+      "aliases": [
+        "iphone18",
+        "iPhone18",
+        "iphone18pro",
+        "iPhone18Pro",
+        "iphone18max",
+        "iPhone18Max"
+      ],
+      "relations": [
+        "iphone18系列包含iphone18pro与iphone18max等同系列型号，共同纳入同一次研究",
+        "各型号与续航、手感、价格、反馈等关注点关联",
+        "旧款机型仅作为比较背景",
+        "独立合成参考样本仅用于辅助，实际模型需核验"
+      ],
+      "focus": [
+        "实际续航表现",
+        "手感体验",
+        "价格情况",
+        "用户反馈"
+      ],
+      "non_assumptions": [
+        "不确认各型号的发布事实或具体配置",
+        "不新增同义名称（如不将iphone18max改写为iphone18pro max）",
+        "传闻信息保留限定，不当作已证实",
+        "任务显示名（如test）不作为研究对象"
+      ],
+      "search_queries": [
+        "iphone18系列各型号实际续航",
+        "iphone18pro手感体验",
+        "iphone18max价格与用户反馈",
+        "iphone18系列传闻信息 限定核验",
+        "iphone18系列与旧款机型比较背景",
+        "独立合成参考样本与实际模型核验方法"
+      ],
+      "model": "GLM-5.3-Flash"
+    },
+    "status": "completed"
+  },
+  {
+    "type": "actual_provider_on_synthetic_design_references",
+    "human_labels_confirmed": false,
+    "experimental_parameter_override": {
+      "thinking": {
+        "type": "enabled"
+      },
+      "reasoning_effort": "low"
+    },
+    "source_commit": "b884c5ffc20dcfc5fd319c7a1550abcfa188a153",
+    "analysis_id": "01M501PDMV4V8EQG5XPN872XXP",
+    "run_id": "01M501PDMXPS64Q545D9D4Y3FQ",
+    "cases": [
+      {
+        "id": "design-016",
+        "content": "雅阁后座靠背偏直，长途乘坐觉得累。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-016",
+          "classification": "direct",
+          "reason": "直接讨论雅阁后座靠背与长途乘坐疲劳，对应后排舒适性",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座靠背偏直，长途乘坐觉得累。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              17
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-017",
+        "content": "雅阁坐在第二排腿部空间大，坐垫承托一般。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-017",
+          "classification": "direct",
+          "reason": "直接评价雅阁第二排腿部空间与坐垫承托",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁坐在第二排腿部空间大，坐垫承托一般。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-018",
+        "content": "雅阁后座中间地台高，中间乘客脚不好放。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-018",
+          "classification": "direct",
+          "reason": "直接评价雅阁后座中间地台对乘客脚部放置的影响",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座中间地台高，中间乘客脚不好放。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-019",
+        "content": "雅阁第二排坐垫较软，短途坐起来舒服。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-019",
+          "classification": "direct",
+          "reason": "直接评价雅阁第二排坐垫软硬与短途舒适感",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁第二排坐垫较软，短途坐起来舒服。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              18
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-020",
+        "content": "雅阁后座悬架过减速带有些颠，孩子容易晕车。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-020",
+          "classification": "direct",
+          "reason": "直接描述雅阁后座过减速带颠簸及晕车感受",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座悬架过减速带有些颠，孩子容易晕车。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-021",
+        "content": "雅阁后边座位头部空间略局促，身高一米八坐着顶头。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-021",
+          "classification": "direct",
+          "reason": "直接评价雅阁后座头部空间与顶头情况",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后边座位头部空间略局促，身高一米八坐着顶头。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-022",
+        "content": "雅阁第二排的空调出风量够，夏天乘车不闷。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-022",
+          "classification": "direct",
+          "reason": "直接评价雅阁第二排空调出风对乘坐舒适的影响",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁第二排的空调出风量够，夏天乘车不闷。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-023",
+        "content": "雅阁后座隔音一般，高速路噪会影响休息。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-023",
+          "classification": "direct",
+          "reason": "直接评价雅阁后座隔音对休息的影响",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座隔音一般，高速路噪会影响休息。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-024",
+        "content": "乘客说雅阁后边座椅包裹感不足，转弯时身体容易滑。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-024",
+          "classification": "direct",
+          "reason": "直接评价雅阁后排座椅包裹感与身体滑动",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "乘客说雅阁后边座椅包裹感不足，转弯时身体容易滑。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-025",
+        "content": "雅阁后排长途坐了三小时，腰背支撑不太够。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-025",
+          "classification": "direct",
+          "reason": "直接描述雅阁后排长途乘坐的腰背支撑不足",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后排长途坐了三小时，腰背支撑不太够。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-026",
+        "content": "试乘雅阁时第二排脚能伸到前座下面，坐姿自然。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-026",
+          "classification": "direct",
+          "reason": "直接描述试乘雅阁第二排腿部空间与坐姿感受",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "试乘雅阁时第二排脚能伸到前座下面，坐姿自然。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-027",
+        "content": "雅阁后座座垫长度够，腿部承托比预想好。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-027",
+          "classification": "direct",
+          "reason": "直接评价雅阁后座座垫长度与腿部承托",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座座垫长度够，腿部承托比预想好。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-028",
+        "content": "雅阁后边车窗附近风噪明显，乘客交谈要提高声音。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-028",
+          "classification": "direct",
+          "reason": "直接描述雅阁后排乘客的风噪体验，属于乘坐舒适性感受。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后边车窗附近风噪明显，乘客交谈要提高声音。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-029",
+        "content": "雅阁第二排座椅角度不能调，休息时姿势受限。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-029",
+          "classification": "direct",
+          "reason": "直接描述雅阁第二排座椅角度不可调，影响后排乘坐舒适性。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁第二排座椅角度不能调，休息时姿势受限。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-030",
+        "content": "雅阁后座三个成年人一起坐略挤，肩部活动有限。",
+        "expected": "direct",
+        "actual": "direct",
+        "decision": {
+          "document_id": "design-030",
+          "classification": "direct",
+          "reason": "直接描述雅阁后座三人乘坐的空间与肩部活动感受，属于后排乘坐评价。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁后座三个成年人一起坐略挤，肩部活动有限。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-041",
+        "content": "雅阁本月销量增长，文章只统计销量，没有乘坐体验。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-041",
+          "classification": "irrelevant",
+          "reason": "仅为销量统计，无任何乘坐体验，按非假设排除。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-042",
+        "content": "雅阁新车车身尺寸和轴距参数发布，作者没有试乘后座。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-042",
+          "classification": "context",
+          "reason": "车身尺寸参数属车型背景，作者未试乘后座，不能作为乘坐评价。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁新车车身尺寸和轴距参数发布，作者没有试乘后座。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              25
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-043",
+        "content": "雅阁经销商优惠价格公布，没有后排评价。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-043",
+          "classification": "irrelevant",
+          "reason": "仅经销商价格信息，明确无后排评价。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-044",
+        "content": "雅阁全系配置表回顾，为本轮试乘报告提供车型背景。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-044",
+          "classification": "context",
+          "reason": "全系配置表为试乘报告提供背景，本身非乘坐体验。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁全系配置表回顾，为本轮试乘报告提供车型背景。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              24
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-045",
+        "content": "雅阁新款外观采用新的尾灯设计，没有乘坐反馈。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-045",
+          "classification": "irrelevant",
+          "reason": "外观尾灯设计，无乘坐反馈。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-046",
+        "content": "雅阁售后网点数量增加，属于品牌服务信息。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-046",
+          "classification": "irrelevant",
+          "reason": "售后网点属品牌服务信息，与后排乘坐无关。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-047",
+        "content": "雅阁保值率统计，仅提供二手市场背景。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-047",
+          "classification": "irrelevant",
+          "reason": "保值率为二手市场背景，与乘坐感受无关。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              18
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-048",
+        "content": "雅阁动力系统参数解读，没有第二排体验。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-048",
+          "classification": "irrelevant",
+          "reason": "动力参数解读，明确无第二排体验。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-049",
+        "content": "雅阁汽车生产基地扩产，文中只有产能信息。",
+        "expected": "context",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-049",
+          "classification": "irrelevant",
+          "reason": "生产基地产能信息，与乘坐评价无关。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-050",
+        "content": "雅阁车系历史沿革，供识别不同代际使用，未评价后座感受。",
+        "expected": "context",
+        "actual": "context",
+        "decision": {
+          "document_id": "design-050",
+          "classification": "context",
+          "reason": "雅阁车系沿革背景信息，未评价后排乘坐感受，仅可作背景参考。",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [
+            "雅阁车系历史沿革，供识别不同代际使用，未评价后座感受。"
+          ],
+          "observed_spans": [
+            [
+              0,
+              27
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-066",
+        "content": "凯美瑞后座靠背偏直，乘客长途累；全文没有雅阁。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-066",
+          "classification": "irrelevant",
+          "reason": "全文讨论凯美瑞，未涉及雅阁，不评估其他车型。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              23
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-067",
+        "content": "天籁第二排坐垫软，全文只讨论天籁，不涉及雅阁对比。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-067",
+          "classification": "irrelevant",
+          "reason": "仅讨论天籁，与雅阁无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              25
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-068",
+        "content": "家用沙发靠背舒适性评测，文章未涉及汽车。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-068",
+          "classification": "irrelevant",
+          "reason": "沙发评测，与汽车及雅阁无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-069",
+        "content": "飞机经济舱后排乘坐体验，没有雅阁。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-069",
+          "classification": "irrelevant",
+          "reason": "飞机乘坐体验，无雅阁。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              17
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-070",
+        "content": "办公室后排座位看不清屏幕，与汽车无关。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-070",
+          "classification": "irrelevant",
+          "reason": "办公室场景，与汽车无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-071",
+        "content": "雅阁是一家餐馆名，文章评价饭菜口味。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-071",
+          "classification": "irrelevant",
+          "reason": "同名餐馆，非目标实体雅阁汽车。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              18
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-072",
+        "content": "某住宅小区雅阁楼盘户型介绍，不谈汽车。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-072",
+          "classification": "irrelevant",
+          "reason": "楼盘名称，非目标实体。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-073",
+        "content": "图书馆靠后排座椅装修，内容与雅阁无关。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-073",
+          "classification": "irrelevant",
+          "reason": "图书馆座椅装修，与雅阁无关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              19
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-074",
+        "content": "公交车后排颠簸体验，没有目标车型。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-074",
+          "classification": "irrelevant",
+          "reason": "公交车后排体验，无目标车型。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              17
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-075",
+        "content": "儿童安全座椅商品说明，不含安装在雅阁的描述。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-075",
+          "classification": "irrelevant",
+          "reason": "儿童安全座椅说明，无雅阁相关描述。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-076",
+        "content": "车型广告只写广汽品牌，没有雅阁或乘坐信息。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-076",
+          "classification": "irrelevant",
+          "reason": "广告无雅阁及乘坐信息。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-077",
+        "content": "皮卡后排空间评测，没有目标车型和比较研究。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-077",
+          "classification": "irrelevant",
+          "reason": "皮卡后排评测，非雅阁，无目标车型比较研究",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-078",
+        "content": "自行车后座坐垫设计，全文不涉及汽车。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-078",
+          "classification": "irrelevant",
+          "reason": "自行车坐垫设计，与汽车后排无关",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              18
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-079",
+        "content": "足球比赛后排观众席视野讨论，没有汽车内容。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-079",
+          "classification": "irrelevant",
+          "reason": "观众席视野讨论，无汽车内容",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              21
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-080",
+        "content": "本文介绍一位叫雅阁的音乐人，内容是演出安排。",
+        "expected": "irrelevant",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-080",
+          "classification": "irrelevant",
+          "reason": "雅阁是人名，讨论演出安排，与车型后排无关",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-091",
+        "content": "雅阁后排怎么样？本文只是提问。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-091",
+          "classification": "uncertain",
+          "reason": "仅提问无任何体验描述，无法核验",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              15
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-092",
+        "content": "雅阁乘坐评测请登录，正文未显示。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-092",
+          "classification": "uncertain",
+          "reason": "正文未显示，无可用证据",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              16
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-093",
+        "content": "标题写雅阁后排，但正文是一段乱码。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-093",
+          "classification": "uncertain",
+          "reason": "正文乱码，无法核验内容",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              17
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-094",
+        "content": "雅阁坐着还行，未说明前座后座或具体观察。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-094",
+          "classification": "uncertain",
+          "reason": "未说明前座或后座，具体对象不明",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-095",
+        "content": "这台车后座难受，文章没有品牌车型上下文。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-095",
+          "classification": "uncertain",
+          "reason": "无品牌车型上下文，无法归属雅阁",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-096",
+        "content": "雅阁后排相关资料已删除，只留下标题。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-096",
+          "classification": "uncertain",
+          "reason": "资料已删除，仅剩标题",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              18
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-097",
+        "content": "雅阁用户发了一个座椅表情，没有体验描述。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-097",
+          "classification": "uncertain",
+          "reason": "仅表情，无体验描述",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-098",
+        "content": "摘要只有雅阁和舒适两个词，无法核验完整意思。",
+        "expected": "uncertain",
+        "actual": "uncertain",
+        "decision": {
+          "document_id": "design-098",
+          "classification": "uncertain",
+          "reason": "仅两个词，无法核验完整意思",
+          "matched_entities": [
+            "雅阁"
+          ],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-099",
+        "content": "车主说后边有问题，未说明问题内容或目标车型。",
+        "expected": "uncertain",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-099",
+          "classification": "irrelevant",
+          "reason": "未说明问题内容且未明确指向雅阁，泛词'后边有问题'不能证明对象与后排舒适性相关。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              22
+            ]
+          ]
+        }
+      },
+      {
+        "id": "design-100",
+        "content": "雅阁后排全文加载失败，请稍后重试。",
+        "expected": "uncertain",
+        "actual": "irrelevant",
+        "decision": {
+          "document_id": "design-100",
+          "classification": "irrelevant",
+          "reason": "正文为加载失败提示，无任何关于雅阁后排乘坐感受的实际内容，不能作为已核验证据。",
+          "matched_entities": [],
+          "evidence_spans": [],
+          "observed_spans": [
+            [
+              0,
+              17
+            ]
+          ]
+        }
+      }
+    ],
+    "provider_calls": [
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 284,
+          "completion_tokens": 149,
+          "total_tokens": 433,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "20261015230808089682991f91489a",
+        "finish_reason": "stop",
+        "elapsed_seconds": 3.674
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 873,
+          "completion_tokens": 705,
+          "total_tokens": 1578,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 13
+          }
+        },
+        "provider_request_id": "202610152308125ac9f6aef9154d1e",
+        "finish_reason": "stop",
+        "elapsed_seconds": 9.786
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 849,
+          "completion_tokens": 701,
+          "total_tokens": 1550,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "20261015230821f4b480cc77b4463e",
+        "finish_reason": "stop",
+        "elapsed_seconds": 9.409
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 852,
+          "completion_tokens": 476,
+          "total_tokens": 1328,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "20261015230831294766373f174669",
+        "finish_reason": "stop",
+        "elapsed_seconds": 7.295
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 834,
+          "completion_tokens": 478,
+          "total_tokens": 1312,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 8
+          }
+        },
+        "provider_request_id": "20261015230838bb56b6eeffb6411c",
+        "finish_reason": "stop",
+        "elapsed_seconds": 7.08
+      },
+      {
+        "requested_model": "GLM-5.3-Flash",
+        "actual_model": "glm-5.3-flash",
+        "max_tokens": 16384,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low",
+        "usage": {
+          "prompt_tokens": 559,
+          "completion_tokens": 109,
+          "total_tokens": 668,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provider_request_id": "202610152308458d7d7f79e69042a0",
+        "finish_reason": "stop",
+        "elapsed_seconds": 2.442
+      }
+    ],
+    "research_intent": {
+      "version": "semantic-v2",
+      "original_keywords": [
+        "雅阁",
+        "后排",
+        "舒适性"
+      ],
+      "research_question": "雅阁后排乘坐感受，不评估其他车型，也不把销量等背景当乘坐评价",
+      "title": "独立合成参考样本实际模型核验",
+      "analysis_type": "",
+      "scenario_template_id": "",
+      "topic": "雅阁后排乘坐舒适性感受",
+      "entities": [
+        "雅阁"
+      ],
+      "aliases": [
+        "雅阁"
+      ],
+      "relations": [
+        "雅阁的后排乘坐感受"
+      ],
+      "focus": [
+        "后排舒适性",
+        "乘坐感受"
+      ],
+      "non_assumptions": [
+        "不评估其他车型",
+        "不把销量等背景信息作为乘坐评价依据",
+        "不凭记忆确认型号或配置事实"
+      ],
+      "search_queries": [
+        "雅阁 后排 舒适性 乘坐感受",
+        "雅阁 后排 座椅 体验",
+        "雅阁 后排空间 乘坐评价",
+        "雅阁 后排 长途乘坐感受"
+      ],
+      "model": "GLM-5.3-Flash"
+    },
+    "status": "completed"
+  }
+]

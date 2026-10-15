@@ -39,6 +39,16 @@ func TestClosurePGCatalogRetentionPreservesRunFactsAndOtherTenants(t *testing.T)
 					t.Fatal(err)
 				}
 			}
+			for _, query := range []string{
+				`UPDATE analyses SET research_question='private question',research_intent='{"topic":"private topic"}',research_intent_version='semantic-v2' WHERE id IN ('expired','retained')`,
+				`UPDATE analysis_runs SET research_intent='{"topic":"private topic"}',research_intent_version='semantic-v2',research_intent_model='sandbox',research_intent_created_at=now(),retrieval_coverage='{"candidate_audit":[{"content":"private text"}]}' WHERE id='financial-run'`,
+				`INSERT INTO analysis_candidate_materials(run_id,tenant_id,analysis_id,document_id,content,content_sha256,metadata) VALUES('financial-run','sole','expired','private-candidate','private text','sandbox-hash','{}')`,
+				`INSERT INTO analysis_retrieval_audits(id,run_id,tenant_id,analysis_id,coverage,coverage_hash) VALUES('private-audit','financial-run','sole','expired','{"topic":"private topic"}','sandbox-hash')`,
+			} {
+				if _, err = pool.Exec(ctx, query); err != nil {
+					t.Fatal(err)
+				}
+			}
 			s := NewPGStore(pool)
 			s.SetAvatarStorage(storage.NewLocalAvatar(t.TempDir()))
 			if _, err = s.Request(ctx, Actor{UserID: "closing", PasswordHash: "hash"}, []string{"sole"}); err != nil {
@@ -63,6 +73,9 @@ func TestClosurePGCatalogRetentionPreservesRunFactsAndOtherTenants(t *testing.T)
 			var intact bool
 			if err = pool.QueryRow(ctx, `SELECT (SELECT report_content='' AND closure_purged_at IS NOT NULL FROM analyses WHERE id='expired') AND (SELECT count(*)=1 FROM analysis_runs WHERE id='financial-run') AND (SELECT report_content='retained report' FROM analyses WHERE id='retained') AND (SELECT count(*)=0 FROM raw_documents WHERE id='expired-doc') AND (SELECT count(*)=1 FROM raw_documents WHERE id='retained-doc') AND (SELECT report_content='other report' FROM analyses WHERE id='other-report')`).Scan(&intact); err != nil || !intact {
 				t.Fatalf("retention or financial/tenant isolation broke: %v", err)
+			}
+			if err = pool.QueryRow(ctx, `SELECT (SELECT research_question='' AND research_intent='{}'::jsonb FROM analyses WHERE id='expired') AND (SELECT research_intent='{}'::jsonb AND research_intent_version='' AND retrieval_coverage IS NULL FROM analysis_runs WHERE id='financial-run') AND (SELECT count(*)=0 FROM analysis_candidate_materials WHERE run_id='financial-run') AND (SELECT count(*)=0 FROM analysis_retrieval_audits WHERE run_id='financial-run') AND (SELECT research_question='private question' FROM analyses WHERE id='retained')`).Scan(&intact); err != nil || !intact {
+				t.Fatalf("research evidence retention violated: %v", err)
 			}
 			if _, err = pool.Exec(ctx, `UPDATE analyses SET created_at=now()-interval '400 days' WHERE id='retained'; UPDATE reports SET created_at=now()-interval '400 days' WHERE id='retained-report'`); err != nil {
 				t.Fatal(err)

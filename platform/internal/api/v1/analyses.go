@@ -210,15 +210,30 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 		report = gin.H{"id": a.ReportID, "format": "html", "content": a.ReportContent}
 	}
 
+	docCount, contextCount := len(docs), 0
+	if a.RetrievalCoverage != nil && a.RetrievalCoverage.AdmissionVersion == "semantic-v2" {
+		docCount = 0
+		for _, doc := range docs {
+			if doc.SemanticClassification == "direct" {
+				docCount++
+			} else if doc.SemanticClassification == "context" {
+				contextCount++
+			}
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"id":                   a.ID,
 		"scenario_template_id": a.ScenarioTemplateID,
 		"state":                a.State,
-		"doc_count":            len(docs),
-		"retrieval_coverage":   a.RetrievalCoverage,
-		"documents":            docs,
-		"summary":              a.Summary,
-		"warning":              a.Warning,
+		"doc_count":            docCount, "context_count": contextCount,
+		"material_count":    len(docs),
+		"research_question": a.ResearchQuestion, "research_intent": a.ResearchIntent, "research_intent_version": a.ResearchIntentVersion,
+		"insight_material_coverage": a.InsightMaterialCoverage, "report_material_coverage": a.ReportMaterialCoverage,
+		"run_started_at": a.RunStartedAt, "task_deadline_at": a.TaskDeadlineAt,
+		"retrieval_coverage": a.RetrievalCoverage,
+		"documents":          docs,
+		"summary":            a.Summary,
+		"warning":            a.Warning,
 		"sentiments": gin.H{
 			"positive": pos, "negative": neg, "neutral": neu,
 			"items": items,

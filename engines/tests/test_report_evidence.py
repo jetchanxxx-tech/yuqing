@@ -14,7 +14,7 @@ from engines.tests.test_usage_bridge import billing_sandbox
 
 def test_risk_citation_cannot_borrow_text_from_another_document(monkeypatch):
     payload = copy.deepcopy(DEFAULT_LLM_PAYLOAD)
-    payload["risk_points"] = [{"level": "高", "desc": "错误证据支持的风险", "evidence": "后排腿部空间局促。", "evidence_document_id": "d2"}]
+    payload["risk_points"] = [{"level": "高", "type": "短期", "desc": "错误证据支持的风险", "evidence": "后排腿部空间局促。", "evidence_document_id": "d2"}]
     provider = FakeLLM(payload=payload)
     monkeypatch.setattr(report, "build_client", lambda *_args, **_kwargs: provider)
     response = TestClient(report.app).post("/generate", json={**REQ, "api_key": "offline-key"})

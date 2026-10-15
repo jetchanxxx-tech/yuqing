@@ -75,7 +75,12 @@ func TestPGServerWorkerAcrossProcessAndRestart(t *testing.T) {
 		default:
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"documents":[{"id":"keep","title":"keep","content":"safe","source_type":"news","published_at":"2026-09-02"},{"id":"keep-two","title":"second safe evidence","content":"safe second document","source_type":"news","published_at":"2026-09-03"},{"id":"skip","title":"blocked","content":"excluded","source_type":"news","published_at":"2026-09-02"}],"total_count":3,"coverage":{"admission_version":"lexical-v1","accepted_count":3}}`)
+		documents := []map[string]any{
+			{"id": "keep", "title": "keep", "content": "safe", "url": "https://36kr.com/p/1", "final_url": "https://36kr.com/p/1", "source_type": "news", "published_at": "2026-09-02", "semantic_classification": "direct", "semantic_reason": "research evidence", "evidence_spans": []string{"safe"}},
+			{"id": "keep-two", "title": "second safe evidence", "content": "safe second document", "url": "https://36kr.com/p/2", "final_url": "https://36kr.com/p/2", "source_type": "news", "published_at": "2026-09-03", "semantic_classification": "direct", "semantic_reason": "research evidence", "evidence_spans": []string{"safe second document"}},
+		}
+		audit := []any{documents[0], documents[1], map[string]any{"id": "skip", "status": "excluded", "reason": "explicit exclusion word"}}
+		_ = json.NewEncoder(w).Encode(map[string]any{"documents": documents, "total_count": 2, "coverage": map[string]any{"admission_version": "semantic-v2", "provider_candidates": 3, "accepted_count": 2, "direct_count": 2, "context_count": 0, "per_keyword": []any{}, "per_platform": []any{}, "candidate_audit": audit}})
 	}))
 	defer engine.Close()
 	cfg := &config.Config{Store: config.StoreConfig{Driver: "postgres"}, Queue: config.QueueConfig{Driver: "postgres"}}

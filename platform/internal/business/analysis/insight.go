@@ -39,21 +39,23 @@ type Quote struct {
 // 为什么分维度：单轮单视角的「一次调用出全部」只能产出各方面都平庸的概括，
 // 且跨分析高度趋同。分维度独立深挖再汇总，结论才有层次。
 type Dimension struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Findings   string   `json:"findings"`
-	DataPoints []string `json:"data_points,omitempty"`
-	Quotes     []Quote  `json:"quotes,omitempty"`
-	DeepRead   string   `json:"deep_read"`
-	Trend      string   `json:"trend"`
+	QuoteLocations []map[string]any `json:"quote_locations,omitempty"`
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	Findings       string           `json:"findings"`
+	DataPoints     []string         `json:"data_points,omitempty"`
+	Quotes         []Quote          `json:"quotes,omitempty"`
+	DeepRead       string           `json:"deep_read"`
+	Trend          string           `json:"trend"`
 }
 
 // InsightResult is the analysis engine output: summary + sentiments + topics + dimensions.
 type InsightResult struct {
-	Summary    string
-	Sentiments []Sentiment
-	Topics     []Topic
-	Dimensions []Dimension
+	MaterialCoverage map[string]any
+	Summary          string
+	Sentiments       []Sentiment
+	Topics           []Topic
+	Dimensions       []Dimension
 	// Warning 是引擎侧的部分降级说明（如某个维度调用失败但其余成功）。
 	// 管线将其合并进任务的 warning 字段。
 	Warning string
@@ -61,6 +63,8 @@ type InsightResult struct {
 
 // InsightRequest carries the documents to analyze.
 type InsightRequest struct {
+	ContextDocuments   []Document
+	ResearchIntent     map[string]any
 	RunID              string
 	TenantID           string
 	AnalysisID         string
@@ -83,18 +87,21 @@ type InsightAnalyzer interface {
 
 // ReportRequest carries the data to render a report.
 type ReportRequest struct {
-	RunID              string
-	TenantID           string
-	AnalysisID         string
-	TemplateID         string
-	AnalysisType       string
-	ScenarioTemplateID string
-	Title              string
-	DateFrom           string
-	DateTo             string
-	Documents          []Document
-	Sentiments         []Sentiment
-	Topics             []Topic
+	ContextDocuments        []Document
+	ResearchIntent          map[string]any
+	InsightMaterialCoverage map[string]any
+	RunID                   string
+	TenantID                string
+	AnalysisID              string
+	TemplateID              string
+	AnalysisType            string
+	ScenarioTemplateID      string
+	Title                   string
+	DateFrom                string
+	DateTo                  string
+	Documents               []Document
+	Sentiments              []Sentiment
+	Topics                  []Topic
 	// Dimensions 是分析引擎的五维度研判结论。报告要基于这些结论撰写，
 	// 而不是从聚合 JSON 重新概括（否则报告与摘要一样干瘪）。
 	Dimensions []Dimension
@@ -105,8 +112,10 @@ type ReportRequest struct {
 
 // ReportResult is the generated report content.
 type ReportResult struct {
-	ReportID string
-	Content  string
+	Warning          string
+	MaterialCoverage map[string]any
+	ReportID         string
+	Content          string
 }
 
 // ReportGenerator renders an analysis report.

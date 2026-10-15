@@ -94,7 +94,6 @@ func (s *pgStore) recoverInterrupted(ctx context.Context, tenantID, analysisID s
 	a.State = StateQueued
 	a.Progress = 0
 	a.ErrorCode = ""
-	a.StartedAt = time.Time{}
 	a.FinishedAt = time.Time{}
 	a.DocCount = 0
 	a.Summary = ""

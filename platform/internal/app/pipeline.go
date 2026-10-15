@@ -27,6 +27,9 @@ import (
 // 未接线（URL 为空）的引擎不计入；返回 0 表示无有效配置，
 // 由 NewPipeline 兜底为默认 3 分钟。
 func pipelineBudget(cfg *config.Config) time.Duration {
+	if cfg.Engines.Query.URL != "" && cfg.Engines.Insight.URL != "" && cfg.Engines.Report.URL != "" {
+		return 2760 * time.Second
+	}
 	total := time.Duration(0)
 	add := func(raw string, wired bool) {
 		if !wired {
@@ -75,39 +78,39 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 
 func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.FetchRequest) (analysis.FetchResult, error) {
 	result, err := f.crawler.SearchWithCoverage(ctx, &engine.CrawlReq{
-		RunID:        req.RunID,
-		Keywords:     req.Keywords,
-		Sources:      req.Sources,
-		ExcludeWords: req.ExcludeWords,
-		DateFrom:     req.DateFrom,
-		DateTo:       req.DateTo,
-		AnalysisID:   req.AnalysisID,
-		MaxDepth:     req.MaxResults,
+		RunID:    req.RunID,
+		TenantID: req.TenantID, Title: req.Title, AnalysisType: req.AnalysisType, ScenarioTemplateID: req.ScenarioTemplateID, ResearchQuestion: req.ResearchQuestion, ResearchIntentVersion: req.ResearchIntentVersion,
+		Keywords:       req.Keywords,
+		Sources:        req.Sources,
+		ExcludeWords:   req.ExcludeWords,
+		DateFrom:       req.DateFrom,
+		DateTo:         req.DateTo,
+		AnalysisID:     req.AnalysisID,
+		MaxDepth:       req.MaxResults,
 		ResearchIntent: req.ResearchIntent,
 	})
-	if err != nil {
-		return analysis.FetchResult{}, err
-	}
+	fetchErr := err
 	out := make([]analysis.Document, 0, len(result.Documents))
 	for _, d := range result.Documents {
 		out = append(out, analysis.Document{
-			ID:          d.ID,
-			Title:       d.Title,
-			URL:         d.URL,
-			Content:     d.Content,
-			Author:      d.Author,
-			SourceType:  d.SourceType,
-			SourceName:  d.SourceName,
-			PublishedAt: d.PublishedAt,
-			ContentHash: d.ContentHash,
-			ContentKind: d.ContentKind,
-			FetchStatus: d.FetchStatus,
-			FetchReason: d.FetchReason,
-			FinalURL:    d.FinalURL,
-			Truncated:   d.Truncated,
+			ID:                     d.ID,
+			Title:                  d.Title,
+			URL:                    d.URL,
+			Content:                d.Content,
+			Author:                 d.Author,
+			SourceType:             d.SourceType,
+			SourceName:             d.SourceName,
+			PublishedAt:            d.PublishedAt,
+			ContentHash:            d.ContentHash,
+			ContentKind:            d.ContentKind,
+			FetchStatus:            d.FetchStatus,
+			FetchReason:            d.FetchReason,
+			FinalURL:               d.FinalURL,
+			Truncated:              d.Truncated,
 			SemanticClassification: d.SemanticClassification,
-			SemanticReason: d.SemanticReason,
-			EvidenceSpans: d.EvidenceSpans,
+			SemanticReason:         d.SemanticReason,
+			EvidenceSpans:          d.EvidenceSpans,
+			ObservedSpans:          d.ObservedSpans, DateSources: d.DateSources, SourcePublishedAt: d.SourcePublishedAt,
 		})
 	}
 	warnings := make([]string, 0, 2)
@@ -121,18 +124,13 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 			warnings = append(warnings, "query engine did not report filter coverage")
 		}
 	}
-	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; "), Coverage: &analysis.RetrievalCoverage{
-		AdmissionVersion:    result.Coverage.AdmissionVersion,
-		ProviderCandidates:  result.Coverage.ProviderCandidates,
-		UnusableCount:       result.Coverage.UnusableCount,
-		IrrelevantCount:     result.Coverage.IrrelevantCount,
-		SourceMismatchCount: result.Coverage.SourceMismatchCount,
-		AcceptedCount:       result.Coverage.AcceptedCount,
-		CandidateTruncated:  result.Coverage.CandidateTruncated,
-		DirectCount:         result.Coverage.DirectCount,
-		ContextCount:        result.Coverage.ContextCount,
-		PerKeyword:          result.Coverage.PerKeyword,
-	}}, nil
+	var coverage *analysis.RetrievalCoverage
+	// A broken connection has no new audit fact. Preserve the query engine's
+	// already committed same-run checkpoint instead of writing a zero value.
+	if result.Coverage.AdmissionVersion != "" {
+		coverage = &result.Coverage
+	}
+	return analysis.FetchResult{Documents: out, Warning: strings.Join(warnings, "; "), Coverage: coverage}, fetchErr
 }
 
 // engineInsightAdapter 把引擎客户端适配为 analysis.InsightAnalyzer。
@@ -143,8 +141,9 @@ type engineInsightAdapter struct {
 func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
 	docs := toEngineDocuments(req.Documents)
 	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
-		RunID:              req.RunID,
-		Documents:          docs,
+		RunID:            req.RunID,
+		Documents:        docs,
+		ContextDocuments: toEngineDocuments(req.ContextDocuments), ResearchIntent: req.ResearchIntent,
 		AnalysisID:         req.AnalysisID,
 		AnalysisType:       req.AnalysisType,
 		ScenarioTemplateID: req.ScenarioTemplateID,
@@ -157,11 +156,12 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 		return analysis.InsightResult{}, err
 	}
 	out := analysis.InsightResult{
-		Summary:    resp.Summary,
-		Warning:    resp.Warning,
-		Sentiments: make([]analysis.Sentiment, 0, len(resp.Sentiments)),
-		Topics:     make([]analysis.Topic, 0, len(resp.Topics)),
-		Dimensions: make([]analysis.Dimension, 0, len(resp.Dimensions)),
+		Summary:          resp.Summary,
+		MaterialCoverage: resp.MaterialCoverage,
+		Warning:          resp.Warning,
+		Sentiments:       make([]analysis.Sentiment, 0, len(resp.Sentiments)),
+		Topics:           make([]analysis.Topic, 0, len(resp.Topics)),
+		Dimensions:       make([]analysis.Dimension, 0, len(resp.Dimensions)),
 	}
 	for _, s := range resp.Sentiments {
 		out.Sentiments = append(out.Sentiments, analysis.Sentiment{
@@ -187,13 +187,14 @@ func toAnalysisDimension(d engine.DimensionResult) analysis.Dimension {
 		quotes = append(quotes, analysis.Quote{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 	}
 	return analysis.Dimension{
-		ID:         d.ID,
-		Name:       d.Name,
-		Findings:   d.Findings,
-		DataPoints: d.DataPoints,
-		Quotes:     quotes,
-		DeepRead:   d.DeepRead,
-		Trend:      d.Trend,
+		ID:             d.ID,
+		QuoteLocations: d.QuoteLocations,
+		Name:           d.Name,
+		Findings:       d.Findings,
+		DataPoints:     d.DataPoints,
+		Quotes:         quotes,
+		DeepRead:       d.DeepRead,
+		Trend:          d.Trend,
 	}
 }
 
@@ -206,7 +207,7 @@ func toEngineDimensions(dims []analysis.Dimension) []engine.DimensionResult {
 			quotes = append(quotes, engine.QuoteResult{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 		}
 		out = append(out, engine.DimensionResult{
-			ID: d.ID, Name: d.Name, Findings: d.Findings,
+			ID: d.ID, Name: d.Name, Findings: d.Findings, QuoteLocations: d.QuoteLocations,
 			DataPoints: d.DataPoints, Quotes: quotes,
 			DeepRead: d.DeepRead, Trend: d.Trend,
 		})
@@ -230,16 +231,17 @@ func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportR
 		ScenarioTemplateID: req.ScenarioTemplateID,
 		Format:             "html",
 		Documents:          toEngineDocuments(req.Documents),
-		Sentiments:         toEngineSentiments(req.Sentiments),
-		Topics:             toEngineTopics(req.Topics),
-		Dimensions:         toEngineDimensions(req.Dimensions),
-		AnalysisID:         req.AnalysisID,
-		InsightAvailable:   req.InsightAvailable,
+		ContextDocuments:   toEngineDocuments(req.ContextDocuments), ResearchIntent: req.ResearchIntent, InsightMaterialCoverage: req.InsightMaterialCoverage,
+		Sentiments:       toEngineSentiments(req.Sentiments),
+		Topics:           toEngineTopics(req.Topics),
+		Dimensions:       toEngineDimensions(req.Dimensions),
+		AnalysisID:       req.AnalysisID,
+		InsightAvailable: req.InsightAvailable,
 	})
 	if err != nil {
 		return analysis.ReportResult{}, err
 	}
-	return analysis.ReportResult{ReportID: resp.ReportID, Content: resp.Content}, nil
+	return analysis.ReportResult{ReportID: resp.ReportID, Content: resp.Content, Warning: resp.Warning, MaterialCoverage: resp.MaterialCoverage}, nil
 }
 
 // reportSvcAdapter 把 *report.Service 适配为 analysis.reportSvc 接口。
@@ -272,6 +274,7 @@ func toEngineDocuments(docs []analysis.Document) []engine.Document {
 			ID: d.ID, Title: d.Title, URL: d.URL, Content: d.Content,
 			Author: d.Author, SourceType: d.SourceType, SourceName: d.SourceName,
 			PublishedAt: d.PublishedAt, ContentHash: d.ContentHash,
+			SourcePublishedAt: d.SourcePublishedAt, ContentKind: d.ContentKind, FetchStatus: d.FetchStatus, FetchReason: d.FetchReason, FinalURL: d.FinalURL, Truncated: d.Truncated, SemanticClassification: d.SemanticClassification, SemanticReason: d.SemanticReason, EvidenceSpans: d.EvidenceSpans, ObservedSpans: d.ObservedSpans, DateSources: d.DateSources,
 		})
 	}
 	return out
@@ -291,7 +294,7 @@ func toEngineSentiments(items []analysis.Sentiment) []engine.SentimentResult {
 func toEngineTopics(items []analysis.Topic) []engine.TopicResult {
 	out := make([]engine.TopicResult, 0, len(items))
 	for _, t := range items {
-		out = append(out, engine.TopicResult{ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, Trend: t.Trend})
+		out = append(out, engine.TopicResult{ID: t.ID, Name: t.Name, Keywords: t.Keywords, DocCount: t.DocCount, DocIDs: t.DocIDs, Trend: t.Trend})
 	}
 	return out
 }

@@ -83,7 +83,7 @@ func (s *CallService) permit(callID, requestHash string) string {
 func validIdentity(s string) bool { return strings.TrimSpace(s) == s && len(s) > 0 && len(s) <= 128 }
 
 func (s *CallService) Authorize(ctx context.Context, req CallAuthorizationRequest) (CallAuthorization, error) {
-	if !validIdentity(req.CallID) || !validIdentity(req.RunID) || !validIdentity(req.Model) || req.Attempt < 1 || req.Attempt > 100 || !((req.Engine == "insight" && req.Phase == "analyze") || (req.Engine == "report" && req.Phase == "generate") || (req.Engine == "query" && req.Phase == "relevance")) {
+	if !validIdentity(req.CallID) || !validIdentity(req.RunID) || !validIdentity(req.Model) || req.Attempt < 1 || req.Attempt > 100 || !((req.Engine == "insight" && req.Phase == "analyze") || (req.Engine == "report" && req.Phase == "generate") || (req.Engine == "query" && (req.Phase == "plan" || req.Phase == "relevance"))) {
 		return CallAuthorization{}, pkgerrors.ErrBadRequest
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -126,6 +126,9 @@ func (s *CallService) Authorize(ctx context.Context, req CallAuthorizationReques
 		return result, err
 	}
 	if current != req.RunID || state == "completed" || state == "failed" || state == "canceled" || runState != state {
+		return result, pkgerrors.ErrConflict
+	}
+	if req.Engine == "query" && state != "fetching" {
 		return result, pkgerrors.ErrConflict
 	}
 	budget, err := billing.NewEntitlementService(s.pool).EffectiveBudgetTx(ctx, tx, tenantID)

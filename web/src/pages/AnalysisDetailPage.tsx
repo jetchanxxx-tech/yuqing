@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -46,6 +46,11 @@ import {
   type EventTimelineResponse,
   type DimensionResult,
   type SentimentItem,
+  type ResearchIntent,
+  type PlatformCoverage,
+  type CandidateAudit,
+  type MaterialCoverage,
+  type SentimentDoc,
 } from '../api/analyses';
 import { listReports, openReportDownload, type Report } from '../api/reports';
 import {
@@ -65,11 +70,11 @@ import {
 import { useDateTime, formatNum, formatSourceTime } from '../lib/format';
 
 const RUNNING_HINTS: Partial<Record<AnalysisState, string>> = {
-  queued: '任务已进入队列，等待调度执行（全流程预计 5-10 分钟）',
-  acquiring_budget: '正在校验预算额度（全流程预计 5-10 分钟）',
-  fetching: '正在从各平台采集公开数据（约 1-2 分钟）',
-  analyzing: '多 Agent 正在协同研判内容（五维分析约 3-5 分钟，为最耗时阶段）',
-  generating_report: '正在生成洞察报告（约 1 分钟），即将完成',
+  queued: '任务已进入队列，等待调度执行',
+  acquiring_budget: '正在校验预算额度并接纳本轮任务',
+  fetching: '正在逐平台检索、补抓正文并核验与共同主题的关系',
+  analyzing: '正在分批阅读直接证据与背景材料，开展智能研判',
+  generating_report: '正在编排报告并核验引用与材料处理记录',
 };
 
 const TREND_ICONS: Record<string, React.ReactNode> = {
@@ -198,8 +203,11 @@ export default function AnalysisDetailPage() {
                     : detail.date_from ? `${detail.date_from} 起` : `截至 ${detail.date_to}`,
                 }] : []),
                 { key: 'progress', label: '进度', children: <span>{formatNum(detail.progress)}%</span> },
+                ...(detail.research_question ? [{ key: 'question', label: '关注问题', children: detail.research_question }] : []),
               ]}
             />
+            {running && <RunTiming startedAt={detail.run_started_at} deadlineAt={detail.task_deadline_at}
+              phaseStartedAt={detail.phase_started_at} stageDeadlineAt={detail.stage_deadline_at} />}
             {running && (
               <Progress
                 percent={Math.max(0, Math.min(100, detail.progress ?? 0))}
@@ -208,7 +216,7 @@ export default function AnalysisDetailPage() {
               />
             )}
             {failed && detail.error_code === 'insufficient_relevant_evidence' && (
-              <Alert type="warning" showIcon message="有效证据不足" description="检索结果中通过准入的材料不足两条，未生成完整研判或报告；请检查关键词和下方采集记录。" style={{ marginTop: 12 }} />
+              <Alert type="warning" showIcon message="有效证据不足" description="不同链接的直接证据不足两条，未生成完整研判或报告；背景材料不用于补足门槛，请查看下方各平台与候选处理原因。" style={{ marginTop: 12 }} />
             )}
             {failed && detail.error_message && (
               <Alert type="error" showIcon message={detail.error_message} style={{ marginTop: 12 }} />
@@ -252,9 +260,22 @@ export default function AnalysisDetailPage() {
         </Row>
       </Card>
 
+      {(detail.research_intent_version === 'semantic-v2' || detail.retrieval_coverage?.admission_version === 'semantic-v2')
+        && (detail.research_intent || detail.retrieval_coverage?.research_intent) && (
+        <Card title="系统理解（本轮主题）" style={{ borderRadius: 16, marginBottom: 16 }}>
+          <ResearchIntentView intent={(detail.research_intent || detail.retrieval_coverage?.research_intent) as ResearchIntent} />
+        </Card>
+      )}
+
       {(completed || failed) && (
         <Card title="本次采集准入" style={{ borderRadius: 16, marginBottom: 16 }}>
           <RetrievalCoverageView coverage={detail.retrieval_coverage} storedCount={detail.doc_count} />
+        </Card>
+      )}
+      {(detail.insight_material_coverage || detail.report_material_coverage) && (
+        <Card title="材料处理记录" style={{ borderRadius: 16, marginBottom: 16 }}>
+          <MaterialCoverageView label="洞察" coverage={detail.insight_material_coverage} />
+          <MaterialCoverageView label="报告" coverage={detail.report_material_coverage} />
         </Card>
       )}
       <Row gutter={16} align="stretch">
@@ -298,7 +319,9 @@ export default function AnalysisDetailPage() {
                       分析失败
                     </Typography.Title>
                     <Typography.Paragraph type="secondary">
-                      可重新运行任务；若反复失败请前往账单页确认额度
+                      {detail.error_code === 'fetch_failed'
+                        ? '采集未完成，请检查关键词、所选来源及采集记录后重试。'
+                        : '本次分析未完整交付，请查看错误提示与处理记录后重试。'}
                     </Typography.Paragraph>
                   </>
                 ) : (
@@ -325,6 +348,74 @@ export default function AnalysisDetailPage() {
       )}
     </div>
   );
+}
+
+function RunTiming({ startedAt, deadlineAt, phaseStartedAt, stageDeadlineAt }: {
+  startedAt?: string; deadlineAt?: string; phaseStartedAt?: string; stageDeadlineAt?: string;
+}) {
+  const [now, setNow] = useState(Date.now());
+  const formatDateTime = useDateTime();
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = (value: string) => {
+    const seconds = Math.max(0, Math.floor((now - Date.parse(value)) / 1000));
+    return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+  };
+  return <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+    {startedAt && Number.isFinite(Date.parse(startedAt)) ? `本轮已用时 ${elapsed(startedAt)}` : '等待本轮开始执行'}
+    {phaseStartedAt && Number.isFinite(Date.parse(phaseStartedAt)) ? ` · 当前阶段 ${elapsed(phaseStartedAt)}` : ''}
+    {deadlineAt ? ` · 最晚处理时间 ${formatDateTime(deadlineAt)}` : ' · 全流程最长 46 分钟，按剩余时限处理'}
+    {stageDeadlineAt ? ` · 当前阶段截止 ${formatDateTime(stageDeadlineAt)}` : ''}
+  </Typography.Paragraph>;
+}
+
+function ResearchIntentView({ intent }: { intent: ResearchIntent }) {
+  return <>
+    <Typography.Paragraph style={{ fontSize: 15, marginBottom: 8 }}>{intent.topic || '研究意图已保存，未提供主题说明'}</Typography.Paragraph>
+    <Descriptions column={1} size="small" items={[
+      ...(intent.original_keywords?.length ? [{ key: 'original', label: '原始关键词', children: intent.original_keywords.join(' / ') }] : []),
+      ...(intent.entities?.length ? [{ key: 'entities', label: '研究对象', children: intent.entities.join('、') }] : []),
+      ...(intent.focus?.length ? [{ key: 'focus', label: '关注点', children: intent.focus.join('、') }] : []),
+      ...(intent.relations?.length ? [{ key: 'relations', label: '对象关系', children: intent.relations.join('；') }] : []),
+      ...(intent.non_assumptions?.length ? [{ key: 'limits', label: '不预设的事实', children: intent.non_assumptions.join('；') }] : []),
+    ]} />
+    <Typography.Text type="secondary">这是本轮系统对共同主题的理解，不能作为产品已发布或事实已证实的依据。</Typography.Text>
+  </>;
+}
+
+function MaterialCoverageView({ label, coverage }: { label: string; coverage?: MaterialCoverage | null }) {
+  if (!coverage?.phases?.length) return null;
+  const phaseNames: Record<string, string> = { classification: '情感与话题', summary: '摘要', report: '报告写作',
+    'dimension:background': '背景概述', 'dimension:heat': '热度传播', 'dimension:sentiment': '情感观点',
+    'dimension:group': '群体平台差异', 'dimension:deep_cause': '深层原因' };
+  return <Collapse ghost items={coverage.phases.map((phase) => ({
+    key: `${label}-${phase.phase}`,
+    label: `${label} · ${phaseNames[phase.phase] || phase.phase}：已处理 ${phase.read_spans?.length || 0} 个原文片段，未处理 ${phase.unprocessed?.length || 0} 个`,
+    children: <>
+      {phase.input_basis === 'verified_dimension_findings' && <Typography.Paragraph type="secondary">本阶段读取已核验的维度结论，未将生成内容标作原文。</Typography.Paragraph>}
+      {phase.failure_reason && <Alert type="warning" message={phase.failure_reason} />}
+      <List size="small" dataSource={phase.read_spans || []} renderItem={(span) => <List.Item>
+        文档 {span.document_id} [{span.start}:{span.end}] · {span.material_class === 'context' ? '背景材料' : '直接证据'}
+      </List.Item>} />
+      {(phase.unprocessed || []).map((span, index) => <Alert key={`${span.document_id}-${index}`} type="warning" showIcon
+        message={`文档 ${span.document_id} [${span.start}:${span.end}]：${span.reason}`} style={{ marginTop: 8 }} />)}
+    </>,
+  }))} />;
+}
+
+function sourceLabel(source?: string): string {
+  return SOURCE_LABELS[source as keyof typeof SOURCE_LABELS] || source || '来源未知';
+}
+
+function contentKindLabel(kind?: string): string {
+  return ({ body: '抓取正文', article: '抓取正文', summary: '搜索摘要', snippet: '搜索摘要',
+    page_description: '页面描述', video_description: '视频页面描述', body_excerpt: '正文片段' } as Record<string, string>)[kind || ''] || kind || '历史材料（类型未记录）';
+}
+
+function publicLink(url?: string, label = '查看来源') {
+  return url && /^https?:\/\//i.test(url) ? <a href={url} target="_blank" rel="noopener noreferrer">{label}</a> : null;
 }
 
 function EventEvidenceTimeline({ data, onNext }: { data: EventTimelineResponse; onNext: (cursor: string) => void }) {
@@ -406,24 +497,128 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
   if (!coverage?.admission_version) {
     return <Typography.Text type="secondary">该历史任务没有准入审计数据，不能推断当时的有效样本比例。</Typography.Text>;
   }
+  const semantic = coverage.admission_version === 'semantic-v2';
+  const reasons: Record<string, string> = {
+    semantic_irrelevant: '语义判断不相关', semantic_uncertain: '材料不足以判断相关性', uncertain: '材料不足以判断相关性',
+    out_of_range_date: '发布日期超出范围', unverifiable_date: '发布日期无法核验', date_conflict: '发布日期冲突',
+    source_mismatch: '链接不属于所选平台', unusable: '未取得可用文本', duplicate: '内容重复',
+    candidate_limit: '候选处理数量上限，未核验', deadline: '阶段时限内未核验', excluded: '命中排除词',
+    semantic_protocol_failed: '语义核验未完成，材料未采纳',
+  };
+  const protocolReasons: Record<string, string> = {
+    unknown_document_id: '判断结果包含未知材料标识', duplicate_document_id: '同一材料出现重复判断',
+    invalid_classification: '相关性分类无效', hard_boundary_violation: '材料未通过来源、日期或排除词核验',
+    missing_reason: '缺少相关性判断理由', missing_evidence: '缺少可核验原文引用',
+    evidence_not_in_document: '引用未能对应原文', missing_decision: '材料尚未完成相关性判断',
+    invalid_evidence_shape: '原文引用格式无效', decision_not_object: '材料判断结果格式无效',
+  };
+  const protocol = coverage.semantic_protocol_errors;
+  const batchIds = Array.from(new Set(protocol?.batch_document_ids || []));
+  const candidates = new Map<string, CandidateAudit>((coverage.candidate_audit || []).map((candidate) => [candidate.id, candidate]));
+  const protocolIssues = (protocol?.errors || []).flatMap((error) => {
+    const reason = protocolReasons[error.category];
+    if (typeof reason !== 'string') return [];
+    const ids = error.document_id && batchIds.includes(error.document_id) ? [error.document_id] : batchIds;
+    const materials = ids.map((documentId) => candidates.get(documentId)?.title || documentId).join('、');
+    return [`${reason}：${materials || '该批次材料'}`];
+  });
+  const platformStatus = (row: PlatformCoverage) => {
+    if (row.status === 'failed') return '检索失败';
+    if (row.status === 'unprocessed') return '尚未检索／时限未处理';
+    if (row.status === 'partial') return '部分完成';
+    if (row.status === 'queried' && row.provider_candidates === 0) return '已检索，无候选';
+    if (row.status === 'queried') return '已检索';
+    return '执行状态未记录';
+  };
   return (
     <>
       <Space wrap>
         <Tag>搜索候选 {coverage.provider_candidates} 条</Tag>
-        <Tag>无效摘要 {coverage.unusable_count} 条</Tag>
+        <Tag>{semantic ? '无可用文本' : '无效摘要'} {coverage.unusable_count} 条</Tag>
         <Tag>不相关 {coverage.irrelevant_count} 条</Tag>
-        <Tag>相关候选 {coverage.accepted_count} 条</Tag>
-        <Tag color="green">有效证据 {storedCount ?? coverage.accepted_count} 条</Tag>
+        {semantic ? <>
+          <Tag color="green">直接证据 {coverage.direct_count ?? storedCount ?? 0} 条</Tag>
+          <Tag>背景材料 {coverage.context_count ?? 0} 条</Tag>
+        </> : <>
+          <Tag>相关候选 {coverage.accepted_count} 条</Tag>
+          <Tag>历史准入材料 {storedCount ?? coverage.accepted_count} 条</Tag>
+        </>}
+        {!!coverage.unverifiable_date_count && <Tag>日期无法核验 {coverage.unverifiable_date_count} 条</Tag>}
+        {!!coverage.out_of_range_date_count && <Tag>日期越界 {coverage.out_of_range_date_count} 条</Tag>}
       </Space>
       <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
-        仅统计本次返回的候选，不代表平台内容覆盖率。材料为搜索摘要，并非视频正文或评论。
-        {coverage.candidate_truncated ? ' 有效候选达到本次请求上限，可能存在未检索到的相关内容。' : ''}
+        仅统计本次执行，不代表全网或平台覆盖率。
+        {semantic ? '正文、页面描述和搜索摘要按实际获取情况标注；背景材料不计入目标评价统计，也不能补足两篇直接证据门槛。' : '该历史任务采用旧准入规则，材料为搜索摘要，未补做语义判断。'}
+        {coverage.candidate_truncated ? ' 本次存在因数量或时间限制未处理的候选，不能将其视为不相关。' : ''}
       </Typography.Paragraph>
+      {semantic && protocol && <Alert type="warning" showIcon message="语义核验未完成" style={{ marginTop: 12 }}
+        description={<>
+          <p style={{ margin: '0 0 8px' }}>该批次材料未通过核验，未采纳为本轮研判或报告证据。</p>
+          {protocolIssues.length ? <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {protocolIssues.map((issue, index) => <li key={index}>{issue}</li>)}
+          </ul> : '判断结果未通过校验，请查看候选材料与处理记录后重试。'}
+        </>} />}
+      {!!coverage.per_platform?.length && <Table<PlatformCoverage> size="small" pagination={false} rowKey="source"
+        dataSource={coverage.per_platform} scroll={{ x: 800 }} style={{ marginTop: 16 }} columns={[
+          { title: '平台', dataIndex: 'source', render: (source: string) => sourceLabel(source) },
+          { title: '执行情况', key: 'status', render: (_value: unknown, row) => platformStatus(row) },
+          { title: '检索次数', dataIndex: 'queries', render: (value?: number) => value ?? '未记录' },
+          { title: '候选', dataIndex: 'provider_candidates', render: (value?: number) => value ?? '未记录' },
+          { title: '正文／摘要', key: 'body-summary', render: (_value: unknown, row) => `${row.body_count ?? 0}／${row.summary_count ?? 0}` },
+          { title: '直接／背景', key: 'accepted', render: (_value: unknown, row) => `${row.direct_count ?? 0}／${row.context_count ?? 0}` },
+          { title: '排除', dataIndex: 'rejected_count', render: (value?: number) => value ?? 0 },
+          { title: '未处理', dataIndex: 'unprocessed_count', render: (value?: number) => value ?? 0 },
+          { title: '失败', dataIndex: 'failed_count', render: (value?: number) => value ?? 0 },
+        ]} />}
+      {!!coverage.candidate_audit?.length && <Collapse style={{ marginTop: 12 }} items={[{
+        key: 'audit', label: '候选材料与处理原因', children: <List<CandidateAudit> dataSource={coverage.candidate_audit}
+          renderItem={(candidate) => <List.Item key={candidate.id} style={{ display: 'block' }}>
+            <Typography.Text strong>{candidate.title || candidate.id}</Typography.Text>
+            <div><Tag>{sourceLabel(candidate.source_type)}</Tag><Tag>{contentKindLabel(candidate.content_kind)}</Tag>
+              <Tag>{({ direct: '直接相关', context: '背景／比较', irrelevant: '不相关', uncertain: '信息不足' } as Record<string, string>)[candidate.semantic_classification || '']
+                || ({ unprocessed: '未完成，未采纳', rejected: '已排除' } as Record<string, string>)[candidate.status || ''] || candidate.status || '未核验'}</Tag>
+              {candidate.truncated && <Tag color="orange">正文达到保存上限</Tag>}
+            </div>
+            {candidate.requested_source && candidate.requested_source !== candidate.source_type && <Typography.Paragraph type="secondary">请求平台：{sourceLabel(candidate.requested_source)}；链接实际平台：{sourceLabel(candidate.source_type)}</Typography.Paragraph>}
+            {candidate.semantic_reason && <Typography.Paragraph style={{ marginBottom: 4 }}>{candidate.semantic_reason}</Typography.Paragraph>}
+            {candidate.reason && <div>处理原因：{reasons[candidate.reason] || candidate.reason}</div>}
+            {candidate.fetch_status && <div>正文补抓：{candidate.fetch_status}{candidate.fetch_reason ? ` · ${candidate.fetch_reason}` : ''}</div>}
+            <div>发表时间：{candidate.published_at || '未核验'}；检索来源日期：{candidate.date_sources?.provider || '未提供'}；正文日期：{candidate.date_sources?.body || '未取得'}</div>
+            <Space wrap>{publicLink(candidate.url, '检索原链接')}{candidate.final_url && publicLink(candidate.final_url, '实际到达链接')}</Space>
+            {(candidate.evidence_spans || []).map((text, index) => <blockquote key={index} style={{ margin: '6px 0', color: 'rgba(0,0,0,0.62)' }}>
+              {text}
+            </blockquote>)}
+          </List.Item>} />,
+      }]} />}
     </>
   );
 }
 
 /* ================== 完成态结果 Tabs ================== */
+function MaterialList({ documents }: { documents: SentimentDoc[] }) {
+  const formatDateTime = useDateTime();
+  return <List dataSource={documents} renderItem={(doc) => <List.Item key={doc.id} style={{ alignItems: 'flex-start', paddingInline: 0 }}>
+    <List.Item.Meta title={<Space wrap>
+      {publicLink(doc.final_url || doc.url, doc.title || '（无标题）') || <Typography.Text>{doc.title || '（无标题）'}</Typography.Text>}
+      <Tag>{sourceLabel(doc.source_type)}</Tag><Tag>{contentKindLabel(doc.content_kind)}</Tag>
+      {doc.truncated && <Tag color="orange">正文达到保存上限</Tag>}
+    </Space>} description={<>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+        文档 ID：{doc.id} · {doc.source_name || sourceLabel(doc.source_type)}
+        {doc.published_at ? ` · ${formatDateTime(doc.published_at)}` : doc.source_published_at ? ` · ${formatSourceTime(doc.source_published_at)}` : ' · 发表时间未记录'}
+      </Typography.Paragraph>
+      {doc.semantic_reason && <Typography.Paragraph>{doc.semantic_reason}</Typography.Paragraph>}
+      {doc.fetch_reason && <Typography.Paragraph type="secondary">正文补抓：{doc.fetch_reason}</Typography.Paragraph>}
+      <Space wrap>{publicLink(doc.url, '检索原链接')}{doc.final_url && doc.final_url !== doc.url && publicLink(doc.final_url, '实际到达链接')}</Space>
+      {(doc.date_sources?.provider || doc.date_sources?.body) && <div>日期依据：检索来源 {doc.date_sources.provider || '未提供'}；正文 {doc.date_sources.body || '未取得'}</div>}
+      <Typography.Paragraph style={{ marginBottom: 0, fontSize: 13 }} ellipsis={{ rows: 3, expandable: 'collapsible', symbol: (expanded) => expanded ? '收起' : '展开' }}>
+        {doc.content || '（该文档暂无正文）'}
+      </Typography.Paragraph>
+      {(doc.evidence_spans || []).map((text, index) => <blockquote key={index} style={{ margin: '6px 0' }}>{text}</blockquote>)}
+    </>} />
+  </List.Item>} />;
+}
+
 interface ResultTabsProps {
   result: AnalysisResult | undefined;
   resultLoading: boolean;
@@ -441,10 +636,12 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
   if (resultLoading || !result) {
     return <LoadingBlock rows={6} />;
   }
-  const docs = result.documents ?? [];
+  const docs = (result.documents ?? []).filter((document) => document.semantic_classification !== 'context');
+  const background = [...(result.documents ?? []).filter((document) => document.semantic_classification === 'context'), ...(result.context_documents ?? [])];
   const sentiments = result.sentiments;
   const topics = result.topics ?? [];
   const dimensions = result.dimensions ?? [];
+  const semantic = result.retrieval_coverage?.admission_version === 'semantic-v2';
 
   return (
     <Tabs
@@ -454,6 +651,9 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
           label: '研判摘要',
           children: (
             <div>
+              <Typography.Paragraph type="secondary">{semantic
+                ? `本轮直接证据 ${docs.length} 篇，背景材料 ${background.length} 篇。情感、话题及目标评价统计只包含直接证据。`
+                : `历史准入材料 ${docs.length} 篇；未补做语义分类，不能倒推为当前规则的直接证据。`}</Typography.Paragraph>
               {result.warning ? (
                 <Alert
                   type="warning"
@@ -475,49 +675,19 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
         },
         {
           key: 'docs',
-          label: `文档列表（${docs.length}）`,
+          label: `${semantic ? '直接证据' : '历史准入材料'}（${docs.length}）`,
           children:
             docs.length === 0 ? (
               <EmptyBlock description="未采集到公开文档" />
             ) : (
-              <List
-                dataSource={docs}
-                renderItem={(doc) => (
-                  <List.Item key={doc.id} style={{ alignItems: 'flex-start', paddingInline: 0 }}>
-                    <List.Item.Meta
-                      title={
-                        <Space wrap>
-                          {doc.url ? (
-                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                              {doc.title || '（无标题）'}
-                            </a>
-                          ) : (
-                            <Typography.Text>{doc.title || '（无标题）'}</Typography.Text>
-                          )}
-                          <Tag style={{ marginInlineEnd: 0 }}>
-                            {SOURCE_LABELS[doc.source_type as keyof typeof SOURCE_LABELS] ?? doc.source_name ?? doc.source_type}
-                          </Tag>
-                        </Space>
-                      }
-                      description={
-                        <>
-                          <div style={{ color: 'rgba(0,0,0,0.45)', marginBottom: 8 }}>
-                            {doc.source_name ?? ''}
-                            {doc.published_at ? ` · ${formatDateTime(doc.published_at)}` : doc.source_published_at ? ` · ${formatSourceTime(doc.source_published_at)}` : ''}
-                          </div>
-                          <Typography.Paragraph
-                            style={{ marginBottom: 0, fontSize: 13 }}
-                            ellipsis={{ rows: 3, expandable: 'collapsible', symbol: (expanded) => (expanded ? '收起' : '展开') }}
-                          >
-                            {doc.content || '（该文档暂无正文）'}
-                          </Typography.Paragraph>
-                        </>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
+              <MaterialList documents={docs} />
             ),
+        },
+        {
+          key: 'background', label: `背景材料（${background.length}）`, children: <>
+            <Alert type="info" showIcon message="背景／比较材料不计入目标评价统计" description="这些内容用于理解背景或比较对象，不作为新品评价、目标情感或直接证据门槛的分母。" style={{ marginBottom: 12 }} />
+            {background.length ? <MaterialList documents={background} /> : <EmptyBlock description="本轮没有背景材料" />}
+          </>,
         },
         {
           key: 'sentiment',
@@ -683,6 +853,12 @@ function DimensionsView({ dimensions }: { dimensions: DimensionResult[] }) {
             {q.source ? (
               <footer style={{ color: '#9ca3af', fontSize: 12, marginTop: 4 }}>—— {q.source}</footer>
             ) : null}
+            {q.document_id && <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>文档 {q.document_id}</Typography.Text>}
+            {(d.quote_locations || []).filter((location) => location.document_id === q.document_id && location.quote_text === q.text).map((location, index) => (
+              <Typography.Text key={index} type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {location.material_class === 'context' ? '背景材料' : '直接证据'} · {location.field === 'title' ? '标题' : '正文'} [{location.start}:{location.end}]
+              </Typography.Text>
+            ))}
           </blockquote>
         ))}
         {d.deep_read ? (

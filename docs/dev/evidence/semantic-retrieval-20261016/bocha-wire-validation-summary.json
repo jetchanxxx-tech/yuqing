@@ -1,0 +1,642 @@
+{
+  "type": "sanitized_actual_bocha_wire_controls",
+  "date": "2026-10-16",
+  "purpose": "supplier diagnosis; literal marker counts do not establish semantic acceptance or recall",
+  "analysis_id": "01M509SHWJB7VBRK2HD2G52RJJ",
+  "run_id": "01M509SHWK78GPWEC4ED5MG5WK",
+  "components_observed_after_probe": {
+    "engine_source_commit": "2e4213f990e5536ed69fdbeacbb844292e2eb14d",
+    "binaries_commit": "b884c5ffc20dcfc5fd319c7a1550abcfa188a153",
+    "binary_inputs_identical_to_engine_source_commit": true,
+    "purpose": "isolated real-provider acceptance only",
+    "production_release": false
+  },
+  "physical_supplier_calls": 8,
+  "healthy_http_200_calls": 8,
+  "controls": [
+    {
+      "label": "A",
+      "actual_request_body": {
+        "query": "雅阁 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "雅阁 后排 舒适性"
+      },
+      "returned_count": 31,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 2,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 2,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "19b37a67ad1feb27cfe0bfa458da93aa7930fb908029268d58c5d3b136013667",
+      "elapsed_seconds": 0.413
+    },
+    {
+      "label": "B",
+      "actual_request_body": {
+        "query": "雅阁 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "雅阁 后排 舒适性"
+      },
+      "returned_count": 21,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 7,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 6,
+          "accord": 0,
+          "本田": 1,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 6,
+          "accord": 0,
+          "本田": 2,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "2880edaffee8bc9bcf85bb88dd669ea974c91512308eeef87c27b7f8d695fd07",
+      "elapsed_seconds": 0.384
+    },
+    {
+      "label": "C",
+      "actual_request_body": {
+        "query": "雅阁 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "noLimit",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "雅阁 后排 舒适性"
+      },
+      "returned_count": 50,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 29,
+          "accord": 0,
+          "本田": 11,
+          "honda": 1,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 27,
+          "accord": 0,
+          "本田": 10,
+          "honda": 1,
+          "特斯拉": 1,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 28,
+          "accord": 1,
+          "本田": 16,
+          "honda": 5,
+          "特斯拉": 1,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "1c563dd8c3267cfbb51d026ba51905b62433abe95f28c5089849101b7c6c3011",
+      "elapsed_seconds": 0.619
+    },
+    {
+      "label": "D",
+      "actual_request_body": {
+        "query": "雅阁 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "noLimit"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "雅阁 后排 舒适性"
+      },
+      "returned_count": 40,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 30,
+          "accord": 0,
+          "本田": 9,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 26,
+          "accord": 0,
+          "本田": 5,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 33,
+          "accord": 0,
+          "本田": 11,
+          "honda": 1,
+          "特斯拉": 0,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "85a228b74b5360272acdf9d41500ce6435fd58894a2f7fe17bdcbb82e5d99cdd",
+      "elapsed_seconds": 0.392
+    },
+    {
+      "label": "E",
+      "actual_request_body": {
+        "query": "雅阁",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "雅阁"
+      },
+      "returned_count": 28,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 1,
+          "accord": 0,
+          "本田": 5,
+          "honda": 0,
+          "特斯拉": 0,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 2,
+          "accord": 0,
+          "本田": 8,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "9f67f581cd395bf97822de9536df4820666f111e9a64ee677d5050c46a087f53",
+      "elapsed_seconds": 0.379
+    },
+    {
+      "label": "F",
+      "actual_request_body": {
+        "query": "\"雅阁\" 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "\"雅阁\" 后排 舒适性"
+      },
+      "returned_count": 30,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 2,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 2,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "f35271d399d3bebf0f91fc63299b8d1f40c94839964dd55de9bed6197c68945b",
+      "elapsed_seconds": 0.415
+    },
+    {
+      "label": "G",
+      "actual_request_body": {
+        "query": "本田雅阁 后排",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "本田雅阁 后排"
+      },
+      "returned_count": 28,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 1,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 1,
+          "accord": 0,
+          "本田": 2,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 3,
+          "accord": 0,
+          "本田": 4,
+          "honda": 0,
+          "特斯拉": 1,
+          "tesla": 0
+        }
+      },
+      "response_sha256": "956f11f8455011e60ffbccb275c1b64dc22dba5eb29b2b5bc82c848c7b3810bb",
+      "elapsed_seconds": 0.331
+    },
+    {
+      "label": "H",
+      "actual_request_body": {
+        "query": "特斯拉 后排 舒适性",
+        "count": 50,
+        "summary": true,
+        "freshness": "2026-09-17..2026-10-16",
+        "include": "toutiao.com"
+      },
+      "http_status": 200,
+      "body_code": 200,
+      "query_context": {
+        "originalQuery": "特斯拉 后排 舒适性"
+      },
+      "returned_count": 39,
+      "adapter_kept_each_item_binding": true,
+      "marker_item_counts": {
+        "name": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 22,
+          "tesla": 0
+        },
+        "snippet": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 24,
+          "tesla": 0
+        },
+        "summary": {
+          "雅阁": 0,
+          "accord": 0,
+          "本田": 0,
+          "honda": 0,
+          "特斯拉": 25,
+          "tesla": 2
+        }
+      },
+      "response_sha256": "4f02a934a85ec1b55e30bff196145e7f6149fa0717f66c10e822936cac334c5f",
+      "elapsed_seconds": 0.391
+    }
+  ],
+  "url_overlap": [
+    {
+      "left": "A",
+      "right": "B",
+      "common": 0,
+      "left_count": 31,
+      "right_count": 21,
+      "jaccard": 0.0
+    },
+    {
+      "left": "A",
+      "right": "C",
+      "common": 1,
+      "left_count": 31,
+      "right_count": 50,
+      "jaccard": 0.0125
+    },
+    {
+      "left": "A",
+      "right": "D",
+      "common": 0,
+      "left_count": 31,
+      "right_count": 40,
+      "jaccard": 0.0
+    },
+    {
+      "left": "A",
+      "right": "E",
+      "common": 4,
+      "left_count": 31,
+      "right_count": 28,
+      "jaccard": 0.0727
+    },
+    {
+      "left": "A",
+      "right": "F",
+      "common": 27,
+      "left_count": 31,
+      "right_count": 30,
+      "jaccard": 0.7941
+    },
+    {
+      "left": "A",
+      "right": "G",
+      "common": 9,
+      "left_count": 31,
+      "right_count": 28,
+      "jaccard": 0.18
+    },
+    {
+      "left": "A",
+      "right": "H",
+      "common": 15,
+      "left_count": 31,
+      "right_count": 39,
+      "jaccard": 0.2727
+    },
+    {
+      "left": "B",
+      "right": "C",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 50,
+      "jaccard": 0.0
+    },
+    {
+      "left": "B",
+      "right": "D",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 40,
+      "jaccard": 0.0
+    },
+    {
+      "left": "B",
+      "right": "E",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 28,
+      "jaccard": 0.0
+    },
+    {
+      "left": "B",
+      "right": "F",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 30,
+      "jaccard": 0.0
+    },
+    {
+      "left": "B",
+      "right": "G",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 28,
+      "jaccard": 0.0
+    },
+    {
+      "left": "B",
+      "right": "H",
+      "common": 0,
+      "left_count": 21,
+      "right_count": 39,
+      "jaccard": 0.0
+    },
+    {
+      "left": "C",
+      "right": "D",
+      "common": 1,
+      "left_count": 50,
+      "right_count": 40,
+      "jaccard": 0.0112
+    },
+    {
+      "left": "C",
+      "right": "E",
+      "common": 0,
+      "left_count": 50,
+      "right_count": 28,
+      "jaccard": 0.0
+    },
+    {
+      "left": "C",
+      "right": "F",
+      "common": 1,
+      "left_count": 50,
+      "right_count": 30,
+      "jaccard": 0.0127
+    },
+    {
+      "left": "C",
+      "right": "G",
+      "common": 1,
+      "left_count": 50,
+      "right_count": 28,
+      "jaccard": 0.013
+    },
+    {
+      "left": "C",
+      "right": "H",
+      "common": 1,
+      "left_count": 50,
+      "right_count": 39,
+      "jaccard": 0.0114
+    },
+    {
+      "left": "D",
+      "right": "E",
+      "common": 0,
+      "left_count": 40,
+      "right_count": 28,
+      "jaccard": 0.0
+    },
+    {
+      "left": "D",
+      "right": "F",
+      "common": 0,
+      "left_count": 40,
+      "right_count": 30,
+      "jaccard": 0.0
+    },
+    {
+      "left": "D",
+      "right": "G",
+      "common": 0,
+      "left_count": 40,
+      "right_count": 28,
+      "jaccard": 0.0
+    },
+    {
+      "left": "D",
+      "right": "H",
+      "common": 0,
+      "left_count": 40,
+      "right_count": 39,
+      "jaccard": 0.0
+    },
+    {
+      "left": "E",
+      "right": "F",
+      "common": 3,
+      "left_count": 28,
+      "right_count": 30,
+      "jaccard": 0.0545
+    },
+    {
+      "left": "E",
+      "right": "G",
+      "common": 3,
+      "left_count": 28,
+      "right_count": 28,
+      "jaccard": 0.0566
+    },
+    {
+      "left": "E",
+      "right": "H",
+      "common": 1,
+      "left_count": 28,
+      "right_count": 39,
+      "jaccard": 0.0152
+    },
+    {
+      "left": "F",
+      "right": "G",
+      "common": 10,
+      "left_count": 30,
+      "right_count": 28,
+      "jaccard": 0.2083
+    },
+    {
+      "left": "F",
+      "right": "H",
+      "common": 15,
+      "left_count": 30,
+      "right_count": 39,
+      "jaccard": 0.2778
+    },
+    {
+      "left": "G",
+      "right": "H",
+      "common": 6,
+      "left_count": 28,
+      "right_count": 39,
+      "jaccard": 0.0984
+    }
+  ],
+  "same_url_checks": {
+    "shared_url_count": 32,
+    "shared_urls_with_changed_title": 0,
+    "shared_urls_with_changed_summary": 0,
+    "shared_urls_with_changed_snippet": 0
+  },
+  "prior_wechat_task": {
+    "run_id": "01M508Z2433NRP3W1M6RJXPZN1",
+    "provider_calls": 5,
+    "raw_candidates": 5,
+    "unique_candidates": 1,
+    "body_count": 1,
+    "title": "不用开电脑了,特玩小程序上线生成 AI 涂装!",
+    "classification": "irrelevant",
+    "wire_query_echo_verified": false,
+    "note": "Prior persisted audit proves one unrelated body; this eight-control probe did not include a wechat-domain request."
+  },
+  "cleanup": {
+    "cancel_http_status": 200,
+    "terminal_state": "canceled",
+    "consume_count": 1,
+    "refund_count": 1,
+    "exact_pair_verified": true,
+    "delta_sum": 0,
+    "stage_worker_after_probe": "active/running",
+    "diagnostic_unit_exit_status": 0
+  },
+  "plan_usage": {
+    "events": 1,
+    "usage_status": "reported",
+    "prompt_tokens": 292,
+    "completion_tokens": 234,
+    "cost_status": "pending",
+    "cost_micro_cny": null
+  },
+  "limits": [
+    "Eight physical requests only; no report materials admitted by this probe.",
+    "Current evidence cannot distinguish source/time index sparsity from supplier ranking or fallback behavior.",
+    "No product source/domain/date/prompt/admission configuration was changed."
+  ]
+}

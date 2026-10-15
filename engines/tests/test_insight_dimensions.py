@@ -274,9 +274,7 @@ def test_all_dimensions_succeed_leaves_no_warning(dim_llm):
 
 # ── P0：材料 token 预算 ───────────────────────────────────────
 #
-# 五个维度各自注入全量素材包 → 输入 token ×5。预算按字符上限截断：
-# 优先保留发布时间最新的文档（舆情分析里最新证据最相关），
-# 截断必须在 prompt 中显式标记，而不是静默丢数据。
+# 五个维度分批阅读全部素材；单批上下文受限，不再丢掉其余平台和文档。
 
 def _bulk_docs(n: int) -> list[dict]:
     return [
@@ -293,15 +291,18 @@ def _bulk_docs(n: int) -> list[dict]:
 def test_materials_respect_token_budget(dim_llm):
     bulk = _bulk_docs(60)
     client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
-    prompt = dimension_calls(dim_llm)[0]
-    assert "材料截断" in prompt, "截断必须显式标记，不得静默丢数据"
+    prompts = dimension_calls(dim_llm)
+    assert all(len(prompt) < 50000 for prompt in prompts), "每次调用需保留足够输出上下文"
+    for number in range(1, 61):
+        assert any(f"id=d{number} " in prompt for prompt in prompts), f"文档{number}未被读取"
 
 
-def test_materials_keep_most_recent_when_truncated(dim_llm):
+def test_materials_keep_all_publication_dates_through_batching(dim_llm):
     bulk = _bulk_docs(60)
     client.post("/analyze", json={"documents": bulk, "api_key": "sk-x"})
-    prompt = dimension_calls(dim_llm)[0]
-    assert "文档27" in prompt or "文档55" in prompt, "最新文档被误截断"
+    prompts = dimension_calls(dim_llm)
+    assert any("文档27" in prompt for prompt in prompts)
+    assert any("文档60" in prompt for prompt in prompts), "旧总量上限后的文档不能消失"
 
 
 # ── P2：引用保真校验（反幻觉）─────────────────────────────────
@@ -432,7 +433,9 @@ class FlakyDimLLM(DimensionFakeLLM):
                 if f'id={dim}' in prompt:
                     self.dim_calls[dim] = self.dim_calls.get(dim, 0) + 1
                     if dim == self.fail_dim and self.dim_calls[dim] <= self.fail_times:
-                        raise RuntimeError(f'dimension {dim} transient 429')
+                        request = httpx.Request('POST', 'https://offline.invalid/chat/completions')
+                        response = httpx.Response(429, request=request, json={'error': 'rate limited'})
+                        raise httpx.HTTPStatusError('rate limited', request=request, response=response)
                     return dict(DIMENSION_PAYLOAD)
         if '批判' in prompt:
             return {'critique': 'x', 'revised_summary': 'y'}
@@ -580,7 +583,7 @@ def test_summary_passes_explicit_output_budget(monkeypatch):
     monkeypatch.setattr(insight_engine, "build_client", lambda api_key="", base_url="", timeout=120.0: fake)
     resp = client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x"})
     assert resp.status_code == 200
-    assert fake.summary_max_tokens == [8192]
+    assert fake.summary_max_tokens == [16384]
 
 
 def test_summary_retry_uses_single_field_contract_after_malformed_json(monkeypatch):
@@ -610,8 +613,8 @@ def test_summary_retry_uses_single_field_contract_after_malformed_json(monkeypat
     assert body["warning"] == ""
     assert len(fake.summary_calls) == 2
     assert all('"critique"' not in call["user"] for call in fake.summary_calls)
-    assert fake.summary_calls[0]["max_tokens"] == 8192
-    assert fake.summary_calls[1]["max_tokens"] == 12288
+    assert fake.summary_calls[0]["max_tokens"] == 16384
+    assert fake.summary_calls[1]["max_tokens"] == 32768
 
 
 def test_unverified_quote_retries_only_affected_dimension(monkeypatch):

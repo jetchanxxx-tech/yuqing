@@ -22,26 +22,6 @@ import (
 // topicAnalysisTasks is the queue topic for newly scheduled analysis runs.
 const topicAnalysisTasks = "analysis.tasks"
 
-func buildResearchIntent(keywords []string, question string) map[string]any {
-	terms := make([]string, 0, len(keywords))
-	for _, keyword := range keywords {
-		if value := strings.TrimSpace(keyword); value != "" {
-			terms = append(terms, value)
-		}
-	}
-	intent := map[string]any{
-		"topic": strings.TrimSpace(question),
-		"entities": terms,
-		"focus": []string{},
-		"relations": []string{"same_research_topic"},
-		"must_not_assume": []string{"publication", "identity", "truth"},
-	}
-	if intent["topic"] == "" {
-		intent["topic"] = strings.Join(terms, "、")
-	}
-	return intent
-}
-
 // TopicAnalysisTasks 是分析任务的队列主题（导出供组合根订阅）。
 const TopicAnalysisTasks = topicAnalysisTasks
 
@@ -68,6 +48,7 @@ type Service struct {
 	credits           CreditReserver
 	memoryCompletion  func(context.Context, string, *AnalysisResult)
 	cancellationGuard billingpolicy.MutationGuard
+	taskTimeout       time.Duration
 }
 
 func (s *Service) SetMemoryCompletionHook(hook func(context.Context, string, *AnalysisResult)) {
@@ -159,20 +140,24 @@ type CreateAnalysisRequest struct {
 
 // AnalysisResult is the full result of a completed analysis.
 type AnalysisResult struct {
-	CurrentRunID       string    `json:"current_run_id,omitempty"`
-	ID                 string    `json:"id"`
-	Name               string    `json:"name"`
-	AnalysisType       string    `json:"analysis_type"`
-	ScenarioTemplateID string    `json:"scenario_template_id,omitempty"`
-	ResearchQuestion   string    `json:"research_question,omitempty"`
-	ResearchIntent    map[string]any `json:"research_intent,omitempty"`
-	ResearchIntentVersion string `json:"research_intent_version,omitempty"`
-	State              State     `json:"state"`
-	Progress           int       `json:"progress"`
-	ErrorCode          string    `json:"error_code,omitempty"`
-	StartedAt          time.Time `json:"started_at,omitempty"`
-	FinishedAt         time.Time `json:"finished_at,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	CurrentRunID            string         `json:"current_run_id,omitempty"`
+	ID                      string         `json:"id"`
+	Name                    string         `json:"name"`
+	AnalysisType            string         `json:"analysis_type"`
+	ScenarioTemplateID      string         `json:"scenario_template_id,omitempty"`
+	ResearchQuestion        string         `json:"research_question,omitempty"`
+	ResearchIntent          map[string]any `json:"research_intent,omitempty"`
+	ResearchIntentVersion   string         `json:"research_intent_version,omitempty"`
+	InsightMaterialCoverage map[string]any `json:"insight_material_coverage,omitempty"`
+	ReportMaterialCoverage  map[string]any `json:"report_material_coverage,omitempty"`
+	RunStartedAt            *time.Time     `json:"run_started_at,omitempty"`
+	TaskDeadlineAt          *time.Time     `json:"task_deadline_at,omitempty"`
+	State                   State          `json:"state"`
+	Progress                int            `json:"progress"`
+	ErrorCode               string         `json:"error_code,omitempty"`
+	StartedAt               time.Time      `json:"started_at,omitempty"`
+	FinishedAt              time.Time      `json:"finished_at,omitempty"`
+	CreatedAt               time.Time      `json:"created_at"`
 	// CreatedBy is the user who created this analysis (迁移 0008).
 	CreatedBy string `json:"created_by,omitempty"`
 
@@ -247,23 +232,23 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 
 	now := time.Now().UTC()
 	result := &AnalysisResult{
-		ID:                 id.New(),
-		Name:               req.Name,
-		AnalysisType:       req.AnalysisType,
-		ScenarioTemplateID: req.ScenarioTemplateID,
-		State:              StateQueued,
-		Progress:           0,
-		CreatedAt:          now,
-		Keywords:           append([]string(nil), req.Keywords...),
-		Sources:            append([]string(nil), req.Sources...),
-		ExcludeWords:       append([]string(nil), req.ExcludeWords...),
-		DateFrom:           req.DateFrom,
-		DateTo:             req.DateTo,
-		ReportTemplateID:   req.ReportTemplateID,
-		ResearchQuestion:   strings.TrimSpace(req.ResearchQuestion),
-		ResearchIntent:     buildResearchIntent(req.Keywords, req.ResearchQuestion),
-		ResearchIntentVersion: "deterministic-v1",
-		CreatedBy:          req.UserID,
+		ID:                    id.New(),
+		Name:                  req.Name,
+		AnalysisType:          req.AnalysisType,
+		ScenarioTemplateID:    req.ScenarioTemplateID,
+		State:                 StateQueued,
+		Progress:              0,
+		CreatedAt:             now,
+		Keywords:              append([]string(nil), req.Keywords...),
+		Sources:               append([]string(nil), req.Sources...),
+		ExcludeWords:          append([]string(nil), req.ExcludeWords...),
+		DateFrom:              req.DateFrom,
+		DateTo:                req.DateTo,
+		ReportTemplateID:      req.ReportTemplateID,
+		ResearchQuestion:      strings.TrimSpace(req.ResearchQuestion),
+		ResearchIntent:        nil,
+		ResearchIntentVersion: "",
+		CreatedBy:             req.UserID,
 	}
 	if _, ok := s.store.(*pgStore); ok {
 		actor := billingpolicy.Actor{UserID: req.UserID, APIKeyID: req.APIKeyID, TokenVersion: req.ActorTokenVersion, Permission: "analyses:create"}
@@ -298,7 +283,11 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 
 // Get returns one analysis scoped to the tenant.
 func (s *Service) Get(ctx context.Context, tenantID, analysisID string) (*AnalysisResult, error) {
-	return s.store.get(ctx, tenantID, analysisID)
+	a, err := s.store.get(ctx, tenantID, analysisID)
+	if err == nil {
+		s.decorateResult(a)
+	}
+	return a, err
 }
 
 // RecoverInterrupted resets an in-flight PG task for a leased redelivery.
@@ -316,7 +305,11 @@ func (s *Service) RecoverInterrupted(ctx context.Context, tenantID, analysisID s
 
 // List returns all analyses of a tenant in creation order.
 func (s *Service) List(ctx context.Context, tenantID string) ([]AnalysisResult, error) {
-	return s.store.list(ctx, tenantID)
+	items, err := s.store.list(ctx, tenantID)
+	for i := range items {
+		s.decorateResult(&items[i])
+	}
+	return items, err
 }
 
 // Cancel aborts an active analysis. Terminal analyses cannot be canceled.
@@ -411,6 +404,9 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string, actors
 		a.Dimensions = nil
 		a.ReportID = ""
 		a.ReportContent = ""
+		a.RetrievalCoverage = nil
+		a.ResearchIntent = nil
+		a.ResearchIntentVersion = ""
 		return nil
 	})
 	if err != nil {

@@ -7,6 +7,7 @@ import pytest
 from engines.common import scraper as scraper_module
 from engines.query_engine import main as query
 from engines.report_engine import main as report
+from engines.tests.test_query_semantic_http import setup_pipeline, post_search, accepted_request
 
 
 def candidate(index, published):
@@ -20,6 +21,7 @@ def candidate(index, published):
 
 
 def provider(monkeypatch, values):
+    setup_pipeline(monkeypatch, {})
     calls = []
 
     def handle(request):
@@ -30,19 +32,29 @@ def provider(monkeypatch, values):
     actual_client = httpx.AsyncClient
     monkeypatch.setattr(scraper_module.httpx, "AsyncClient", lambda **kwargs: actual_client(
         **{**kwargs, "transport": httpx.MockTransport(handle)}))
-    monkeypatch.setattr(query, "get_scraper", lambda: scraper_module.PageScraper())
+    scraper = scraper_module.PageScraper()
+    monkeypatch.setattr(scraper, "fetch_candidate", lambda *args, **kwargs: scraper_module.FetchOutcome(reason="fixture_body_unavailable"))
+    monkeypatch.setattr(query, "get_scraper", lambda: scraper)
     return calls
+
+
+async def date_search(**kwargs):
+    payload = accepted_request(**kwargs)
+    response = await post_search(payload)
+    assert response.status_code == 200, response.text
+    from types import SimpleNamespace
+    return SimpleNamespace(**response.json())
 
 
 @pytest.mark.asyncio
 async def test_selected_calendar_window_reaches_bocha_http_request(monkeypatch):
     calls = provider(monkeypatch, [candidate(1, "2026-09-10"), candidate(2, "2026-09-20T23:59:59+08:00")])
-    response = await query.search(query.SearchRequest(
+    response = await date_search(
         keywords=["窗口品牌"], sources=["weibo"], bocha_api_key="fixture-date-key",
         date_from="2026-09-10", date_to="2026-09-20",
-    ))
+    )
     assert calls[0].get("freshness") == "2026-09-10..2026-09-20"
-    assert calls[0]["include"] == "weibo.com"
+    assert calls[0]["include"] == "weibo.com|weibo.cn"
     assert [item["url"] for item in response.documents] == [value["url"] for value in [candidate(1, ""), candidate(2, "")]]
 
 
@@ -54,10 +66,10 @@ async def test_date_rejection_precedes_result_limit_and_preserves_boundary_sampl
         candidate(10, "2026-09-21"),
     ]
     provider(monkeypatch, values)
-    response = await query.search(query.SearchRequest(
+    response = await date_search(
         keywords=["窗口品牌"], sources=["weibo"], max_results=2, bocha_api_key="fixture-date-key",
         date_from="2026-09-10", date_to="2026-09-20",
-    ))
+    )
     assert [item["url"] for item in response.documents] == [values[8]["url"], values[9]["url"]]
     assert response.total_count == 2
     assert response.coverage["unverifiable_date_count"] == 2
@@ -71,10 +83,10 @@ async def test_one_calendar_day_has_same_day_provider_and_local_bounds(monkeypat
         candidate(1, "2026-09-09"), candidate(2, "2026-09-10T00:00:00Z"),
         candidate(3, "2026-09-10T23:59:59+08:00"), candidate(4, "2026-09-11"),
     ])
-    response = await query.search(query.SearchRequest(
+    response = await date_search(
         keywords=["窗口品牌"], sources=["weibo"], bocha_api_key="fixture-date-key",
         date_from="2026-09-10", date_to="2026-09-10",
-    ))
+    )
     assert calls[0].get("freshness") == "2026-09-10"
     assert response.total_count == 2
     assert all(item["published_at"].startswith("2026-09-10") for item in response.documents)

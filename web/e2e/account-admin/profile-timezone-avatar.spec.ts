@@ -52,7 +52,7 @@ test('saved timezone controls actual analysis report order and security timestam
   await page.goto('/reports');
   await expect(page.getByText('2026-03-08 03:00:00 (America/New_York)', { exact: true })).toBeVisible();
   await page.goto(`/analyses/k8-a-${uid}`);
-  await page.getByRole('tab', { name: '文档列表（2）' }).click();
+  await page.getByRole('tab', { name: '历史准入材料（2）', exact: true }).click();
   await expect(page.getByText('2026-03-08 (仅日期)', { exact: false })).toBeVisible();
   await expect(page.getByText('2026-03-08 01:30:00 (来源时区未知)', { exact: false })).toBeVisible();
   await page.goto('/admin');

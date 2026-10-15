@@ -487,12 +487,13 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 	keyFor := func(key string) func() string {
 		return func() string { value, _ := services.Settings.Get(context.Background(), key); return value }
 	}
-	crawler := engine.NewRealCrawlerEngine(cfg.Engines.Query.URL, "", keyFor("bocha_api_key"))
+	crawler := engine.NewRealCrawlerEngine(cfg.Engines.Query.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("bocha_api_key"))
 	llmOpts := func() (string, string) {
 		baseURL, _ := services.Settings.Get(context.Background(), "llm_base_url")
 		model, _ := services.Settings.Get(context.Background(), "llm_model")
 		return baseURL, model
 	}
+	crawler.WithLLMOpts(llmOpts).WithLLMKey(keyFor("llm_api_key"))
 	var insight *engine.RealInsightEngine
 	if cfg.Engines.Insight.URL != "" {
 		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)

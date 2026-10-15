@@ -25,6 +25,10 @@ class LLMOutputTruncated(ValueError):
     """The provider stopped before completing the requested JSON output."""
 
 
+class LLMSupplierTimeout(TimeoutError):
+    """Only the supplier request exceeded its bounded attempt allowance."""
+
+
 # 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
 # 只对快速失败的瞬时错误重试一次；504/524/读超时已耗掉大段预算，不重试。
 _TRANSIENT_STATUS = {429, 500, 502, 503}
@@ -57,19 +61,54 @@ class LLMClient:
         usage_context = kwargs.pop("usage_context", None) or self.usage_context
         if not usage_context and self._transport is None:
             raise RuntimeError("provider call requires an accepted run and usage bridge")
-        for attempt in (1, 2):
+        max_attempts = kwargs.pop("_max_attempts", 2)
+        attempt_offset = kwargs.pop("_attempt_offset", 0)
+        supplier_timeout = kwargs.pop("_supplier_timeout", None)
+        if max_attempts not in (1, 2):
+            raise ValueError("supplier attempt budget must be one or two")
+        for index in range(1, max_attempts + 1):
+            attempt = index + attempt_offset
             try:
-                return await self._metered_attempt(model, messages, usage_context, attempt, **kwargs)
+                return await self._metered_attempt(model, messages, usage_context, attempt,
+                    supplier_timeout=supplier_timeout, **kwargs)
             except Exception as exc:
-                if attempt == 2 or not _is_transient(exc):
+                if index == max_attempts or not _is_transient(exc):
                     raise
                 logger.warning("LLM transient provider failure; retrying once")
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
 
-    async def _metered_attempt(self, model, messages, usage_context, attempt, **kwargs):
+    async def _supplier_attempt(self, model, messages, supplier_timeout=None, **kwargs):
+        if supplier_timeout is None:
+            return await self._chat_once(model, messages, **kwargs)
+        observed_response = None
+
+        async def request():
+            nonlocal observed_response
+            try:
+                return await self._chat_once(model, messages, **kwargs)
+            except BaseException as error:
+                # wait_for translates the child cancellation into a new error.
+                # Capture observed usage before that translation, including when
+                # the parent phase or the user cancels this timed request.
+                observed_response = getattr(error, "observed_response", None)
+                raise
+
+        try:
+            return await asyncio.wait_for(request(), timeout=supplier_timeout)
+        except TimeoutError as error:
+            failure = LLMSupplierTimeout("supplier attempt deadline expired")
+            if observed_response:
+                failure.observed_response = observed_response
+            raise failure from error
+        except BaseException as error:
+            if observed_response:
+                error.observed_response = observed_response
+            raise
+
+    async def _metered_attempt(self, model, messages, usage_context, attempt, *, supplier_timeout=None, **kwargs):
         if not usage_context:
             # Explicit MockTransport-only unit clients cannot contact suppliers.
-            return await self._chat_once(model, messages, **kwargs)
+            return await self._supplier_attempt(model, messages, supplier_timeout, **kwargs)
         call_id = uuid.uuid4().hex
         permission = await authorize_call(usage_context, call_id, model, attempt)
         event = {"event_id": uuid.uuid4().hex, "call_id": call_id, "event_version": 1, "attempt": attempt,
@@ -79,7 +118,7 @@ class LLMClient:
         # unknown intent, never a guessed token amount or a verified zero cost.
         persist_usage_event(event, permission["permit"], pending=True)
         try:
-            response = await self._chat_once(model, messages, **kwargs)
+            response = await self._supplier_attempt(model, messages, supplier_timeout, **kwargs)
         except BaseException as error:
             observed = getattr(error, "observed_response", None)
             if observed:
@@ -97,15 +136,30 @@ class LLMClient:
 
     async def _chat_once(self, model: str, messages: list[dict], **kwargs) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
-            resp = await client.post(
+            async with client.stream("POST",
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={"model": model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}, **kwargs},
-            )
-            resp.raise_for_status()
-            if "text/event-stream" not in resp.headers.get("content-type", ""):
-                return resp.json()
-            return _parse_sse(resp.content.decode("utf-8"))
+            ) as resp:
+                if resp.status_code >= 400:
+                    await resp.aread()
+                    resp.raise_for_status()
+                if "text/event-stream" not in resp.headers.get("content-type", ""):
+                    await resp.aread()
+                    return resp.json()
+                parser = _StreamAccumulator()
+                try:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data:"):
+                            payload = line[5:].strip()
+                            if payload == "[DONE]":
+                                break
+                            if payload:
+                                parser.feed(json.loads(payload))
+                except BaseException as error:
+                    error.observed_response = parser.result()
+                    raise
+                return parser.result()
 
     async def chat_json(self, model: str, messages: list[dict], **kwargs) -> dict:
         """Chat with JSON output mode; returns the parsed content as a dict.
@@ -134,6 +188,27 @@ def _observe_usage(event: dict, response: dict) -> None:
         cache = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", usage.get("prompt_cache_hit_tokens", 0))
         if all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (prompt, completion, cache)) and cache <= prompt:
             event.update(usage_status="reported", prompt_tokens=prompt, completion_tokens=completion, cache_tokens=cache)
+
+
+class _StreamAccumulator:
+    def __init__(self):
+        self.content = []
+        self.finish_reason = None
+        self.observed = {"usage": None, "model": None, "id": None}
+
+    def feed(self, chunk):
+        for field in self.observed:
+            self.observed[field] = chunk.get(field) or self.observed[field]
+        if chunk.get("error"):
+            # Supplier error text can contain request content or credentials.
+            raise RuntimeError("LLM supplier returned an error during streaming")
+        for choice in chunk.get("choices") or []:
+            self.content.append((choice.get("delta") or {}).get("content") or "")
+            self.finish_reason = choice.get("finish_reason") or self.finish_reason
+
+    def result(self):
+        return {"choices": [{"message": {"content": "".join(self.content)},
+                             "finish_reason": self.finish_reason}], **self.observed}
 
 
 def _parse_sse(body: str) -> dict:

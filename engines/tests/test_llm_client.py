@@ -161,7 +161,7 @@ async def test_chat_stream_error_event_raises():
     def handler(request: httpx.Request) -> httpx.Response:
         return sse_response(_data({"error": {"message": "quota exceeded"}}))
 
-    with pytest.raises(RuntimeError, match="quota exceeded"):
+    with pytest.raises(RuntimeError, match="supplier returned an error"):
         await make_client(handler).chat("deepseek-chat", [])
 
 

@@ -29,7 +29,7 @@ func NewRealReportEngine(baseURL, authToken string, apiKeyFunc func() string) *R
 		baseURL:    baseURL,
 		authToken:  authToken,
 		apiKeyFunc: apiKeyFunc,
-		httpClient: &http.Client{Timeout: 420 * time.Second}, // GLM 思考型五维并发实测 266s，180s 会截断（生产实测踩坑）
+		httpClient: &http.Client{Timeout: 660 * time.Second}, // GLM 思考型五维并发实测 266s，180s 会截断（生产实测踩坑）
 	}
 }
 

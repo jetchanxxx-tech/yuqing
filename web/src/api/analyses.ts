@@ -35,8 +35,91 @@ export interface RetrievalCoverage {
   irrelevant_count: number;
   source_mismatch_count: number;
   accepted_count: number;
+  direct_count?: number;
+  context_count?: number;
+  unverifiable_date_count?: number;
+  out_of_range_date_count?: number;
+  research_intent?: ResearchIntent;
   candidate_truncated?: boolean;
   per_keyword?: { keyword: string; status: string; returned_count: number }[];
+  per_platform?: PlatformCoverage[];
+  candidate_audit?: CandidateAudit[];
+  semantic_protocol_errors?: {
+    batch_document_ids: string[];
+    errors: {
+      category: 'unknown_document_id' | 'duplicate_document_id' | 'invalid_classification'
+        | 'hard_boundary_violation' | 'missing_reason' | 'missing_evidence'
+        | 'evidence_not_in_document' | 'missing_decision' | 'invalid_evidence_shape' | 'decision_not_object';
+      document_id?: string;
+    }[];
+  };
+}
+
+export interface ResearchIntent {
+  version?: string;
+  topic?: string;
+  original_keywords?: string[];
+  research_question?: string;
+  entities?: string[];
+  aliases?: string[];
+  relations?: string[];
+  focus?: string[];
+  non_assumptions?: string[];
+  search_queries?: string[];
+}
+
+export interface PlatformCoverage {
+  source: string;
+  status: string;
+  queries?: number;
+  provider_candidates?: number;
+  processed_count?: number;
+  body_count?: number;
+  summary_count?: number;
+  direct_count?: number;
+  context_count?: number;
+  rejected_count?: number;
+  unprocessed_count?: number;
+  failed_count?: number;
+}
+
+export interface EvidenceSpan {
+  start: number;
+  end: number;
+  text?: string;
+  document_id?: string;
+}
+
+export interface CandidateAudit {
+  id: string;
+  title?: string;
+  url?: string;
+  final_url?: string;
+  source_type?: string;
+  requested_source?: string;
+  content_kind?: string;
+  fetch_status?: string;
+  fetch_reason?: string;
+  published_at?: string;
+  date_sources?: { provider?: string; body?: string };
+  status?: string;
+  reason?: string;
+  semantic_classification?: string;
+  semantic_reason?: string;
+  evidence_spans?: string[];
+  observed_spans?: EvidenceSpan[];
+  truncated?: boolean;
+}
+
+export interface MaterialCoverage {
+  version: string;
+  phases: {
+    phase: string;
+    read_spans: (EvidenceSpan & { document_id: string; material_class: string })[];
+    unprocessed: (EvidenceSpan & { document_id: string; reason: string })[];
+    input_basis?: string;
+    failure_reason?: string;
+  }[];
 }
 
 /** GET /analyses/:id（轮询时可能出现的扩展字段） */
@@ -46,11 +129,22 @@ export interface AnalysisStateResponse {
   state: AnalysisState;
   progress: number;
   created_at?: string;
+  run_started_at?: string;
+  task_deadline_at?: string;
+  phase_started_at?: string;
+  stage_deadline_at?: string;
+  research_question?: string;
+  research_intent?: ResearchIntent | null;
+  research_intent_version?: string;
   date_from?: string;
   date_to?: string;
   error_message?: string;
   error_code?: string;
   doc_count?: number;
+  material_count?: number;
+  context_count?: number;
+  insight_material_coverage?: MaterialCoverage | null;
+  report_material_coverage?: MaterialCoverage | null;
   retrieval_coverage?: RetrievalCoverage | null;
 }
 
@@ -63,6 +157,15 @@ export interface SentimentDoc {
   published_at: string;
   source_published_at?: string;
   content: string;
+  semantic_classification?: string;
+  semantic_reason?: string;
+  content_kind?: string;
+  final_url?: string;
+  fetch_status?: string;
+  fetch_reason?: string;
+  date_sources?: { provider?: string; body?: string };
+  evidence_spans?: string[];
+  truncated?: boolean;
 }
 
 /** 单篇文档的情感分类明细 */
@@ -93,6 +196,7 @@ export interface DimensionResult {
   findings: string;
   data_points?: string[];
   quotes?: QuoteItem[];
+  quote_locations?: (EvidenceSpan & { document_id: string; field: string; material_class: string; quote_text?: string })[];
   deep_read: string;
   trend?: string;
 }
@@ -101,8 +205,15 @@ export interface AnalysisResult {
   id: string;
   state: string;
   doc_count?: number;
+  material_count?: number;
+  context_count?: number;
+  research_intent?: ResearchIntent | null;
+  research_intent_version?: string;
+  insight_material_coverage?: MaterialCoverage | null;
+  report_material_coverage?: MaterialCoverage | null;
   retrieval_coverage?: RetrievalCoverage | null;
   documents: SentimentDoc[];
+  context_documents?: SentimentDoc[];
   summary?: string;
   warning?: string;
   sentiments: { positive: number; negative: number; neutral: number; items?: SentimentItem[] };
