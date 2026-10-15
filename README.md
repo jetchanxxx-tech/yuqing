@@ -167,8 +167,6 @@ PUT    /api/v1/admin/settings        更新配置
 # 一键部署（幂等，已安装组件自动跳过）
 sudo YUQING_DOMAIN=your-domain.com bash scripts/deploy.sh
 
-# 当前生产环境：yuqing2.pangu-cloud.com (101.96.209.90:22352)
-# CentOS Stream 9 / oneinstack 栈，详见 docs/ops/DEPLOYMENT_RUNBOOK.md §9
 
 # 手动步骤
 cd platform && make build              # Go → bin/
