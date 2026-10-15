@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,26 @@ import (
 
 // topicAnalysisTasks is the queue topic for newly scheduled analysis runs.
 const topicAnalysisTasks = "analysis.tasks"
+
+func buildResearchIntent(keywords []string, question string) map[string]any {
+	terms := make([]string, 0, len(keywords))
+	for _, keyword := range keywords {
+		if value := strings.TrimSpace(keyword); value != "" {
+			terms = append(terms, value)
+		}
+	}
+	intent := map[string]any{
+		"topic": strings.TrimSpace(question),
+		"entities": terms,
+		"focus": []string{},
+		"relations": []string{"same_research_topic"},
+		"must_not_assume": []string{"publication", "identity", "truth"},
+	}
+	if intent["topic"] == "" {
+		intent["topic"] = strings.Join(terms, "、")
+	}
+	return intent
+}
 
 // TopicAnalysisTasks 是分析任务的队列主题（导出供组合根订阅）。
 const TopicAnalysisTasks = topicAnalysisTasks
@@ -133,6 +154,7 @@ type CreateAnalysisRequest struct {
 	DateFrom           string   `json:"date_from,omitempty"`
 	DateTo             string   `json:"date_to,omitempty"`
 	ReportTemplateID   string   `json:"report_template_id,omitempty"`
+	ResearchQuestion   string   `json:"research_question,omitempty"`
 }
 
 // AnalysisResult is the full result of a completed analysis.
@@ -142,6 +164,9 @@ type AnalysisResult struct {
 	Name               string    `json:"name"`
 	AnalysisType       string    `json:"analysis_type"`
 	ScenarioTemplateID string    `json:"scenario_template_id,omitempty"`
+	ResearchQuestion   string    `json:"research_question,omitempty"`
+	ResearchIntent    map[string]any `json:"research_intent,omitempty"`
+	ResearchIntentVersion string `json:"research_intent_version,omitempty"`
 	State              State     `json:"state"`
 	Progress           int       `json:"progress"`
 	ErrorCode          string    `json:"error_code,omitempty"`
@@ -235,6 +260,9 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		DateFrom:           req.DateFrom,
 		DateTo:             req.DateTo,
 		ReportTemplateID:   req.ReportTemplateID,
+		ResearchQuestion:   strings.TrimSpace(req.ResearchQuestion),
+		ResearchIntent:     buildResearchIntent(req.Keywords, req.ResearchQuestion),
+		ResearchIntentVersion: "deterministic-v1",
 		CreatedBy:          req.UserID,
 	}
 	if _, ok := s.store.(*pgStore); ok {

@@ -49,6 +49,10 @@ def validate_decisions(
         elif isinstance(item, Mapping):
             raw_spans = item.get("evidence_spans") or item.get("evidence") or []
             raw_entities = item.get("matched_entities") or []
+            if isinstance(raw_spans, str):
+                raw_spans = [raw_spans]
+            if isinstance(raw_entities, str):
+                raw_entities = [raw_entities]
             decision = SemanticDecision(
                 document_id=str(item.get("document_id") or ""),
                 classification=str(item.get("classification") or ""),
@@ -87,3 +91,40 @@ def validate_decisions(
         context=tuple(x for x in normalized if x.classification == "context"),
         rejected=tuple(x for x in normalized if x.classification in {"irrelevant", "uncertain"}),
     )
+
+
+async def classify_materials(llm, model: str, intent: Mapping, materials: Mapping[str, str],
+                             usage_context: dict | None = None, timeout: float | None = None) -> DecisionValidation:
+    """Ask an OpenAI-compatible model for bounded evidence decisions."""
+    import asyncio
+    import json
+
+    prompt = {
+        "research_intent": intent,
+        "materials": [{"document_id": key, "content": value} for key, value in materials.items()],
+        "output": {
+            "decisions": [
+                {"document_id": "", "classification": "direct|context|irrelevant|uncertain",
+                 "reason": "", "matched_entities": [], "evidence_spans": []}
+            ]
+        },
+        "rules": [
+            "All keywords describe one research topic; one model variant can be direct evidence.",
+            "Use only supplied material. Do not infer publication, identity, or truth from memory.",
+            "Every evidence span must be copied verbatim from its document.",
+            "Return exactly one decision for every document id.",
+        ],
+    }
+    kwargs = {"temperature": 0, "max_tokens": 16384}
+    if timeout is not None:
+        response = await asyncio.wait_for(
+            llm.chat_json(model, [
+                {"role": "system", "content": "你是证据准入审查员，只输出JSON对象。"},
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ], usage_context=usage_context, **kwargs), timeout=timeout)
+    else:
+        response = await llm.chat_json(model, [
+            {"role": "system", "content": "你是证据准入审查员，只输出JSON对象。"},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+        ], usage_context=usage_context, **kwargs)
+    return validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], materials)

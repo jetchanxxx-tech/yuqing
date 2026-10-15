@@ -248,6 +248,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			model, _ := platformSettings.Get(context.Background(), "llm_model")
 			return baseURL, model
 		}
+		crawler.WithLLMOpts(llmOpts).WithLLMKey(keyFor("llm_api_key"))
 		// insight/report 引擎未配置时传 nil —— 管线跳过对应步骤并记录 warning
 		var insight *engine.RealInsightEngine
 		if cfg.Engines.Insight.URL != "" {

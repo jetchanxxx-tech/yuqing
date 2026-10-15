@@ -35,7 +35,7 @@ func newPGStore(pool *pgxpool.Pool) *pgStore { return &pgStore{pool: pool} }
 // analysisArgs 的参数顺序一致。
 const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,''), scenario_template_id`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,''), scenario_template_id, research_question, research_intent, research_intent_version`
 
 // analysisColumnsList 供 list 使用：不取 KB 级 report_content ——
 // 详情页按秒轮询 /analyses/:id，内联整份报告会让每次轮询都传输正文。
@@ -43,13 +43,13 @@ const analysisColumns = `id, tenant_id, name, analysis_type, state, progress, er
 // GET /analyses/:id/result 返回，那条路径走 get）。
 const analysisColumnsList = `id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,''), scenario_template_id`
+	summary, warning, sentiments, topics, dimensions, report_id, '' AS report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, COALESCE(current_run_id,''), scenario_template_id, research_question, research_intent, research_intent_version`
 
 const insertAnalysisSQL = `INSERT INTO analyses (
 	id, tenant_id, name, analysis_type, state, progress, error_code,
 	started_at, finished_at, created_at, keywords, sources, doc_count,
-	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, current_run_id, scenario_template_id
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NULLIF($27,''), $28)`
+	summary, warning, sentiments, topics, dimensions, report_id, report_content, created_by, date_from, date_to, exclude_words, report_template_id, retrieval_coverage, current_run_id, scenario_template_id, research_question, research_intent, research_intent_version
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NULLIF($27,''), $28, $29, $30, $31)`
 
 // updateAnalysisSQL 用 $1/$2 定位行（id + tenant_id），其余列整体写回：
 // mutate 的读-改-写语义在内存版是「改指针指向的对象」，在 pg 版是「整行 UPDATE」。
@@ -58,7 +58,7 @@ const updateAnalysisSQL = `UPDATE analyses SET
 	started_at = $8, finished_at = $9, created_at = $10, keywords = $11, sources = $12,
 	doc_count = $13, summary = $14, warning = $15, sentiments = $16, topics = $17,
 	dimensions = $18, report_id = $19, report_content = $20, created_by = $21,
-	date_from = $22, date_to = $23, exclude_words = $24, report_template_id = $25, retrieval_coverage = $26, current_run_id = NULLIF($27,''), scenario_template_id = $28
+	date_from = $22, date_to = $23, exclude_words = $24, report_template_id = $25, retrieval_coverage = $26, current_run_id = NULLIF($27,''), scenario_template_id = $28, research_question = $29, research_intent = $30, research_intent_version = $31
 WHERE id = $1 AND tenant_id = $2`
 
 // put 写入一条新分析；ID 已存在（含他租户）报 ErrConflict。
@@ -235,7 +235,7 @@ func analysisArgs(tenantID string, a *AnalysisResult) []any {
 		marshalJSON(a.Keywords), marshalJSON(a.Sources), a.DocCount,
 		a.Summary, a.Warning, marshalJSON(a.Sentiments), marshalJSON(a.Topics),
 		marshalJSON(a.Dimensions), a.ReportID, a.ReportContent, a.CreatedBy,
-		a.DateFrom, a.DateTo, marshalJSON(a.ExcludeWords), a.ReportTemplateID, marshalJSON(a.RetrievalCoverage), a.CurrentRunID, a.ScenarioTemplateID,
+		a.DateFrom, a.DateTo, marshalJSON(a.ExcludeWords), a.ReportTemplateID, marshalJSON(a.RetrievalCoverage), a.CurrentRunID, a.ScenarioTemplateID, a.ResearchQuestion, marshalJSON(a.ResearchIntent), a.ResearchIntentVersion,
 	}
 }
 
@@ -255,12 +255,13 @@ func scanAnalysis(row pgx.Row) (*AnalysisResult, error) {
 		dimensions        []byte
 		excludeWords      []byte
 		retrievalCoverage []byte
+		researchIntent    []byte
 	)
 	if err := row.Scan(
 		&a.ID, &tenantID, &a.Name, &a.AnalysisType, &state, &a.Progress, &a.ErrorCode,
 		&startedAt, &finishedAt, &a.CreatedAt, &keywords, &sources, &a.DocCount,
 		&a.Summary, &a.Warning, &sentiments, &topics, &dimensions, &a.ReportID, &a.ReportContent, &a.CreatedBy,
-		&a.DateFrom, &a.DateTo, &excludeWords, &a.ReportTemplateID, &retrievalCoverage, &a.CurrentRunID, &a.ScenarioTemplateID,
+		&a.DateFrom, &a.DateTo, &excludeWords, &a.ReportTemplateID, &retrievalCoverage, &a.CurrentRunID, &a.ScenarioTemplateID, &a.ResearchQuestion, &researchIntent, &a.ResearchIntentVersion,
 	); err != nil {
 		return nil, err
 	}
@@ -287,6 +288,9 @@ func scanAnalysis(row pgx.Row) (*AnalysisResult, error) {
 		return nil, err
 	}
 	if err := unmarshalJSON(retrievalCoverage, &a.RetrievalCoverage); err != nil {
+		return nil, err
+	}
+	if err := unmarshalJSON(researchIntent, &a.ResearchIntent); err != nil {
 		return nil, err
 	}
 	return &a, nil

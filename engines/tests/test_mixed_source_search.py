@@ -43,7 +43,12 @@ async def test_selected_sources_form_union_without_bypassing_admission(monkeypat
         assert body["summary"] is True
         included = body.get("include", "")
         # Reproduce Bocha's domain restriction at the external HTTP boundary.
-        selected = [page for page in pages if not included or "weibo.com/" in page["url"]]
+        if included == "weibo.com":
+            selected = [page for page in pages if "weibo.com/" in page["url"]]
+        elif included:
+            selected = []
+        else:
+            selected = pages
         return httpx.Response(200, json={"code": 200, "data": {"webPages": {"value": selected}}})
 
     actual_client = httpx.AsyncClient

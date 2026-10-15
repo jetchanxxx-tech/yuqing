@@ -3,6 +3,7 @@ import httpx
 import pytest
 
 from engines.common.scraper import ScrapedDocument
+from engines.common.semantic_admission import DecisionValidation, SemanticDecision
 from engines.query_engine import main
 
 
@@ -346,3 +347,38 @@ async def test_search_coverage_reports_version_and_per_keyword_admission(monkeyp
     assert response.coverage["irrelevant_count"] == 1
     assert response.coverage["accepted_count"] == 1
     assert response.coverage["per_keyword"][0]["keyword"] == "gs8"
+
+
+@pytest.mark.asyncio
+async def test_semantic_intent_allows_one_related_model_variant_and_reports_direct_context(monkeypatch):
+    monkeypatch.setattr(main, "get_scraper", lambda: FixtureScraper([
+        ScrapedDocument(
+            title="iPhone18 Pro续航体验", url="https://www.toutiao.com/article/1",
+            content="iPhone18 Pro续航体验优秀", source_type="toutiao",
+            source_name="今日头条", published_at="2026-10-10", content_hash="iphone-pro",
+        ),
+        ScrapedDocument(
+            title="iPhone17与iPhone18对比", url="https://www.toutiao.com/article/2",
+            content="iPhone17与iPhone18外观对比", source_type="toutiao",
+            source_name="今日头条", published_at="2026-10-10", content_hash="comparison",
+        ),
+    ]))
+
+    async def semantic(*args, **kwargs):
+        return DecisionValidation(
+            accepted=(SemanticDecision("iphone-pro", "direct", evidence_spans=("iPhone18 Pro续航体验优秀",)),),
+            context=(SemanticDecision("comparison", "context", evidence_spans=("iPhone17与iPhone18外观对比",)),),
+            rejected=(),
+        )
+
+    monkeypatch.setattr(main, "classify_materials", semantic)
+    response = await main.search(main.SearchRequest(
+        keywords=["iPhone18", "iPhone18pro", "iPhone18max"],
+        sources=["toutiao"], max_results=10, bocha_api_key="fixture-key",
+        run_id="run-semantic", research_intent={"topic": "iPhone18系列新品"},
+        llm_api_key="fixture-llm-key",
+    ))
+    assert response.coverage["admission_version"] == "semantic-v2"
+    assert response.coverage["direct_count"] == 1
+    assert response.coverage["context_count"] == 1
+    assert [item["semantic_classification"] for item in response.documents] == ["direct", "context"]

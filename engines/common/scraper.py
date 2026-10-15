@@ -153,7 +153,8 @@ class PageScraper:
     async def search_and_fetch(self, keyword: str, sources: list[str],
                                 max_per_source: int = 5, bocha_key: str = "",
                                 coverage: dict | None = None,
-                                date_from: str = "", date_to: str = "") -> list[ScrapedDocument]:
+                                date_from: str = "", date_to: str = "",
+                                research_intent: dict | None = None) -> list[ScrapedDocument]:
         """Search Bocha, admit summary/snippet excerpts, then deduplicate.
 
         The query HTTP entrypoint requires a real Bocha key. This path does
@@ -228,6 +229,26 @@ class PageScraper:
                 # an accepted usage context; this compatibility path remains
                 # deterministic for legacy lexical-v1 callers.
                 decision = admit(keyword, cand.get("title") or "", content)
+                semantic_candidate = bool(research_intent)
+                if semantic_candidate:
+                    # Semantic-v2 decides relevance downstream. Recover body
+                    # text before returning the candidate, while retaining a
+                    # sufficient summary fallback when body recovery fails.
+                    recovered = await asyncio.to_thread(
+                        self.fetch_candidate, url, stype, self._source_mode(stype)
+                    )
+                    if recovered.status == "fetched":
+                        content = recovered.content
+                        cand["_final_url"] = recovered.final_url
+                        cand["_fetch_status"] = recovered.status
+                        cand["_fetch_reason"] = recovered.reason
+                        cand["_content_kind"] = recovered.content_kind
+                        cand["_truncated"] = recovered.truncated
+                    elif not content or not usable_excerpt(content):
+                        if coverage is not None:
+                            coverage["unusable_count"] += 1
+                        continue
+                    decision = type("Decision", (), {"accepted": True, "reason": "semantic_pending"})()
                 if not decision.accepted:
                     # A usable URL may still contain the evidence in its body.
                     # Attempt one bounded recovery before rejecting the excerpt.

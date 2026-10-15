@@ -18,6 +18,18 @@ type RealCrawlerEngine struct {
 	httpClient   *http.Client
 	timeout      time.Duration
 	bochaKeyFunc func() string // nil = env BOCHA_API_KEY
+	llmOptsFunc  func() (string, string)
+	llmKeyFunc   func() string
+}
+
+func (e *RealCrawlerEngine) WithLLMOpts(f func() (string, string)) *RealCrawlerEngine {
+	e.llmOptsFunc = f
+	return e
+}
+
+func (e *RealCrawlerEngine) WithLLMKey(f func() string) *RealCrawlerEngine {
+	e.llmKeyFunc = f
+	return e
 }
 
 // NewRealCrawlerEngine creates a crawler backed by the Python query_engine /search endpoint.
@@ -39,6 +51,7 @@ func NewRealCrawlerEngine(baseURL, authToken string, bochaKeyFunc func() string)
 
 // searchReq matches the Python engine's SearchRequest model (v0.3.0).
 type searchReq struct {
+	RunID        string         `json:"run_id,omitempty"`
 	Keywords     []string `json:"keywords"`
 	Sources      []string `json:"sources"`
 	MaxResults   int      `json:"max_results"`
@@ -47,6 +60,10 @@ type searchReq struct {
 	AnalysisID   string   `json:"analysis_id"`
 	ExcludeWords []string `json:"exclude_words,omitempty"`
 	BochaAPIKey  string   `json:"bocha_api_key,omitempty"`
+	LLMBaseURL   string   `json:"llm_base_url,omitempty"`
+	LLMModel     string   `json:"llm_model,omitempty"`
+	LLMAPIKey    string   `json:"llm_api_key,omitempty"`
+	ResearchIntent map[string]any `json:"research_intent,omitempty"`
 }
 
 type SearchCoverage struct {
@@ -57,6 +74,8 @@ type SearchCoverage struct {
 	SourceMismatchCount   int              `json:"source_mismatch_count"`
 	AcceptedCount         int              `json:"accepted_count"`
 	CandidateTruncated    bool             `json:"candidate_truncated"`
+	DirectCount           int              `json:"direct_count"`
+	ContextCount          int              `json:"context_count"`
 	PerKeyword            []map[string]any `json:"per_keyword"`
 	Warning               string           `json:"warning"`
 	FilterLimitations     string           `json:"filter_limitations"`
@@ -77,6 +96,7 @@ func (e *RealCrawlerEngine) Search(ctx context.Context, req *CrawlReq) ([]Docume
 
 func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlReq) (SearchResult, error) {
 	body := searchReq{
+		RunID:        req.RunID,
 		Keywords:     req.Keywords,
 		Sources:      req.Sources,
 		MaxResults:   req.MaxDepth,
@@ -84,10 +104,17 @@ func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlRe
 		DateFrom:     req.DateFrom,
 		DateTo:       req.DateTo,
 		ExcludeWords: req.ExcludeWords,
+		ResearchIntent: req.ResearchIntent,
 	}
 	// Inject Bocha API key from admin-configurable platform settings.
 	if e.bochaKeyFunc != nil {
 		body.BochaAPIKey = e.bochaKeyFunc()
+	}
+	if e.llmOptsFunc != nil {
+		body.LLMBaseURL, body.LLMModel = e.llmOptsFunc()
+	}
+	if e.llmKeyFunc != nil {
+		body.LLMAPIKey = e.llmKeyFunc()
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -118,7 +145,7 @@ func (e *RealCrawlerEngine) SearchWithCoverage(ctx context.Context, req *CrawlRe
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return SearchResult{}, fmt.Errorf("crawler: decode response: %w", err)
 	}
-	if result.Coverage.AdmissionVersion != "lexical-v1" {
+	if result.Coverage.AdmissionVersion != "lexical-v1" && result.Coverage.AdmissionVersion != "semantic-v2" {
 		return SearchResult{}, fmt.Errorf("crawler: unsupported or missing admission protocol %q", result.Coverage.AdmissionVersion)
 	}
 	if result.Documents == nil || result.Coverage.AcceptedCount != len(result.Documents) || result.TotalCount != len(result.Documents) {

@@ -75,6 +75,7 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 
 func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.FetchRequest) (analysis.FetchResult, error) {
 	result, err := f.crawler.SearchWithCoverage(ctx, &engine.CrawlReq{
+		RunID:        req.RunID,
 		Keywords:     req.Keywords,
 		Sources:      req.Sources,
 		ExcludeWords: req.ExcludeWords,
@@ -82,6 +83,7 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 		DateTo:       req.DateTo,
 		AnalysisID:   req.AnalysisID,
 		MaxDepth:     req.MaxResults,
+		ResearchIntent: req.ResearchIntent,
 	})
 	if err != nil {
 		return analysis.FetchResult{}, err
@@ -98,6 +100,14 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 			SourceName:  d.SourceName,
 			PublishedAt: d.PublishedAt,
 			ContentHash: d.ContentHash,
+			ContentKind: d.ContentKind,
+			FetchStatus: d.FetchStatus,
+			FetchReason: d.FetchReason,
+			FinalURL:    d.FinalURL,
+			Truncated:   d.Truncated,
+			SemanticClassification: d.SemanticClassification,
+			SemanticReason: d.SemanticReason,
+			EvidenceSpans: d.EvidenceSpans,
 		})
 	}
 	warnings := make([]string, 0, 2)
@@ -119,6 +129,8 @@ func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.Fetc
 		SourceMismatchCount: result.Coverage.SourceMismatchCount,
 		AcceptedCount:       result.Coverage.AcceptedCount,
 		CandidateTruncated:  result.Coverage.CandidateTruncated,
+		DirectCount:         result.Coverage.DirectCount,
+		ContextCount:        result.Coverage.ContextCount,
 		PerKeyword:          result.Coverage.PerKeyword,
 	}}, nil
 }

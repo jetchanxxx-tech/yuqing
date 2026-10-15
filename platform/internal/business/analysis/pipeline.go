@@ -52,6 +52,7 @@ func looksLikeJSON(s string) bool {
 
 // FetchRequest 是一次采集请求。
 type FetchRequest struct {
+	RunID        string
 	TenantID     string
 	AnalysisID   string
 	Keywords     []string
@@ -60,6 +61,7 @@ type FetchRequest struct {
 	DateFrom     string
 	DateTo       string
 	MaxResults   int
+	ResearchIntent map[string]any
 }
 
 // RetrievalCoverage is the versioned, tenant-scoped audit of this run's search candidates.
@@ -71,6 +73,8 @@ type RetrievalCoverage struct {
 	SourceMismatchCount int              `json:"source_mismatch_count"`
 	AcceptedCount       int              `json:"accepted_count"`
 	CandidateTruncated  bool             `json:"candidate_truncated"`
+	DirectCount         int              `json:"direct_count,omitempty"`
+	ContextCount        int              `json:"context_count,omitempty"`
 	PerKeyword          []map[string]any `json:"per_keyword"`
 }
 
@@ -218,6 +222,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return p.fail(ctx, msg, "pipeline_error", err)
 	}
 	fetchReq := FetchRequest{
+		RunID:        msg.RunID,
 		TenantID:     msg.TenantID,
 		AnalysisID:   msg.AnalysisID,
 		Keywords:     a.Keywords,
@@ -226,6 +231,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		DateFrom:     a.DateFrom,
 		DateTo:       a.DateTo,
 		MaxResults:   50,
+		ResearchIntent: a.ResearchIntent,
 	}
 	var docs []Document
 	var coverageWarning string
@@ -243,7 +249,13 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, coverageWarning)
 	}
 	if retrievalCoverage != nil {
-		if retrievalCoverage.AdmissionVersion != "lexical-v1" || retrievalCoverage.AcceptedCount != len(docs) {
+		if retrievalCoverage.AdmissionVersion != "lexical-v1" && retrievalCoverage.AdmissionVersion != "semantic-v2" {
+			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("inconsistent search admission contract"))
+		}
+		if retrievalCoverage.AdmissionVersion == "semantic-v2" && retrievalCoverage.DirectCount < 0 {
+			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("invalid semantic direct count"))
+		}
+		if retrievalCoverage.AcceptedCount != len(docs) {
 			return p.fail(ctx, msg, "admission_protocol_error", fmt.Errorf("inconsistent search admission contract"))
 		}
 		if err := p.svc.store.mutate(ctx, msg.TenantID, msg.AnalysisID, func(a *AnalysisResult) error {
@@ -262,8 +274,14 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		return p.fail(ctx, msg, "document_store_failed", err)
 	}
 	p.setDocCount(ctx, msg, len(docs))
-	if retrievalCoverage != nil && len(docs) <= 1 {
-		return p.fail(ctx, msg, "insufficient_relevant_evidence", fmt.Errorf("only %d relevant usable documents; full report requires at least 2", len(docs)))
+	if retrievalCoverage != nil {
+		eligibleCount := len(docs)
+		if retrievalCoverage.AdmissionVersion == "semantic-v2" {
+			eligibleCount = retrievalCoverage.DirectCount
+		}
+		if eligibleCount < 2 {
+			return p.fail(ctx, msg, "insufficient_relevant_evidence", fmt.Errorf("only %d direct evidence documents; full report requires at least 2", eligibleCount))
+		}
 	}
 	p.log.Info("pipeline: fetched", slog.String("analysis_id", msg.AnalysisID), slog.Int("docs", len(docs)))
 
