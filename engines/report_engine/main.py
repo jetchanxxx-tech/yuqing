@@ -400,6 +400,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                 "recommendations": [value for item in outputs for value in (item.get("recommendations") if isinstance(item.get("recommendations"), list) else [])]}
     if rejected:
         data["_evidence_warning"] = f"{rejected} 条风险证据未通过核验，相关风险项已移除；请补充原始材料。"
+        req.generation_warning = data["_evidence_warning"]
     return data
 
 
