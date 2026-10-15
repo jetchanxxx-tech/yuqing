@@ -9,6 +9,24 @@ from engines.common.llm_client import LLMClient, LLMOutputTruncated
 
 
 @pytest.mark.asyncio
+async def test_live_model_without_verified_capabilities_spends_nothing(monkeypatch):
+    from engines.common.model_budget import ModelContextExceeded, chat_json_bounded
+
+    monkeypatch.delenv("YUQING_MODEL_CAPABILITIES_JSON", raising=False)
+    calls = []
+    client = LLMClient("https://supplier.test/v1")
+
+    async def observed_call(*args, **kwargs):
+        calls.append(kwargs)
+        return {"ready": True}
+
+    monkeypatch.setattr(client, "chat_json", observed_call)
+    with pytest.raises(ModelContextExceeded, match="capabilities have not been verified"):
+        await chat_json_bounded(client, "unverified-model", [])
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_complete_output_has_explicit_budget_and_one_larger_truncation_retry():
     from engines.common.model_budget import chat_json_bounded
     requests = []
