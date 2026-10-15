@@ -41,7 +41,7 @@ const (
 	id, tenant_id, analysis_id, title, url, content, author,
 	source_type, source_name, published_at, content_hash, source_published_at,
 	content_kind, fetch_status, fetch_reason, final_url, truncated, semantic_classification, semantic_reason, evidence_spans
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 ON CONFLICT (tenant_id, analysis_id, id) DO NOTHING`
 
 	selectDocumentsSQL = `SELECT id, title, url, content, author, source_type, source_name,
