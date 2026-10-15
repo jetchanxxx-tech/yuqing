@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>盘古舆情 · 国内模型与逻辑兼容讨论</title>
+<style>body{font:16px/1.8 system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 24px;color:#202634}h1,h2{line-height:1.4}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:12px;border:1px solid #dce1e9;text-align:left;vertical-align:top}.table{overflow-x:auto}code{overflow-wrap:anywhere}a{color:#175c9d}aside{padding:16px;background:#f5f7fa}li{margin:8px 0}@media print{body{max-width:none;margin:0;font-size:11px}}</style></head><body>
+<h1>国内主流模型在盘古舆情中的优化与兼容讨论</h1>
+<p>日期：2026-10-15。性质：官方文档核查与头脑风暴，尚未做供应商质量实测，尚未实施多模型路由、缓存、检索、多模态或自动故障切换。自定义模板继续暂缓。</p>
+<aside>建议先按研判质量与证据可信度优先讨论；不同模型的价格、速度和中文效果都需要本项目固定语料实测。官方接口能力可以决定接入方式，不能代替效果排名。</aside>
+<h2>我们要优化的具体任务</h2>
+<ul><li>逐篇情感、话题成员识别：看分类是否完整、稳定，能否识别反讽和“产品缺点但总体认可”等混合态度。</li>
+<li>五维研判：看事实、当事人说法、推断和未知是否分开，观点分歧是否保留，引用能否绑定文档。</li>
+<li>风险和行动建议：看风险是否有材料依据，措施是否可执行，是否在信息不足时承认未知。</li>
+<li>摘要与报告：看是否保留已验证数字和证据，是否在润色时新造事实。这个环节可用独立写作模型，但不应重新猜测统计。</li></ul>
+<h2>模型候选与已核实的接口区别</h2>
+<div class="table"><table><thead><tr><th>模型家族</th><th>官方接口事实</th><th>本项目的候选用途（待实测）</th><th>兼容重点</th></tr></thead><tbody>
+<tr><td>GLM</td><td>当前源码基线 glm-5.3-flash。5.3 系列强制思考，通过 reasoning_effort=low/high/max 控制强度，JSON 模式与 SSE 已使用。</td><td>保留作为基线；比较低强度分类与高强度冲突证据研判的质量差异。</td><td>不能用 disabled；思考与正文共享输出预算。调用成功不代表证据核验通过。</td></tr>
+<tr><td>DeepSeek</td><td>当前官方模型页列 deepseek-flash、deepseek-v4-pro。支持 thinking enabled/disabled，reasoning_effort 为 none/low/high/max。思考模式 temperature 等采样参数被忽略。</td><td>作为第一批独立对照候选：分类用非思考模式，复杂因果和冲突材料用思考模式。</td><td>不能靠 temperature=0 保证思考输出稳定；JSON 模式要求提示词包含 JSON，文档提醒可能有空正文。模型别名和实际返回 model 要对账。</td></tr>
+<tr><td>MiniMax</td><td>提供 OpenAI 兼容接口；模型版本的思考行为不同。当前兼容文档列 M3/M2.x，M3.1-Flash-Preview 暂仅 M Plan/Code。reasoning_split 可将思考移至 reasoning_content；否则部分版本正文含 &lt;think&gt;。</td><td>评测长材料综合、报告编排与复杂任务组织能力；作为候选，不预先宣称更擅长舆情。</td><td>当前 JSON 解析器可能被思考标签干扰；需验证 response_format 的实际支持。M3 使用 adaptive/disabled，M2.x 的 disabled 可能被接受但不生效。不能套用 GLM 参数。</td></tr>
+<tr><td>通义千问 Qwen</td><td>百炼提供 OpenAI 兼容端点。混合思考模型可通过 enable_thinking 开关，支持模型另有 thinking_budget；地域、工作空间和模型族影响端点／格式。</td><td>进入中文分类和结构化提取对照组，并评估更细的思考预算控制。</td><td>DashScope 原生协议与 OpenAI 兼容协议的 usage 字段不同。即使百炼托管同名 GLM/Kimi，也不能沿用原厂参数假设。</td></tr>
+<tr><td>Kimi</td><td>当前公开入口推荐 kimi-k3，支持 OpenAI 等协议；K3 推理强度通过 reasoning_effort=low/high/max 控制。旧 K2 系列的配置与 K3 不相同。</td><td>进入长材料、观点对照与报告证据覆盖评测。</td><td>需要按具体模型核实思考与 JSON 参数；长上下文不能直接消除本项目 16000 字素材预算，也不代表增加输入一定改善质量。</td></tr>
+</tbody></table></div>
+<h2>当前程序为什么不能只换 URL、Key 和模型名</h2>
+<ol><li><strong>请求参数：</strong>thinking.enabled、thinking.adaptive、enable_thinking 不是统一字段，部分“接受参数”的接口仍会忽略它。应按供应商＋端点协议＋具体模型记录能力。</li>
+<li><strong>返回正文：</strong>当前客户端保留 content 并解析 JSON；不同供应商可能另返 reasoning_content，或者把思考放入 &lt;think&gt;。后续适配必须明确提取最终正文，不能随意从推理文本中挑第一个看似 JSON 的片段。</li>
+<li><strong>结构与证据：</strong>JSON 合法、字段正确、引用真实是三项不同检查。当前新增引用与样本成员核验应保持在公共业务层，各供应商都经过同一检查。</li>
+<li><strong>流式协议：</strong>目前客户端请求 SSE 后完整收集再解析。不同供应商的终止块、usage-only 块与错误块需要离线契约；如果以后接工具调用，还需保留完整 tool_calls 和供应商要求的会话字段。</li>
+<li><strong>计量：</strong>usage 的缓存 token 可能是 prompt 的子集；不能重复累计。必须记录每次实际调用、重试、模型和 request_id。已发生的供应商消费在失败、取消或切换后仍需结算；缺用量或核实价格时保持 unknown/pending，不填零。</li>
+<li><strong>重试与切换：</strong>鉴权错误、参数错误、限流、读超时、输出截断和内容不合格需要不同策略。不能所有 400 都删参数重试，也不能无限串联新模型“直到出报告”。切换需有次数、时间、用量预算，报告说明实际参与模型。</li></ol>
+<h2>三个讨论方向</h2>
+<div class="table"><table><thead><tr><th>方案</th><th>收益</th><th>代价与适用范围</th></tr></thead><tbody>
+<tr><td>A. 单模型基线＋离线对照（近期建议）</td><td>保留 GLM 稳定链路，对 DeepSeek／MiniMax 等做相同语料盲评，得到可证实的效果差异。</td><td>业务改动最少；暂时没有自动降成本或供应商切换收益。</td></tr>
+<tr><td>B. 按任务选择模型</td><td>分类、复杂研判、报告写作分别选择通过评测的模型与推理强度。</td><td>需要模型能力表、分阶段配置、统一证据格式和每次调用价格快照；先证明组合不丢证据。</td></tr>
+<tr><td>C. 高风险内容双模型复核</td><td>对矛盾、重大风险或证据不足的结论追加独立核查，寻找遗漏和分歧。</td><td>增加实际调用成本和延迟。两模型同意不等于事实已证实，确定性来源核验仍是前提。</td></tr>
+</tbody></table></div>
+<p>如果质量优先，建议先 A，再只对高风险材料试 C，最后决定是否需要 B。未来实现的顺序应是“能力／返回适配 → 固定语料评测 → 业务阶段选择 → 有界故障切换”，避免先开发一个未经证明有收益的复杂调度系统。</p>
+<h2>建议的项目评测</h2>
+<p>先整理六个场景 × 四种输入条件，共 24 组固定材料：正常多来源、少量材料、转载与观点冲突、长素材／错误来源／文本注入。所有模型使用相同已准入材料、同一 Prompt 版本和同一输出契约。此处只是评测提案，未运行供应商对照。</p>
+<ul><li>核验指标：字段完整、情感覆盖、话题真实成员、引用文档／来源匹配。丰富材料场景还检查引用覆盖，防止“全部返回空引用”骗过保真率。</li><li>盲评指标：事实错误、对不确定性的表达、观点差异、行动建议与场景相关性；不把模型自报置信度当校准后的准确率。</li><li>运行指标：首次有效正文时间、整份合格报告耗时、P50/P95、截断／重试／失败率、实际输入／输出／缓存 token。</li><li>财务指标：包括失败与重试的“每份合格报告实际供应商成本”；价格、货币或用量未核实则不进入已知成本排名。</li></ul>
+<h2>待讨论的问题</h2><p>首要目标是质量、成本还是等待时间？是否接受重大风险报告多一次独立复核？哪些场景最值得优先做真实语料对照？这些决策不属于本轮已实施范围。</p>
+<h2>官方资料（2026-10-15 查阅）</h2><ul>
+<li><a href="https://docs.bigmodel.cn/cn/guide/capabilities/thinking">GLM 推理参数</a></li>
+<li><a href="https://api-docs.deepseek.com/api/create-chat-completion">DeepSeek 请求／返回参数</a>；<a href="https://api-docs.deepseek.com/guides/thinking_mode">思考模式</a>；<a href="https://api-docs.deepseek.com/guides/json_mode">JSON 模式限制</a></li>
+<li><a href="https://platform.minimaxi.com/docs/api-reference/text-openai-api">MiniMax OpenAI 兼容与思考拆分</a></li>
+<li><a href="https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope">百炼协议兼容</a>；<a href="https://help.aliyun.com/zh/model-studio/deep-thinking">思考与预算参数</a></li>
+<li><a href="https://platform.moonshot.cn/docs/guide/agent-support">Kimi 当前公开入口与模型参数</a></li></ul>
+</body></html>

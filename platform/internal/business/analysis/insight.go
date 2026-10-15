@@ -27,8 +27,9 @@ type Topic struct {
 
 // Quote is a verbatim quote from the source material with its platform.
 type Quote struct {
-	Text   string `json:"text"`
-	Source string `json:"source,omitempty"`
+	DocumentID string `json:"document_id,omitempty"`
+	Text       string `json:"text"`
+	Source     string `json:"source,omitempty"`
 }
 
 // Dimension is one analytical dimension's verdict. Each dimension is produced
@@ -60,14 +61,15 @@ type InsightResult struct {
 
 // InsightRequest carries the documents to analyze.
 type InsightRequest struct {
-	RunID        string
-	TenantID     string
-	AnalysisID   string
-	AnalysisType string
-	DateFrom     string
-	DateTo       string
-	Title        string // 分析任务名，供维度分析 prompt 定位分析对象
-	Documents    []Document
+	RunID              string
+	TenantID           string
+	AnalysisID         string
+	AnalysisType       string
+	ScenarioTemplateID string
+	DateFrom           string
+	DateTo             string
+	Title              string // 分析任务名，供维度分析 prompt 定位分析对象
+	Documents          []Document
 	// Mode 是套餐裁剪模式（"" / full = 5 维；quick = 3 维速览）。
 	// 空值引擎按 full 处理，既有调用方零改动。
 	Mode string
@@ -81,16 +83,18 @@ type InsightAnalyzer interface {
 
 // ReportRequest carries the data to render a report.
 type ReportRequest struct {
-	RunID      string
-	TenantID   string
-	AnalysisID string
-	TemplateID string
-	Title      string
-	DateFrom   string
-	DateTo     string
-	Documents  []Document
-	Sentiments []Sentiment
-	Topics     []Topic
+	RunID              string
+	TenantID           string
+	AnalysisID         string
+	TemplateID         string
+	AnalysisType       string
+	ScenarioTemplateID string
+	Title              string
+	DateFrom           string
+	DateTo             string
+	Documents          []Document
+	Sentiments         []Sentiment
+	Topics             []Topic
 	// Dimensions 是分析引擎的五维度研判结论。报告要基于这些结论撰写，
 	// 而不是从聚合 JSON 重新概括（否则报告与摘要一样干瘪）。
 	Dimensions []Dimension

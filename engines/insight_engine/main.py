@@ -31,6 +31,8 @@ from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_scope
 from engines.common.auth import InternalAuthMiddleware
+from engines.common.evidence import normalize_quote, resolve_quote, sample_stats, validate_classification
+from engines.common.prompt_catalog import ScenarioID, EVIDENCE_RULES, analysis_context
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
@@ -53,6 +55,7 @@ class AnalyzeRequest(BaseModel):
     documents: list[dict] = []
     analysis_id: str = ""
     analysis_type: str = ""
+    scenario_template_id: ScenarioID = ""
     title: str = ""  # 分析任务名（可选，让 prompt 知道分析对象）
     date_from: str = ""
     date_to: str = ""
@@ -144,28 +147,23 @@ _SKELETON = "核心发现 → 数据 → 代表性声音 → 深入解读 → �
 QUICK_DIMENSION_IDS = ("heat", "sentiment", "deep_cause")
 
 
-def _quick_thinking_kwargs(mode: str) -> dict:
-    """quick 模式降思考档为 low（智谱 GLM-5.3-flash 是思考模型，
-    不支持完全关闭 —— 官方 1210 错误明示可取 low/high/max）。
-
-    供应商不认识该字段时会在请求阶段报 400 —— 调用方
-    （_chat_json_smart）去掉该参数重试一次，功能优先于成本优化。
-    """
-    if mode == "quick":
-        return {"thinking": {"type": "low"}}
+def _quick_thinking_kwargs(mode: str, model: str) -> dict:
+    """Only the documented GLM-5.3 family receives its separate effort field."""
+    if mode == "quick" and model.lower() in ("glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"):
+        return {"thinking": {"type": "enabled"}, "reasoning_effort": "low"}
     return {}
 
 
 async def _chat_json_smart(llm, model: str, messages: list[dict], mode: str = "", **kwargs) -> dict:
-    """带思考开关的 JSON 调用：quick 模式先带 thinking=disabled 尝试，
-    供应商 400（不认识该字段）则去掉重试一次。"""
-    extra = _quick_thinking_kwargs(mode)
+    """Retry without optional effort fields only for a parameter rejection."""
+    extra = _quick_thinking_kwargs(mode, model)
     try:
         return await llm.chat_json(model, messages, **kwargs, **extra)
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code if exc.response is not None else 0
-        if extra and status == 400:
-            logger.warning("thinking 参数被供应商拒绝(400)，去掉后重试")
+        detail = exc.response.text.lower() if exc.response is not None else ""
+        if extra and status == 400 and any(field in detail for field in ("thinking", "reasoning_effort")):
+            logger.warning("推理参数被供应商拒绝，移除后重试；低推理强度未生效")
             return await llm.chat_json(model, messages, **kwargs)
         raise
 
@@ -176,9 +174,13 @@ _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 
 分析对象：{title}
 分析类型：{analysis_type}
+{context}
+
+{evidence_rules}
+【代码统计】{stats}
 
 【文档素材包】以下是你唯一可引用的素材。引用原声必须**逐字摘录**并注明来源平台，
-不得改写、不得编造任何未出现的内容；quotes.text 只能是来源标题或正文的连续原文，不得添加「代表性声音」等标签：
+不得改写、不得编造任何未出现的内容；quotes.text 只能是对应document_id的标题或正文连续原文，不得添加「代表性声音」等标签：
 {materials}
 {quote_retry_instruction}
 
@@ -186,15 +188,15 @@ _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 {{
   "findings": "【核心发现】本维度的关键结论，不少于 150 字，必须具体到人/事/数字",
   "data_points": ["【数据】每条须含具体数字或比例，如「4 篇文档中 3 篇来自微博」"],
-  "quotes": [{{"text": "", "source": ""}}],
+  "quotes": [{{"document_id": "素材中的真实文档id", "text": "", "source": ""}}],
   "deep_read": "【深入解读】这一维度说明了什么，不少于 100 字，不得重复 findings",
   "trend": "【趋势】接下来会怎么走，依据是什么"
 }}
 
 【内容密度硬指标】输出前逐条自查：
 [ ] findings 是否不少于 150 字？
-[ ] data_points 是否至少 3 条，且每条都有具体数字？
-[ ] quotes 是否至少 2 条，且 text 只含来源原文连续片段、没有标签或改写？
+[ ] 可核验数据足够时，data_points 是否至少 3 条？不足时少给或返回空数组，不得凑数。
+[ ] 原声足够时，quotes 是否至少 2 条？每条绑定document_id；不足时少给或返回空数组。
 [ ] deep_read 是否不少于 100 字，且不是 findings 的复述？
 [ ] 是否避免了「舆情」「传播」「倾向」「展望」「引发广泛关注」等官方套话？
 [ ] 素材不足时是否如实说明，而不是用通用话术填充？"""
@@ -380,16 +382,21 @@ def _str_list(value) -> list[str]:
 
 
 def _quote_list(value) -> list[dict]:
-    """把 LLM 返回的原声统一为 [{text, source}]；形状漂移时降级而非报错。"""
+    """Preserve provenance; malformed shapes fail the dimension, never vanish silently."""
+    if value is not None and not isinstance(value, list):
+        raise ValueError("原声必须是数组")
     out: list[dict] = []
     for item in value if isinstance(value, list) else []:
-        if isinstance(item, dict) and str(item.get("text", "")).strip():
+        if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip():
             out.append({
                 "text": str(item.get("text", "")),
-                "source": str(item.get("source", "")),
+                "source": item.get("source", ""),
+                "document_id": item.get("document_id", ""),
             })
         elif isinstance(item, str) and item.strip():
             out.append({"text": item, "source": ""})
+        else:
+            raise ValueError("原声条目缺少有效文本")
     return out
 
 
@@ -405,10 +412,7 @@ def _normalize_for_match(s: str) -> str:
     只去空白与包裹符，不动正文标点 —— 引语跨句拼接、改写标点仍算编造，
     必须丢弃（宁可误杀可疑引语，不放过看似引用的编造）。
     """
-    t = "".join(str(s).split())
-    while len(t) >= 2 and t[0] in _MATCH_WRAPPERS and t[-1] in _MATCH_WRAPPERS:
-        t = t[1:-1]
-    return t
+    return normalize_quote(str(s))
 
 
 def _verify_quotes(
@@ -420,29 +424,25 @@ def _verify_quotes(
     分析可以降级，但不允许出现「看起来像引用的编造」—— 引语是用户
     最容易轻信的内容，也是反幻觉的最高杠杆点。
     """
-    corpus = [
-        _normalize_for_match((d.get("content") or "") + (d.get("title") or ""))
-        for d in documents
-        if isinstance(d, dict)
-    ]
     dropped: list[str] = []
     invalid_dimension_ids: set[str] = set()
     for dim in dimensions:
         kept: list[dict] = []
         for q in dim.get("quotes") or []:
-            text = _normalize_for_match(q.get("text", ""))
-            if text and any(text in doc for doc in corpus if doc):
-                kept.append(q)
+            verified = resolve_quote(q, documents)
+            if verified is not None:
+                if verified not in kept:
+                    kept.append(verified)
             else:
                 invalid_dimension_ids.add(str(dim.get("id", "")))
-                dropped.append(f"{dim.get('name', dim.get('id', ''))} 的引语「{q.get('text', '')[:30]}」未命中原文")
+                dropped.append(f"{dim.get('name', dim.get('id', ''))} 的引语「{q.get('text', '')[:30]}」无法唯一核验文档、原文与来源")
         dim["quotes"] = kept
     return dropped, invalid_dimension_ids
 
 
 async def _analyze_one_dimension(
     llm, spec: DimensionSpec, documents: list[dict], analysis_type: str, title: str,
-    llm_model: str = "", mode: str = "", quote_retry: bool = False,
+    llm_model: str = "", mode: str = "", quote_retry: bool = False, scenario_template_id: str = "",
 ) -> dict:
     """单个维度的独立分析调用。异常由调用方捕获。"""
     prompt = _DIMENSION_PROMPT.format(
@@ -452,6 +452,9 @@ async def _analyze_one_dimension(
         mission=spec.mission,
         title=title or "（未命名分析任务）",
         analysis_type=analysis_type or "综合监测",
+        context=analysis_context(analysis_type, scenario_template_id),
+        evidence_rules=EVIDENCE_RULES,
+        stats=json.dumps(sample_stats(documents), ensure_ascii=False),
         materials=_materials_text(documents),
         skeleton=_SKELETON,
         quote_retry_instruction=(
@@ -510,6 +513,7 @@ async def _run_dimensions(
     deadline: float | None = None,
     dimension_ids: set[str] | None = None,
     quote_retry: bool = False,
+    scenario_template_id: str = "",
 ) -> tuple[list[dict], list[str]]:
     """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
     返回 (成功的维度, 失败原因列表)。"""
@@ -521,7 +525,7 @@ async def _run_dimensions(
     async def guarded(spec: DimensionSpec) -> dict:
         async with sem:
             try:
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry, scenario_template_id)
             except AccountingDurabilityError:
                 raise
             except Exception as exc:
@@ -531,7 +535,7 @@ async def _run_dimensions(
                 # 换取瞬时错误的恢复，值得。
                 logger.warning("dimension %s first attempt failed: %s; retrying once", spec.id, _error_reason(exc))
                 await asyncio.sleep(_RETRY_DELAY_SECONDS)
-                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry)
+                return await _analyze_one_dimension(llm, spec, documents, analysis_type, title, llm_model, mode, quote_retry, scenario_template_id)
 
     tasks = [asyncio.create_task(guarded(spec)) for spec in specs]
     try:
@@ -613,6 +617,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     scope = analysis_scope(req.date_from, req.date_to)
     scoped_title = f"{req.title}\n{scope}" if scope else req.title
     context = f"\n分析类型：{req.analysis_type}" if req.analysis_type else ""
+    context += "\n" + analysis_context(req.analysis_type, req.scenario_template_id) + "\n" + EVIDENCE_RULES
     if scope:
         context += "\n" + scope
     warnings = []
@@ -632,7 +637,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                     {"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
                     {
                         "role": "user",
-                        "content": scope + _SENTIMENT_TOPIC_PROMPT.format(
+                        "content": scope + EVIDENCE_RULES + "\n" + _SENTIMENT_TOPIC_PROMPT.format(
                             docs=json.dumps(briefs, ensure_ascii=False)
                         ),
                     },
@@ -645,6 +650,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
     dimensions_task = asyncio.create_task(_run_dimensions(
         llm, req.documents, req.analysis_type, scoped_title, model, req.mode,
         gate, work_deadline,
+        scenario_template_id=req.scenario_template_id,
     ))
     sentiments = []
     topics = []
@@ -654,10 +660,10 @@ async def analyze(req: AnalyzeRequest) -> dict:
                 sentiment_task,
                 timeout=max(0, work_deadline - asyncio.get_running_loop().time()),
             )
-            sentiments = sent_topics.get("sentiments", []) if isinstance(sent_topics, dict) else []
-            topics = sent_topics.get("topics", []) if isinstance(sent_topics, dict) else []
-            if not isinstance(topics, list):
-                topics = []
+            sentiments, topics, classification_warnings = validate_classification(
+                sent_topics if isinstance(sent_topics, dict) else {}, req.documents,
+            )
+            warnings.extend(classification_warnings)
         except AccountingDurabilityError:
             raise
         except HTTPException:
@@ -692,6 +698,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
         retried, quote_retry_failures = await _run_dimensions(
             llm, req.documents, req.analysis_type, scoped_title, model, req.mode,
             gate, work_deadline, quote_retry_ids, True,
+            scenario_template_id=req.scenario_template_id,
         )
         retried_by_id = {str(d.get("id", "")): d for d in retried}
         dimensions = [retried_by_id.get(str(d.get("id", "")), d) for d in dimensions]
@@ -828,5 +835,7 @@ async def sentiment(req: SentimentRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM 调用失败: {exc}") from exc
 
-    results = resp.get("sentiments", []) if isinstance(resp, dict) else []
+    results, _topics, warnings = validate_classification(resp if isinstance(resp, dict) else {}, req.documents)
+    if warnings:
+        raise HTTPException(status_code=502, detail="情感结果未通过样本核验")
     return {"results": results}

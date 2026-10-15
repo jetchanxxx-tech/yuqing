@@ -16,6 +16,8 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.prompt_catalog import ScenarioID, EVIDENCE_RULES, analysis_context
+from engines.common.evidence import resolve_quote
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_period, analysis_scope
@@ -45,6 +47,8 @@ if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
 class GenerateRequest(BaseModel):
     run_id: str = ""
     title: str = ""
+    analysis_type: str = ""
+    scenario_template_id: ScenarioID = ""
     date_from: str = ""
     date_to: str = ""
     template_id: Literal["", "daily", "weekly", "event"] = ""
@@ -76,6 +80,8 @@ _LLM_PROMPT = """你是资深舆情分析师和报告撰写专家。你的使命
 避免官方化、套路化表达 —— 每句话都要有信息含量。
 
 标题：{title}
+{context}
+{evidence_rules}
 情感分布统计（代码聚合的确定数字，请直接引用）：{stats_text}
 话题聚类：{topics}
 
@@ -96,7 +102,7 @@ _LLM_PROMPT = """你是资深舆情分析师和报告撰写专家。你的使命
     {{"topic": "话题名", "analysis": "该话题研判，120-200字，按「核心发现→数据→代表性声音（逐字引用1条原声并注明来源）→深层解读」组织"}}
   ],
   "risk_points": [
-    {{"level": "高|中|低", "type": "短期|长期|次生", "desc": "风险描述", "evidence": "佐证素材（逐字摘录）"}}
+    {{"level": "高|中|低", "type": "短期|长期|次生", "desc": "风险描述", "evidence": "佐证素材（逐字摘录）", "evidence_document_id": "对应文档id", "evidence_source": "对应来源"}}
   ],
   "recommendations": [
     {{"stage": "立即(0-24h)|短期(1-3天)|中期(1-4周)", "action": "具体行动", "rationale": "依据"}}
@@ -164,7 +170,7 @@ def _materials_text(documents: list[dict], max_docs: int = 30) -> str:
             ] if v
         )
         parts.append(
-            f"[{i}] 标题：{d.get('title', '')}\n"
+            f"[{i}] id={d.get('id', '')} 标题：{d.get('title', '')}\n"
             f"来源：{meta}\n"
             f"正文：{(d.get('content') or '')[:2000]}"
         )
@@ -277,6 +283,8 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                     "role": "user",
                     "content": analysis_scope(req.date_from, req.date_to) + _LLM_PROMPT.format(
                         title=req.title,
+                        context=analysis_context(req.analysis_type, req.scenario_template_id),
+                        evidence_rules=EVIDENCE_RULES,
                         stats_text=_stats_text(_sentiment_stats(req.sentiments)),
                         topics=req.topics,
                         materials=_materials_text(req.documents),
@@ -291,7 +299,25 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
     except Exception:
         return None
     # chat_json 只保证「能解析成 JSON」，不保证是对象
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    raw_risks = data.get("risk_points", [])
+    verified_risks = []
+    rejected = 0
+    for risk in raw_risks if isinstance(raw_risks, list) else [raw_risks]:
+        citation = resolve_quote({
+            "text": risk.get("evidence", ""),
+            "document_id": risk.get("evidence_document_id", ""),
+            "source": risk.get("evidence_source", ""),
+        }, req.documents) if isinstance(risk, dict) else None
+        if citation is None:
+            rejected += 1
+        else:
+            verified_risks.append({**risk, "evidence_document_id": citation["document_id"], "evidence_source": citation["source"]})
+    data = {**data, "risk_points": verified_risks}
+    if rejected:
+        data["_evidence_warning"] = f"{rejected} 条风险证据未通过核验，相关风险项已移除；请补充原始材料。"
+    return data
 
 
 _TEMPLATE = Template("""<!DOCTYPE html>
@@ -527,6 +553,8 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     parts.append(_overview_cards(req, stats))
 
     if insight:
+        if insight.get("_evidence_warning"):
+            parts.append(f'<div class="notice">{_esc(insight["_evidence_warning"])}</div>')
         # 事件定性 + 行动建议徽章（枚举与叙述分离）
         badges = []
         if insight.get("event_nature"):
@@ -642,6 +670,8 @@ def _render_docx(req: GenerateRequest, insight: dict | None) -> bytes:
 
     # AI 研判
     if insight:
+        if insight.get("_evidence_warning"):
+            doc.add_paragraph(insight["_evidence_warning"], style='Intense Quote')
         if insight.get("event_nature"):
             doc.add_paragraph(f"事件定性：{insight.get('event_nature', '')}", style='Intense Quote')
         if insight.get("action_advice"):

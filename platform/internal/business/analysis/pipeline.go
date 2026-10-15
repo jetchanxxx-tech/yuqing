@@ -416,15 +416,16 @@ func (p *Pipeline) runInsight(ctx context.Context, msg TaskMessage, docs []Docum
 		return InsightResult{}, "insight engine not configured"
 	}
 	res, err := p.analyzer.Analyze(ctx, InsightRequest{
-		RunID:        msg.RunID,
-		TenantID:     msg.TenantID,
-		AnalysisID:   msg.AnalysisID,
-		AnalysisType: p.analysisType(ctx, msg),
-		Title:        p.analysisName(ctx, msg),
-		DateFrom:     dateFrom,
-		DateTo:       dateTo,
-		Documents:    docs,
-		Mode:         p.modeForTenant(msg.TenantID),
+		RunID:              msg.RunID,
+		TenantID:           msg.TenantID,
+		AnalysisID:         msg.AnalysisID,
+		AnalysisType:       p.analysisType(ctx, msg),
+		ScenarioTemplateID: p.analysisScenario(ctx, msg),
+		Title:              p.analysisName(ctx, msg),
+		DateFrom:           dateFrom,
+		DateTo:             dateTo,
+		Documents:          docs,
+		Mode:               p.modeForTenant(msg.TenantID),
 	})
 	if err != nil {
 		p.log.Warn("pipeline: insight analysis failed",
@@ -443,18 +444,20 @@ func (p *Pipeline) runReport(ctx context.Context, msg TaskMessage, templateID st
 		return "report engine not configured", nil
 	}
 	res, err := p.generator.Generate(ctx, ReportRequest{
-		RunID:            msg.RunID,
-		TenantID:         msg.TenantID,
-		AnalysisID:       msg.AnalysisID,
-		TemplateID:       templateID,
-		Title:            p.analysisName(ctx, msg) + " 舆情监测报告",
-		DateFrom:         dateFrom,
-		DateTo:           dateTo,
-		Documents:        docs,
-		Sentiments:       insight.Sentiments,
-		Topics:           insight.Topics,
-		Dimensions:       insight.Dimensions,
-		InsightAvailable: insightAvailable,
+		RunID:              msg.RunID,
+		TenantID:           msg.TenantID,
+		AnalysisID:         msg.AnalysisID,
+		TemplateID:         templateID,
+		AnalysisType:       p.analysisType(ctx, msg),
+		ScenarioTemplateID: p.analysisScenario(ctx, msg),
+		Title:              p.analysisName(ctx, msg) + " 舆情监测报告",
+		DateFrom:           dateFrom,
+		DateTo:             dateTo,
+		Documents:          docs,
+		Sentiments:         insight.Sentiments,
+		Topics:             insight.Topics,
+		Dimensions:         insight.Dimensions,
+		InsightAvailable:   insightAvailable,
 	})
 	if err != nil {
 		if errors.Is(err, pkgerrors.ErrAccountingDurability) {
@@ -505,6 +508,14 @@ func (p *Pipeline) analysisType(ctx context.Context, msg TaskMessage) string {
 		return ""
 	}
 	return a.AnalysisType
+}
+
+func (p *Pipeline) analysisScenario(ctx context.Context, msg TaskMessage) string {
+	a, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
+	if err != nil {
+		return ""
+	}
+	return a.ScenarioTemplateID
 }
 
 // analysisName 读取任务名称（用作报告标题）。

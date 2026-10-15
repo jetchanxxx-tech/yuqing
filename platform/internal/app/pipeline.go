@@ -131,14 +131,15 @@ type engineInsightAdapter struct {
 func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
 	docs := toEngineDocuments(req.Documents)
 	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
-		RunID:        req.RunID,
-		Documents:    docs,
-		AnalysisID:   req.AnalysisID,
-		AnalysisType: req.AnalysisType,
-		Title:        req.Title,
-		DateFrom:     req.DateFrom,
-		DateTo:       req.DateTo,
-		Mode:         req.Mode,
+		RunID:              req.RunID,
+		Documents:          docs,
+		AnalysisID:         req.AnalysisID,
+		AnalysisType:       req.AnalysisType,
+		ScenarioTemplateID: req.ScenarioTemplateID,
+		Title:              req.Title,
+		DateFrom:           req.DateFrom,
+		DateTo:             req.DateTo,
+		Mode:               req.Mode,
 	})
 	if err != nil {
 		return analysis.InsightResult{}, err
@@ -171,7 +172,7 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 func toAnalysisDimension(d engine.DimensionResult) analysis.Dimension {
 	quotes := make([]analysis.Quote, 0, len(d.Quotes))
 	for _, q := range d.Quotes {
-		quotes = append(quotes, analysis.Quote{Text: q.Text, Source: q.Source})
+		quotes = append(quotes, analysis.Quote{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 	}
 	return analysis.Dimension{
 		ID:         d.ID,
@@ -190,7 +191,7 @@ func toEngineDimensions(dims []analysis.Dimension) []engine.DimensionResult {
 	for _, d := range dims {
 		quotes := make([]engine.QuoteResult, 0, len(d.Quotes))
 		for _, q := range d.Quotes {
-			quotes = append(quotes, engine.QuoteResult{Text: q.Text, Source: q.Source})
+			quotes = append(quotes, engine.QuoteResult{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 		}
 		out = append(out, engine.DimensionResult{
 			ID: d.ID, Name: d.Name, Findings: d.Findings,
@@ -208,18 +209,20 @@ type engineReportAdapter struct {
 
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
-		RunID:            req.RunID,
-		Title:            req.Title,
-		DateFrom:         req.DateFrom,
-		DateTo:           req.DateTo,
-		TemplateID:       req.TemplateID,
-		Format:           "html",
-		Documents:        toEngineDocuments(req.Documents),
-		Sentiments:       toEngineSentiments(req.Sentiments),
-		Topics:           toEngineTopics(req.Topics),
-		Dimensions:       toEngineDimensions(req.Dimensions),
-		AnalysisID:       req.AnalysisID,
-		InsightAvailable: req.InsightAvailable,
+		RunID:              req.RunID,
+		Title:              req.Title,
+		DateFrom:           req.DateFrom,
+		DateTo:             req.DateTo,
+		TemplateID:         req.TemplateID,
+		AnalysisType:       req.AnalysisType,
+		ScenarioTemplateID: req.ScenarioTemplateID,
+		Format:             "html",
+		Documents:          toEngineDocuments(req.Documents),
+		Sentiments:         toEngineSentiments(req.Sentiments),
+		Topics:             toEngineTopics(req.Topics),
+		Dimensions:         toEngineDimensions(req.Dimensions),
+		AnalysisID:         req.AnalysisID,
+		InsightAvailable:   req.InsightAvailable,
 	})
 	if err != nil {
 		return analysis.ReportResult{}, err

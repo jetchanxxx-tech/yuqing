@@ -18,8 +18,10 @@ export const ANALYSIS_TYPES: AnalysisTypeMeta[] = [
   { value: 'industry', label: '行业趋势洞察', desc: '研判本次采集的行业话题与关注点' },
 ];
 
-/** Task 1 的场景目录仅供单次分析选择视角；当前创建接口不接受 template_id。 */
-export const ANALYSIS_TEMPLATES: { id: string; label: string; desc: string; defaultType: AnalysisType }[] = [
+export type AnalysisTemplateID = 'brand_daily' | 'product_launch' | 'quality_complaint' | 'competitor_update' | 'crisis' | 'campaign_review';
+
+/** 内置场景作用于本次分析的专项研判任务；不创建周期监测方案。 */
+export const ANALYSIS_TEMPLATES: { id: AnalysisTemplateID; label: string; desc: string; defaultType: AnalysisType }[] = [
   { id: 'brand_daily', label: '品牌日常口碑', desc: '品牌提及、评价及变化', defaultType: 'brand' },
   { id: 'product_launch', label: '新品上市', desc: '新品讨论、反馈与风险', defaultType: 'event' },
   { id: 'quality_complaint', label: '产品质量投诉', desc: '质量问题、投诉与重复诉求', defaultType: 'brand' },

@@ -33,7 +33,7 @@ async function submit(page: Page) {
   await page.getByRole('button', { name: '提交分析' }).click();
 }
 
-test('six templates map to planned views and submit only legacy fields', async ({ page }) => {
+test('six templates map to planned views and submit their scene', async ({ page }) => {
   await openForm(page);
   await page.getByRole('button', { name: '按模板' }).click();
   for (const [label, view] of templates) {
@@ -47,7 +47,7 @@ test('six templates map to planned views and submit only legacy fields', async (
     await route.fulfill({ json: { id: 'created-id', state: 'queued' } });
   });
   await submit(page);
-  expect(body).toMatchObject({ analysis_type: 'event', name: '测试分析', keywords: ['测试关键词'] });
+  expect(body).toMatchObject({ analysis_type: 'event', scenario_template_id: 'product_launch', name: '测试分析', keywords: ['测试关键词'] });
   expect(body).not.toHaveProperty('template_id');
   expect(body).not.toHaveProperty('schedule');
 });

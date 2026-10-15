@@ -1,10 +1,11 @@
 import client from './client';
-import type { AnalysisState, AnalysisType, SourceKey } from '../lib/constants';
+import type { AnalysisState, AnalysisType, AnalysisTemplateID, SourceKey } from '../lib/constants';
 
 /** POST /analyses 请求体 */
 export interface CreateAnalysisPayload {
   name: string;
   analysis_type: AnalysisType;
+  scenario_template_id?: AnalysisTemplateID;
   keywords: string[];
   sources: SourceKey[];
   date_from?: string;
@@ -79,6 +80,7 @@ export interface AnalysisReport {
 
 /** 逐字原声引用（来自源文档，附来源平台） */
 export interface QuoteItem {
+  document_id?: string;
   text: string;
   source?: string;
 }

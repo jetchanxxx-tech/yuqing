@@ -115,6 +115,7 @@ export default function AnalysisNewPage() {
       return createAnalysis({
         name: name.trim(),
         analysis_type: type as AnalysisType,
+        ...(entry === 'template' && selectedTemplate ? { scenario_template_id: selectedTemplate.id } : {}),
         keywords: [...keywords],
         sources: sources.filter((source) => SELECTABLE_SOURCES.includes(source)),
         date_from: dateRange[0].format('YYYY-MM-DD'),
@@ -215,7 +216,7 @@ export default function AnalysisNewPage() {
             </Space>
             {entry === 'template' && (
               <>
-                <Alert type="info" showIcon style={{ marginBottom: 16 }} message="仅选择场景与分析视角，提交后运行一次分析"
+                <Alert type="info" showIcon style={{ marginBottom: 16 }} message="按场景专项任务与分析视角运行一次分析"
                   description="周期监测尚未上线；这里不会保存监测方案，也不会自动启用排除词、风险标签、预警或专属报告模板。" />
                 <Row gutter={[16, 16]}>
                   {ANALYSIS_TEMPLATES.map((template) => (
@@ -231,7 +232,7 @@ export default function AnalysisNewPage() {
                 {selectedTemplate && (
                   <div style={{ marginTop: 20 }}>
                     <Typography.Paragraph>默认分析视角：{defaultView}</Typography.Paragraph>
-                    <Typography.Text>分析视角（可修改，仅影响现有分析的提示词）</Typography.Text>
+                    <Typography.Text>分析视角（可修改，与场景专项任务共同生效）</Typography.Text>
                     <Select aria-label="分析视角" value={type} onChange={setType} style={{ display: 'block', maxWidth: 320, marginTop: 8 }}
                       options={ANALYSIS_TYPES.map((item) => ({ value: item.value, label: item.label }))} />
                     <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>
@@ -335,7 +336,7 @@ export default function AnalysisNewPage() {
               labelStyle={{ width: 110, background: '#fafafa' }}
               items={[
                 { key: 'name', label: '分析名称', children: name.trim() },
-                ...(selectedTemplate ? [{ key: 'template', label: '选择的场景', children: `${selectedTemplate.label}（仅用于本次选择，不保存方案）` }] : []),
+                ...(selectedTemplate ? [{ key: 'template', label: '选择的场景', children: `${selectedTemplate.label}（随本次任务保存并用于专项研判）` }] : []),
                 {
                   key: 'type',
                   label: '分析类型',
@@ -379,7 +380,7 @@ export default function AnalysisNewPage() {
               }
             />
             {entry === 'template' && <Alert type="warning" showIcon style={{ marginTop: 12 }} message="仅创建单次分析"
-              description="模板方案保存、周期调度与预警执行尚未接通；本次只提交现有分析字段，不保存模板 ID。" />}
+              description="本次保存场景选择并执行专项研判；周期调度与预警尚未接通。" />}
           </div>
         )}
         {/* 底部操作 */}

@@ -1,8 +1,7 @@
 """quick 模式（方案 B Lite 档）测试 —— 套餐裁剪的成本杠杆。
 
-方案 B：Lite 99/月 跑 3 维速览（heat/sentiment/deep_cause），并尝试关闭
-思考（thinking=disabled）压成本；供应商不认识 thinking 字段报 400 时
-必须去掉重试（功能优先于成本优化）。
+速览跑 heat/sentiment/deep_cause 三维。GLM-5.3 使用 thinking=enabled
+和 reasoning_effort=low；非 GLM 模型不接受这些供应商特定字段。
 """
 import httpx
 import pytest
@@ -120,8 +119,8 @@ def test_full_mode_keeps_five_dimensions(patch_client):
         assert [d["id"] for d in resp.json()["dimensions"]] == FULL_IDS
 
 
-def test_quick_mode_disables_thinking_on_all_llm_calls(patch_client):
-    """quick 模式的每一次 LLM 调用都带 thinking=low（智谱不支持 disabled，low 是最低档）。"""
+def test_quick_mode_reduces_reasoning_on_all_llm_calls(patch_client):
+    """quick 模式所有调用使用官方启用思考与独立 low 强度参数。"""
     llm = KwargsFakeLLM()
     patch_client(llm)
     client.post("/analyze", json={"documents": DOCS, "api_key": "sk-x", "mode": "quick"})
@@ -130,7 +129,8 @@ def test_quick_mode_disables_thinking_on_all_llm_calls(patch_client):
     assert len(llm.thinking_calls()) == len(llm.calls), \
         "quick 模式存在未降思考档的调用（Lite 档成本失控）"
     for _, kwargs in llm.thinking_calls():
-        assert kwargs["thinking"] == {"type": "low"}
+        assert kwargs["thinking"] == {"type": "enabled"}
+        assert kwargs["reasoning_effort"] == "low"
 
 
 def test_full_mode_never_sends_thinking_param(patch_client):
