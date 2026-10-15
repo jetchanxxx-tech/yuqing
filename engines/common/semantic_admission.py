@@ -14,6 +14,8 @@ _PROTOCOL_CATEGORIES = frozenset({
     "evidence_not_in_document", "missing_decision",
 })
 MAX_PROTOCOL_ERRORS = 32
+# Bound each supplier wait; the shared phase deadline and attempt budget remain authoritative.
+ATTEMPT_TIMEOUT_SECONDS = 60
 
 
 def _safe_protocol_errors(errors, known_ids):
@@ -244,7 +246,8 @@ async def classify_materials(llm, model, intent, materials, usage_context=None, 
         try:
             while True:
                 response = await chat_json_bounded(llm, model, messages, deadline=deadline,
-                    attempt_budget=attempt_budget, temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
+                    attempt_budget=attempt_budget, attempt_timeout=ATTEMPT_TIMEOUT_SECONDS,
+                    temperature=0, usage_context=usage_context, **glm_reasoning_options(model))
                 result = validate_decisions(response.get("decisions", []) if isinstance(response, dict) else [], seen_materials)
                 if result.valid:
                     break

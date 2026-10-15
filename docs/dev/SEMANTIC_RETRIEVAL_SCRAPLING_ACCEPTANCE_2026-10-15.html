@@ -25,11 +25,13 @@
   <ul>
     <li>增量独立审查 <code>b0e2032..2e4213f</code> 无 Critical/Important 发现，两个次要改进见 <a href="reviews/SEMANTIC_RETRIEVAL_DELTA_REVIEW_2026-10-16.html">审查稿</a>。结构化引用错误中文展示已通过页面用例。</li>
     <li>源码提交 <code>2e4213f990e5536ed69fdbeacbb844292e2eb14d</code>：Python 273 passed；push run <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774482330">38774482330</a> 的 Go、PG、实际用量桥、Chromium、前端构建通过，但页面套件 60 passed / 2 failed，部署包跳过。同源码树的 PR merge <code>005712896d4dc4260b79e13a8087fb7807e8c4e4</code> <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774492352">run 38774492352</a> 全部通过；不能用后者隐藏 push 失败或替代正式 prod 制品。</li>
-    <li>两项页面失败已由截图、trace 和 HTTP 200 正确响应定位：场景测试的宽 URL 表达式会提前匹配 /analyses/new，另有页面首次数据读取晚于断言开始。新提交将同步精确任务 ID 和目标 API 响应，保留原 UI 断言及 10 秒断言上限，尚待 hosted 验证。</li>
+    <li>两项页面失败已由截图、trace 和 HTTP 200 正确响应定位：场景测试的宽 URL 表达式会提前匹配 /analyses/new，另有页面首次数据读取晚于断言开始。修复提交 <code>18a3950bf78a1c5fef2357d26f07dc67fc3a8c5b</code> 同步精确任务 ID 和目标 API 响应，保留原 UI 断言及 10 秒断言上限；hosted run <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38779254071">38779254071</a> 八项全部成功，页面 62 passed。</li>
     <li>真实 iPhone v3 run <code>01M508NHP43DT06E66WMH2WXCP</code> 首批纠正后核验出 8 个 direct 判断，但后续调用触及 240 秒语义期限；已获取供应商标识而未取得完整用量的事件记 unknown，未捏造零成本。没有生成报告。</li>
     <li>真实雅阁 v3 run <code>01M508Z2433NRP3W1M6RJXPZN1</code> 的 58 份合格材料均判 irrelevant，未伪造证据补足门槛。8 次供应商对照确认请求回显正确、适配无串条；平台＋30 天约束下缺少目标材料，尚不能区分真实稀疏与供应商召回偏差。保持来源和日期边界。</li>
     <li>对真实摘要批次的流式诊断 run <code>01M509AX1B6029CWX7YY6YN9R7</code> 无参数覆盖，首 chunk 小于 2 秒、两次语义调用约 23 / 20 秒完成，未复现长流停顿。重试仍受两次调用与原期限约束；这不是完整报告验收。</li>
   </ul>
+
+  <h2>供应商长流恢复整改</h2><p>实际 iPhone v4 run <code>01M50A701S3SK0E8FYPQJGMFXM</code> 先完成 48 份材料核验（34 direct / 6 context / 8 irrelevant），后续单次流占用剩余 155 秒直到 240 秒期限，故未出报告。全部材料不超过 800 字符，不是大正文导致的已证实超时。特斯拉 v4 的 13 context / 0 direct 也保留不足证据结果。</p><p>新增托管 RED：<code>3461d033046ae0f578ba1e793946c6b19c8933dd</code>、<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38781679694/job/116583200610">job 116583200610</a> 为 12 failed / 276 passed，实际复现单次卡流没有受控恢复、内部时间参数泄漏和参数未预校验。修复把 60 秒等待限定在供应商请求部分；已完成响应后的慢回执不可触发第二次购买，取消和整个阶段到期不可重试；原两次总调用、输出预算、240 秒语义期限及证据边界保持。新修复仍待 hosted GREEN 和真实完整报告，当前不放行生产。</p>
 
   <h2>目标和边界</h2>
   <p>同一任务中的多个关键词被视为一个研究主题。材料可以只出现系列中的一个型号或关注点的同义表达，但必须由模型结合主题和原文证据判断。系统逐平台检索、按界限补抓正文、验证来源和日期，再进行有计量的语义准入。</p>

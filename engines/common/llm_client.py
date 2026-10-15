@@ -25,6 +25,10 @@ class LLMOutputTruncated(ValueError):
     """The provider stopped before completing the requested JSON output."""
 
 
+class LLMSupplierTimeout(TimeoutError):
+    """Only the supplier request exceeded its bounded attempt allowance."""
+
+
 # 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
 # 只对快速失败的瞬时错误重试一次；504/524/读超时已耗掉大段预算，不重试。
 _TRANSIENT_STATUS = {429, 500, 502, 503}
@@ -59,22 +63,52 @@ class LLMClient:
             raise RuntimeError("provider call requires an accepted run and usage bridge")
         max_attempts = kwargs.pop("_max_attempts", 2)
         attempt_offset = kwargs.pop("_attempt_offset", 0)
+        supplier_timeout = kwargs.pop("_supplier_timeout", None)
         if max_attempts not in (1, 2):
             raise ValueError("supplier attempt budget must be one or two")
         for index in range(1, max_attempts + 1):
             attempt = index + attempt_offset
             try:
-                return await self._metered_attempt(model, messages, usage_context, attempt, **kwargs)
+                return await self._metered_attempt(model, messages, usage_context, attempt,
+                    supplier_timeout=supplier_timeout, **kwargs)
             except Exception as exc:
                 if index == max_attempts or not _is_transient(exc):
                     raise
                 logger.warning("LLM transient provider failure; retrying once")
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
 
-    async def _metered_attempt(self, model, messages, usage_context, attempt, **kwargs):
+    async def _supplier_attempt(self, model, messages, supplier_timeout=None, **kwargs):
+        if supplier_timeout is None:
+            return await self._chat_once(model, messages, **kwargs)
+        observed_response = None
+
+        async def request():
+            nonlocal observed_response
+            try:
+                return await self._chat_once(model, messages, **kwargs)
+            except BaseException as error:
+                # wait_for translates the child cancellation into a new error.
+                # Capture observed usage before that translation, including when
+                # the parent phase or the user cancels this timed request.
+                observed_response = getattr(error, "observed_response", None)
+                raise
+
+        try:
+            return await asyncio.wait_for(request(), timeout=supplier_timeout)
+        except TimeoutError as error:
+            failure = LLMSupplierTimeout("supplier attempt deadline expired")
+            if observed_response:
+                failure.observed_response = observed_response
+            raise failure from error
+        except BaseException as error:
+            if observed_response:
+                error.observed_response = observed_response
+            raise
+
+    async def _metered_attempt(self, model, messages, usage_context, attempt, *, supplier_timeout=None, **kwargs):
         if not usage_context:
             # Explicit MockTransport-only unit clients cannot contact suppliers.
-            return await self._chat_once(model, messages, **kwargs)
+            return await self._supplier_attempt(model, messages, supplier_timeout, **kwargs)
         call_id = uuid.uuid4().hex
         permission = await authorize_call(usage_context, call_id, model, attempt)
         event = {"event_id": uuid.uuid4().hex, "call_id": call_id, "event_version": 1, "attempt": attempt,
@@ -84,7 +118,7 @@ class LLMClient:
         # unknown intent, never a guessed token amount or a verified zero cost.
         persist_usage_event(event, permission["permit"], pending=True)
         try:
-            response = await self._chat_once(model, messages, **kwargs)
+            response = await self._supplier_attempt(model, messages, supplier_timeout, **kwargs)
         except BaseException as error:
             observed = getattr(error, "observed_response", None)
             if observed:

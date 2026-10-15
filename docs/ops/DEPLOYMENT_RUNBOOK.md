@@ -437,6 +437,7 @@ chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑：home
 - `PLAYWRIGHT_BROWSERS_PATH` 指向本次已验证 browser-runtime；各 Python 引擎共享真实 `YUQING_BILLING_URL` 和私密 `YUQING_BILLING_SERVICE_TOKEN`，各 outbox 持久目录归服务账户并保留待结算事件。query 也必须启用用量 drainer。
 - 显式配置 `YUQING_MODEL_CAPABILITIES_JSON`。2026-10-15 官方文档 https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash 列出 GLM-5.3-Flash 的 1M 上下文、128K 最大输出；可用保守的十进制上限 `{"glm-5.3-flash":{"context_tokens":1000000,"max_output_tokens":128000}}`，并记录真实 accepted-run 的 16384/32768 参数探针、JSON/streaming/推理用量结果。此配置不替代真实探针；改模型需重新核验，未登记模型必须失败，不能静默降低输出预算。
 - Python query/insight/report 阶段预算分别 900/1200/600 秒，Go transport 至少 960/1260/660 秒；总任务最长 2760 秒。核对已有 config timeout 不覆盖新预算，UI 显示实际阶段/已用时/上限。
+- query/relevance 单次供应商请求最多等待 60 秒，为同批剩余一次恢复留出机会；仍共享原 240 秒语义阶段、900 秒 query 阶段及最多两次实际调用。60 秒只约束供应商请求，不约束已完成响应后的用量回执；回执慢不得重购模型结果。取消或阶段到期不重试，已观察 usage/请求标识须保留，缺失用量仍为 unknown。规划、洞察、报告沿用各自原期限，输出上限仍为 16,384／截断受控 32,768。
 - 先保存旧 source/binaries/web/config 与旧浏览器运行时；切维护并停止全部写入服务、确认无活动写入后，才生成最终 PG 备份及校验哈希。此前热备份只作迁移演练，不能当最终回滚数据。先在独立恢复库执行同一 SHA CLI 的 0029 迁移、检查候选材料/审计/run 快照及现有财务约束。不得在生产执行破坏式 down。
 - 正式迁移先于启动新 server/worker；先安装所有哈希前端资源，最后原子替换 index.html。保留旧哈希资源和回滚包。服务探针为 `/api/v1/health`，不是 `/health`。
 - 启动后用专用普通测试任务完成真实 Bocha→分平台正文→LLM semantic-v2→完整报告对账；核对 direct/context、每平台最终采纳计数、原文位置、elapsed/deadline、实际 provider usage 与失败退款。健康返回 200 不能代替此验收。不得重跑历史用户任务或以 admin UID 豁免规避正常用量。

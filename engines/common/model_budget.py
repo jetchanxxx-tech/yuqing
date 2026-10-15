@@ -1,12 +1,13 @@
 """Complete JSON output with one shared supplier-attempt and time budget."""
 import asyncio
 import json
+import math
 import os
 from dataclasses import dataclass
 
 import httpx
 
-from engines.common.llm_client import LLMClient, LLMOutputTruncated, _is_transient
+from engines.common.llm_client import LLMClient, LLMOutputTruncated, LLMSupplierTimeout, _is_transient
 
 OUTPUT_TOKENS = 16384
 TRUNCATED_OUTPUT_TOKENS = 32768
@@ -68,13 +69,19 @@ def _check_capacity(client, model, messages, output_tokens):
 
 
 async def chat_json_bounded(client, model, messages, *, deadline=None,
-                            attempt_budget=None, validate_result=None, **kwargs):
+                            attempt_budget=None, validate_result=None, attempt_timeout=None, **kwargs):
     """At most two supplier attempts, all bounded by the same deadline.
 
     A truncation or malformed JSON gets a larger output allowance. Transient
     transport failures and explicitly rejected optional GLM parameters share
-    that same second attempt; nested client retries are disabled.
+    that same second attempt; nested client retries are disabled. An optional
+    supplier-only wait bound leaves accounting under the original phase deadline.
     """
+    if attempt_timeout is not None and (
+        isinstance(attempt_timeout, bool) or not isinstance(attempt_timeout, (int, float))
+        or not math.isfinite(attempt_timeout) or attempt_timeout <= 0
+    ):
+        raise ValueError("supplier attempt timeout must be positive and finite")
     loop = asyncio.get_running_loop()
     if deadline is None:
         deadline = loop.time() + 900
@@ -92,6 +99,8 @@ async def chat_json_bounded(client, model, messages, *, deadline=None,
         options = {**parameters, "max_tokens": budget.output_tokens}
         if isinstance(client, LLMClient):
             options.update(_max_attempts=1, _attempt_offset=budget.used - 1)
+            if attempt_timeout is not None:
+                options["_supplier_timeout"] = min(attempt_timeout, remaining, 900)
         try:
             result = await asyncio.wait_for(client.chat_json(model, messages, **options), timeout=min(900, remaining))
             if validate_result is not None:
@@ -99,6 +108,12 @@ async def chat_json_bounded(client, model, messages, *, deadline=None,
             return result
         except ModelContextExceeded:
             raise
+        except LLMSupplierTimeout:
+            # A completed response followed by slow accounting never raises
+            # this supplier-specific error. Phase expiry and external cancel
+            # remain terminal; only a stalled request can spend the next try.
+            if not budget.remaining or deadline <= loop.time():
+                raise
         except (httpx.HTTPError, ValueError) as exc:
             if not budget.remaining:
                 raise
