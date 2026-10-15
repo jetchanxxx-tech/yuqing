@@ -1,19 +1,19 @@
 {
   "summary": {
     "evaluated": 100,
-    "direct_true_positive": 28,
+    "direct_true_positive": 29,
     "direct_false_positive": 0,
-    "direct_false_negative": 2,
+    "direct_false_negative": 1,
     "direct_precision": 1.0,
-    "direct_recall": 0.9333333333333333,
+    "direct_recall": 0.9666666666666667,
     "four_way_agreement": 0.84,
     "human_labels_confirmed": true,
     "human_confirmation_date": "2026-10-16",
     "fixture_sha256": "e0543fa4b26f769b4a6db1615fb09bd9b99b8bae0be1f40c55a601fbc3edb667",
-    "source_commit": "2e4213f990e5536ed69fdbeacbb844292e2eb14d",
+    "source_commit": "110c7fedc57a03bc57d02c40c044af0b8d4008bd",
+    "evidence_protocol": "numbered-source-units",
     "parameter_override": null,
-    "production_switched": false,
-    "summary_metadata_correction": "The old harness summary retained a hardcoded false flag; corrected using the explicit user confirmation and both per-run records. No classifications changed."
+    "production_switched": false
   },
   "runs": [
     {
@@ -21,9 +21,9 @@
       "human_labels_confirmed": true,
       "human_confirmation_date": "2026-10-16",
       "experimental_parameter_override": null,
-      "source_commit": "2e4213f990e5536ed69fdbeacbb844292e2eb14d",
-      "analysis_id": "01M50A2TG3HZ5410HF27JG3BDA",
-      "run_id": "01M50A2TG4D3ZNFJHF1PYSPJJR",
+      "source_commit": "110c7fedc57a03bc57d02c40c044af0b8d4008bd",
+      "analysis_id": "01M50FH8SVCAWZFT995JT5GK45",
+      "run_id": "01M50FH8SX8PS5NXVCJDNCXRY6",
       "cases": [
         {
           "id": "design-001",
@@ -33,7 +33,7 @@
           "decision": {
             "document_id": "design-001",
             "classification": "direct",
-            "reason": "直接讨论iPhone 18 Pro的续航体验，属于目标型号的实际续航表现。",
+            "reason": "直接讨论iPhone 18 Pro续航体验",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -56,7 +56,7 @@
           "decision": {
             "document_id": "design-002",
             "classification": "direct",
-            "reason": "直接描述iPhone18 Max的机身重量与握持感受，对应手感关注点。",
+            "reason": "直接讨论iPhone18 Max机身重量与握持手感",
             "matched_entities": [
               "iphone18max"
             ],
@@ -79,7 +79,7 @@
           "decision": {
             "document_id": "design-003",
             "classification": "direct",
-            "reason": "直接涉及iPhone18标准版价格与用户升级意愿反馈。",
+            "reason": "直接讨论iPhone18标准版价格与用户反馈",
             "matched_entities": [
               "iphone18"
             ],
@@ -102,7 +102,7 @@
           "decision": {
             "document_id": "design-004",
             "classification": "direct",
-            "reason": "用户实测iPhone 18 Pro高亮度看视频的耗电情况，属实际续航证据。",
+            "reason": "用户实测iPhone 18 Pro续航表现",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -125,7 +125,7 @@
           "decision": {
             "document_id": "design-005",
             "classification": "direct",
-            "reason": "讨论iPhone18 Max大屏阅读与携带不便，涉及手感与便携体验。",
+            "reason": "直接讨论iPhone18 Max手感/便携性",
             "matched_entities": [
               "iphone18max"
             ],
@@ -144,11 +144,11 @@
           "id": "design-006",
           "content": "iPhone 18的日常拍照速度不错，用户反馈夜间成片仍有噪点。",
           "expected": "direct",
-          "actual": "uncertain",
+          "actual": "direct",
           "decision": {
             "document_id": "design-006",
-            "classification": "uncertain",
-            "reason": "内容为iPhone 18拍照速度与夜间成像反馈，不属于续航、手感、价格三大关注点；是否纳入用户反馈范畴存在解释空间，需人工复核。",
+            "classification": "direct",
+            "reason": "iPhone 18用户拍照反馈，属用户反馈关注点",
             "matched_entities": [
               "iphone18"
             ],
@@ -171,7 +171,7 @@
           "decision": {
             "document_id": "design-007",
             "classification": "direct",
-            "reason": "描述iPhone18 Pro重度游戏发热，发热直接影响握持手感体验，且保留了个人试用感受限定。",
+            "reason": "iPhone18 Pro发热为直接使用感受，属用户反馈",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -194,7 +194,7 @@
           "decision": {
             "document_id": "design-008",
             "classification": "direct",
-            "reason": "用户对iPhone18 Max充电速度的实测反馈，充电速度通常与续航体验直接相关。",
+            "reason": "iPhone18 Max充电测试反馈",
             "matched_entities": [
               "iphone18max"
             ],
@@ -217,7 +217,7 @@
           "decision": {
             "document_id": "design-009",
             "classification": "direct",
-            "reason": "iPhone18新机触控顺滑（手感）并提及电量表现待观察（续航），直接相关。",
+            "reason": "iPhone18新机触控与电量初步反馈",
             "matched_entities": [
               "iphone18"
             ],
@@ -240,7 +240,7 @@
           "decision": {
             "document_id": "design-010",
             "classification": "direct",
-            "reason": "线下试握iPhone 18 Pro的边框触感，直接对应手感关注点。",
+            "reason": "iPhone 18 Pro试握手感反馈",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -259,11 +259,11 @@
           "id": "design-011",
           "content": "关于iPhone18 Max的论坛体验贴称，扬声器音量大但低音一般。",
           "expected": "direct",
-          "actual": "direct",
+          "actual": "uncertain",
           "decision": {
             "document_id": "design-011",
-            "classification": "direct",
-            "reason": "论坛体验贴对iPhone18 Max扬声器的用户反馈，直接涉及目标型号反馈且保留来源限定。",
+            "classification": "uncertain",
+            "reason": "来源为论坛体验贴，真实性无法确认，按限定保留",
             "matched_entities": [
               "iphone18max"
             ],
@@ -286,7 +286,7 @@
           "decision": {
             "document_id": "design-012",
             "classification": "direct",
-            "reason": "iPhone18标准款存储与价格升级不划算的用户抱怨，直接对应价格与用户反馈。",
+            "reason": "iPhone18标准款存储与价格用户反馈",
             "matched_entities": [
               "iphone18"
             ],
@@ -309,7 +309,7 @@
           "decision": {
             "document_id": "design-013",
             "classification": "direct",
-            "reason": "直接描述iPhone18 Pro的实际到手价格体验，符合价格与反馈关注点，且保留个人体验限定。",
+            "reason": "直接讨论iPhone18 Pro实际到手价格，属目标型号价格与反馈，作者已限定为个人体验",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -332,7 +332,7 @@
           "decision": {
             "document_id": "design-014",
             "classification": "direct",
-            "reason": "直接讨论iPhone18系列价格，并明确保留未经证实的传闻限定，符合价格关注点。",
+            "reason": "涉及iPhone18系列价格传闻，且原文明确标注未经证实，符合传闻限定保留",
             "matched_entities": [
               "iphone18"
             ],
@@ -351,11 +351,11 @@
           "id": "design-015",
           "content": "iPhone 18 Pro短期试用：相机启动快，晚上拍孩子依然有运动模糊。",
           "expected": "direct",
-          "actual": "uncertain",
+          "actual": "direct",
           "decision": {
             "document_id": "design-015",
-            "classification": "uncertain",
-            "reason": "涉及iPhone 18 Pro短期试用反馈，但内容为相机体验，与续航、手感、价格关注点不完全吻合，属于用户反馈但关注点偏离。",
+            "classification": "direct",
+            "reason": "iPhone 18 Pro短期试用直接给出使用体验，与用户反馈关注点相关",
             "matched_entities": [
               "iphone18pro"
             ],
@@ -378,7 +378,7 @@
           "decision": {
             "document_id": "design-031",
             "classification": "context",
-            "reason": "仅涉及iPhone17电池衰减，可作为旧款比较背景，无iPhone18使用体验。",
+            "reason": "仅iPhone17电池衰减背景，明确无iPhone18体验，只可作旧款比较背景",
             "matched_entities": [
               "iphone18"
             ],
@@ -401,7 +401,7 @@
           "decision": {
             "document_id": "design-032",
             "classification": "uncertain",
-            "reason": "提及iPhone18但仅是纸面参数对照，作者未拿到新机，无实际续航、手感、价格或用户反馈。",
+            "reason": "提及iPhone18但为纸面参数对照且作者未拿到新机，非实际体验，无法确认是否为可信比较",
             "matched_entities": [
               "iphone18"
             ],
@@ -424,7 +424,7 @@
           "decision": {
             "document_id": "design-033",
             "classification": "context",
-            "reason": "回顾iPhone16首发价格，仅作为定价讨论的比较背景。",
+            "reason": "iPhone16首发价格仅为定价讨论背景，非目标机型数据",
             "matched_entities": [
               "iphone18"
             ],
@@ -447,7 +447,7 @@
           "decision": {
             "document_id": "design-034",
             "classification": "irrelevant",
-            "reason": "行业销量背景，无iPhone18产品体验或评价。",
+            "reason": "行业销量背景，无iPhone18用户评价，与续航、手感、价格、反馈均无直接关联",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -466,7 +466,7 @@
           "decision": {
             "document_id": "design-035",
             "classification": "context",
-            "reason": "讨论iPhone18预期售价但仅引用iPhone17上市价格，旧款价格事实仅作比较背景。",
+            "reason": "讨论iPhone18预期售价但仅提供iPhone17价格事实，旧款只作背景",
             "matched_entities": [
               "iphone18"
             ],
@@ -489,7 +489,7 @@
           "decision": {
             "document_id": "design-036",
             "classification": "irrelevant",
-            "reason": "iPhone17 Pro镜头配置回顾，未评价iPhone18系列表现。",
+            "reason": "iPhone17 Pro镜头回顾，未评价iPhone18系列，无比较用途",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -508,7 +508,7 @@
           "decision": {
             "document_id": "design-037",
             "classification": "context",
-            "reason": "行业竞争背景中提及iPhone18面对竞品，无新品实际体验。",
+            "reason": "提到iPhone18面对同价位竞品，属竞争背景，无新机体验",
             "matched_entities": [
               "iphone18"
             ],
@@ -527,17 +527,13 @@
           "id": "design-038",
           "content": "iPhone17 Max老用户如何选择换机，文章只列当前设备的不足。",
           "expected": "context",
-          "actual": "context",
+          "actual": "irrelevant",
           "decision": {
             "document_id": "design-038",
-            "classification": "context",
-            "reason": "iPhone17 Max老用户换机讨论，旧款不足仅作比较背景。",
-            "matched_entities": [
-              "iphone18max"
-            ],
-            "evidence_spans": [
-              "iPhone17 Max老用户如何选择换机，文章只列当前设备的不足。"
-            ],
+            "classification": "irrelevant",
+            "reason": "仅iPhone17 Max老用户换机讨论，与iPhone18系列实体无直接关联",
+            "matched_entities": [],
+            "evidence_spans": [],
             "observed_spans": [
               [
                 0,
@@ -554,7 +550,7 @@
           "decision": {
             "document_id": "design-039",
             "classification": "irrelevant",
-            "reason": "供应链投资概况，仅文末提及市场关注iPhone18，无产品体验内容。",
+            "reason": "供应链投资概况，仅文末提及市场关注，不含产品体验或定价事实",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -573,7 +569,7 @@
           "decision": {
             "document_id": "design-040",
             "classification": "context",
-            "reason": "提及iPhone18与上一代产品线名称对照，可作背景，但未涉及续航、手感、价格或反馈。",
+            "reason": "提及iPhone18与上一代产品线名称对照，可作为型号背景参考，但未涉及续航、手感、价格或用户反馈等关注点，不能作为新品评价证据。",
             "matched_entities": [
               "iphone18"
             ],
@@ -596,7 +592,7 @@
           "decision": {
             "document_id": "design-051",
             "classification": "irrelevant",
-            "reason": "讨论另一品牌Max版配色，非iPhone18系列，泛词Max不构成对象相关。",
+            "reason": "讨论另一品牌Max版手机配色，泛词Max命中但对象非iPhone18系列，与研究对象无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -615,7 +611,7 @@
           "decision": {
             "document_id": "design-052",
             "classification": "irrelevant",
-            "reason": "iPad Pro平板内容，全文没有iPhone18。",
+            "reason": "iPad Pro平板屏幕体验，全文无iPhone18，实体不匹配。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -634,7 +630,7 @@
           "decision": {
             "document_id": "design-053",
             "classification": "irrelevant",
-            "reason": "iPhone17续航评测，属旧款且未作为与新品比较的背景，非本次研究内容。",
+            "reason": "iPhone17实际续航评测，属旧款且原文明确不涉及新品对比或换机背景，无法承担比较背景功能，排除。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -653,7 +649,7 @@
           "decision": {
             "document_id": "design-054",
             "classification": "irrelevant",
-            "reason": "华为新机拍照体验，无iPhone及比较研究。",
+            "reason": "华为新机拍照体验，无iPhone及比较研究，与研究对象无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -672,7 +668,7 @@
           "decision": {
             "document_id": "design-055",
             "classification": "irrelevant",
-            "reason": "小米18 Pro，其他品牌，仅数字相似。",
+            "reason": "小米18 Pro电池讨论，'18'数字命中但品牌型号均不匹配，不涉及iPhone18系列。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -691,7 +687,7 @@
           "decision": {
             "document_id": "design-056",
             "classification": "irrelevant",
-            "reason": "荣耀Max音箱，非手机。",
+            "reason": "荣耀Max音箱，Max为泛词命中，对象是音箱而非iPhone18max。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -710,7 +706,7 @@
           "decision": {
             "document_id": "design-057",
             "classification": "irrelevant",
-            "reason": "洗衣机产品，与研究对象无关。",
+            "reason": "洗衣机Pro Max版，泛词命中不证明对象相关，与手机产品无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -729,7 +725,7 @@
           "decision": {
             "document_id": "design-058",
             "classification": "irrelevant",
-            "reason": "18岁青年阅读调查，与手机无关。",
+            "reason": "18岁青年阅读习惯调查，'18'为数字泛词命中，不讨论任何手机。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -748,7 +744,7 @@
           "decision": {
             "document_id": "design-059",
             "classification": "irrelevant",
-            "reason": "餐馆抽奖海报，与产品体验无关。",
+            "reason": "餐馆iPhone抽奖海报，仅泛词iPhone出现，无产品体验内容。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -767,7 +763,7 @@
           "decision": {
             "document_id": "design-060",
             "classification": "irrelevant",
-            "reason": "MacBook Pro电池测试，无iPhone18信息。",
+            "reason": "MacBook Pro电池测试，对象非iPhone18系列，原文明确无iPhone18信息。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -786,7 +782,7 @@
           "decision": {
             "document_id": "design-061",
             "classification": "irrelevant",
-            "reason": "游戏版本更新，非手机产品讨论。",
+            "reason": "游戏版本更新Max模式，'18'与'Max'为泛词命中，与手机产品无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -805,7 +801,7 @@
           "decision": {
             "document_id": "design-062",
             "classification": "irrelevant",
-            "reason": "内容为汽车售价，与iPhone18系列手机无关。",
+            "reason": "内容涉及汽车Pro Max，与iPhone 18系列无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -824,7 +820,7 @@
           "decision": {
             "document_id": "design-063",
             "classification": "irrelevant",
-            "reason": "电视盒子固件更新，明确与iPhone无关。",
+            "reason": "电视盒子Max系列固件更新，与iPhone无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -843,7 +839,7 @@
           "decision": {
             "document_id": "design-064",
             "classification": "irrelevant",
-            "reason": "电动工具电池评价，与目标实体无关。",
+            "reason": "电动工具Pro版电池评价，与iPhone 18系列无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -862,7 +858,7 @@
           "decision": {
             "document_id": "design-065",
             "classification": "irrelevant",
-            "reason": "摄影滤镜评测，无手机内容。",
+            "reason": "摄影镜头滤镜评测，无手机内容。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -881,7 +877,7 @@
           "decision": {
             "document_id": "design-081",
             "classification": "uncertain",
-            "reason": "仅提及iPhone18并给出主观印象，无续航、手感、价格等关注点信息。",
+            "reason": "仅提及iPhone18但无续航、手感、价格或反馈等关注点信息。",
             "matched_entities": [
               "iphone18"
             ],
@@ -900,13 +896,15 @@
           "id": "design-082",
           "content": "据说那个Pro很强，但文章未说明是哪家或哪一代。",
           "expected": "uncertain",
-          "actual": "irrelevant",
+          "actual": "uncertain",
           "decision": {
             "document_id": "design-082",
-            "classification": "irrelevant",
-            "reason": "'那个Pro很强'未说明品牌或代际，无法确认指向iphone18pro，泛词命中不证明相关。",
+            "classification": "uncertain",
+            "reason": "传闻性表述且未说明品牌或型号，无法确认是否指iphone18pro。",
             "matched_entities": [],
-            "evidence_spans": [],
+            "evidence_spans": [
+              "据说那个Pro很强，但文章未说明是哪家或哪一代。"
+            ],
             "observed_spans": [
               [
                 0,
@@ -923,7 +921,7 @@
           "decision": {
             "document_id": "design-083",
             "classification": "uncertain",
-            "reason": "仅剩标题，正文需登录查看，无实际体验内容可核验。",
+            "reason": "正文需登录查看，无实际可核验的体验内容。",
             "matched_entities": [
               "iphone18"
             ],
@@ -946,7 +944,7 @@
           "decision": {
             "document_id": "design-084",
             "classification": "uncertain",
-            "reason": "标题提及iPhone18测试，但正文只有广告链接，无测试结论。",
+            "reason": "正文只有广告链接，无测试结论，无法作为有效证据。",
             "matched_entities": [
               "iphone18"
             ],
@@ -969,7 +967,7 @@
           "decision": {
             "document_id": "design-085",
             "classification": "uncertain",
-            "reason": "仅是对iphone18max的提问，无可核验材料，不构成用户反馈或实测。",
+            "reason": "仅提问iPhone18 Max怎么样，无可核验材料。",
             "matched_entities": [
               "iphone18max"
             ],
@@ -992,7 +990,7 @@
           "decision": {
             "document_id": "design-086",
             "classification": "uncertain",
-            "reason": "'18 Pro机身重'涉及手感，但缺失品牌和上下文，无法确认指iphone18pro。",
+            "reason": "提及18 Pro机身重但缺失品牌和上下文，无法确认是iphone18pro。",
             "matched_entities": [],
             "evidence_spans": [
               "18 Pro机身重，摘要缺失品牌和上下文。"
@@ -1013,7 +1011,7 @@
           "decision": {
             "document_id": "design-087",
             "classification": "uncertain",
-            "reason": "仅提及iPhone18资料已删除，无任何关注点信息。",
+            "reason": "资料已删除，仅剩无意义占位符，无有效内容。",
             "matched_entities": [
               "iphone18"
             ],
@@ -1036,7 +1034,7 @@
           "decision": {
             "document_id": "design-088",
             "classification": "uncertain",
-            "reason": "仅表情和iPhone18标签，无体验内容。",
+            "reason": "仅表情和标签，无体验内容。",
             "matched_entities": [
               "iphone18"
             ],
@@ -1059,13 +1057,11 @@
           "decision": {
             "document_id": "design-089",
             "classification": "uncertain",
-            "reason": "仅提到iPhone18搜索摘要，后续内容被省略，无法核验是否涉及续航、手感、价格或用户反馈等关注点。",
+            "reason": "片段仅提及iPhone18且称后续内容被省略，无法判断是否直接讨论续航、手感、价格或反馈等关注点。",
             "matched_entities": [
               "iphone18"
             ],
-            "evidence_spans": [
-              "搜索摘要只说iPhone18，后续内容被省略无法判断用途。"
-            ],
+            "evidence_spans": [],
             "observed_spans": [
               [
                 0,
@@ -1082,11 +1078,9 @@
           "decision": {
             "document_id": "design-090",
             "classification": "uncertain",
-            "reason": "提到新机电池不错但未明确型号，无法确认与iPhone18系列的关联，不能凭记忆确认型号。",
+            "reason": "只说新机电池不错但未明确型号，与iPhone18系列的关联无法核验，且原文自身也声明无法确认。",
             "matched_entities": [],
-            "evidence_spans": [
-              "文中称新机电池不错，但没有明确型号，与iPhone18的关系无法核验。"
-            ],
+            "evidence_spans": [],
             "observed_spans": [
               [
                 0,
@@ -1107,8 +1101,8 @@
           "reasoning_effort": "low",
           "usage": {
             "prompt_tokens": 292,
-            "completion_tokens": 290,
-            "total_tokens": 582,
+            "completion_tokens": 361,
+            "total_tokens": 653,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -1116,9 +1110,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "202610160134432b825925ef714a21",
+          "provider_request_id": "202610160309598aa251599a284d95",
           "finish_reason": "stop",
-          "elapsed_seconds": 4.606
+          "elapsed_seconds": 6.331
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -1129,32 +1123,9 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 1033,
-            "completion_tokens": 1131,
-            "total_tokens": 2164,
-            "prompt_tokens_details": {
-              "cached_tokens": 0
-            },
-            "completion_tokens_details": {
-              "reasoning_tokens": 138
-            }
-          },
-          "provider_request_id": "202610160134477cd8668a26244bc6",
-          "finish_reason": "stop",
-          "elapsed_seconds": 14.619
-        },
-        {
-          "requested_model": "GLM-5.3-Flash",
-          "actual_model": "glm-5.3-flash",
-          "max_tokens": 16384,
-          "thinking": {
-            "type": "enabled"
-          },
-          "reasoning_effort": "low",
-          "usage": {
-            "prompt_tokens": 1059,
-            "completion_tokens": 744,
-            "total_tokens": 1803,
+            "prompt_tokens": 1476,
+            "completion_tokens": 555,
+            "total_tokens": 2031,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -1162,9 +1133,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "2026101601350290e5f6f3b5b54450",
+          "provider_request_id": "20261016031005f8a293045abb4ed3",
           "finish_reason": "stop",
-          "elapsed_seconds": 9.576
+          "elapsed_seconds": 5.895
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -1175,9 +1146,55 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 1003,
-            "completion_tokens": 502,
-            "total_tokens": 1505,
+            "prompt_tokens": 1506,
+            "completion_tokens": 650,
+            "total_tokens": 2156,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 8
+            }
+          },
+          "provider_request_id": "20261016031011f2a39970380d41a2",
+          "finish_reason": "stop",
+          "elapsed_seconds": 7.417
+        },
+        {
+          "requested_model": "GLM-5.3-Flash",
+          "actual_model": "glm-5.3-flash",
+          "max_tokens": 16384,
+          "thinking": {
+            "type": "enabled"
+          },
+          "reasoning_effort": "low",
+          "usage": {
+            "prompt_tokens": 1450,
+            "completion_tokens": 668,
+            "total_tokens": 2118,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 70
+            }
+          },
+          "provider_request_id": "20261016031019ddb4145a1b4440e7",
+          "finish_reason": "stop",
+          "elapsed_seconds": 7.968
+        },
+        {
+          "requested_model": "GLM-5.3-Flash",
+          "actual_model": "glm-5.3-flash",
+          "max_tokens": 16384,
+          "thinking": {
+            "type": "enabled"
+          },
+          "reasoning_effort": "low",
+          "usage": {
+            "prompt_tokens": 1452,
+            "completion_tokens": 686,
+            "total_tokens": 2138,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -1185,9 +1202,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "202610160135127a5868e6211c4a6e",
+          "provider_request_id": "20261016031027e9f1a20b780f4a0c",
           "finish_reason": "stop",
-          "elapsed_seconds": 7.616
+          "elapsed_seconds": 8.006
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -1198,42 +1215,19 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 1005,
-            "completion_tokens": 669,
-            "total_tokens": 1674,
+            "prompt_tokens": 880,
+            "completion_tokens": 123,
+            "total_tokens": 1003,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
             "completion_tokens_details": {
-              "reasoning_tokens": 51
+              "reasoning_tokens": 4
             }
           },
-          "provider_request_id": "2026101601351940e52e182927441f",
+          "provider_request_id": "20261016031035588a59450b254ca3",
           "finish_reason": "stop",
-          "elapsed_seconds": 7.513
-        },
-        {
-          "requested_model": "GLM-5.3-Flash",
-          "actual_model": "glm-5.3-flash",
-          "max_tokens": 16384,
-          "thinking": {
-            "type": "enabled"
-          },
-          "reasoning_effort": "low",
-          "usage": {
-            "prompt_tokens": 733,
-            "completion_tokens": 151,
-            "total_tokens": 884,
-            "prompt_tokens_details": {
-              "cached_tokens": 0
-            },
-            "completion_tokens_details": {
-              "reasoning_tokens": 0
-            }
-          },
-          "provider_request_id": "2026101601352704679bd89bac466b",
-          "finish_reason": "stop",
-          "elapsed_seconds": 2.091
+          "elapsed_seconds": 2.643
         }
       ],
       "research_intent": {
@@ -1247,47 +1241,44 @@
         "title": "独立合成参考样本实际模型核验",
         "analysis_type": "",
         "scenario_template_id": "",
-        "topic": "iphone18系列（iphone18、iphone18pro、iphone18max）实际续航、手感、价格与用户反馈研究",
+        "topic": "iPhone 18 系列各型号（iphone18 / iphone18pro / iphone18max）实际续航、手感、价格与用户反馈研究，传闻仅限定保留，旧款只作比较背景",
         "entities": [
           "iphone18",
           "iphone18pro",
           "iphone18max"
         ],
         "aliases": [
-          "iphone18",
-          "iphone18pro",
-          "iphone18max",
-          "IPhone18",
           "iphone 18",
-          "iphone 18pro",
-          "iphone 18max"
+          "Iphone18",
+          "IPHONE18PRO",
+          "iphone 18 max",
+          "iphone18 MAX"
         ],
         "relations": [
-          "同一系列的各型号型号并列",
-          "各型号与实际续航表现相关",
-          "各型号与手感体验相关",
-          "各型号与价格相关",
-          "旧款机型仅作为比较背景"
+          "同系列型号对比：iphone18 与 iphone18pro、iphone18max 的续航差异",
+          "同系列型号对比：三型号的手感与价格差异",
+          "iphone18 系列与旧款机型的比较（旧款仅作背景）"
         ],
         "focus": [
-          "实际续航表现",
-          "手感体验",
+          "实际续航",
+          "手感",
           "价格",
-          "用户反馈"
+          "用户反馈",
+          "传闻信息的限定保留"
         ],
         "non_assumptions": [
-          "不凭记忆确认型号存在或发布事实",
-          "不将iphone18max改写为iphone18pro max",
-          "title_auxiliary_only中的独立合成参考样本与实际模型核验仅作任务名称辅助，非研究对象",
-          "旧款机型仅作为比较背景，不作为主要研究内容",
-          "传闻类信息需保留限定条件"
+          "不凭记忆确认 iphone18 系列型号构成、配置或发布事实",
+          "不将 iphone18max 改写或默认为 iphone18pro max",
+          "旧款机型数据不作为研究对象，仅作比较背景",
+          "标题辅助名（如 test 等显示名）不纳入实体核验"
         ],
         "search_queries": [
-          "iphone18系列实际续航评测",
-          "iphone18pro 手感与机身尺寸反馈",
-          "iphone18max 价格与用户反馈",
-          "iphone18系列各型号续航对比（旧款仅作比较背景）",
-          "iphone18 系列用户反馈 价格手感"
+          "iphone18 系列各型号实际续航测试",
+          "iphone18pro 手感与价格反馈",
+          "iphone18max 用户评价与续航表现",
+          "iphone18 与 iphone18pro、iphone18max 型号对比",
+          "iphone18 系列传闻信息核验与限定",
+          "iphone18 系列与旧款机型比较（背景参考）"
         ],
         "model": "GLM-5.3-Flash"
       },
@@ -1298,9 +1289,9 @@
       "human_labels_confirmed": true,
       "human_confirmation_date": "2026-10-16",
       "experimental_parameter_override": null,
-      "source_commit": "2e4213f990e5536ed69fdbeacbb844292e2eb14d",
-      "analysis_id": "01M50A48BTZ0KKZ3ZJJVB9CY1N",
-      "run_id": "01M50A48BWRD8HFR5SAF7T42N1",
+      "source_commit": "110c7fedc57a03bc57d02c40c044af0b8d4008bd",
+      "analysis_id": "01M50FJF4CDX6R5PHVBJDZYST4",
+      "run_id": "01M50FJF4EKSEBW105A4EWZB61",
       "cases": [
         {
           "id": "design-016",
@@ -1310,7 +1301,7 @@
           "decision": {
             "document_id": "design-016",
             "classification": "direct",
-            "reason": "直接评价雅阁后座靠背角度与长途舒适度",
+            "reason": "直接评价雅阁后座靠背角度与长途乘坐舒适度，命中后排舒适性关注点",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1335,7 +1326,7 @@
           "decision": {
             "document_id": "design-017",
             "classification": "direct",
-            "reason": "直接评价后排腿部空间与坐垫承托",
+            "reason": "直接讨论雅阁第二排腿部空间与坐垫承托，属后排空间与舒适性评价",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1360,11 +1351,10 @@
           "decision": {
             "document_id": "design-018",
             "classification": "direct",
-            "reason": "直接描述后排中间地台对乘客脚部放置的影响",
+            "reason": "直接指出雅阁后座中间地台高影响中间乘客脚部放置，属后排乘坐感受",
             "matched_entities": [
               "雅阁",
-              "后排",
-              "舒适性"
+              "后排"
             ],
             "evidence_spans": [
               "雅阁后座中间地台高，中间乘客脚不好放。"
@@ -1385,7 +1375,7 @@
           "decision": {
             "document_id": "design-019",
             "classification": "direct",
-            "reason": "直接评价后排坐垫软硬与短途舒适感",
+            "reason": "直接评价雅阁第二排坐垫软硬与短途舒适性",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1410,11 +1400,10 @@
           "decision": {
             "document_id": "design-020",
             "classification": "direct",
-            "reason": "直接描述后排乘客过减速带的颠簸体验",
+            "reason": "直接描述雅阁后座悬架滤震表现对后排乘客乘坐感受的影响",
             "matched_entities": [
               "雅阁",
-              "后排",
-              "舒适性"
+              "后排"
             ],
             "evidence_spans": [
               "雅阁后座悬架过减速带有些颠，孩子容易晕车。"
@@ -1435,11 +1424,10 @@
           "decision": {
             "document_id": "design-021",
             "classification": "direct",
-            "reason": "直接评价后排头部空间局促",
+            "reason": "直接评价雅阁后座头部空间与高个子乘客乘坐体验",
             "matched_entities": [
               "雅阁",
-              "后排",
-              "舒适性"
+              "后排"
             ],
             "evidence_spans": [
               "雅阁后边座位头部空间略局促，身高一米八坐着顶头。"
@@ -1460,7 +1448,7 @@
           "decision": {
             "document_id": "design-022",
             "classification": "direct",
-            "reason": "直接评价后排空调出风对乘坐舒适的影响",
+            "reason": "直接评价雅阁第二排空调出风量对后排乘坐舒适的影响",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1485,11 +1473,10 @@
           "decision": {
             "document_id": "design-023",
             "classification": "direct",
-            "reason": "直接评价后排隔音对乘坐休息的影响",
+            "reason": "直接评价雅阁后座隔音与高速路噪对后排休息的影响",
             "matched_entities": [
               "雅阁",
-              "后排",
-              "舒适性"
+              "后排"
             ],
             "evidence_spans": [
               "雅阁后座隔音一般，高速路噪会影响休息。"
@@ -1510,14 +1497,14 @@
           "decision": {
             "document_id": "design-024",
             "classification": "direct",
-            "reason": "直接评价后排座椅包裹感与转弯乘坐体验",
+            "reason": "乘客直接反馈雅阁后排座椅包裹感与转弯时的乘坐体验",
             "matched_entities": [
               "雅阁",
               "后排",
               "舒适性"
             ],
             "evidence_spans": [
-              "雅阁后边座椅包裹感不足，转弯时身体容易滑。"
+              "乘客说雅阁后边座椅包裹感不足，转弯时身体容易滑。"
             ],
             "observed_spans": [
               [
@@ -1535,7 +1522,7 @@
           "decision": {
             "document_id": "design-025",
             "classification": "direct",
-            "reason": "直接评价后排长途乘坐的腰背支撑",
+            "reason": "直接描述雅阁后排长途乘坐的腰背支撑感受",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1560,11 +1547,10 @@
           "decision": {
             "document_id": "design-026",
             "classification": "direct",
-            "reason": "试乘中直接描述第二排腿部空间与坐姿",
+            "reason": "试乘者直接描述雅阁第二排空间与坐姿自然度",
             "matched_entities": [
               "雅阁",
-              "后排",
-              "舒适性"
+              "后排"
             ],
             "evidence_spans": [
               "试乘雅阁时第二排脚能伸到前座下面，坐姿自然。"
@@ -1585,7 +1571,7 @@
           "decision": {
             "document_id": "design-027",
             "classification": "direct",
-            "reason": "直接评价后座坐垫长度与腿部承托",
+            "reason": "直接评价雅阁后座座垫长度与腿部承托",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1610,10 +1596,11 @@
           "decision": {
             "document_id": "design-028",
             "classification": "direct",
-            "reason": "直接描述雅阁后排乘客的风噪感受，属于后排乘坐体验评价。",
+            "reason": "直接描述雅阁后排车窗风噪影响乘客交谈，属于后排乘坐舒适性体验。",
             "matched_entities": [
               "雅阁",
-              "后排"
+              "后排",
+              "舒适性"
             ],
             "evidence_spans": [
               "雅阁后边车窗附近风噪明显，乘客交谈要提高声音。"
@@ -1634,7 +1621,7 @@
           "decision": {
             "document_id": "design-029",
             "classification": "direct",
-            "reason": "直接讨论雅阁第二排座椅角度不可调对乘坐姿势的影响，对应后排舒适性关注点。",
+            "reason": "直接描述雅阁第二排座椅角度不可调影响休息姿势，属于后排座椅舒适性。",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1659,7 +1646,7 @@
           "decision": {
             "document_id": "design-030",
             "classification": "direct",
-            "reason": "直接描述雅阁后座三人乘坐的空间与肩部活动感受，对应后排空间与乘坐体验。",
+            "reason": "直接描述雅阁后座三人乘坐偏挤、肩部活动受限，属于后排空间与乘坐感受。",
             "matched_entities": [
               "雅阁",
               "后排",
@@ -1684,7 +1671,7 @@
           "decision": {
             "document_id": "design-041",
             "classification": "irrelevant",
-            "reason": "仅为销量统计，无任何乘坐体验内容，按规则不得作为舒适性评价依据。",
+            "reason": "仅销量统计，明确无乘坐体验，非舒适性评价依据。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1705,7 +1692,7 @@
           "decision": {
             "document_id": "design-042",
             "classification": "irrelevant",
-            "reason": "仅为车身尺寸和轴距参数发布，作者未试乘后座，非乘坐感受评价。",
+            "reason": "仅车身尺寸和轴距参数，作者未试乘后座，不构成乘坐感受。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1726,7 +1713,7 @@
           "decision": {
             "document_id": "design-043",
             "classification": "irrelevant",
-            "reason": "仅为经销商价格信息，无后排评价。",
+            "reason": "经销商价格信息，明确无后排评价。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1747,7 +1734,7 @@
           "decision": {
             "document_id": "design-044",
             "classification": "context",
-            "reason": "为试乘报告提供车型配置背景，可作为背景信息但非乘坐评价。",
+            "reason": "全系配置表回顾，可作为车型背景但不作为乘坐评价。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1770,7 +1757,7 @@
           "decision": {
             "document_id": "design-045",
             "classification": "irrelevant",
-            "reason": "仅为外观尾灯设计，无乘坐反馈。",
+            "reason": "外观设计信息，明确无乘坐反馈。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1791,7 +1778,7 @@
           "decision": {
             "document_id": "design-046",
             "classification": "irrelevant",
-            "reason": "仅为售后服务网点信息，与后排乘坐无关。",
+            "reason": "售后服务网点信息，与后排乘坐无关。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1812,7 +1799,7 @@
           "decision": {
             "document_id": "design-047",
             "classification": "irrelevant",
-            "reason": "仅为二手保值率背景，无乘坐体验。",
+            "reason": "保值率统计，仅二手市场背景，与舒适性无关。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1833,7 +1820,7 @@
           "decision": {
             "document_id": "design-048",
             "classification": "irrelevant",
-            "reason": "仅为动力系统参数解读，无第二排体验。",
+            "reason": "动力系统参数解读，明确无第二排体验。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1854,7 +1841,7 @@
           "decision": {
             "document_id": "design-049",
             "classification": "irrelevant",
-            "reason": "仅为生产基地产能信息，与乘坐舒适性无关。",
+            "reason": "生产基地产能信息，与后排乘坐无关。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1875,7 +1862,7 @@
           "decision": {
             "document_id": "design-050",
             "classification": "irrelevant",
-            "reason": "仅车系历史沿革背景，未涉及后排乘坐感受评价。",
+            "reason": "仅车系历史沿革，未涉及后排乘坐舒适性评价。",
             "matched_entities": [
               "雅阁"
             ],
@@ -1896,10 +1883,8 @@
           "decision": {
             "document_id": "design-066",
             "classification": "irrelevant",
-            "reason": "评价凯美瑞，不涉及雅阁，不评估其他车型。",
-            "matched_entities": [
-              "后排"
-            ],
+            "reason": "讨论凯美瑞后排，全文无雅阁，不评估其他车型。",
+            "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
               [
@@ -1917,7 +1902,7 @@
           "decision": {
             "document_id": "design-067",
             "classification": "irrelevant",
-            "reason": "仅讨论天籁，不涉及雅阁。",
+            "reason": "仅讨论天籁第二排，不涉及雅阁。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -1936,7 +1921,7 @@
           "decision": {
             "document_id": "design-068",
             "classification": "irrelevant",
-            "reason": "家用沙发评测，与汽车无关。",
+            "reason": "沙发评测，与汽车及雅阁无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -1955,7 +1940,7 @@
           "decision": {
             "document_id": "design-069",
             "classification": "irrelevant",
-            "reason": "飞机后排体验，与雅阁无关。",
+            "reason": "飞机经济舱体验，与雅阁汽车无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -1974,7 +1959,7 @@
           "decision": {
             "document_id": "design-070",
             "classification": "irrelevant",
-            "reason": "办公室后排座位，与雅阁无关。",
+            "reason": "办公室座位话题，与雅阁无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -1993,7 +1978,7 @@
           "decision": {
             "document_id": "design-071",
             "classification": "irrelevant",
-            "reason": "雅阁为餐馆名，非目标实体。",
+            "reason": "餐馆名称同名，非汽车雅阁。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2012,7 +1997,7 @@
           "decision": {
             "document_id": "design-072",
             "classification": "irrelevant",
-            "reason": "楼盘户型介绍，非汽车。",
+            "reason": "楼盘名称同名，非汽车雅阁。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2031,7 +2016,7 @@
           "decision": {
             "document_id": "design-073",
             "classification": "irrelevant",
-            "reason": "图书馆后排座椅，与雅阁无关。",
+            "reason": "图书馆座椅装修，与雅阁无关。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2069,7 +2054,7 @@
           "decision": {
             "document_id": "design-075",
             "classification": "irrelevant",
-            "reason": "儿童安全座椅说明，无雅阁安装描述。",
+            "reason": "儿童安全座椅说明，无雅阁乘坐评价。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2088,7 +2073,7 @@
           "decision": {
             "document_id": "design-076",
             "classification": "irrelevant",
-            "reason": "仅品牌广告，无雅阁或后排乘坐信息。",
+            "reason": "广告无雅阁及乘坐信息，无法确认车型。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2107,10 +2092,8 @@
           "decision": {
             "document_id": "design-077",
             "classification": "irrelevant",
-            "reason": "皮卡后排，非雅阁，无目标车型内容",
-            "matched_entities": [
-              "后排"
-            ],
+            "reason": "皮卡后排空间评测，与雅阁无关，也不涉及目标车型",
+            "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
               [
@@ -2128,7 +2111,7 @@
           "decision": {
             "document_id": "design-078",
             "classification": "irrelevant",
-            "reason": "自行车坐垫，不涉及汽车",
+            "reason": "自行车后座坐垫，与汽车后排乘坐无关",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2147,10 +2130,8 @@
           "decision": {
             "document_id": "design-079",
             "classification": "irrelevant",
-            "reason": "观众席视野，与汽车后排无关",
-            "matched_entities": [
-              "后排"
-            ],
+            "reason": "足球观众席讨论，与汽车后排无关",
+            "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
               [
@@ -2168,7 +2149,7 @@
           "decision": {
             "document_id": "design-080",
             "classification": "irrelevant",
-            "reason": "雅阁为人名，非车型",
+            "reason": "雅阁是人名（音乐人），非目标车型，演出安排与后排舒适性无关",
             "matched_entities": [
               "雅阁"
             ],
@@ -2189,10 +2170,9 @@
           "decision": {
             "document_id": "design-091",
             "classification": "uncertain",
-            "reason": "仅是提问，无实际乘坐评价内容",
+            "reason": "仅标题式提问，无实际后排乘坐评价内容，无法核验",
             "matched_entities": [
-              "雅阁",
-              "后排"
+              "雅阁"
             ],
             "evidence_spans": [],
             "observed_spans": [
@@ -2211,7 +2191,7 @@
           "decision": {
             "document_id": "design-092",
             "classification": "uncertain",
-            "reason": "正文未显示，无法核验内容",
+            "reason": "正文未显示，仅有提示语，无法核验内容",
             "matched_entities": [
               "雅阁"
             ],
@@ -2232,7 +2212,7 @@
           "decision": {
             "document_id": "design-093",
             "classification": "uncertain",
-            "reason": "正文乱码，无可用证据",
+            "reason": "正文为乱码，标题提及雅阁后排但无可用证据",
             "matched_entities": [
               "雅阁"
             ],
@@ -2253,7 +2233,7 @@
           "decision": {
             "document_id": "design-094",
             "classification": "uncertain",
-            "reason": "未区分前座后座，无法确认针对后排舒适性",
+            "reason": "提到雅阁坐着还行，但未说明前排还是后排，不满足后排舒适性direct标准",
             "matched_entities": [
               "雅阁"
             ],
@@ -2270,14 +2250,12 @@
           "id": "design-095",
           "content": "这台车后座难受，文章没有品牌车型上下文。",
           "expected": "uncertain",
-          "actual": "uncertain",
+          "actual": "irrelevant",
           "decision": {
             "document_id": "design-095",
-            "classification": "uncertain",
-            "reason": "有后座评价但无品牌车型上下文，无法确认是雅阁",
-            "matched_entities": [
-              "后座"
-            ],
+            "classification": "irrelevant",
+            "reason": "后座难受但无品牌车型上下文，无法归属到雅阁",
+            "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
               [
@@ -2295,10 +2273,9 @@
           "decision": {
             "document_id": "design-096",
             "classification": "uncertain",
-            "reason": "内容已删除，仅有标题无正文证据",
+            "reason": "内容已删除仅剩标题，无可核验证据",
             "matched_entities": [
-              "雅阁",
-              "后排"
+              "雅阁"
             ],
             "evidence_spans": [],
             "observed_spans": [
@@ -2317,7 +2294,7 @@
           "decision": {
             "document_id": "design-097",
             "classification": "uncertain",
-            "reason": "仅表情无体验描述",
+            "reason": "仅有表情无体验描述，无法判断后排舒适性",
             "matched_entities": [
               "雅阁"
             ],
@@ -2338,7 +2315,7 @@
           "decision": {
             "document_id": "design-098",
             "classification": "uncertain",
-            "reason": "仅两个词，无法核验完整意思",
+            "reason": "摘要仅两词，无法核验完整意思，不构成直接证据",
             "matched_entities": [
               "雅阁"
             ],
@@ -2359,7 +2336,7 @@
           "decision": {
             "document_id": "design-099",
             "classification": "uncertain",
-            "reason": "仅说'后边有问题'，未说明问题内容，也未明确目标车型，无法确认与雅阁后排舒适性相关。",
+            "reason": "仅提到“后边有问题”，未说明问题内容，也未确认是否指雅阁或后排乘坐舒适性，信息不足以判定。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2378,7 +2355,7 @@
           "decision": {
             "document_id": "design-100",
             "classification": "uncertain",
-            "reason": "内容为加载失败提示，无实际正文，未读取有效内容，不作已核验声明。",
+            "reason": "原文内容加载失败，实际正文未读取，无法核验是否包含雅阁后排舒适性相关证据。",
             "matched_entities": [],
             "evidence_spans": [],
             "observed_spans": [
@@ -2401,8 +2378,8 @@
           "reasoning_effort": "low",
           "usage": {
             "prompt_tokens": 284,
-            "completion_tokens": 145,
-            "total_tokens": 429,
+            "completion_tokens": 164,
+            "total_tokens": 448,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -2410,9 +2387,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "2026101601353099e1e8ee9d4947f3",
+          "provider_request_id": "20261016031038d9949c8d712b42a8",
           "finish_reason": "stop",
-          "elapsed_seconds": 3.686
+          "elapsed_seconds": 3.485
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -2423,19 +2400,19 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 881,
-            "completion_tokens": 716,
-            "total_tokens": 1597,
+            "prompt_tokens": 1299,
+            "completion_tokens": 681,
+            "total_tokens": 1980,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
             "completion_tokens_details": {
-              "reasoning_tokens": 0
+              "reasoning_tokens": 16
             }
           },
-          "provider_request_id": "202610160135337018c07d21384b7c",
+          "provider_request_id": "2026101603104231034859b801456a",
           "finish_reason": "stop",
-          "elapsed_seconds": 7.882
+          "elapsed_seconds": 7.697
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -2446,9 +2423,9 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 857,
-            "completion_tokens": 730,
-            "total_tokens": 1587,
+            "prompt_tokens": 1275,
+            "completion_tokens": 575,
+            "total_tokens": 1850,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -2456,9 +2433,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "202610160135419e05466dff2e48b7",
+          "provider_request_id": "202610160310500f9669a8b9444c65",
           "finish_reason": "stop",
-          "elapsed_seconds": 9.409
+          "elapsed_seconds": 5.659
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -2469,19 +2446,19 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 860,
-            "completion_tokens": 459,
-            "total_tokens": 1319,
+            "prompt_tokens": 1278,
+            "completion_tokens": 462,
+            "total_tokens": 1740,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
             "completion_tokens_details": {
-              "reasoning_tokens": 3
+              "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "20261016013551bd54bef6cd8a413d",
+          "provider_request_id": "2026101603105507d265a034984b15",
           "finish_reason": "stop",
-          "elapsed_seconds": 4.623
+          "elapsed_seconds": 4.854
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -2492,19 +2469,19 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 842,
-            "completion_tokens": 573,
-            "total_tokens": 1415,
+            "prompt_tokens": 1260,
+            "completion_tokens": 582,
+            "total_tokens": 1842,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
             "completion_tokens_details": {
-              "reasoning_tokens": 0
+              "reasoning_tokens": 71
             }
           },
-          "provider_request_id": "202610160135558f0d1c7e612540b7",
+          "provider_request_id": "2026101603110083c399a23aef406a",
           "finish_reason": "stop",
-          "elapsed_seconds": 7.377
+          "elapsed_seconds": 4.865
         },
         {
           "requested_model": "GLM-5.3-Flash",
@@ -2515,9 +2492,9 @@
           },
           "reasoning_effort": "low",
           "usage": {
-            "prompt_tokens": 567,
-            "completion_tokens": 124,
-            "total_tokens": 691,
+            "prompt_tokens": 684,
+            "completion_tokens": 125,
+            "total_tokens": 809,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
@@ -2525,9 +2502,9 @@
               "reasoning_tokens": 0
             }
           },
-          "provider_request_id": "20261016013603d9dd97d718754fa9",
+          "provider_request_id": "20261016031105fee5c8c540e74d5f",
           "finish_reason": "stop",
-          "elapsed_seconds": 2.314
+          "elapsed_seconds": 2.172
         }
       ],
       "research_intent": {
@@ -2541,7 +2518,7 @@
         "title": "独立合成参考样本实际模型核验",
         "analysis_type": "",
         "scenario_template_id": "",
-        "topic": "雅阁后排乘坐舒适性感受",
+        "topic": "雅阁后排乘坐舒适性体验研究",
         "entities": [
           "雅阁",
           "后排",
@@ -2551,23 +2528,23 @@
           "雅阁"
         ],
         "relations": [
-          "雅阁的后排乘坐舒适性表现"
+          "雅阁的后排空间与乘坐舒适性表现"
         ],
         "focus": [
-          "后排空间感受",
-          "座椅舒适度",
-          "乘坐体验"
+          "后排座椅舒适性",
+          "后排空间",
+          "乘坐感受"
         ],
         "non_assumptions": [
           "不评估其他车型",
-          "不将销量等背景信息作为乘坐舒适性评价依据",
-          "不凭记忆确认具体配置或发布事实"
+          "不把销量等背景信息当作乘坐舒适性评价依据",
+          "不凭记忆确认具体型号或配置事实"
         ],
         "search_queries": [
-          "雅阁 后排 舒适性",
-          "雅阁 后排空间 乘坐感受",
-          "雅阁 后排座椅 舒适度",
-          "雅阁 后排 乘坐体验"
+          "雅阁 后排 乘坐 舒适性",
+          "雅阁 后排 座椅 感受",
+          "雅阁 后排 空间 体验",
+          "雅阁 后排 舒适 评价"
         ],
         "model": "GLM-5.3-Flash"
       },

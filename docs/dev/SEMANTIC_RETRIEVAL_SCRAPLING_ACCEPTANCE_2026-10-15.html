@@ -1,96 +1,26 @@
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>语义检索与 Scrapling 验收门禁</title>
-  <style>
-    body{max-width:1100px;margin:32px auto;padding:0 20px;color:#203036;background:#f7f8f6;font:15px/1.7 system-ui,sans-serif}h1,h2,h3{line-height:1.35}h2{margin-top:32px;border-bottom:1px solid #d5dfda;padding-bottom:6px}table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #d5dfda;padding:9px;vertical-align:top;text-align:left}.gate{padding:14px;background:#fff4e6;border-left:4px solid #d9822b}.ok{padding:14px;background:#e9f4ed;border-left:4px solid #16735b}code{overflow-wrap:anywhere}li{margin:4px 0}.small{color:#5c6b66}
-  </style>
-</head>
-<body>
-  <h1>语义检索与 Scrapling 验收门禁</h1>
-  <p class="gate"><strong>状态：整改开发中，完整发布验收尚未通过。</strong> 2026-10-16 更新。线上基线 <code>92e1005a6f8ce4fb208437531933591dfc52c901</code> 是此前部署的不完整实现，不能作为本方案完成证据。当前修订仍在 dev 的 GitHub 托管测试及独立审查整改阶段；不得据此声称正文抓取、真实模型准入或完整报告已验收。实施计划见 <code>docs/superpowers/plans/2026-10-15-semantic-retrieval-scrapling.md</code>。</p>
-
-  <h2>当前核验记录（不是发布通过声明）</h2>
-  <ul>
-    <li>完整实现首轮提交 <code>3eb0a080f89f815a2148f91124667fb79a1b042c</code> 的 hosted run <code>38746700098</code>：前端构建通过，Python/Go/PG/浏览器取消检查失败，部署包未生成。</li>
-    <li>独立审查要求修复：传输中断保留已存候选记录；空报告不可标记完成；引用恢复与传输重试共享两次供应商调用上限；前端逐字证据遵循真实字符串协议。</li>
-    <li>新增失败用例已观察：<code>776e4a5ec97b6cc97af8361fca6c046ca83345a1</code> 下空报告、三次嵌套调用、未登记模型能力及 PG 中断丢失当前采集视图。</li>
-    <li>用户于 2026-10-16 回复“确认”保留 100 条合成样本的既有期望标签。人工确认仅覆盖固定合成集，不能把离线替身或合成集指标包装为真实文章准确率和真实平台覆盖；当前运行代码的供应商复测另行记录。</li>
-    <li>已核对智谱官方 GLM-5.3-Flash 文档列出的 1M 上下文、128K 最大输出；真实已接纳 run 的参数、用量及完整报告对账仍待完成。</li>
-  </ul>
-
-  <h2>2026-10-16 当前证据与阻断</h2>
-  <ul>
-    <li>增量独立审查 <code>b0e2032..2e4213f</code> 无 Critical/Important 发现，两个次要改进见 <a href="reviews/SEMANTIC_RETRIEVAL_DELTA_REVIEW_2026-10-16.html">审查稿</a>。结构化引用错误中文展示已通过页面用例。</li>
-    <li>源码提交 <code>2e4213f990e5536ed69fdbeacbb844292e2eb14d</code>：Python 273 passed；push run <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774482330">38774482330</a> 的 Go、PG、实际用量桥、Chromium、前端构建通过，但页面套件 60 passed / 2 failed，部署包跳过。同源码树的 PR merge <code>005712896d4dc4260b79e13a8087fb7807e8c4e4</code> <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38774492352">run 38774492352</a> 全部通过；不能用后者隐藏 push 失败或替代正式 prod 制品。</li>
-    <li>两项页面失败已由截图、trace 和 HTTP 200 正确响应定位：场景测试的宽 URL 表达式会提前匹配 /analyses/new，另有页面首次数据读取晚于断言开始。修复提交 <code>18a3950bf78a1c5fef2357d26f07dc67fc3a8c5b</code> 同步精确任务 ID 和目标 API 响应，保留原 UI 断言及 10 秒断言上限；hosted run <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38779254071">38779254071</a> 八项全部成功，页面 62 passed。</li>
-    <li>真实 iPhone v3 run <code>01M508NHP43DT06E66WMH2WXCP</code> 首批纠正后核验出 8 个 direct 判断，但后续调用触及 240 秒语义期限；已获取供应商标识而未取得完整用量的事件记 unknown，未捏造零成本。没有生成报告。</li>
-    <li>真实雅阁 v3 run <code>01M508Z2433NRP3W1M6RJXPZN1</code> 的 58 份合格材料均判 irrelevant，未伪造证据补足门槛。8 次供应商对照确认请求回显正确、适配无串条；平台＋30 天约束下缺少目标材料，尚不能区分真实稀疏与供应商召回偏差。保持来源和日期边界。</li>
-    <li>对真实摘要批次的流式诊断 run <code>01M509AX1B6029CWX7YY6YN9R7</code> 无参数覆盖，首 chunk 小于 2 秒、两次语义调用约 23 / 20 秒完成，未复现长流停顿。重试仍受两次调用与原期限约束；这不是完整报告验收。</li>
-  </ul>
-
-  <h2>供应商长流恢复整改</h2><p>实际 iPhone v4 run <code>01M50A701S3SK0E8FYPQJGMFXM</code> 先完成 48 份材料核验（34 direct / 6 context / 8 irrelevant），后续单次流占用剩余 155 秒直到 240 秒期限，故未出报告。全部材料不超过 800 字符，不是大正文导致的已证实超时。特斯拉 v4 的 13 context / 0 direct 也保留不足证据结果。</p><p>新增托管 RED：<code>3461d033046ae0f578ba1e793946c6b19c8933dd</code>、<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38781679694/job/116583200610">job 116583200610</a> 为 12 failed / 276 passed，实际复现单次卡流没有受控恢复、内部时间参数泄漏和参数未预校验。修复把 60 秒等待限定在供应商请求部分；已完成响应后的慢回执不可触发第二次购买，取消和整个阶段到期不可重试；原两次总调用、输出预算、240 秒语义期限及证据边界保持。新修复仍待 hosted GREEN 和真实完整报告，当前不放行生产。</p>
-
-  <h2>用户批准的编号原文片段整改</h2><p>2026-10-16 用户明确选择“按编号片段方案执行（推荐）”。这是语义准入内部表示的局部调整：模型阅读按文档和 Unicode 原始位置编号的连续 source_units，判断相关性并返回 evidence_unit_ids；程序只从同文档、当前批次的已知单元取回原文字串，再走现有逐字引用校验。报告和 Go/UI 仍接收原 evidence_spans 字串，不改变外部契约。</p><p>每个原文单元最多 400 字符，保留空白、标点与全部正文；不重复发送完整 content 和单元文字。完整序列化提示（意图、辅助标题、编号、系统提示和最多 32 个有限错误的纠正预留）共同受 80,000 字节限制，溢出拆批，不能静默丢弃文字。未知、跨文档、格式异常或 direct/context 缺少编号仍整批失败，旁边的旧引文字段不能绕过。两次调用、60 秒供应商等待、240 秒语义期限、输出预算和两条直接证据门槛保持。</p><p>新入口用例先在 <code>02141a39f342126d9b96fb1298d61c531919c879</code>、<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38787688373/job/116603827562">job 116603827562</a> 观察到 11 failed / 290 passed；失败符合旧实现没有单元查找及完整提示预算的预期。编号改动前的 <code>63e31ce744b3003522e24626b11574c92b9354eb</code> <a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38782684648">run 38782684648</a> 八项全部成功（288 Python / 62 页面）；这不能代替新表示的托管 GREEN、100 条复测或真实完整报告。</p>
-
-  <h2>目标和边界</h2>
-  <p>同一任务中的多个关键词被视为一个研究主题。材料可以只出现系列中的一个型号或关注点的同义表达，但必须由模型结合主题和原文证据判断。系统逐平台检索、按界限补抓正文、验证来源和日期，再进行有计量的语义准入。</p>
-  <p>本版本不做自定义模板、开放式多轮 Agent、模型路由、缓存、自动重跑旧任务或第三阶段优化。历史 lexical-v1 任务保持原审计事实；新 run 使用 semantic-v2。</p>
-
-  <h2>验收标准</h2>
-  <table>
-    <thead><tr><th>领域</th><th>必须观察到的结果</th><th>阻断条件</th></tr></thead>
-    <tbody>
-      <tr><td>主题理解</td><td><code>iPhone18/iPhone18 Pro/iPhone18 Max</code> 中只出现一个型号的真实材料可判 direct；其他品牌仅命中泛词被判 irrelevant；对象与关注点同义表达可被识别。</td><td>要求每个词面全部出现，或泛词误召回进入 direct。</td></tr>
-      <tr><td>平台覆盖</td><td>每个选定平台有独立查询、候选、抓取、准入计数；混选不会把全部结果贴成第一个平台；未查询/失败与无相关材料分开。</td><td>只发一次混合查询、来源标签来自请求顺序、平台失败被伪装为零结果。</td></tr>
-      <tr><td>正文补抓</td><td>摘要为页面壳时尝试一次有界 Scrapling；正文清洗去除脚本/样式/导航；静态 15 秒、动态 25,000 毫秒、8 MiB/200,000 字符上限、取消后无后台抓取。</td><td>把页面壳当证据、使用未验证的浏览器参数、超时后进程残留或把视频页面称作转写。</td></tr>
-      <tr><td>硬边界</td><td>最终 URL、来源平台、公网地址、排除词和发布日期在模型前校验；越界/冲突/无法核验日期只留候选审计。</td><td>LLM 以理由覆盖硬边界，或用抓取时间替代原始发布日期。</td></tr>
-      <tr><td>语义协议</td><td>每份材料恰好一条 direct/context/irrelevant/uncertain 决策；ID、逐字证据、平台和日期均可回溯；非法 JSON/ID/引语 fail closed。</td><td>缺失决策默认通过，引用跨文档拼接，或模型结果无法绑定真实材料。</td></tr>
-      <tr><td>证据门槛</td><td>至少两条不同 URL 的 direct 材料才生成完整研判/报告；context 不计入目标产品评价分母；0/1 direct 留下候选审计并显示真实原因。</td><td>用 context、重复 URL、模型生成内容或摘要壳凑足两条。</td></tr>
-      <tr><td>预算和计量</td><td>主题规划、query/relevance、洞察、报告均有 run_id、授权、持久 outbox、实际用量/失败状态；输出初始目标 16,384，截断只在剩余时限内重试一次至 32,768。</td><td>无 run_id 直连供应商、丢失 ACK 删除 outbox、通过降低 max_tokens 隐藏超时。</td></tr>
-      <tr><td>时间和 UI</td><td>显示阶段、已用时、材料进度、失败/未处理和最长时限；刷新不重启；不再承诺固定“5–10 分钟”。</td><td>固定文案与真实上限不一致，或取消后继续产生网络/LLM调用。</td></tr>
-    </tbody>
-  </table>
-
-  <h2>RED → GREEN 证据</h2>
-  <ol>
-    <li>先提交失败测试：Python 主题边界/平台隔离/Scrapling fixture/语义协议，Go transport/pipeline/PG 并发与回滚，React/Playwright 状态与来源展示。</li>
-    <li>在 GitHub-hosted runner 上确认 RED；本地不得执行 Go build/test/vet、npm build/tsc 或依赖编译。</li>
-    <li>按 workstream ownership 实施最小改动，逐任务在 hosted runner 变绿；证据必须包含测试名称、提交 SHA、workflow run ID 和日志摘要。</li>
-    <li>人工标注集至少 30 direct、20 context、30 irrelevant、20 uncertain。发布集 direct precision ≥95%、recall ≥90%；来源/日期/引用越权放行必须为 0。展示误判样本，不用被测模型生成标签。</li>
-    <li>真实对账使用专用测试任务：至少一个系列任一型号入选、一个关注点不逐字出现但有原文依据的材料入选，并记录每个选定平台的候选/正文/准入/未处理计数。不能修改用户历史任务或伪造结果。</li>
-</ol>
-
-  <h2>Hosted CI 门禁</h2>
-  <ul>
-    <li><code>build-release.yml</code>：Go race tests/vet/三个 linux/amd64 二进制、Python 全量测试、前端 lint/build、Playwright。</li>
-    <li><code>postgresql-tests.yml</code>：最新迁移、store 重建、租户隔离、并发/回滚、billing usage outbox 与旧 lexical-v1 数据读取。</li>
-    <li>必须核对同一提交 SHA 的所有 job 为 success；跳过 PG、缺浏览器 fixture、失败的真实 Bocha/LLM 对账或未达到人工标注阈值均阻断发布。</li>
-    <li>构建包必须通过外部归档 <code>.sha256</code>、<code>BUILD_COMMIT</code> 和解包后的 <code>SHA256SUMS</code>；浏览器产物也要有固定版本和哈希。</li>
-  </ul>
-
-  <h2>部署与回滚</h2>
-  <ol>
-    <li>在 <code>dev</code> 完成评审后创建 <code>dev → prod</code> PR；合并后只使用精确 prod SHA 的成功产物。</li>
-    <li>服务器先保存源码、配置、二进制和前端回滚包，再停止写入服务并备份 PostgreSQL，校验归档和 <code>SHA256SUMS</code>，解包到带 SHA 的 release 目录。</li>
-    <li>先用同一构建包内的 CLI 执行迁移和 schema 校验，再原子安装二进制/哈希前端、启动服务并执行健康检查。缺产物时立即失败，服务器不编译。</li>
-    <li>部署后运行专用真实 smoke：Bocha、至少两个所选平台、Scrapling 正文/摘要回退、语义 direct/context、报告文档 ID 和 usage 事件。保留 JSON/HTML 证据。</li>
-    <li>任一门禁失败：停止新服务，恢复上一份已验证 release/config，按数据库备份程序处理不可逆迁移；保留失败 SHA 和日志，不强制回滚数据库结构或覆盖用户数据。</li>
-  </ol>
-
-  <h2>责任与风险</h2>
-  <table>
-    <thead><tr><th>责任人</th><th>负责文件/结果</th><th>主要风险及处理</th></tr></thead>
-    <tbody>
-      <tr><td>Python retrieval</td><td><code>engines/common</code>、<code>query_engine</code>、fixtures</td><td>平台反爬/浏览器缺失；记录真实失败，不伪造覆盖，保持有界并发。</td></tr>
-      <tr><td>Go platform</td><td>engine contract、analysis pipeline/store、migration</td><td>版本不一致、跨租户或计费泄漏；先持久化 coverage，协议 fail closed，PG 并发/回滚必测。</td></tr>
-      <tr><td>Web/report</td><td>API types、创建/详情页、报告来源</td><td>把未处理显示成无结果；分开候选、失败、context、direct，数组保持非 null。</td></tr>
-      <tr><td>Release/Ops</td><td>Actions、artifact、runbook、evidence</td><td>错 SHA/缺浏览器/迁移晚于启动；精确 SHA 校验、备份、先迁移后启动、保留上一版。</td></tr>
-    </tbody>
-  </table>
-
-  <p class="ok"><strong>交付判定：</strong>只有当上述验收证据、精确 SHA 的 hosted CI、真实 provider smoke、artifact 校验、迁移/健康检查和回滚材料全部齐全，才可在发布记录中标记“已部署”。目前本页仅定义门禁。</p>
-</body>
-</html>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>语义检索与引用验收</title><style>body{font:15px/1.7 system-ui;max-width:1100px;margin:32px auto;padding:0 20px;color:#203036}h2{margin-top:28px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccd6cf;padding:9px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.pending{background:#fff2da;padding:14px}.ok{background:#e9f4ed;padding:14px}code{overflow-wrap:anywhere}</style></head><body><h1>语义检索、原文引用与 Scrapling 验收记录</h1>
+<p class="pending"><strong>发布前状态，2026-10-16。</strong>本轮尚未执行生产更新。当前运行源码为 <code>b0c6108ead93a79e84fa11f578955ab8b057ff17</code>；导出出处修复的 Python 托管测试 334 passed，最终全部检查与新完整报告 V11 仍需核对。此前生产核对基线为 <code>92e1005a6f8ce4fb208437531933591dfc52c901</code> / schema 28。本页不把开发、隔离环境或待执行操作称作已部署。</p>
+<h2>已实施行为</h2><ul>
+<li>同一任务的多个关键词表达同一研究主题。模型先形成不可变研究意图，再逐平台检索、补抓与判定 direct/context/irrelevant/uncertain；不再要求每个词面全部出现。</li>
+<li>每个平台独立查询并保留候选、正文、摘要、准入、失败与未处理计数。URL、平台、日期和排除条件先核验；至少两份不同 URL 的 direct 才进入完整报告。背景不计入目标评价分母。</li>
+<li>Scrapling 0.4.15 / Playwright 1.63.0：静态优先、有界动态补抓，单任务动态最多 20 页；8 MiB 响应、200,000 保存字符上限。抓不到正文时仅以合格摘要回退，并明确标记。</li>
+<li>准入、洞察原声和报告风险使用编号原文片段，程序还原原文字串、文档、来源和位置。未知、跨文档、跨批次编号不可用旁边的旧引文绕过。既有无编号供应商响应仍须通过原严格逐字及来源核验。</li>
+<li>洞察分类的格式纠正与 JSON/传输/截断恢复共用每批最多两次调用；持久失败保留有限警告、未处理记录与已核验部分，不能冒充完整成功。报告风险拒绝警告已传递到 Go 严格门禁。</li>
+<li>输出初始 16,384，确认截断/非法 JSON 时在余下期限内恢复至 32,768；没有按成本缩小预算。已验证 GLM 5.3 系列在规划、准入、速览及已有证据的报告写作使用 enabled + low，其他模型不接收这些专有字段。</li>
+<li>报告 HTML/Word 所有来源行补齐编号、正文/摘要类型、发布时间、日期原文与依据、原始/最终网址；HTML 转义及 URL 协议保护保留。未被引用的材料也可核对出处。</li></ul>
+<h2>真实完整链路与仍待核对项</h2>
+<p>源码 <code>2e3e8335</code> 的普通试用账号真实任务 <code>01M50MGCPJRPSZ9BFEK54MZ5FY</code> / run <code>01M50MGCPMSYG7Z3V2VKPJ2A9T</code> 在 382.5 秒完成，报告 <code>rep-cce96e86a6664e34</code> 共 123,529 字节：255 候选、50 direct、3 个套餐维度。独立核对了 38 条维度引文、13 条风险证据、全部材料在分类/三维/报告阶段的保存文本覆盖。摘要只读取核验后的维度结论，未声称再读全文。</p>
+<p>该运行消费 1 次、退款 0 次，charge_mode=normal，全部 28 次模型调用有实际 reported 用量、无缺失回执、无账号豁免；供应商价格状态为 pending，未伪造零成本。导出核对发现 6 个未引用材料缺少编号，因此其证据标为 <code>export_provenance_complete=false</code>。新增纯渲染修复已通过 334 项 Python 测试；V11 使用新源码重新核对全部出处后才能放行。</p>
+<table><tr><th>平台</th><th>真实查询/候选</th><th>补抓及采纳</th></tr><tr><td>今日头条</td><td>6 次 / 249 条原始候选</td><td>99 个候选处理、79 份可用摘要、0 正文；50 direct，材料容量外仍有未处理项。</td></tr><tr><td>公众号</td><td>6 次 / 6 条原始候选</td><td>去重后 1 份正文，但与主题不相关，未用于目标评价。</td></tr></table>
+<p>这些结果证明两个平台均被独立检索，不证明公众号有足够相关材料，也不能把头条摘要称作完整文章。8 次博查对照发现请求回显和同 URL 字段绑定正确；移除日期/平台限制会增加雅阁相关结果，但尚不能区分真实近期稀疏与供应商召回偏差。没有据此放松边界。</p>
+<h2>参考集与托管证据</h2><p>用户于 2026-10-16 确认保留 100 条合成样本期望。固定集 SHA-256 <code>e0543fa4b26f769b4a6db1615fb09bd9b99b8bae0be1f40c55a601fbc3edb667</code>。编号协议真实模型复测 29 TP / 0 FP / 1 FN，direct 精确率 100%、召回率 96.67%；四分类一致率 84%，16 项差异全部保留。这仅是固定合成集结果，不是实际文章或全网准确率。</p>
+<table><tr><th>修复</th><th>实际 RED → GREEN</th></tr>
+<tr><td>编号准入</td><td>02141a39：11 failed / 290 passed → 110c7fed：301 passed。</td></tr>
+<tr><td>下游编号及严格警告</td><td>6771f644：15 failed / 303 passed；478a2267 外部 warning 回归 1 failed / 318 passed → 0549c3d7：319 passed。</td></tr>
+<tr><td>报告 GLM 推理参数</td><td>4950b68c：3 failed / 322 passed → 07b9be63：325 passed；DeepSeek/MiniMax/旧 GLM 专有参数隔离仅做离线契约验证。</td></tr>
+<tr><td>话题协议纠正</td><td>ec78f098：6 failed / 325 passed；测试观察点修正后 2e3e8335：331 passed，<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38802063847">八项 hosted 全部成功</a>。</td></tr>
+<tr><td>所有来源导出</td><td>982500fe：3 failed / 331 passed → b0c6108：334 passed；<a href="https://github.com/jetchanxxx-tech/yuqing/actions/runs/38805179975">最终工作流</a>须继续核对全部结论。</td></tr></table>
+<p>此前失败未被删除：V7 因洞察自由引文绑定失败；V8 因报告 600 秒阶段到期；V9 因话题重复关联失败。各次都保留资料/用量和正确的失败状态，没有凑证据或标记完整成功。</p>
+<h2>发布门禁与边界</h2><ol><li>冻结 dev，核对精确提交全部八项 GitHub-hosted 检查、独立审查、新完整真实报告及出处/计量。</li><li>经 reviewed dev→prod PR 合并后，重新核对精确 prod SHA 的全部检查与同 run release/browser 制品，验证 GitHub digest、外部 SHA、BUILD_COMMIT、完整文件清单。</li><li>使用同一预构建 CLI 在独立恢复库演练迁移 29；核对原金融/身份/注销数据指纹、约束、触发器与第二次无操作。</li><li>阻止新 API、排空并停确切七个生产服务后再做最终 PG/文件备份；保留回滚产物和待结算用量。先迁移，先安装哈希资源，后原子替换首页；引擎 ready 后启动消费者。</li><li>普通账号新建生产真实任务并核对报告/原文/用量后才开放；失败恢复维护与已验证版本，保留 additive schema，不覆盖新金融事实或执行破坏性 down。</li></ol>
+<p>自定义模板、模型路由/缓存、第三阶段优化、支付/真实通知送达不在本轮交付。此前两项次要改进（候选原因中文映射、理论极限的索引内存分配）继续留待后续。既有 AGENTS.md 保持不变；所有编译、构建和测试均在 GitHub-hosted runner 执行。</p>
+<p>详情：<a href="SEMANTIC_RETRIEVAL_MODEL_VALIDATION_2026-10-15.html">模型与误判记录</a> · <a href="SEMANTIC_RETRIEVAL_BOCHA_VALIDATION_2026-10-16.html">博查对照</a> · <a href="reviews/SEMANTIC_RETRIEVAL_DELTA_REVIEW_2026-10-16.html">独立审查</a> · <a href="evidence/semantic-retrieval-20261016/downstream-validation-summary.json">真实运行核对</a>。</p></body></html>
