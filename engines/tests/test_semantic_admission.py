@@ -272,3 +272,84 @@ async def test_protocol_correction_never_extends_original_expired_deadline():
     with pytest.raises(SemanticAdmissionIncomplete):
         await classify_materials(SlowFirstProtocol(), "fixture-model", {"topic": "研究主题"}, {"known": "真实正文"}, deadline=deadline)
     assert len(calls) == 1
+
+@pytest.mark.asyncio
+async def test_semantic_attempt_timeout_recovers_stalled_real_stream_inside_original_phase_deadline(monkeypatch):
+    import asyncio
+    import json
+    import httpx
+    from engines.common.llm_client import LLMClient
+    from engines.common import semantic_admission as module
+    monkeypatch.setattr(module, "ATTEMPT_TIMEOUT_SECONDS", 0.05, raising=False)
+    requests = []
+    never = asyncio.Event()
+    closed = []
+    class StalledStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            try:
+                yield ("data: " + json.dumps({"id": "stalled-first-provider-id", "model": "fixture-model",
+                    "choices": [{"delta": {"reasoning_content": "still thinking"}, "finish_reason": None}]}) + "\n\n").encode()
+                await never.wait()
+            finally:
+                closed.append(True)
+    def provider(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=StalledStream())
+        result = {"decisions": [{"document_id": "known", "classification": "direct", "reason": "目标实际体验",
+                                 "evidence_spans": ["iPhone18 Pro真实续航体验"]}]}
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result)}, "finish_reason": "stop"}]})
+    client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 0.8
+    result = await module.classify_materials(client, "fixture-model", {"topic": "iPhone18系列"},
+        {"known": "iPhone18 Pro真实续航体验"}, deadline=deadline)
+    assert result.valid and result.accepted[0].document_id == "known"
+    assert len(requests) == 2
+    assert [request["max_tokens"] for request in requests] == [16384, 16384]
+    assert loop.time() < deadline
+    assert closed == [True]
+    assert not never.is_set()
+
+
+@pytest.mark.asyncio
+async def test_stalled_stream_then_bad_quote_spends_two_total_calls_and_preserves_safe_protocol_error(monkeypatch):
+    import asyncio
+    import json
+    import httpx
+    from engines.common.llm_client import LLMClient
+    from engines.common import semantic_admission as module
+    monkeypatch.setattr(module, "ATTEMPT_TIMEOUT_SECONDS", 0.05, raising=False)
+    requests = []
+    never = asyncio.Event()
+    closed = []
+    marker = "do-not-replay-private-model-text"
+    class StalledStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            try:
+                yield ("data: " + json.dumps({"id": "stalled-first-provider-id", "model": "fixture-model", "choices": []}) + "\n\n").encode()
+                await never.wait()
+            finally:
+                closed.append(True)
+    def provider(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=StalledStream())
+        result = {"decisions": [{"document_id": "known", "classification": "direct", "reason": marker,
+                                 "evidence_spans": [marker]}]}
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result)}, "finish_reason": "stop"}]})
+    client = LLMClient("https://supplier.test/v1", transport=httpx.MockTransport(provider))
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 0.8
+    with pytest.raises(module.SemanticAdmissionIncomplete) as captured:
+        await module.classify_materials(client, "fixture-model", {"topic": "iPhone18系列"},
+            {"known": "iPhone18 Pro真实续航体验"}, deadline=deadline)
+    assert len(requests) == 2
+    assert [request["max_tokens"] for request in requests] == [16384, 16384]
+    assert captured.value.protocol_errors == ({"category": "evidence_not_in_document", "document_id": "known"},)
+    assert captured.value.batch_document_ids == ("known",)
+    assert captured.value.decisions == ()
+    assert marker not in json.dumps(captured.value.protocol_errors)
+    assert loop.time() < deadline
+    assert closed == [True]
+    assert not never.is_set()
