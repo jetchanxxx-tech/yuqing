@@ -209,3 +209,30 @@ async def test_candidate_rotation_preserves_every_platform_before_hundred_cap(mo
     audit = data["coverage"]["candidate_audit"]
     assert sum(row["reason"] == "candidate_budget" for row in audit) == 1
     assert sum(bool(row.get("observed_spans")) for row in audit) == 100
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_model", [
+    "glm-5.3", "GLM-5.3-Flash", "glm-5.3-flashx",
+])
+async def test_query_plan_and_relevance_set_verified_glm_thinking_low_without_reducing_output(monkeypatch, configured_model):
+    _, llm = setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro续航实际测试反馈，连续拍摄后电量仍有余量。") ]})
+    response = await post_search(accepted_request(llm_model=configured_model))
+    assert response.status_code == 200, response.text
+    assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
+    for _, kwargs in llm.calls:
+        assert kwargs.get("thinking") == {"type": "enabled"}
+        assert kwargs.get("reasoning_effort") == "low"
+        assert kwargs["max_tokens"] == 16384
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_model", ["deepseek-chat", "deepseek-reasoner", "minimax-m2.5", "custom-unverified-model", "glm-5.4-future"])
+async def test_query_other_models_receive_no_glm_thinking_options(monkeypatch, configured_model):
+    _, llm = setup_pipeline(monkeypatch, {"toutiao": [provider_candidate("toutiao", 1,
+        "iPhone18 Pro续航实际测试反馈，连续拍摄后电量仍有余量。") ]})
+    response = await post_search(accepted_request(llm_model=configured_model))
+    assert response.status_code == 200, response.text
+    assert [kwargs["usage_context"]["phase"] for _, kwargs in llm.calls] == ["plan", "relevance"]
+    assert all("thinking" not in kwargs and "reasoning_effort" not in kwargs for _, kwargs in llm.calls)
+    assert all(kwargs["max_tokens"] == 16384 for _, kwargs in llm.calls)
