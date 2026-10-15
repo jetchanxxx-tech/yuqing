@@ -97,7 +97,7 @@ export interface CandidateAudit {
   reason?: string;
   semantic_classification?: string;
   semantic_reason?: string;
-  evidence_spans?: EvidenceSpan[];
+  evidence_spans?: string[];
   observed_spans?: EvidenceSpan[];
   truncated?: boolean;
 }
@@ -126,6 +126,7 @@ export interface AnalysisStateResponse {
   stage_deadline_at?: string;
   research_question?: string;
   research_intent?: ResearchIntent | null;
+  research_intent_version?: string;
   date_from?: string;
   date_to?: string;
   error_message?: string;
@@ -154,7 +155,7 @@ export interface SentimentDoc {
   fetch_status?: string;
   fetch_reason?: string;
   date_sources?: { provider?: string; body?: string };
-  evidence_spans?: EvidenceSpan[];
+  evidence_spans?: string[];
   truncated?: boolean;
 }
 
@@ -198,6 +199,7 @@ export interface AnalysisResult {
   material_count?: number;
   context_count?: number;
   research_intent?: ResearchIntent | null;
+  research_intent_version?: string;
   insight_material_coverage?: MaterialCoverage | null;
   report_material_coverage?: MaterialCoverage | null;
   retrieval_coverage?: RetrievalCoverage | null;

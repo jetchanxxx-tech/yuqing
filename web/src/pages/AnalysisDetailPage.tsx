@@ -260,7 +260,8 @@ export default function AnalysisDetailPage() {
         </Row>
       </Card>
 
-      {(detail.research_intent || detail.retrieval_coverage?.research_intent) && (
+      {(detail.research_intent_version === 'semantic-v2' || detail.retrieval_coverage?.admission_version === 'semantic-v2')
+        && (detail.research_intent || detail.retrieval_coverage?.research_intent) && (
         <Card title="系统理解（本轮主题）" style={{ borderRadius: 16, marginBottom: 16 }}>
           <ResearchIntentView intent={(detail.research_intent || detail.retrieval_coverage?.research_intent) as ResearchIntent} />
         </Card>
@@ -556,8 +557,8 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
             {candidate.fetch_status && <div>正文补抓：{candidate.fetch_status}{candidate.fetch_reason ? ` · ${candidate.fetch_reason}` : ''}</div>}
             <div>发表时间：{candidate.published_at || '未核验'}；检索来源日期：{candidate.date_sources?.provider || '未提供'}；正文日期：{candidate.date_sources?.body || '未取得'}</div>
             <Space wrap>{publicLink(candidate.url, '检索原链接')}{candidate.final_url && publicLink(candidate.final_url, '实际到达链接')}</Space>
-            {(candidate.evidence_spans || []).map((span, index) => <blockquote key={index} style={{ margin: '6px 0', color: 'rgba(0,0,0,0.62)' }}>
-              {span.text || '已保存原文位置'} <Typography.Text type="secondary">[{span.start}:{span.end}]</Typography.Text>
+            {(candidate.evidence_spans || []).map((text, index) => <blockquote key={index} style={{ margin: '6px 0', color: 'rgba(0,0,0,0.62)' }}>
+              {text}
             </blockquote>)}
           </List.Item>} />,
       }]} />}
@@ -585,7 +586,7 @@ function MaterialList({ documents }: { documents: SentimentDoc[] }) {
       <Typography.Paragraph style={{ marginBottom: 0, fontSize: 13 }} ellipsis={{ rows: 3, expandable: 'collapsible', symbol: (expanded) => expanded ? '收起' : '展开' }}>
         {doc.content || '（该文档暂无正文）'}
       </Typography.Paragraph>
-      {(doc.evidence_spans || []).map((span, index) => <blockquote key={index} style={{ margin: '6px 0' }}>{span.text || '已保存原文位置'} [{span.start}:{span.end}]</blockquote>)}
+      {(doc.evidence_spans || []).map((text, index) => <blockquote key={index} style={{ margin: '6px 0' }}>{text}</blockquote>)}
     </>} />
   </List.Item>} />;
 }
