@@ -426,3 +426,18 @@ chmod 755 /opt/yuqing /opt/yuqing/web /opt/yuqing/web/dist   # ⚠️ 坑：home
 - 固定 GitHub 提交 SHA、工作流 run ID 和构建产物哈希，分别核对线上二进制、前端及引擎源码；`/health` 返回 200 只表示服务可用，不等于分析/导出端到端验收通过。
 
 **部署后复核（2026-09-22 全通过）**：8 服务全 active；goose_db_version=7（0001-0007 全 applied）；users 六新列 + 三新表在位；/api/v1/health 200；`PUT /auth/password`、`GET /user/profile` 未带 token → 401；`GET /auth/verify-email` 缺 token → 400（非 404）；server 近 1 小时日志零 error/panic。二进制 md5（与本地构建产物一致）：server `fc710f0b7b4a3c2ab6ce891097322b46`、worker `32780f6387227f7875b9422196b45183`、cli `e3cc2a846fe4701504f4f3cbed4da12a`。
+
+
+## 11. 语义检索与正文补抓升级（0.2.8，发布门禁尚待通过）
+
+本节覆盖旧章节中的 query 180 秒、insight/report 420 秒及浏览器现场下载建议；它是操作要求，不是已经部署的证明。正式部署仍必须使用 reviewed dev→prod 后精确 prod SHA 的全通过制品。
+
+- 核对 package 内 `BUILD_COMMIT`、`SHA256SUMS`、`browser-runtime/RUNTIME.json`；浏览器固定 Scrapling 0.4.15 / Playwright 1.63.0，运行时由 hosted runner 准备。服务器不执行 `playwright install`、构建、编译或网络补包；缺 wheel/二进制/浏览器时终止。
+- 先在独立 staging 目录校验 Chromium `ldd` 与 yuqing 服务账户实际启动；Ubuntu fixture 成功不代表 CentOS 已通过。预构建 wheel 只允许离线 `--no-index --no-deps --only-binary=:all:` 安装，现有依赖不符合时回 hosted runner 准备产物。
+- `PLAYWRIGHT_BROWSERS_PATH` 指向本次已验证 browser-runtime；各 Python 引擎共享真实 `YUQING_BILLING_URL` 和私密 `YUQING_BILLING_SERVICE_TOKEN`，各 outbox 持久目录归服务账户并保留待结算事件。query 也必须启用用量 drainer。
+- 显式配置 `YUQING_MODEL_CAPABILITIES_JSON`。2026-10-15 官方文档 https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash 列出 GLM-5.3-Flash 的 1M 上下文、128K 最大输出；可用保守的十进制上限 `{"glm-5.3-flash":{"context_tokens":1000000,"max_output_tokens":128000}}`，并记录真实 accepted-run 的 16384/32768 参数探针、JSON/streaming/推理用量结果。此配置不替代真实探针；改模型需重新核验，未登记模型必须失败，不能静默降低输出预算。
+- Python query/insight/report 阶段预算分别 900/1200/600 秒，Go transport 至少 960/1260/660 秒；总任务最长 2760 秒。核对已有 config timeout 不覆盖新预算，UI 显示实际阶段/已用时/上限。
+- 先保存旧 source/binaries/web/config 与旧浏览器运行时；切维护并停止全部写入服务、确认无活动写入后，才生成最终 PG 备份及校验哈希。此前热备份只作迁移演练，不能当最终回滚数据。先在独立恢复库执行同一 SHA CLI 的 0029 迁移、检查候选材料/审计/run 快照及现有财务约束。不得在生产执行破坏式 down。
+- 正式迁移先于启动新 server/worker；先安装所有哈希前端资源，最后原子替换 index.html。保留旧哈希资源和回滚包。服务探针为 `/api/v1/health`，不是 `/health`。
+- 启动后用专用普通测试任务完成真实 Bocha→分平台正文→LLM semantic-v2→完整报告对账；核对 direct/context、每平台最终采纳计数、原文位置、elapsed/deadline、实际 provider usage 与失败退款。健康返回 200 不能代替此验收。不得重跑历史用户任务或以 admin UID 豁免规避正常用量。
+- 检查失败则停止新服务并恢复已核验的旧 release/config；数据库处理遵守最终备份与注销墓碑恢复规则，不能覆盖新写入或重建旧凭据。保留失败制品和诊断证据。

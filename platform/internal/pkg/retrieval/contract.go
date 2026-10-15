@@ -76,7 +76,11 @@ func (c *Coverage) UnmarshalJSON(raw []byte) error {
 	for key := range keys {
 		delete(all, key)
 	}
-	decoded.Extra = all
+	// An object with no extension fields keeps the zero value. This preserves
+	// historical lexical records across PostgreSQL JSONB reconstruction.
+	if len(all) > 0 {
+		decoded.Extra = all
+	}
 	*c = Coverage(decoded)
 	return nil
 }
