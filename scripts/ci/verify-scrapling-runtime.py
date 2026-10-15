@@ -131,6 +131,7 @@ def main():
             assert redirect["status"] == "failed" and redirect["reason"] in {"unsafe_destination", "unsafe_redirect"}, redirect
         cleanup = asyncio.run(cancellation_probe(server.server_port))
         result = {"scrapling": "0.4.15", "static": "passed", "browser_javascript": "passed",
+                  "browser_async_article": {"initial_article": "empty", "load_event_delay_ms": 1200, "content_assertion": "passed"},
                   "loopback_subresource_hits": Handler.forbidden_hits, "private_redirect": "blocked",
                   "browser_cancellation": cleanup,
                   "static_content_sha256": hashlib.sha256(static["content"].encode()).hexdigest(),

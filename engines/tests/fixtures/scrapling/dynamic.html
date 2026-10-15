@@ -1,1 +1,15 @@
-<!doctype html><html><head><title>iPhone18 Pro动态正文</title></head><body><nav>导航推荐</nav><main><article id="article"></article></main><script>document.querySelector('#article').innerHTML='<p>iPhone 18 Pro动态正文已加载，用户描述了续航和拍摄体验。</p>';</script></body></html>
+<!doctype html>
+<html>
+<head><title>iPhone18 Pro异步动态正文</title></head>
+<body>
+  <nav>导航推荐</nav>
+  <main><article id="article"></article></main>
+  <script>
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        document.querySelector('#article').innerHTML = '<p>iPhone 18 Pro动态正文已加载，用户描述了续航和拍摄体验。</p>';
+      }, 1200);
+    });
+  </script>
+</body>
+</html>
