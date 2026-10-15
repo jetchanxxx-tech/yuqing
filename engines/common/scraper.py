@@ -102,9 +102,10 @@ class PageScraper:
                                 max_per_source: int = 5, bocha_key: str = "",
                                 coverage: dict | None = None,
                                 date_from: str = "", date_to: str = "") -> list[ScrapedDocument]:
-        """Search via Bocha API → fetch each URL via Scrapling → dedup.
+        """Search Bocha, admit summary/snippet excerpts, then deduplicate.
 
-        Falls back to preset test URLs if Bocha key is not available.
+        The query HTTP entrypoint requires a real Bocha key. This path does
+        not call fetch() or retrieve full articles, videos, or comments.
         """
         results: list[ScrapedDocument] = []
         seen_hashes: set[str] = set()
@@ -117,9 +118,14 @@ class PageScraper:
         if key:
             # 有 key 时 Bocha 失败必须抛错 —— 绝不静默降级为空/假数据
             #（生产上 key 失效若静默，会产出「看起来成功」的假报告）
-            include = "|".join(dict.fromkeys(
-                domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
-            ))
+            # News already searches across domains. A mixed selection is a
+            # union: social domains must not exclude its news candidates.
+            # The selected-source check below still applies to every result.
+            include = ""
+            if "news" not in sources:
+                include = "|".join(dict.fromkeys(
+                    domain for source in sources for domain in SOURCE_DOMAINS.get(source, ())
+                ))
             options = {"include": include, "count": min(50, max(20, max_per_source * 2))}
             # Only closed windows use the provider's documented syntax. Older
             # one-sided requests keep their existing local bound semantics.

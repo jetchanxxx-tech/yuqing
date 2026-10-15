@@ -1,4 +1,4 @@
-"""Query Engine — Bocha AI search + Scrapling content fetching."""
+"""Query Engine — Bocha web search excerpts with source/date admission."""
 from datetime import date, datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -56,7 +56,7 @@ async def health():
 
 @app.post("/search")
 async def search(req: SearchRequest) -> SearchResponse:
-    """抓取后按原文和可核验的发布日期筛选，再返回可入库的原文。"""
+    """按所选来源、关键词和可核验的发布日期筛选博查网页摘要。"""
     bocha_key = req.bocha_api_key or DEFAULT_BOCHA_KEY
     if not bocha_key:
         raise HTTPException(status_code=503, detail="Bocha API key required; preset test URLs are not real sources")
