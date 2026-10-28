@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import sys
@@ -149,7 +150,7 @@ def main():
             check('empty report list is a non-null array', response.status_code == 200 and response.json()['reports'] == [])
             response = api('GET', '/reports/not-existing', token)
             check('unknown report is 404', response.status_code == 404, status=response.status_code)
-            analysis_id, html_id, word_id, v2_id = uid(), uid(), uid(), uid()
+            analysis_id, html_id, word_id, md_id, pdf_id, v2_id = uid(), uid(), uid(), uid(), uid(), uid()
             docs = [{'id': 'audit-direct-01', 'title': '系列续航实测', 'content': '新品续航反馈：长途录像仍有电。',
                      'source_type': 'toutiao', 'source_name': '今日头条',
                      'url': 'https://www.toutiao.com/article/123/', 'final_url': 'https://www.toutiao.com/article/123/',
@@ -180,6 +181,8 @@ def main():
                     (report_id, tenant_id, analysis_id, format, 'reports/' + report_id + '.' + format, user_id, version))
 
             add_report(html_id, 'html', 1)
+            add_report(md_id, 'markdown', 2)
+            add_report(pdf_id, 'pdf', 3)
             response = api('GET', '/reports/' + html_id + '/download?format=html', token)
             check('HTML download returns exact stored content', response.status_code == 200 and response.content == v1.encode(),
                   status=response.status_code, content_type=response.headers.get('Content-Type'))
@@ -193,18 +196,21 @@ def main():
 
             # A rerun mutates analyses.report_content and keeps the older report row.
             sql('UPDATE analyses SET report_content=%s WHERE id=%s', (v2, analysis_id))
-            add_report(v2_id, 'html', 2)
+            add_report(v2_id, 'html', 4)
             response = api('GET', '/reports/' + html_id + '/download?format=html', token)
             (EVIDENCE / 'v1-after-rerun.html').write_bytes(response.content)
             check('historical report id preserves its first snapshot', response.status_code == 200 and response.content == v1.encode(),
                   status=response.status_code, returned_v2=response.content == v2.encode())
 
-            # Only disposable runner fixtures are assigned Pro; no payments are asserted.
+            # The ReportHistoryPage advertises these format actions for every row.
+            # Preserve the observed HTTP statuses as product acceptance evidence.
             sql("UPDATE report_credits SET plan_code='pro',plan_source='manual' WHERE tenant_id=%s", (tenant_id,))
-            response = api('GET', '/reports/' + v2_id + '/download?format=docx', token)
-            check('Pro HTML report can be exported as Word from the UI action', response.status_code == 200,
-                  status=response.status_code, body=response.text[:500])
-            # Seed the native Word row to inspect the otherwise unreachable transport.
+            for fmt, report_id in [('md', html_id), ('pdf', html_id), ('docx', html_id)]:
+                response = api('GET', '/reports/' + report_id + '/download?format=' + fmt, token)
+                check('ReportHistoryPage advertised export is actionable: ' + fmt, response.status_code == 200,
+                      status=response.status_code, envelope=response.json() if response.headers.get('Content-Type','').startswith('application/json') else {})
+            # The user-facing report center advertises Word. Seed a matching row
+            # to trace the native Go -> Python stream path and its actual JSON.
             add_report(word_id, 'docx', 3)
             response = api('GET', '/reports/' + word_id + '/download?format=docx', token)
             valid_zip = response.status_code == 200 and zipfile.is_zipfile(io.BytesIO(response.content))
