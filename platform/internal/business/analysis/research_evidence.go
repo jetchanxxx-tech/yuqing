@@ -37,6 +37,43 @@ type RetrievalAuditRequest struct {
 	Coverage *RetrievalCoverage `json:"coverage"`
 }
 
+type RunCheckRequest struct {
+	RunID    string `json:"run_id"`
+	TenantID string `json:"tenant_id"`
+}
+
+// CheckActiveRun is authorization, unlike the append-only evidence checkpoint.
+// It rejects stale/canceled runs and rechecks current actor authority.
+func (s *Service) CheckActiveRun(ctx context.Context, analysisID string, req RunCheckRequest) error {
+	pg, ok := s.store.(*pgStore)
+	if !ok {
+		return pkgerrors.ErrServiceUnavailable
+	}
+	if req.RunID == "" || req.TenantID == "" {
+		return pkgerrors.ErrBadRequest
+	}
+	tx, err := pg.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	var actorID, keyID, state string
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(actor_user_id,''),COALESCE(actor_api_key_id,''),state FROM analysis_runs WHERE id=$1 AND tenant_id=$2 AND analysis_id=$3`, req.RunID, req.TenantID, analysisID).Scan(&actorID, &keyID, &state); err != nil {
+		return notFoundOrInternal(err, "analysis run not found")
+	}
+	if err = billingpolicy.CheckActorTx(ctx, tx, req.TenantID, billingpolicy.Actor{UserID: actorID, APIKeyID: keyID, Permission: "analyses:create"}); err != nil {
+		return err
+	}
+	var current, analysisState string
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(current_run_id,''),state FROM analyses WHERE id=$1 AND tenant_id=$2 FOR SHARE`, analysisID, req.TenantID).Scan(&current, &analysisState); err != nil {
+		return notFoundOrInternal(err, "analysis not found")
+	}
+	if current != req.RunID || state != "fetching" || analysisState != "fetching" {
+		return pkgerrors.ErrConflict
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Service) SaveResearchIntent(ctx context.Context, analysisID string, req ResearchIntentRequest) (ResearchIntentResult, error) {
 	result := ResearchIntentResult{}
 	pg, ok := s.store.(*pgStore)

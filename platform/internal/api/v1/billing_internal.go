@@ -108,6 +108,17 @@ func RegisterInternalBillingRoutes(router *gin.Engine, s *Services) {
 		c.JSON(status, gin.H{"committed": true, "duplicate": duplicate})
 	})
 	analyses := router.Group("/internal/v1/analyses", authenticate)
+	analyses.POST("/:id/run-check", func(c *gin.Context) {
+		var req analysis.RunCheckRequest
+		if !decode(c, &req) {
+			return
+		}
+		if err := s.Analysis.CheckActiveRun(c.Request.Context(), c.Param("id"), req); err != nil {
+			respondError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"active": true, "run_id": req.RunID})
+	})
 	decodeEvidence := func(c *gin.Context, dst any, limit int64) bool {
 		decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, limit))
 		decoder.DisallowUnknownFields()

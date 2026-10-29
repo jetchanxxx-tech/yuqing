@@ -119,6 +119,14 @@ def _parse(payload, kind):
         return [{"url": str(item.get("Url") or ""), "title": str(item.get("Title") or ""),
                  "published_at": _date(item.get("PublishTime"))} for item in items if isinstance(item, dict)]
     if kind in {"rss", "rsshub"}:
+        if payload.lstrip().startswith("{"):
+            value = json.loads(payload)
+            if not isinstance(value.get("items"), list):
+                raise ValueError("invalid JSON feed response")
+            return [{"url": str(item.get("url") or item.get("external_url") or ""),
+                "title": str(item.get("title") or "")[:1000],
+                "summary": clean_fragment(item.get("content_html") or item.get("content_text") or item.get("summary") or "")[:200_000],
+                "published_at": _date(item.get("date_published"))} for item in value["items"] if isinstance(item, dict)]
         if re.search(r"<!\s*(?:DOCTYPE|ENTITY)", payload, re.I):
             raise ValueError("unsafe feed declarations")
         root = ET.fromstring(payload)
@@ -178,12 +186,16 @@ async def _read_page(url, kind, *, deadline, transport=None):
 async def discover_public(*, keywords, sources, deadline=None, max_pages=60, before_page=None, transport=None):
     deadline = deadline or asyncio.get_running_loop().time() + 90
     channels, candidates, seen, pages = [], [], set(), 0
-    queues = {source: list(PUBLIC_ENTRIES.get(source, [])) + _rsshub_entries(source, keywords) for source in sources}
+    queues = {source: [(kind, url, []) for kind, url in list(PUBLIC_ENTRIES.get(source, [])) + _rsshub_entries(source, keywords)] for source in sources}
+    visited_pages = set()
     while any(queues.values()) and pages < min(60, max_pages) and asyncio.get_running_loop().time() < deadline:
         for source in sources:
             if not queues[source] or pages >= min(60, max_pages):
                 continue
-            kind, entry = queues[source].pop(0)
+            kind, entry, ancestors = queues[source].pop(0)
+            if entry in visited_pages:
+                continue
+            visited_pages.add(entry)
             channel = {"source": source, "channel": "local_discovery", "entry_url": entry, "status": "failed",
                 "discovered_count": 0, "body_count": 0, "summary_count": 0, "accepted_count": 0, "failed_count": 0, "reason": ""}
             channels.append(channel)
@@ -199,20 +211,30 @@ async def discover_public(*, keywords, sources, deadline=None, max_pages=60, bef
                     url = urljoin(entry, item.get("url", ""))
                     if not is_public_http_url(url) or _classify_by_domain(url) != source:
                         continue
+                    path = urlsplit(url).path
+                    is_social_list = (source == "toutiao" and path.startswith("/trending/")) or (
+                        source == "weibo" and (path.startswith("/search") or path.startswith("/p/")))
+                    chain = ancestors + [{"channel": "local_discovery", "entry_url": entry,
+                        "adapter": kind, "observed_at": datetime.now(timezone.utc).isoformat()}]
+                    if is_social_list:
+                        if len(ancestors) < 2:
+                            queues[source].append(("html", url, chain))
+                        continue
                     if item.get("next_page"):
                         if kind != "rsshub" and urlsplit(url).hostname == urlsplit(entry).hostname:
-                            queues[source].append((kind, url))
+                            queues[source].append((kind, url, chain))
                         continue
                     # Article-shaped links only; navigation never becomes material.
-                    if kind == "html" and not re.search(r"(?:newsDetail_forward_|/article/|\.s?html(?:\?|$))", url):
+                    article = re.search(r"(?:newsDetail_forward_|/article/|\.s?html(?:\?|$))", url)
+                    social_post = source == "weibo" and re.search(r"^/(?:detail/|status/|[0-9]{5,}/)[A-Za-z0-9]+/?$", path)
+                    if kind == "html" and not article and not social_post:
                         continue
                     if url in seen:
                         continue
                     seen.add(url)
                     channel["discovered_count"] += 1
                     candidates.append({**item, "url": url, "source_type": source, "requested_source": source,
-                        "discovery_channel": "local_discovery", "discovery_chain": [{"channel": "local_discovery", "entry_url": entry,
-                            "adapter": kind, "observed_at": datetime.now(timezone.utc).isoformat()}]})
+                        "discovery_channel": "local_discovery", "discovery_chain": chain})
                     if len(candidates) >= 300:
                         break
                 channel["status"] = "ok"

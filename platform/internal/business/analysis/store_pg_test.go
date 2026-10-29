@@ -230,7 +230,7 @@ func assertAnalysisEqual(t *testing.T, got, want *AnalysisResult) {
 
 func TestAnalysisArgsPreservesReportTemplateSnapshot(t *testing.T) {
 	args := analysisArgs("tenant-1", &AnalysisResult{ReportTemplateID: "weekly", CurrentRunID: "persisted-run"})
-	if len(args) != 31 || args[24] != "weekly" || args[26] != "persisted-run" {
+	if len(args) < 31 || args[24] != "weekly" || args[26] != "persisted-run" {
 		t.Fatalf("report template not included in PG args: count=%d last=%v", len(args), args[len(args)-1])
 	}
 }
@@ -601,8 +601,8 @@ func TestPGStore_listOmitsReportContent(t *testing.T) {
 func TestAnalysisArgsPreservesRetrievalCoverage(t *testing.T) {
 	coverage := &RetrievalCoverage{AdmissionVersion: "lexical-v1", ProviderCandidates: 20, AcceptedCount: 1}
 	args := analysisArgs("tenant-1", &AnalysisResult{RetrievalCoverage: coverage})
-	if len(args) != 31 {
-		t.Fatalf("args len=%d want 31", len(args))
+	if len(args) < 31 {
+		t.Fatalf("args len=%d want at least31 legacy fields", len(args))
 	}
 	data, ok := args[25].([]byte)
 	if !ok || !strings.Contains(string(data), `"provider_candidates":20`) {

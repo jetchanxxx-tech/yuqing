@@ -63,6 +63,9 @@ func TestResilientPGResumeAcceptsNewChargedRunAndPreservesOldSnapshot(t *testing
 	e := newBillingActorPGEnv(t)
 	token, _, account := mustRegister(t, e.router, "resume@example.invalid", "Resume")
 	tid := account["tenant_id"].(string)
+	if _, err := e.pool.Exec(context.Background(), `UPDATE report_credits SET balance=0 WHERE tenant_id=$1`, tid); err != nil {
+		t.Fatal(err)
+	}
 	if err := e.deps.Credits.GrantPurchase(context.Background(), tid, "resume-seed", 2); err != nil {
 		t.Fatal(err)
 	}

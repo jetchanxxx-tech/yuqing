@@ -265,3 +265,15 @@ func deterministicDelivery(a *AnalysisResult, level string, reasons []string, do
 	b.WriteString("</body></html>")
 	return b.String()
 }
+
+func (s *Service) saveInsightSnapshot(ctx context.Context, msg TaskMessage, insight InsightResult) error {
+	pg, ok := s.store.(*pgStore)
+	if !ok {
+		return s.SetInsight(ctx, msg.TenantID, msg.AnalysisID, insight)
+	}
+	tag, err := pg.pool.Exec(ctx, `UPDATE analysis_runs r SET insight_snapshot=$4 FROM analyses a WHERE r.id=$1 AND r.tenant_id=$2 AND r.analysis_id=$3 AND a.id=r.analysis_id AND a.tenant_id=r.tenant_id AND a.current_run_id=r.id AND a.state NOT IN ('completed','failed','canceled')`, msg.RunID, msg.TenantID, msg.AnalysisID, marshalJSON(insight))
+	if err == nil && tag.RowsAffected() != 1 {
+		return pkgerrors.ErrConflict
+	}
+	return err
+}

@@ -118,9 +118,8 @@ class MaterialCoverage:
             return
         entry = self.phases[phase]
         expected = {span_key(s) for s in entry["expected"]}
-        for span in old.get("read_spans", []):
-            if isinstance(span, dict) and span_key(span) in expected and span not in entry["read_spans"]:
-                entry["read_spans"].append(dict(span))
+        # Read marks are restored by the caller only after validating the
+        # matching cached component. Metadata alone cannot prove consumption.
         for span in old.get("unprocessed", []):
             if isinstance(span, dict) and span_key(span) in expected:
                 entry["failures"][(span["document_id"], span["start"], span["end"])] = {

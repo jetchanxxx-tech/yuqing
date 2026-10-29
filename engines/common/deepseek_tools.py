@@ -82,7 +82,14 @@ class DeepSeekTools:
                     else:
                         with guarded_proxy() as (proxy, _guard):
                             result = await send(proxy)
-                count = len(result.get("results", [])) if operation == "search" and isinstance(result.get("results"), list) else int(bool(result.get("content"))) if operation == "fetch" else 0
+                if operation == "search":
+                    if not isinstance(result.get("results"), list):
+                        raise ValueError("tool search missing results")
+                    count = len(result["results"])
+                else:
+                    if not isinstance(result.get("content"), str):
+                        raise ValueError("tool fetch missing content")
+                    count = int(bool(result["content"].strip()))
                 event.update(outcome="provider_response", usage_status="reported", result_count=count,
                              provider_request_id=str(result.get("id") or event["provider_request_id"])[:200])
             except BaseException:

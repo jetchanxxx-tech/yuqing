@@ -198,8 +198,12 @@ _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
   "data_points": ["【数据】每条须含具体数字或比例，如「4 篇文档中 3 篇来自微博」"],
   "quotes": [{{"document_id": "素材中的真实文档id", "unit_id": "对应source_units.id"}}],
   "deep_read": "【深入解读】这一维度说明了什么，不少于 100 字，不得重复 findings",
-  "trend": "【趋势】接下来会怎么走，依据是什么"
+  "trend": "【趋势】接下来会怎么走，依据是什么",
+  "recommendations": [{{"stage":"执行阶段或核验阶段", "action":"本批材料实际支持的具体行动", "rationale":"说明本批哪项发现或证据支持此行动"}}]
 }}
+
+建议仅来自本批已核验材料；至少在深层原因维度给出证据支持的具体行动与依据。
+证据不足时如实返回空 recommendations，不能用通用公关建议补齐，也不能断言未分析过的风险或趋势。
 
 【内容密度硬指标】输出前逐条自查：
 [ ] findings 是否不少于 150 字？
@@ -352,6 +356,12 @@ def _str_list(value) -> list[str]:
     return []
 
 
+def _recommendations(value):
+    return [{key: row[key].strip() for key in ("stage", "action", "rationale")}
+            for row in value if isinstance(row, dict) and all(isinstance(row.get(key), str) and row[key].strip()
+                for key in ("stage", "action", "rationale"))] if isinstance(value, list) else []
+
+
 def _quote_list(value) -> list[dict]:
     """Preserve provenance; malformed shapes fail the dimension, never vanish silently."""
     if value is not None and not isinstance(value, list):
@@ -491,6 +501,7 @@ async def _analyze_one_dimension(
         "quote_locations": locations,
         "deep_read": str(data.get("deep_read", "")),
         "trend": str(data.get("trend", "")),
+        "recommendations": _recommendations(data.get("recommendations")),
     }
 
 
@@ -538,6 +549,8 @@ def _dimension_compilation(spec, pieces, expected, *, resilient=False):
             "quote_locations": [value for p in pieces for value in p.get("quote_locations", [])],
             "deep_read": "\n\n".join(f"【{batch_label} {i}】{p['deep_read']}" for i, p in enumerate(pieces, 1)),
             "trend": "\n".join(dict.fromkeys(p["trend"] for p in pieces)),
+            "recommendations": [json.loads(row) for row in dict.fromkeys(
+                json.dumps(row, ensure_ascii=False, sort_keys=True) for p in pieces for row in p.get("recommendations", []))],
         }
     if resilient:
         result["complete"] = len(pieces) == expected
@@ -836,7 +849,10 @@ def _insight_delivery(req, coverage, sentiments, dimensions, summary):
     classification_complete = phase_complete(coverage, "classification", req.documents)
     if not classification_complete:
         reasons.append(f"情感分类实际覆盖 {len(sentiments)}/{len(req.documents)} 篇直接材料；其余保持未知")
-    if len(urls) >= 2 and expected == complete and classification_complete and summary:
+    recommendations_complete = any(d.get("id") in complete and _recommendations(d.get("recommendations")) for d in dimensions)
+    if not recommendations_complete:
+        reasons.append("尚无完整核验分项产出的具体行动建议与依据")
+    if len(urls) >= 2 and expected == complete and classification_complete and summary and recommendations_complete:
         return "full", []
     if len(urls) >= 2 and (complete or sentiments):
         return "limited", reasons
@@ -1000,7 +1016,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                for phase in coverage.result()["phases"]):
             raise LLMContentRejected()
         notes = "" if cached_summary else json.dumps([{k: v for k, v in d.items()
-            if k in ("name", "findings", "trend", "data_points", "quotes") or req.resilient and k in ("scope_notice", "complete")}
+            if k in ("name", "findings", "trend", "data_points", "quotes", "recommendations") or req.resilient and k in ("scope_notice", "complete")}
             for d in dimensions], ensure_ascii=False)
         counts = {label: sum(s.get("sentiment") == label for s in sentiments) for label in ("positive", "negative", "neutral")}
 

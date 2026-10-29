@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -409,6 +410,9 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string, actors
 				fmt.Sprintf("only terminal analyses can be rerun, current state is %s", a.State))
 		}
 		resetForRerun(a)
+		if a.DeliveryPolicy == "" && os.Getenv("YUQING_RESILIENT_DELIVERY") == "1" {
+			a.DeliveryPolicy = "best_available"
+		}
 		return nil
 	})
 	if err != nil {

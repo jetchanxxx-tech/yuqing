@@ -143,6 +143,10 @@ func (p *Pipeline) handleResilient(ctx context.Context, msg TaskMessage, a *Anal
 	mode := p.modeForTenant(msg.TenantID)
 	full := completeVerifiedInsight(insight, direct, background, mode)
 	insight = verifiedPartialInsight(insight, direct, background)
+	full = full && completeVerifiedInsight(insight, direct, background, mode)
+	if err := p.svc.saveInsightSnapshot(ctx, msg, insight); err != nil {
+		return p.fail(ctx, msg, "insight_snapshot_failed", err)
+	}
 	level := "empty"
 	if len(docs) > 0 {
 		level = "brief"
@@ -263,6 +267,13 @@ func completeVerifiedInsight(ins InsightResult, direct, background []Document, m
 			return false
 		}
 		byID[d.ID] = d
+
+	}
+	for _, name := range expectedDimensions(mode) {
+		d, ok := byID[name]
+		if !ok || !d.Complete || d.Findings == "" || d.DeepRead == "" || len(d.Quotes) == 0 || !completePhase(ins.MaterialCoverage, "dimension:"+name, all) {
+			return false
+		}
 		for _, r := range d.Recommendations {
 			stage, _ := r["stage"].(string)
 			action, _ := r["action"].(string)
@@ -270,12 +281,6 @@ func completeVerifiedInsight(ins InsightResult, direct, background []Document, m
 			if strings.TrimSpace(stage) != "" && strings.TrimSpace(action) != "" && strings.TrimSpace(rationale) != "" {
 				recommendation = true
 			}
-		}
-	}
-	for _, name := range expectedDimensions(mode) {
-		d, ok := byID[name]
-		if !ok || !d.Complete || d.Findings == "" || d.DeepRead == "" || len(d.Quotes) == 0 || !completePhase(ins.MaterialCoverage, "dimension:"+name, all) {
-			return false
 		}
 	}
 	if !recommendation {
@@ -316,7 +321,7 @@ func verifiedPartialInsight(ins InsightResult, direct, background []Document) In
 		for _, q := range dim.Quotes {
 			d, ok := all[q.DocumentID]
 			text := retrieval.NormalizeQuote(q.Text)
-			if !ok || text == "" || q.Source == "" || (!strings.Contains(retrieval.NormalizeQuote(d.Content), text) && !strings.Contains(retrieval.NormalizeQuote(d.Title), text)) || (q.Source != d.SourceType && q.Source != d.SourceName && q.Source != retrieval.SourceLabel(d.SourceType)) {
+			if !ok || text == "" || q.Source == "" || d.ContentKind == "summary" || d.ContentKind == "snippet" || !quoteInReadSpans(dim, q, d, ins.MaterialCoverage) || (!strings.Contains(retrieval.NormalizeQuote(d.Content), text) && !strings.Contains(retrieval.NormalizeQuote(d.Title), text)) || (q.Source != d.SourceType && q.Source != d.SourceName && q.Source != retrieval.SourceLabel(d.SourceType)) {
 				valid = false
 			}
 		}
@@ -343,7 +348,7 @@ func verifiedPartialInsight(ins InsightResult, direct, background []Document) In
 	if topicsGrounded(ins.Topics, direct) && len(out.Sentiments) == len(direct) {
 		out.Topics = ins.Topics
 	}
-	if len(out.Dimensions) == len(ins.Dimensions) && len(out.Sentiments) == len(direct) {
+	if len(out.Dimensions) == len(ins.Dimensions) && len(out.Sentiments) == len(direct) && phaseCoverage(ins.MaterialCoverage, "summary") != nil {
 		out.Summary = ins.Summary
 	}
 	return out
@@ -416,4 +421,34 @@ func (p *Pipeline) saveResilientCoverage(ctx context.Context, msg TaskMessage, c
 		return nil
 	}
 	return p.svc.setMaterialCoverage(ctx, msg, stage, value)
+}
+
+func quoteInReadSpans(dim Dimension, q Quote, d Document, coverage map[string]any) bool {
+	phase := phaseCoverage(coverage, "dimension:"+dim.ID)
+	spans, _ := phase["read_spans"].([]any)
+	for _, raw := range spans {
+		span, ok := raw.(map[string]any)
+		if !ok || span["document_id"] != d.ID {
+			continue
+		}
+		number := func(value any) int {
+			switch n := value.(type) {
+			case float64:
+				return int(n)
+			case int:
+				return n
+			}
+			return -1
+		}
+		start, end := number(span["start"]), number(span["end"])
+		content := []rune(d.Content)
+		if start < 0 || end <= start || end > len(content) {
+			continue
+		}
+		text := retrieval.NormalizeQuote(q.Text)
+		if strings.Contains(retrieval.NormalizeQuote(string(content[start:end])), text) || strings.Contains(retrieval.NormalizeQuote(d.Title), text) {
+			return true
+		}
+	}
+	return false
 }

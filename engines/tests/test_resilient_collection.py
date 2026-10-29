@@ -69,6 +69,7 @@ async def test_resilient_missing_model_keeps_hard_filtered_raw_materials_as_unce
     monkeypatch.setattr(query, "discover_public", discover)
     monkeypatch.setattr(query, "get_scraper", lambda: LocalScraper())
     monkeypatch.setattr(query, "persist_candidate_audit", checkpoint)
+    monkeypatch.setattr(query, "authorize_collection_run", lambda _req: checkpoint(_req, {"phase": "authorized"}))
     monkeypatch.setattr(query, "build_client", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("missing model must not be called")))
     req = query.SearchRequest(analysis_id="analysis", run_id="run", resilient=True, keywords=["手机"], sources=["news"], date_from="2026-10-30", date_to="2026-10-30", exclude_words=["推广"])
     query._validate(req)
@@ -185,6 +186,7 @@ async def test_independent_candidates_keep_reserved_slots_and_resume_reuses_vers
     monkeypatch.setattr(query, "discover_public", discover)
     monkeypatch.setattr(query, "get_scraper", lambda: scraper)
     monkeypatch.setattr(query, "persist_candidate_audit", checkpoint)
+    monkeypatch.setattr(query, "authorize_collection_run", checkpoint)
     response = await query._execute(query.SearchRequest(analysis_id="analysis", run_id="new-run", resilient=True,
         keywords=["手机"], sources=["news"], bocha_api_key="sandbox-key", search_provider="bocha",
         retained_candidates=[{"url": "https://www.chinanews.com.cn/cj/retained.shtml", "source_type": "news", "title": "已保存资料",
@@ -214,3 +216,14 @@ async def test_social_trending_page_is_discovery_step_and_never_article_material
     assert [row["url"] for row in result["candidates"]] == ["https://www.toutiao.com/article/760003/"]
     assert result["pages_visited"] == 2
     assert len(result["candidates"][0]["discovery_chain"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_toutiao_fixed_top_board_article_is_not_lost():
+    from engines.common.discovery import discover_public
+
+    def public_network(_request):
+        return httpx.Response(200, json={"data": [], "fixed_top_data": [{"Title": "公开置顶文章", "Url": "https://www.toutiao.com/article/7702023532879839784/"}]})
+
+    result = await discover_public(keywords=["手机"], sources=["toutiao"], transport=httpx.MockTransport(public_network))
+    assert [row["url"] for row in result["candidates"]] == ["https://www.toutiao.com/article/7702023532879839784/"]

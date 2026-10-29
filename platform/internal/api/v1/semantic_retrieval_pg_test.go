@@ -183,6 +183,13 @@ func TestSemanticPGForwardMigrationCanRollbackReapplyAndReconstruct(t *testing.T
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
+	// Rehearse migration0029 against its own dependency boundary. Migration0031
+	// adds a retained tool ledger foreign key and is intentionally irreversible;
+	// this isolated transaction removes only its empty-test dependency before the
+	// older0029 down/up rehearsal, then rolls the entire experiment back.
+	if _, err = tx.Exec(ctx, `DROP TABLE tool_usage_events; DROP TABLE tool_call_authorizations`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = tx.Exec(ctx, parts[1]); err != nil {
 		t.Fatalf("rollback migration: %v", err)
 	}

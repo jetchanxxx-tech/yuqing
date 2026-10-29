@@ -179,6 +179,9 @@ def _dimensions_text(dimensions: list[dict]) -> str:
             lines.append(f"数据：{dp}")
         if d.get("trend"):
             lines.append(f"趋势：{d.get('trend')}")
+        for recommendation in d.get("recommendations", []) if isinstance(d.get("recommendations"), list) else []:
+            if isinstance(recommendation, dict):
+                lines.append(f"建议：{recommendation.get('stage', '')} · {recommendation.get('action', '')}；依据：{recommendation.get('rationale', '')}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts) if parts else "（无维度结论）"
 
@@ -334,6 +337,19 @@ def _expected_dimensions(req):
     return ["heat", "sentiment", "deep_cause"] if req.mode == "quick" else ["background", "heat", "sentiment", "group", "deep_cause"]
 
 
+def _verified_recommendations(dimensions):
+    result = []
+    for dimension in dimensions:
+        if dimension.get("complete", True) is False:
+            continue
+        for row in dimension.get("recommendations", []) if isinstance(dimension.get("recommendations"), list) else []:
+            if isinstance(row, dict) and all(isinstance(row.get(key), str) and row[key].strip() for key in ("stage", "action", "rationale")):
+                recommendation = {key: row[key].strip() for key in ("stage", "action", "rationale")}
+                if recommendation not in result:
+                    result.append(recommendation)
+    return result
+
+
 def _classified_ids(req):
     phase = next((p for p in req.insight_material_coverage.get("phases", [])
                   if isinstance(p, dict) and p.get("phase") == "classification"), {})
@@ -367,6 +383,7 @@ def _prepare_resilient_delivery(req):
             continue
         seen_dimensions.add(raw["id"])
         dimension = copy.deepcopy(raw)
+        dimension["recommendations"] = _verified_recommendations([{**dimension, "complete": True}])
         quotes, locations = [], []
         unsafe = not isinstance(dimension.get("quotes", []), list)
         for quote in dimension.get("quotes", []) if not unsafe else []:
@@ -412,7 +429,10 @@ def _prepare_resilient_delivery(req):
             summary_phase.get("compiled") is True or not (summary_phase.get("failure_reason") or summary_phase.get("failure_code")))
         full = (complete_dimensions == set(_expected_dimensions(req))
                 and phase_complete(req.insight_material_coverage, "classification", req.documents)
-                and len(req.sentiments) == len(req.documents) and summary_complete and not issues)
+                and len(req.sentiments) == len(req.documents) and summary_complete and not issues
+                and bool(_verified_recommendations(dimensions)))
+        if not _verified_recommendations(dimensions):
+            reasons.append("尚无完整核验分析分项产出的具体行动建议与依据")
         if full:
             level = "full"
         elif complete_dimensions or req.sentiments:
@@ -444,7 +464,8 @@ def _compile_verified_report(req, outputs=()):
             "action_advice": "／".join(dict.fromkeys(item["action_advice"] for item in outputs if item.get("action_advice"))),
             "topic_analyses": [value for item in outputs for value in item.get("topic_analyses", [])],
             "risk_points": [value for item in outputs for value in item.get("risk_points", [])],
-            "recommendations": [value for item in outputs for value in item.get("recommendations", [])]}
+            "recommendations": [*_verified_recommendations(req.dimensions),
+                                *[value for item in outputs for value in item.get("recommendations", [])]]}
 
 
 async def _llm_insight(req: GenerateRequest) -> dict | None:
@@ -843,6 +864,9 @@ def _dimensions_section(dimensions: list[dict]) -> str:
             body.append(f"<p><b>深入解读</b>：{_esc(d.get('deep_read', ''))}</p>")
         if d.get("trend"):
             body.append(f'<p class="tag"><b>趋势</b>：{_esc(d.get("trend", ""))}</p>')
+        recommendations = _recommendation_section(d.get("recommendations"))
+        if recommendations:
+            body.append(recommendations)
         body.append("</div>")
         parts.append("\n".join(body))
     return "\n".join(parts)

@@ -85,7 +85,7 @@ class SearchResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "query", "version": "0.4.0", "admission_version": ADMISSION_VERSION,
+    return {"status": "ok", "engine": "query", "version": "0.5.0", "admission_version": ADMISSION_VERSION,
             "scrapling": get_scraper()._available, "bocha": bool(os.getenv("BOCHA_API_KEY") or DEFAULT_BOCHA_KEY)}
 
 
@@ -175,6 +175,17 @@ async def persist_candidate_audit(req, coverage):
         response = await client.post(base + f"/internal/v1/analyses/{req.analysis_id}/retrieval-audit",
             headers={"X-Billing-Service-Token": token}, json={"run_id": req.run_id, "tenant_id": req.tenant_id, "coverage": coverage})
         response.raise_for_status()
+
+
+async def authorize_collection_run(req):
+    base, token = configuration()
+    async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
+        response = await client.post(base + f"/internal/v1/analyses/{req.analysis_id}/run-check",
+            headers={"X-Billing-Service-Token": token}, json={"run_id": req.run_id, "tenant_id": req.tenant_id})
+        response.raise_for_status()
+        body = response.json()
+        if body.get("active") is not True or body.get("run_id") != req.run_id:
+            raise RuntimeError("collection run authorization is invalid")
 
 
 def _canonical_url(url):

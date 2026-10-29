@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -110,6 +111,9 @@ func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResul
 		}
 		previousRun := a.CurrentRunID
 		resetForRerun(a)
+		if a.DeliveryPolicy == "" && os.Getenv("YUQING_RESILIENT_DELIVERY") == "1" {
+			a.DeliveryPolicy = "best_available"
+		}
 		if len(resume) > 0 && resume[0] {
 			a.ResumeFromRunID = previousRun
 		}

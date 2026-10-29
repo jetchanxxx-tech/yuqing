@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import hashlib
 import inspect
 import os
-from urllib.parse import urlsplit
 
 import httpx
 from fastapi import HTTPException
@@ -91,17 +90,29 @@ async def execute(req):
     if search_key and (req.search_provider == "deepseek" or req.fetch_provider == "deepseek"):
         tools = DeepSeekTools(search_key, req.search_base_url)
 
-    async def checkpoint():
+    async def checkpoint(*, authorize=True):
         async with accounting_lock:
             coverage["elapsed_seconds"] = round(loop.time() - start, 3)
             q._coverage(coverage)
             coverage["raw_usable_count"] = sum(row["status"] == "raw_available" for row in coverage["candidate_audit"])
+            for platform in coverage["per_platform"]:
+                source = platform["source"]
+                rows = [row for row in coverage["candidate_audit"] if row.get("requested_source") == source]
+                channels = [channel for channel in coverage["discovery_channels"] if channel["source"] == source]
+                has_discovery = any(channel["status"] == "ok" for channel in channels)
+                platform.update(body_count=sum(row.get("content_kind") in {"body", "provider_body"} and bool(row.get("content")) for row in rows),
+                    raw_usable_count=sum(row["status"] == "raw_available" for row in rows),
+                    independent_discovered_count=sum(row.get("discovery_channel") == "local_discovery" for row in rows),
+                    provider_calls=provider_budget.per_source.get(source, 0),
+                    status="partial" if has_discovery and any(channel["status"] != "ok" for channel in channels) else "queried" if has_discovery else "failed" if any(channel["status"] == "failed" for channel in channels) else "unavailable")
             for channel in coverage["discovery_channels"]:
                 rows = [row for row in coverage["candidate_audit"] if row["source_type"] == channel["source"] and channel["channel"] in {part.get("channel") for part in row.get("discovery_chain", [])}]
                 channel.update(body_count=sum(row.get("content_kind") in {"body", "provider_body"} and bool(row.get("content")) for row in rows),
                     summary_count=sum(row.get("content_kind") == "summary" and bool(row.get("content")) for row in rows),
                     accepted_count=sum(row["status"] == "accepted" for row in rows))
             try:
+                if authorize:
+                    await q.authorize_collection_run(req)
                 await q.persist_candidate_audit(req, coverage)
             except Exception as error:
                 raise CollectorAuthorizationError("active run checkpoint unavailable") from error
@@ -114,6 +125,12 @@ async def execute(req):
         if url in indexed:
             row = indexed[url]
             row["discovery_chain"].extend(candidate.get("discovery_chain") or [{"channel": channel}])
+            if channel == "retained" and candidate.get("content"):
+                row.update(content=str(candidate["content"])[:200_000], content_kind=str(candidate.get("content_kind") or "body"),
+                    content_version=str(candidate.get("content_version") or ""), fetched_at=str(candidate.get("fetched_at") or ""),
+                    final_url=str(candidate.get("final_url") or ""), fetch_status=str(candidate.get("fetch_status") or "fetched"),
+                    text_versions=list(candidate.get("text_versions") or []), fetch_attempts=list(candidate.get("fetch_attempts") or []))
+                raw[url] = candidate
             value = str(candidate.get("published_at") or "")[:100]
             if value and value not in row["publication_candidates"]:
                 row["publication_candidates"].append(value)
@@ -122,7 +139,7 @@ async def execute(req):
         retained = channel == "retained"
         content = str(candidate.get("content") or "")[:200_000] if retained else ""
         original_dates = candidate.get("date_sources") if retained else None
-        row = {"id": hashlib.sha256(url.encode()).hexdigest()[:16], "url": url, "final_url": str(candidate.get("final_url") or url) if retained else url,
+        row = {"id": hashlib.sha256(url.encode()).hexdigest()[:16], "url": url, "final_url": str(candidate.get("final_url") or "") if retained else "",
             "title": str(candidate.get("title") or "")[:1000], "source_type": actual_source, "requested_source": source,
             "source_name": str(candidate.get("source_name") or candidate.get("site_name") or q._source_display_name(actual_source)),
             "content": content, "content_kind": str(candidate.get("content_kind") or "summary") if retained else "summary",
@@ -305,7 +322,8 @@ async def execute(req):
             if q._date_reason(row, req) in {"date_out_of_range", "date_conflict"}:
                 row.update(status="filtered", reason=q._date_reason(row, req))
                 return
-            if not q._is_public_http_url(row["final_url"]) or q._classify_by_domain(row["final_url"]) != row["source_type"]:
+            checked_url = row["final_url"] or row["url"]
+            if not q._is_public_http_url(checked_url) or q._classify_by_domain(checked_url) != row["source_type"]:
                 row.update(status="filtered", reason="source_redirect_mismatch")
                 return
             if not row["content"]:
@@ -313,7 +331,7 @@ async def execute(req):
                 summary = str(item.get("summary") or item.get("snippet") or "")[:200_000]
                 if provider_body and usable_excerpt(provider_body):
                     save_version(row, provider_body, "provider_body", "deepseek_search")
-                    row.update(fetch_status="fetched", fetch_reason="provider_search_content")
+                    row.update(fetch_status="fetched", fetch_reason="provider_search_content", final_url_status="unreported_by_provider")
                 else:
                     async def local_attempt(mode):
                         before = loop.time()
@@ -357,7 +375,8 @@ async def execute(req):
                             dynamic_count += 1
                             result = await local_attempt("dynamic")
                     final = q._canonical_url(result.final_url or row["url"])
-                    row.update(final_url=final, truncated=result.truncated)
+                    row.update(final_url=q._canonical_url(result.final_url) if result.final_url else "", truncated=result.truncated,
+                        final_url_status="observed_by_local_fetch" if result.final_url else "unreported")
                     if result.reason.startswith("unsafe") or result.reason in {"source_redirect_mismatch", "source_mismatch"} or not q._is_public_http_url(final) or q._classify_by_domain(final) != row["source_type"]:
                         row.update(status="filtered", reason="unsafe_url" if result.reason.startswith("unsafe") else "source_redirect_mismatch")
                         return
@@ -411,11 +430,12 @@ async def execute(req):
         for row in selected:
             if row["status"] != "semantic_pending":
                 continue
-            if row["content_hash"] in hashes or row["final_url"] in finals:
+            material_url = row["final_url"] or row["url"]
+            if row["content_hash"] in hashes or material_url in finals:
                 row.update(status="filtered", reason="duplicate_content")
             else:
                 hashes.add(row["content_hash"])
-                finals.add(row["final_url"])
+                finals.add(material_url)
                 eligible.append(row)
         await checkpoint()
         return eligible
@@ -480,7 +500,7 @@ async def execute(req):
     except asyncio.CancelledError:
         coverage.update(phase="canceled", failure={"phase": coverage["phase"], "code": "run_canceled", "error_type": "CancelledError"})
         try:
-            await asyncio.shield(asyncio.wait_for(checkpoint(), 15))
+            await asyncio.shield(asyncio.wait_for(checkpoint(authorize=False), 15))
         except Exception:
             pass
         raise

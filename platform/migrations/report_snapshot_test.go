@@ -78,7 +78,7 @@ INSERT INTO reports(id,tenant_id,analysis_id,created_by,format,status,report_ver
  (SELECT count(*)=1 FROM users WHERE id='snapshot-user')`).Scan(&valid); err != nil || !valid {
 		t.Fatal("migration changed or invented history", err)
 	}
-	if applied, err := provider.Up(ctx); err != nil || len(applied) != 0 {
+	if applied, err := provider.UpTo(ctx, 30); err != nil || len(applied) != 0 {
 		t.Fatal("repeat migration not noop", err)
 	}
 	if _, err := provider.Down(ctx); err == nil {
