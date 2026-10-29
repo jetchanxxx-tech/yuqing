@@ -41,6 +41,7 @@ import {
   getAnalysisResult,
   getEventTimeline,
   rerunAnalysis,
+  resumeAnalysis,
   type AnalysisResult,
   type RetrievalCoverage,
   type EventTimelineResponse,
@@ -51,7 +52,9 @@ import {
   type CandidateAudit,
   type MaterialCoverage,
   type SentimentDoc,
+  type DiscoveryChannel,
 } from '../api/analyses';
+import { DELIVERY_LABELS, DELIVERY_COLORS } from '../lib/delivery';
 import { listReports, openReportDownload, type Report } from '../api/reports';
 import {
   ANALYSIS_STATE_FLOW,
@@ -104,6 +107,7 @@ export default function AnalysisDetailPage() {
   const state = detail?.state;
 
   const completed = state === 'completed';
+  const artifactAvailable = !!detail?.delivery_level;
   const running = state !== undefined && !TERMINAL_STATES.includes(state);
   const failed = state === 'failed';
   const timelineQ = useQuery({
@@ -116,14 +120,14 @@ export default function AnalysisDetailPage() {
   const resultQ = useQuery({
     queryKey: ['analysis', 'result', id],
     queryFn: () => getAnalysisResult(id as string),
-    enabled: completed,
+    enabled: completed || artifactAvailable,
   });
 
   // —— 报告列表（完成态标签页内展示该分析的报告） ——
   const reportsQ = useQuery({
     queryKey: ['reports', 'list'],
     queryFn: listReports,
-    enabled: completed,
+    enabled: completed || artifactAvailable,
   });
   const relatedReports = useMemo(
     () => (reportsQ.data?.reports ?? []).filter((r) => r.analysis_id === id),
@@ -143,6 +147,14 @@ export default function AnalysisDetailPage() {
       message.success('任务已重新排队');
       setTimelineCursor('');
       void queryClient.invalidateQueries({ queryKey: ['analysis', 'event-timeline', id] });
+      void queryClient.invalidateQueries({ queryKey: ['analyses'] });
+    },
+  });
+  const resumeQ = useMutation({
+    mutationFn: () => resumeAnalysis(id as string),
+    onSuccess: () => {
+      message.success('已接纳新一轮补充任务，原报告版本保留');
+      void queryClient.invalidateQueries({ queryKey: ['analysis'] });
       void queryClient.invalidateQueries({ queryKey: ['analyses'] });
     },
   });
@@ -188,6 +200,7 @@ export default function AnalysisDetailPage() {
               <Tag color={ANALYSIS_STATE_TAG_COLORS[state]} style={{ fontSize: 13, padding: '2px 12px' }}>
                 {running && <SyncOutlined spin />} {ANALYSIS_STATE_LABELS[state]}
               </Tag>
+              {detail.delivery_level && <Tag color={DELIVERY_COLORS[detail.delivery_level]}>{DELIVERY_LABELS[detail.delivery_level]}</Tag>}
             </Space>
             <Descriptions
               column={{ xs: 1, sm: 2, lg: 3 }}
@@ -258,7 +271,20 @@ export default function AnalysisDetailPage() {
             </Space>
           </Col>
         </Row>
+        {detail.delivery_level && <Alert style={{ marginTop: 16 }} showIcon
+          type={detail.delivery_level === 'full' ? 'success' : 'warning'}
+          message={DELIVERY_LABELS[detail.delivery_level]}
+          description={<>
+            {(detail.delivery_reasons || []).map((reason, index) => <div key={index}>{reason}</div>)}
+            {detail.delivery_level !== 'full' && <div>当前成果保留可用资料与已核验部分，未处理材料不计入已分析统计。</div>}
+          </>} />}
+        {!running && detail.delivery_level && detail.delivery_level !== 'full' && <Popconfirm
+          title="继续补充将创建新一轮运行，并按当前套餐接纳；原报告版本仍可下载。"
+          onConfirm={() => resumeQ.mutate()} okText="确认继续" cancelText="取消">
+          <Button style={{ marginTop: 12 }} loading={resumeQ.isPending}>继续补充</Button>
+        </Popconfirm>}
       </Card>
+      {!!detail.retrieval_coverage?.discovery_channels?.length && <CollectionChannels rows={detail.retrieval_coverage.discovery_channels} />}
 
       {(detail.research_intent_version === 'semantic-v2' || detail.retrieval_coverage?.admission_version === 'semantic-v2')
         && (detail.research_intent || detail.retrieval_coverage?.research_intent) && (
@@ -287,13 +313,16 @@ export default function AnalysisDetailPage() {
         </Col>
         {/* —— 内容区 —— */}
         <Col xs={24} lg={15}>
-          {completed ? (
+          {completed || artifactAvailable ? (
             <Card style={{ borderRadius: 16 }}>
               <ResultTabs
                 resultLoading={resultQ.isLoading}
                 resultError={resultQ.isError}
                 onRetryResult={() => void resultQ.refetch()}
-                result={resultQ.data}
+                result={resultQ.data && (detail.delivery_level === 'brief' || detail.delivery_level === 'empty')
+                  ? { ...resultQ.data, sentiments: { positive: 0, negative: 0, neutral: 0, items: [] }, topics: [], dimensions: [], summary: '',
+                    warning: '当前资料尚未形成完整研判；未分析不代表中性或没有风险。' }
+                  : resultQ.data}
                 relatedReports={relatedReports}
                 reportsLoading={reportsQ.isLoading}
               />
@@ -319,7 +348,11 @@ export default function AnalysisDetailPage() {
                       分析失败
                     </Typography.Title>
                     <Typography.Paragraph type="secondary">
-                      {detail.error_code === 'fetch_failed'
+                      {[detail.insight_material_coverage, detail.report_material_coverage].some((coverage) =>
+                        coverage?.phases?.some((phase) => phase.failure_code === 'llm_content_rejected'
+                          || phase.unprocessed?.some((span) => span.code === 'llm_content_rejected')))
+                        ? '当前模型供应商未通过部分材料的内容审核，本次报告未生成。请联系管理员核查供应商返回记录。'
+                        : detail.error_code === 'fetch_failed'
                         ? '采集未完成，请检查关键词、所选来源及采集记录后重试。'
                         : '本次分析未完整交付，请查看错误提示与处理记录后重试。'}
                     </Typography.Paragraph>
@@ -385,6 +418,27 @@ function ResearchIntentView({ intent }: { intent: ResearchIntent }) {
   </>;
 }
 
+function CollectionChannels({ rows }: { rows: DiscoveryChannel[] }) {
+  const channels: Record<string, string> = { deepseek_search: 'DeepSeek 搜索', deepseek_fetch: 'DeepSeek 正文',
+    bocha_search: '博查搜索', local_discovery: '自主发现', seed: '提供的链接', retained: '沿用资料' };
+  return <Card style={{ borderRadius: 16, marginBottom: 16 }}>
+    <Typography.Title level={5}>采集通路</Typography.Title>
+    <Typography.Paragraph type="secondary">分别记录链接发现、正文获取和准入；空结果或失败不代表没有舆情。</Typography.Paragraph>
+    <Table<DiscoveryChannel> size="small" pagination={false} scroll={{ x: 760 }}
+      rowKey={(row, index) => `${row.source}-${row.channel}-${index}`} dataSource={rows} columns={[
+        { title: '平台', dataIndex: 'source', render: (value: string) => sourceLabel(value) },
+        { title: '通路', dataIndex: 'channel', render: (value: string) => channels[value] || value },
+        { title: '状态', dataIndex: 'status', render: (value: string) => ({ ok: '已执行', failed: '失败', empty: '无候选',
+          partial: '部分完成', unavailable: '不可用', configured_unverified: '已配置，待实测' } as Record<string, string>)[value] || value },
+        ...(['discovered_count', 'body_count', 'summary_count', 'accepted_count', 'failed_count'] as const).map((key, index) => ({
+          title: ['发现', '正文', '摘要', '准入', '失败'][index], dataIndex: key,
+          render: (value?: number) => value ?? '未记录',
+        })),
+        { title: '原因', dataIndex: 'reason', render: (value?: string) => value || '—' },
+      ]} />
+  </Card>;
+}
+
 function MaterialCoverageView({ label, coverage }: { label: string; coverage?: MaterialCoverage | null }) {
   if (!coverage?.phases?.length) return null;
   const phaseNames: Record<string, string> = { classification: '情感与话题', summary: '摘要', report: '报告写作',
@@ -410,7 +464,7 @@ function sourceLabel(source?: string): string {
 }
 
 function contentKindLabel(kind?: string): string {
-  return ({ body: '抓取正文', article: '抓取正文', summary: '搜索摘要', snippet: '搜索摘要',
+  return ({ body: '抓取正文', provider_body: '供应商正文版本', article: '抓取正文', summary: '搜索摘要', snippet: '搜索摘要',
     page_description: '页面描述', video_description: '视频页面描述', body_excerpt: '正文片段' } as Record<string, string>)[kind || ''] || kind || '历史材料（类型未记录）';
 }
 
@@ -583,6 +637,9 @@ function RetrievalCoverageView({ coverage, storedCount }: { coverage?: Retrieval
             {candidate.semantic_reason && <Typography.Paragraph style={{ marginBottom: 4 }}>{candidate.semantic_reason}</Typography.Paragraph>}
             {candidate.reason && <div>处理原因：{reasons[candidate.reason] || candidate.reason}</div>}
             {candidate.fetch_status && <div>正文补抓：{candidate.fetch_status}{candidate.fetch_reason ? ` · ${candidate.fetch_reason}` : ''}</div>}
+            {!!candidate.discovery_chain?.length && <div>发现入口：{candidate.discovery_chain.map((step) => step.channel || '入口未记录').join(' → ')}</div>}
+            {candidate.fetched_at && <div>采集时间：{candidate.fetched_at}</div>}
+            {candidate.content_sha256 && <Typography.Text type="secondary">文本版本：{candidate.content_sha256}</Typography.Text>}
             <div>发表时间：{candidate.published_at || '未核验'}；检索来源日期：{candidate.date_sources?.provider || '未提供'}；正文日期：{candidate.date_sources?.body || '未取得'}</div>
             <Space wrap>{publicLink(candidate.url, '检索原链接')}{candidate.final_url && publicLink(candidate.final_url, '实际到达链接')}</Space>
             {(candidate.evidence_spans || []).map((text, index) => <blockquote key={index} style={{ margin: '6px 0', color: 'rgba(0,0,0,0.62)' }}>

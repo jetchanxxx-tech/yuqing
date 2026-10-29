@@ -7,6 +7,7 @@ import { listReports, openReportDownload, type Report } from '../api/reports';
 import { REPORT_FORMATS, type ReportFormat } from '../lib/constants';
 import { useDateTime } from '../lib/format';
 import { ErrorBlock, EmptyBlock, LoadingBlock } from '../components/PageState';
+import { DELIVERY_LABELS, DELIVERY_COLORS } from '../lib/delivery';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   completed: { label: '已生成', color: 'success' },
@@ -65,6 +66,12 @@ export default function ReportHistoryPage() {
         const meta = REPORT_FORMATS.find((f) => f.value === fmt);
         return <Tag>{meta ? meta.label : fmt.toUpperCase()}</Tag>;
       },
+    },
+    {
+      title: '交付等级', key: 'delivery', width: 150,
+      render: (_, report) => report.delivery_level
+        ? <Tooltip title={(report.delivery_reasons || []).join('；')}><Tag color={DELIVERY_COLORS[report.delivery_level]}>{DELIVERY_LABELS[report.delivery_level]}</Tag></Tooltip>
+        : <Typography.Text type="secondary">历史报告</Typography.Text>,
     },
     {
       title: '状态',

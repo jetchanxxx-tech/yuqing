@@ -1,7 +1,10 @@
 import client from './client';
 import type { ReportFormat } from '../lib/constants';
+import type { DeliveryLevel } from './analyses';
 
 export interface Report {
+  delivery_level?: DeliveryLevel;
+  delivery_reasons?: string[];
   id: string;
   analysis_id: string;
   title: string;

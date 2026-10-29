@@ -35,6 +35,9 @@ test('brief delivery shows collection channels and resumes as a new accepted run
   await expect(page.getByText('模型暂不可用，材料相关性待核验', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: '采集通路' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '自主发现', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '情感分析', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /五维研判/ })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: '资料目录（0）', exact: true })).toBeVisible();
   let resumed = false;
   await page.route(`**/api/v1/analyses/${aid}/resume`, route => {
     expect(route.request().method()).toBe('POST');

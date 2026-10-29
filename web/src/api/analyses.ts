@@ -1,6 +1,27 @@
 import client from './client';
 import type { AnalysisState, AnalysisType, AnalysisTemplateID, SourceKey } from '../lib/constants';
 
+export type DeliveryLevel = 'full' | 'limited' | 'brief' | 'empty';
+export interface DiscoveryChannel {
+  source: string;
+  channel: string;
+  status: string;
+  discovered_count?: number;
+  body_count?: number;
+  summary_count?: number;
+  accepted_count?: number;
+  failed_count?: number;
+  reason?: string;
+}
+export interface CollectionCapability {
+  source: string;
+  discovery: boolean;
+  static_fetch: boolean;
+  dynamic_fetch: boolean;
+  status: string;
+  limitations: string[];
+}
+
 /** POST /analyses 请求体 */
 export interface CreateAnalysisPayload {
   name: string;
@@ -11,10 +32,14 @@ export interface CreateAnalysisPayload {
   date_from?: string;
   date_to?: string;
   research_question?: string;
+  seed_urls?: string[];
+  delivery_policy?: 'best_available' | 'full_only';
 }
 
 /** 列表元素（GET /analyses） */
 export interface AnalysisSummary {
+  delivery_level?: DeliveryLevel;
+  delivery_reasons?: string[];
   id: string;
   name: string;
   analysis_type: string;
@@ -29,6 +54,9 @@ export interface AnalysisListResponse {
 }
 
 export interface RetrievalCoverage {
+  delivery_hint?: string;
+  discovery_channels?: DiscoveryChannel[];
+  failure?: { phase?: string; code?: string; field?: string; error_type?: string };
   admission_version: string;
   provider_candidates: number;
   unusable_count: number;
@@ -91,6 +119,11 @@ export interface EvidenceSpan {
 }
 
 export interface CandidateAudit {
+  discovery_chain?: { channel?: string; url?: string }[];
+  discovery_channel?: string;
+  fetched_at?: string;
+  content_sha256?: string;
+  fetch_attempts?: { mode?: string; status?: string; reason?: string }[];
   id: string;
   title?: string;
   url?: string;
@@ -116,14 +149,20 @@ export interface MaterialCoverage {
   phases: {
     phase: string;
     read_spans: (EvidenceSpan & { document_id: string; material_class: string })[];
-    unprocessed: (EvidenceSpan & { document_id: string; reason: string })[];
+    unprocessed: (EvidenceSpan & { document_id: string; reason: string; code?: string })[];
     input_basis?: string;
     failure_reason?: string;
+    failure_code?: string;
   }[];
 }
 
 /** GET /analyses/:id（轮询时可能出现的扩展字段） */
 export interface AnalysisStateResponse {
+  delivery_level?: DeliveryLevel;
+  delivery_reasons?: string[];
+  delivery_policy?: 'best_available' | 'full_only';
+  resume_from_run_id?: string;
+  seed_urls?: string[];
   id: string;
   name: string;
   state: AnalysisState;
@@ -202,6 +241,8 @@ export interface DimensionResult {
 }
 
 export interface AnalysisResult {
+  delivery_level?: DeliveryLevel;
+  delivery_reasons?: string[];
   id: string;
   state: string;
   doc_count?: number;
@@ -293,4 +334,12 @@ export async function cancelAnalysis(id: string): Promise<AnalysisStateResponse>
 export async function rerunAnalysis(id: string): Promise<AnalysisStateResponse> {
   const { data } = await client.post<AnalysisStateResponse>(`/analyses/${id}/rerun`);
   return data;
+}
+
+export async function resumeAnalysis(id: string): Promise<AnalysisStateResponse> {
+  return (await client.post<AnalysisStateResponse>(`/analyses/${id}/resume`, {})).data;
+}
+
+export async function getCollectionCapabilities(): Promise<{ sources: CollectionCapability[] }> {
+  return (await client.get<{ sources: CollectionCapability[] }>('/analyses/collection-capabilities')).data;
 }

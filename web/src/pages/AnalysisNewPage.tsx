@@ -28,7 +28,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import datePickerLocale from 'antd/es/date-picker/locale/zh_CN';
-import { createAnalysis } from '../api/analyses';
+import { createAnalysis, getCollectionCapabilities } from '../api/analyses';
 import { getCredits, getUsage } from '../api/billing';
 import {
   ANALYSIS_TYPES,
@@ -78,6 +78,14 @@ export default function AnalysisNewPage() {
   });
   const [sources, setSources] = useState<SourceKey[]>([]);
   const [researchQuestion, setResearchQuestion] = useState('');
+  const [seedInput, setSeedInput] = useState('');
+  const [deliveryPolicy, setDeliveryPolicy] = useState<'best_available' | 'full_only'>('best_available');
+  const seedUrls = seedInput.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  const seedsValid = seedUrls.length <= 10 && seedUrls.every((value) => {
+    try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password; }
+    catch { return false; }
+  });
+  const capabilitiesQ = useQuery({ queryKey: ['collection', 'capabilities'], queryFn: getCollectionCapabilities, staleTime: 60_000 });
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(() => {
     const today = dayjs().startOf('day');
     return [today.subtract(6, 'day'), today];
@@ -105,7 +113,7 @@ export default function AnalysisNewPage() {
       : current === 1
         ? keywords.length >= 1 && validDateRange
         : current === 2
-          ? sources.length >= 1
+          ? sources.length >= 1 && seedsValid
           : true;
 
   const createQ = useMutation({
@@ -118,6 +126,8 @@ export default function AnalysisNewPage() {
         analysis_type: type as AnalysisType,
         ...(entry === 'template' && selectedTemplate ? { scenario_template_id: selectedTemplate.id } : {}),
         keywords: [...keywords],
+        seed_urls: seedUrls,
+        delivery_policy: deliveryPolicy,
         ...(researchQuestion.trim() ? { research_question: researchQuestion.trim() } : {}),
         sources: sources.filter((source) => SELECTABLE_SOURCES.includes(source)),
         date_from: dateRange[0].format('YYYY-MM-DD'),
@@ -336,6 +346,22 @@ export default function AnalysisNewPage() {
             <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
               逐平台检索公开网页，并尝试补抓可访问的正文；视频描述、搜索摘要与正文分别标注，不代表完整视频或评论。
             </Typography.Paragraph>
+            {sources.map((source) => {
+              const capability = capabilitiesQ.data?.sources?.find((row) => row.source === source);
+              return <Alert key={source} type="info" showIcon style={{ marginTop: 8 }}
+                message={`${SOURCE_LABELS[source]}：${capability?.discovery ? '已配置公开发现入口，正文可用性以本次实测为准' : '自主入口暂不可用，可尝试供应商搜索或提供公开链接'}`}
+                description={capability?.limitations?.join('；')} />;
+            })}
+            <label htmlFor="analysis-seed-links" style={{ display: 'block', marginTop: 20, marginBottom: 8 }}>补充公开链接（可选，每行一条，最多 10 条）</label>
+            <Input.TextArea id="analysis-seed-links" value={seedInput} onChange={(event) => setSeedInput(event.target.value)}
+              autoSize={{ minRows: 2, maxRows: 5 }} placeholder="文章、公开账号或列表页链接；来源和日期仍需核验" />
+            {!seedsValid && <Typography.Text type="danger">请填写最多 10 个不含账号密码的 HTTP/HTTPS 链接。</Typography.Text>}
+            <label htmlFor="analysis-delivery-policy" style={{ display: 'block', marginTop: 20, marginBottom: 8 }}>交付方式</label>
+            <Select id="analysis-delivery-policy" aria-label="交付方式" value={deliveryPolicy} onChange={setDeliveryPolicy}
+              style={{ width: '100%' }} options={[
+                { value: 'best_available', label: '自动恢复采集，按实际完成度交付（推荐）' },
+                { value: 'full_only', label: '必须完整研判，否则保留资料并标明未完成' },
+              ]} />
           </div>
         )}
         {/* ④ 确认 */}
@@ -360,6 +386,8 @@ export default function AnalysisNewPage() {
                   children: keywords.length ? keywords.join(' / ') : '-',
                 },
                 { key: 'research-question', label: '关注问题', children: researchQuestion.trim() || '未填写，将结合全部关键词理解同一研究主题' },
+                { key: 'delivery-policy', label: '交付方式', children: deliveryPolicy === 'best_available' ? '按实际完成度交付' : '必须完整研判' },
+                { key: 'seed-urls', label: '补充链接', children: seedUrls.length ? seedUrls.join('；') : '未填写，将使用系统可用入口发现资料' },
                 {
                   key: 'period',
                   label: '分析时间范围',
@@ -381,7 +409,7 @@ export default function AnalysisNewPage() {
                 <>
                   依次执行检索与正文补抓、语义核验、智能研判及报告生成，最长 <b>46 分钟</b>（时间上限，通常会提前结束）；详情页展示实际进度与已用时。
                   <br />
-                  本次分析{creditsQ.data?.billing_exempt ? <b>免扣报告额度</b> : <>消耗 <b>1 次报告额度</b></>}
+                  本次分析{creditsQ.data?.billing_exempt ? <b>免扣报告额度</b> : <>先扣 <b>1 次报告额度</b>；仅完整研判保留消费，受限研判、资料简报及空结果回执配对回补</>}
                   {creditsQ.data && (
                     <>，{creditsQ.data.billing_exempt ? '当前账号免次数限制，实际余额' : '当前剩余'} <b style={{ color: noCredits ? '#FF2442' : undefined }}>{creditsQ.data.balance}</b> 次</>
                   )}
