@@ -64,6 +64,20 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Install Chromium for delivery UI contracts
+        run: npx playwright install --with-deps chromium
+      - name: Check actual bundled delivery UI against API contracts
+        run: npx playwright test --config e2e/resilient-ui.config.ts
+      - name: Preserve delivery UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resilient-ui-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            web/test-results/resilient-ui/
+            web/e2e/report/resilient-ui/
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist-${{ github.sha }}
