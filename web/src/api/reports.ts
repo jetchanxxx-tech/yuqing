@@ -8,6 +8,7 @@ export interface Report {
   format: string;
   status: string;
   created_at?: string;
+  snapshot_available?: boolean;
 }
 
 export interface ReportListResponse {

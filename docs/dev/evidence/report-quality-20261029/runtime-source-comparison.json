@@ -1,0 +1,16 @@
+{
+  "production_sha": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+  "audit_sha": "67055a652f140a9a07983247ea6bf22cc15daa95",
+  "changed_files": [
+    ".github/workflows/build-release.yml",
+    "docs/dev/SEMANTIC_RETRIEVAL_DELIVERY_DECISIONS_2026-10-16.html",
+    "docs/dev/SEMANTIC_RETRIEVAL_SCRAPLING_ACCEPTANCE_2026-10-15.html",
+    "docs/dev/evidence/semantic-retrieval-20261016/downstream-pre-provenance-results.json",
+    "docs/dev/evidence/semantic-retrieval-20261016/downstream-validation-summary.json",
+    "docs/dev/evidence/semantic-retrieval-20261016/production-release-b3d1a576.json",
+    "docs/dev/reviews/SEMANTIC_RETRIEVAL_DELTA_REVIEW_2026-10-16.html",
+    "docs/ops/BETA_0.2.8_SEMANTIC_RETRIEVAL_DEPLOYMENT.html",
+    "scripts/ci/audit-report-delivery.py"
+  ],
+  "runtime_source_changed": false
+}

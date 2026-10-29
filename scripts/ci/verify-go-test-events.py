@@ -105,6 +105,7 @@ REQUIRED_TESTS = {
         "TestPGPublicRegistrationCannotBootstrapPlatformAdministrator",
     ),
     "migrations": (
+        "TestReportSnapshotMigrationBackfillsOnlyVerifiableLatestVersion",
         "TestK11MigrationPreservesHistoricalEntitlementsAndDoesNotInventEvents",
         "TestClosureMigrationPreservesAccountsFinancialFactsAndNotificationIntent",
         "TestAdminCreditMigrationPreservesLedgerAndVersions",
@@ -249,6 +250,8 @@ REQUIRED_TESTS = {
         "TestDocumentStore_publishedAtRoundTrip/postgres",
     ),
     "internal/business/report": ("TestClosureMemoryReportRetentionPreservesOtherTenantAndRejectsLateCreate", 
+        "TestPGReportSnapshotsSurviveRerunAndCannotBeOverwritten",
+        "TestPGReportSnapshotSerializesWithAnalysisUpdateAndRollsBack",
         "TestPGReportStore_requiresExistingCreator",
         "TestPGReportCreateOnceRedeliveryAndRerun",
         "TestPGReportStore_titleAndSummaryNotPersisted",

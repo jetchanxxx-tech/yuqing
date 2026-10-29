@@ -159,7 +159,7 @@ func TestBillingLegacyUnknownKeyPGCanReadReadyHTMLButCannotRequestGeneration(t *
 		t.Fatal(err)
 	}
 	analysis := adminContractResponse(t, doReq(t, e.router, http.MethodPost, "/api/v1/analyses", token, map[string]any{"name": "ready historical report"}), http.StatusCreated)
-	if _, err := e.pool.Exec(ctx, `UPDATE analyses SET report_content='<p>ready stored report</p>' WHERE id=$1`, analysis["id"]); err != nil {
+	if _, err := e.pool.Exec(ctx, `UPDATE analyses SET state='completed',report_content='<p>ready stored report</p>' WHERE id=$1`, analysis["id"]); err != nil {
 		t.Fatal(err)
 	}
 	for _, format := range []string{"html", "docx"} {

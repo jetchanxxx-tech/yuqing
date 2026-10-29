@@ -37,6 +37,12 @@ func NewService(store Store, planCodeFor func(tenantID string) string, planProvi
 // createdBy is the user's UUID who triggered the report (written to reports.created_by).
 // report_version is auto-assigned: 1 for the first report, incremented for subsequent ones.
 func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (*Report, error) {
+	return s.CreateFromAnalysisSnapshot(ctx, tenantID, analysisID, format, createdBy, "")
+}
+
+// CreateFromAnalysisSnapshot binds the already-read completed run content in
+// memory. PostgreSQL captures the content under its analysis row lock instead.
+func (s *Service) CreateFromAnalysisSnapshot(ctx context.Context, tenantID, analysisID, format, createdBy, content string) (*Report, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("report: tenant_id is required")
 	}
@@ -62,6 +68,8 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 		ReportVersion: version,
 		CreatedBy:     createdBy,
 	}
+	rp.ContentHTML = content
+	rp.SnapshotAvailable = content != ""
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		return nil, err
 	}
@@ -128,7 +136,7 @@ func (s *Service) DownloadURL(ctx context.Context, tenantID, reportID, format st
 	if err != nil {
 		return "", err
 	}
-	if format != r.Format {
+	if format != r.Format && !(r.Format == "html" && format == "docx") {
 		return "", pkgerrors.Wrap(pkgerrors.ErrConflict,
 			fmt.Sprintf("report %s is a %s report, not %s", r.ID, r.Format, format))
 	}
@@ -142,12 +150,12 @@ func (s *Service) DownloadURL(ctx context.Context, tenantID, reportID, format st
 	}
 
 	plan := s.plan(planCode)
-	if plan == nil || !plan.IsFeatureEnabled("reports:"+r.Format) {
+	if plan == nil || !plan.IsFeatureEnabled("reports:"+format) {
 		return "", pkgerrors.Wrap(pkgerrors.ErrForbidden,
-			fmt.Sprintf("format %s is not included in plan %s", r.Format, planCode))
+			fmt.Sprintf("format %s is not included in plan %s", format, planCode))
 	}
 
-	return fmt.Sprintf("/tenants/%s/reports/%s/download?format=%s", tenantID, r.ID, r.Format), nil
+	return fmt.Sprintf("/tenants/%s/reports/%s/download?format=%s", tenantID, r.ID, format), nil
 }
 
 func (s *Service) plan(code string) *billing.Plan {

@@ -51,6 +51,7 @@ func (m *MemoryStore) Create(_ context.Context, tenantID, createdBy string, r Re
 		return pkgerrors.Wrap(pkgerrors.ErrConflict, "report already exists")
 	}
 	cp := r
+	cp.SnapshotAvailable = cp.ContentHTML != ""
 	tenant[r.ID] = &cp
 	m.order[tenantID] = append(m.order[tenantID], r.ID)
 	return nil

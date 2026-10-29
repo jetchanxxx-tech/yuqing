@@ -88,7 +88,7 @@ export default function ReportHistoryPage() {
       key: 'action',
       width: 160,
       render: (_, r) =>
-        r.status === 'completed' ? (
+        r.status === 'completed' && r.snapshot_available !== false ? (
           <Dropdown
             menu={{
               items: REPORT_FORMATS.map((f) => ({ key: f.value, label: `下载 ${f.label}` })),
@@ -102,7 +102,9 @@ export default function ReportHistoryPage() {
         ) : (
           <Tooltip
             title={
-              r.status === 'processing' || r.status === 'queued'
+              r.snapshot_available === false && r.status === 'completed'
+                ? '该历史报告没有可核验的版本正文'
+                : r.status === 'processing' || r.status === 'queued'
                 ? '报告生成中，请稍后刷新'
                 : '报告暂不可下载'
             }

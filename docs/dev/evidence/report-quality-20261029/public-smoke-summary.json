@@ -1,0 +1,93 @@
+{
+  "analysis_id": "01M62CG30263T5QPDGNBEEJS7T",
+  "run_id": "01M62CG305A8EDD9GKT3BSWTTY",
+  "terminal_state": "failed",
+  "error_code": "fetch_failed",
+  "elapsed_seconds": 20.2,
+  "input": {
+    "name": "报告功能质量验收-20261029",
+    "keywords": [
+      "iphone18",
+      "iphone18pro",
+      "iphone18max"
+    ],
+    "research_question": "关注系列任一型号的续航、价格与使用反馈；传闻保留限定，旧款仅作比较背景。",
+    "sources": [
+      "toutiao",
+      "wechat"
+    ],
+    "date_from": "2026-09-30",
+    "date_to": "2026-10-29",
+    "report_template_id": "event"
+  },
+  "per_platform": [
+    {
+      "body_count": 0,
+      "context_count": 0,
+      "direct_count": 0,
+      "failed_count": 6,
+      "fetch_failed_count": 0,
+      "processed_count": 0,
+      "provider_calls": 6,
+      "provider_candidates": 0,
+      "queries": 6,
+      "rejected_count": 0,
+      "source": "toutiao",
+      "status": "failed",
+      "summary_count": 0,
+      "unprocessed_count": 0
+    },
+    {
+      "body_count": 0,
+      "context_count": 0,
+      "direct_count": 0,
+      "failed_count": 6,
+      "fetch_failed_count": 0,
+      "processed_count": 0,
+      "provider_calls": 6,
+      "provider_candidates": 0,
+      "queries": 6,
+      "rejected_count": 0,
+      "source": "wechat",
+      "status": "failed",
+      "summary_count": 0,
+      "unprocessed_count": 0
+    }
+  ],
+  "phase_elapsed_seconds": {
+    "planning": 4.468,
+    "searching": 11.211
+  },
+  "credits": {
+    "before": 1,
+    "after": 1,
+    "consumes": 1,
+    "refunds": 1,
+    "paired_refund": true
+  },
+  "usage": {
+    "actual_tokens": 593,
+    "analyses_used": 1,
+    "billing_exempt": false,
+    "budget_mode": "hard_cap",
+    "charging_model": "report_credit",
+    "cycle_status": "not_configured",
+    "effective_plan_source": "report_credits",
+    "known_cost_micro_cny": 0,
+    "pending_cost_events": 1,
+    "period_end": null,
+    "period_start": null,
+    "plan_code": "free",
+    "provider_cost_complete": false,
+    "quota_tokens_used": 593,
+    "report_balance": 1,
+    "token_quota": 1000000,
+    "tokens_quota": 1000000,
+    "tokens_used": 593,
+    "unsettled_calls": 0
+  },
+  "reports_created": 0,
+  "unauthenticated_result_status": 401,
+  "upstream_http_cause": "not exposed by persisted public diagnostics; no conclusion about key, network or vendor outage",
+  "prior_lost_task": "01M5N28STE2MZEAEXR2V1WPR1C: original account credentials unavailable; final state and ledger not verified"
+}

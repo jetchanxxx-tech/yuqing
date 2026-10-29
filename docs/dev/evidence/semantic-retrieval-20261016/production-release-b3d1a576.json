@@ -1,0 +1,336 @@
+{
+  "production_commit": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+  "dev_commit": "e420798ebf90746634d278b72384ce995276f486",
+  "pull_request": 16,
+  "workflow": {
+    "sha": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+    "run_id": 38808303924,
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 116674791389,
+        "name": "Go tests and binaries",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001464",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116674791463,
+        "name": "Frontend build",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001462",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116674791562,
+        "name": "Scrapling static and Chromium runtime",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001461",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116674791652,
+        "name": "Python engine billing sandbox",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001463",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116674791947,
+        "name": "PostgreSQL contract checks / PostgreSQL Store Tests",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001465",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116676042726,
+        "name": "Actual Python Go PostgreSQL usage bridge",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001466",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116676042895,
+        "name": "Account and administrator acceptance",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001467",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 116678669678,
+        "name": "Release archive",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_name": "GitHub Actions 1000001468",
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      }
+    ]
+  },
+  "artifacts": {
+    "release_github_id": 12007876832,
+    "release_github_zip_sha256": "a5839ebd750b8120c7649944e6a9cd1d70de1d5fecf512cbc2cf6ab2787ebd12",
+    "browser_github_id": 12008165065,
+    "browser_github_zip_sha256": "7d3305460102af9533ced637576cf74d6be87cffdd3bb1b038e3707425799b34",
+    "checked_at": "2026-10-15T21:33:47.235818+00:00",
+    "scope": "read-only archive verification; not GitHub provenance, migration, or deployment evidence",
+    "commit": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+    "release_archive_sha256": "f25160c5bf72bd3fb2759cb8993143c1b52a336cdc897677e51440327e20c65a",
+    "browser_archive_sha256": "5d0a91cdc502a74e2ca6d0042ab68419d3cb5151b4bf3e3e123f1136cc7ecf81",
+    "unpacked_manifest_sha256": "9bf9af0f3955bd144922205ea7a687f3e26a4328c288c64d133f47387b2408f8",
+    "release_file_count": 1152,
+    "browser_file_count": 311,
+    "runtime": {
+      "scrapling": "0.4.15",
+      "playwright": "1.63.0",
+      "build_commit": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5"
+    },
+    "binary_sha256": {
+      "platform/bin/yuqing-cli": "0a963aa15544b3ca2b383c2714d6d60efe043b0a33acae965c725e09eae8164a",
+      "platform/bin/yuqing-server": "43507c3b7a8258b7e93dbd5c6856b60229180a4154cf98361d29b6fca680e9f8",
+      "platform/bin/yuqing-worker": "161001028ba31ee617c5ba022d788df13a83866adab5aad593c87674152d61d3"
+    },
+    "result": "verified"
+  },
+  "migration": {
+    "schema_before": 28,
+    "schema_after": 29,
+    "all_old_rows_columns_constraints_triggers_preserved": true,
+    "legacy_app_role_projection_reads": 33,
+    "independent_restore_rehearsal": {
+      "sha": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+      "database": "yuqing_release_rehearsal_b3d1a5762160",
+      "schema": 29,
+      "prebuilt_cli": "0a963aa15544b3ca2b383c2714d6d60efe043b0a33acae965c725e09eae8164a",
+      "existing_rows_constraints_triggers_preserved": true,
+      "second_migration_noop": true,
+      "production_changed": false
+    },
+    "production_snapshot_contracts": {
+      "schema": 29,
+      "table_count": 35,
+      "column_count": 421,
+      "constraint_count": 138,
+      "trigger_count": 12,
+      "legacy_named_projection_reads": 33,
+      "baseline_preserved": true
+    }
+  },
+  "backup": {
+    "writers_stopped_before_dump": [
+      "yuqing-server",
+      "yuqing-worker",
+      "yuqing-query",
+      "yuqing-insight",
+      "yuqing-report",
+      "yuqing-media",
+      "yuqing-forum"
+    ],
+    "dump_sha256": "0ac79792ea06b33de9caefc370a2187e1dfdfda283dd55aecf162ac0b28932d1",
+    "installation_sha256": "94edc4a999833f013ad7fd6b71fb56ba09bc8609580422e837493f0b6dc78a28",
+    "retained_privately": true
+  },
+  "runtime": {
+    "services": {
+      "yuqing-server": "active",
+      "yuqing-worker": "active",
+      "yuqing-query": "active",
+      "yuqing-insight": "active",
+      "yuqing-report": "active",
+      "yuqing-media": "active",
+      "yuqing-forum": "active"
+    },
+    "server": {
+      "status": "ok",
+      "version": "0.2.8-beta"
+    },
+    "public_index_assets_verified": true,
+    "browser": {
+      "uid": 991,
+      "browser_version": "153.0.8010.12",
+      "javascript": "passed"
+    },
+    "standalone_browser_container_verified_locally": true,
+    "same_browser_payload_verified_via_release_manifest_on_server": true,
+    "schema": 29,
+    "maintenance_removed": true
+  },
+  "normal_account_live_report": {
+    "analysis_id": "01M50T1CB29EPXPYDNFGGBWN7F",
+    "run_id": "01M50T1CB63JEDEW4ENQTXRE1M",
+    "state": "completed",
+    "doc_count": 50,
+    "context_count": 0,
+    "sources": {
+      "toutiao": 50
+    },
+    "content_kinds": {
+      "summary": 50
+    },
+    "dimension_count": 3,
+    "verified_dimension_quotes": 42,
+    "verified_report_risks": 14,
+    "phases_complete": [
+      "classification",
+      "dimension:heat",
+      "dimension:sentiment",
+      "dimension:deep_cause",
+      "summary",
+      "report"
+    ],
+    "verified_export_sources": 50,
+    "report_id": "rep-defb1a28e43641ba",
+    "report_sha256": "120ff270dc438da24b1a25c10f1506d8bb0cef2ca8ef2c65e50b44df553e1f4e",
+    "report_bytes": 140929,
+    "ledger": {
+      "run": {
+        "state": "completed",
+        "charge_mode": "normal",
+        "plan_code": "free",
+        "intent_version": "semantic-v2"
+      },
+      "credits": {
+        "consumes": 1,
+        "refunds": 0,
+        "net_delta": -1
+      },
+      "usage": [
+        {
+          "engine": "insight",
+          "outcome": "provider_response",
+          "usage_status": "reported",
+          "cost_status": "pending",
+          "billing_exempt": false,
+          "calls": 16,
+          "input_tokens": 179950,
+          "output_tokens": 19113,
+          "known_cost_micro_cny": null
+        },
+        {
+          "engine": "query",
+          "outcome": "provider_response",
+          "usage_status": "reported",
+          "cost_status": "pending",
+          "billing_exempt": false,
+          "calls": 8,
+          "input_tokens": 52724,
+          "output_tokens": 9125,
+          "known_cost_micro_cny": null
+        },
+        {
+          "engine": "report",
+          "outcome": "provider_response",
+          "usage_status": "reported",
+          "cost_status": "pending",
+          "billing_exempt": false,
+          "calls": 3,
+          "input_tokens": 52583,
+          "output_tokens": 6460,
+          "known_cost_micro_cny": null
+        }
+      ],
+      "missing_usage": 0,
+      "candidate_materials": 80,
+      "audits": 13
+    },
+    "scope": "normal real-provider task; source/quote/coverage/accounting reconciliation, not article truth or online accuracy"
+  },
+  "live_summary": {
+    "analysis_id": "01M50T1CB29EPXPYDNFGGBWN7F",
+    "run_id": "01M50T1CB63JEDEW4ENQTXRE1M",
+    "state": "completed",
+    "progress": 100,
+    "phase": "completed",
+    "candidates": 214,
+    "direct": 50,
+    "context": 0,
+    "elapsed_seconds": 352.1,
+    "error_code": null,
+    "error_message": null,
+    "per_platform": [
+      {
+        "body_count": 0,
+        "context_count": 0,
+        "direct_count": 50,
+        "failed_count": 0,
+        "fetch_failed_count": 99,
+        "processed_count": 99,
+        "provider_calls": 5,
+        "provider_candidates": 209,
+        "queries": 5,
+        "rejected_count": 32,
+        "source": "toutiao",
+        "status": "partial",
+        "summary_count": 79,
+        "unprocessed_count": 72
+      },
+      {
+        "body_count": 1,
+        "context_count": 0,
+        "direct_count": 0,
+        "failed_count": 0,
+        "fetch_failed_count": 0,
+        "processed_count": 1,
+        "provider_calls": 5,
+        "provider_candidates": 5,
+        "queries": 5,
+        "rejected_count": 1,
+        "source": "wechat",
+        "status": "queried",
+        "summary_count": 0,
+        "unprocessed_count": 0
+      }
+    ],
+    "source_sha": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+    "report_present": true,
+    "report_id": "rep-defb1a28e43641ba",
+    "summary_present": true,
+    "dimension_count": 3,
+    "warning": "Public webpage bodies or provider summary/snippet excerpts only; no video transcription or complete comments. Unprocessed material is not a negative relevance decision."
+  },
+  "final_database": {
+    "active_analyses": 0,
+    "active_runs": 0,
+    "schema": 29,
+    "durable_smoke_reports": 1
+  },
+  "pending_usage_files": 0,
+  "limits": [
+    "Fixed synthetic-reference scores are not online article accuracy.",
+    "This production run adopted 50 Toutiao provider summaries; source bodies were unavailable.",
+    "WeChat was queried independently and one fetched body was irrelevant.",
+    "Supplier unit prices remain pending; no zero-cost claim.",
+    "No payment, notification-delivery or full five-dimension paid-tier live acceptance is claimed."
+  ]
+}
