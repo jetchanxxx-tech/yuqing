@@ -158,8 +158,8 @@ def main():
                      'semantic_classification': 'direct', 'date_sources': {'body': '2026-10-15T10:00:00+08:00'}}]
             dimensions = [{'id': 'heat', 'name': '传播热度', 'findings': 'QA_DIMENSION_FINDING，不能推算全网声量。',
                            'data_points': [], 'quotes': [], 'trend': 'stable', 'confidence': 0.8}]
-            v1 = '<!doctype html><html><body><h1>QA_REPORT_V1</h1><p>first snapshot</p></body></html>'
-            v2 = '<!doctype html><html><body><h1>QA_REPORT_V2</h1><p>second snapshot</p></body></html>'
+            v1 = '<!doctype html><html><body><h1>QA_REPORT_V1</h1><p>第一版摘要与引语。</p><h2>QA_DIMENSION_FINDING</h2><p>2026-10-01 / 2026-10-20 · 新品上市 · 事件分析模板</p><table><tr><th>编号</th><th>原文</th></tr><tr><td>audit-direct-01</td><td>https://www.toutiao.com/article/123/</td></tr></table></body></html>'
+            v2 = v1.replace('QA_REPORT_V1', 'QA_REPORT_V2').replace('第一版', '第二版')
             sql('''INSERT INTO analyses(id,tenant_id,name,state,progress,keywords,sources,created_by,
                 doc_count,summary,report_content,dimensions,sentiments,topics,scenario_template_id,
                 report_template_id,date_from,date_to,research_question)
@@ -202,13 +202,15 @@ def main():
             check('historical report id preserves its first snapshot', response.status_code == 200 and response.content == v1.encode(),
                   status=response.status_code, returned_v2=response.content == v2.encode())
 
-            # The ReportHistoryPage advertises these format actions for every row.
-            # Preserve the observed HTTP statuses as product acceptance evidence.
             sql("UPDATE report_credits SET plan_code='pro',plan_source='manual' WHERE tenant_id=%s", (tenant_id,))
-            for fmt, report_id in [('md', html_id), ('pdf', html_id), ('docx', html_id)]:
-                response = api('GET', '/reports/' + report_id + '/download?format=' + fmt, token)
-                check('ReportHistoryPage advertised export is actionable: ' + fmt, response.status_code == 200,
-                      status=response.status_code, envelope=response.json() if response.headers.get('Content-Type','').startswith('application/json') else {})
+            response = api('GET', '/reports/' + html_id + '/download?format=docx', token)
+            exported = response.status_code == 200 and zipfile.is_zipfile(io.BytesIO(response.content))
+            exported_text = docx_text(response.content) if exported else ''
+            check('Pro Word export retains the original report version', exported and 'QA_REPORT_V1' in exported_text
+                  and 'QA_REPORT_V2' not in exported_text, status=response.status_code, valid_docx=exported)
+            for fmt in ['md', 'pdf']:
+                response = api('GET', '/reports/' + html_id + '/download?format=' + fmt, token)
+                check('unimplemented export is refused: ' + fmt, response.status_code in (400, 403, 409), status=response.status_code)
             # The user-facing report center advertises Word. Seed a matching row
             # to trace the native Go -> Python stream path and its actual JSON.
             add_report(word_id, 'docx', 3)
@@ -220,16 +222,12 @@ def main():
             check('native Word download contains valid DOCX bytes', valid_zip,
                   status=response.status_code, body=response.text[:800] if not valid_zip else '<valid DOCX>')
             request = wire[-1] if wire else {}
-            received_docs = request.get('documents') or []
-            check('Word request retains saved source documents', len(received_docs) == 1 and all(
-                  received_docs[0].get(key) == docs[0][key] for key in ('id', 'content', 'url', 'content_kind')),
-                  documents=request.get('documents'), context_documents=request.get('context_documents'))
-            check('Word request retains dimensions and period', any(
-                  row.get('findings') == dimensions[0]['findings'] for row in request.get('dimensions') or [])
-                  and request.get('date_from') == '2026-10-01' and request.get('date_to') == '2026-10-20',
-                  dimension_count=len(request.get('dimensions') or []), date_from=request.get('date_from'), date_to=request.get('date_to'))
-            check('Word request retains scene and template', request.get('scenario_template_id') == 'product_launch'
-                  and request.get('template_id') == 'event', scenario=request.get('scenario_template_id'), template=request.get('template_id'))
+            check('Word export uses immutable saved HTML, not current analysis inputs', request.get('html_content') == v2,
+                  saved_html_matches=request.get('html_content') == v2)
+            check('Word file retains source IDs and links', 'audit-direct-01' in text
+                  and 'https://www.toutiao.com/article/123/' in text)
+            check('Word file retains dimensions, scene and period', all(value in text
+                  for value in ['QA_DIMENSION_FINDING', '2026-10-01', '2026-10-20', '新品上市', '事件分析模板']))
             # A direct engine control distinguishes a Go adapter failure from a DOCX library failure.
             control = transport.post(ENGINE + '/generate', headers={'X-Internal-Token': secret}, json={
                 'title': 'QA完整分析名称', 'format': 'docx', 'documents': docs, 'context_documents': [],
