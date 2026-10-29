@@ -16,17 +16,19 @@ type Store interface {
 
 // Report represents a generated analysis report.
 type Report struct {
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	ID            string     `json:"id"`
-	AnalysisID    string     `json:"analysis_id"`
-	Title         string     `json:"title,omitempty"`
-	Format        string     `json:"format"`
-	Status        string     `json:"status"`
-	FileKey       string     `json:"file_key,omitempty"`
-	SummaryJSON   string     `json:"summary_json,omitempty"`
-	ReportVersion int        `json:"report_version"`
-	CreatedBy     string     `json:"created_by"`
-	CreatorName   string     `json:"creator_name,omitempty"` // JOIN users.name, 不落库
+	CreatedAt         *time.Time `json:"created_at,omitempty"`
+	ID                string     `json:"id"`
+	AnalysisID        string     `json:"analysis_id"`
+	Title             string     `json:"title,omitempty"`
+	Format            string     `json:"format"`
+	Status            string     `json:"status"`
+	FileKey           string     `json:"file_key,omitempty"`
+	SummaryJSON       string     `json:"summary_json,omitempty"`
+	ReportVersion     int        `json:"report_version"`
+	CreatedBy         string     `json:"created_by"`
+	CreatorName       string     `json:"creator_name,omitempty"` // JOIN users.name, 不落库
+	ContentHTML       string     `json:"-"`
+	SnapshotAvailable bool       `json:"snapshot_available"`
 }
 
 // Filter narrows report queries.

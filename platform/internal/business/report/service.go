@@ -26,11 +26,32 @@ type Service struct {
 	// planProvider returns the plan definition for a plan code; nil falls
 	// back to billing.DefaultPlans.
 	planProvider func(planCode string) *billing.Plan
+	contentFor   func(context.Context, string, string) (string, error)
 }
 
 // NewService wires the report store with plan gating.
 func NewService(store Store, planCodeFor func(tenantID string) string, planProvider func(planCode string) *billing.Plan) *Service {
 	return &Service{store: store, planCodeFor: planCodeFor, planProvider: planProvider}
+}
+
+// WithContentSource supplies immutable content for the in-memory runtime.
+// PostgreSQL captures its version under the analysis row lock in migration 0030.
+func (s *Service) WithContentSource(source func(context.Context, string, string) (string, error)) *Service {
+	s.contentFor = source
+	return s
+}
+
+func (s *Service) captureContent(ctx context.Context, tenantID string, r *Report) error {
+	if s.contentFor == nil {
+		return nil
+	}
+	content, err := s.contentFor(ctx, tenantID, r.AnalysisID)
+	if err != nil {
+		return err
+	}
+	r.ContentHTML = content
+	r.SnapshotAvailable = content != ""
+	return nil
 }
 
 // CreateFromAnalysis creates a completed report for an analysis.
@@ -61,6 +82,9 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 		FileKey:       fmt.Sprintf("reports/%s.%s", reportID, format),
 		ReportVersion: version,
 		CreatedBy:     createdBy,
+	}
+	if err := s.captureContent(ctx, tenantID, &rp); err != nil {
+		return nil, err
 	}
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		return nil, err
@@ -98,6 +122,9 @@ func (s *Service) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysis
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	rp := Report{CreatedAt: &createdAt, ID: reportID, AnalysisID: analysisID, Format: format, Status: statusCompleted,
 		FileKey: fmt.Sprintf("reports/%s.%s", reportID, format), ReportVersion: len(previous) + 1, CreatedBy: createdBy}
+	if err := s.captureContent(ctx, tenantID, &rp); err != nil {
+		return nil, err
+	}
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		if errors.Is(err, pkgerrors.ErrConflict) {
 			return getExisting()
@@ -128,7 +155,7 @@ func (s *Service) DownloadURL(ctx context.Context, tenantID, reportID, format st
 	if err != nil {
 		return "", err
 	}
-	if format != r.Format {
+	if format != r.Format && !(r.Format == "html" && format == "docx") {
 		return "", pkgerrors.Wrap(pkgerrors.ErrConflict,
 			fmt.Sprintf("report %s is a %s report, not %s", r.ID, r.Format, format))
 	}
@@ -142,12 +169,12 @@ func (s *Service) DownloadURL(ctx context.Context, tenantID, reportID, format st
 	}
 
 	plan := s.plan(planCode)
-	if plan == nil || !plan.IsFeatureEnabled("reports:"+r.Format) {
+	if plan == nil || !plan.IsFeatureEnabled("reports:"+format) {
 		return "", pkgerrors.Wrap(pkgerrors.ErrForbidden,
-			fmt.Sprintf("format %s is not included in plan %s", r.Format, planCode))
+			fmt.Sprintf("format %s is not included in plan %s", format, planCode))
 	}
 
-	return fmt.Sprintf("/tenants/%s/reports/%s/download?format=%s", tenantID, r.ID, r.Format), nil
+	return fmt.Sprintf("/tenants/%s/reports/%s/download?format=%s", tenantID, r.ID, format), nil
 }
 
 func (s *Service) plan(code string) *billing.Plan {

@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yuqing/platform/internal/api/middleware"
 	"github.com/yuqing/platform/internal/business/report"
-	"github.com/yuqing/platform/internal/engine"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 )
 
@@ -58,8 +57,8 @@ func (s *Services) handleGetReport(c *gin.Context) {
 	c.JSON(http.StatusOK, r)
 }
 
-// handleDownloadReport streams the report file (html from analyses.report_content,
-// docx proxied from the Python report engine). Plan gating is checked via DownloadURL.
+// handleDownloadReport exports an immutable published snapshot.
+// Word conversion never reruns analysis or calls a model.
 func (s *Services) handleDownloadReport(c *gin.Context) {
 	p := middleware.GetPrincipal(c)
 	if p == nil {
@@ -91,80 +90,26 @@ func (s *Services) handleDownloadReport(c *gin.Context) {
 		return
 	}
 
+	if r.Status != "completed" || r.ContentHTML == "" {
+		respondError(c, pkgerrors.Wrap(pkgerrors.ErrConflict, "该报告没有可核验的版本正文，不能使用其他版本替代。"))
+		return
+	}
 	switch format {
 	case "html":
-		// HTML stored in analyses.report_content
-		a, err := s.Analysis.Get(c.Request.Context(), p.TenantID, r.AnalysisID)
-		if err != nil {
-			respondError(c, err)
-			return
-		}
-		if a.ReportContent == "" {
-			notFound(c, "report content not generated")
-			return
-		}
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.Header("Content-Disposition", `attachment; filename="report-`+reportID+`.html"`)
-		c.String(http.StatusOK, a.ReportContent)
-
+		c.String(http.StatusOK, r.ContentHTML)
 	case "docx":
-		// docx proxied from Python report engine
 		if s.ReportEngine == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "report engine not configured"})
+			respondError(c, pkgerrors.Wrap(pkgerrors.ErrInternal, "report export engine not configured"))
 			return
 		}
-
-		// Get analysis to build GenerateReq
-		a, err := s.Analysis.Get(c.Request.Context(), p.TenantID, r.AnalysisID)
-		if err != nil {
-			respondError(c, err)
-			return
-		}
-
-		// Convert analysis.Topic to engine.TopicResult
-		topics := make([]engine.TopicResult, len(a.Topics))
-		for i, t := range a.Topics {
-			topics[i] = engine.TopicResult{
-				ID:       t.ID,
-				Name:     t.Name,
-				Keywords: t.Keywords,
-				DocCount: t.DocCount,
-				Trend:    t.Trend,
-			}
-		}
-
-		// Convert analysis.Sentiment to engine.SentimentResult
-		sentiments := make([]engine.SentimentResult, len(a.Sentiments))
-		for i, s := range a.Sentiments {
-			sentiments[i] = engine.SentimentResult{
-				DocumentID: s.DocumentID,
-				Sentiment:  s.Sentiment,
-				Level:      s.Level,
-				Confidence: s.Confidence,
-				Score:      s.Score,
-			}
-		}
-
-		// Build request for Python engine
-		title := a.Name
-		if len(a.Keywords) > 0 {
-			title = a.Keywords[0]
-		}
-		req := &engine.ReportGenerateReq{
-			Title:      title,
-			AnalysisID: r.AnalysisID,
-			Topics:     topics,
-			Sentiments: sentiments,
-			Format:     "docx",
-		}
-
-		stream, err := s.ReportEngine.GenerateStream(c.Request.Context(), req, "docx")
+		stream, err := s.ReportEngine.ExportStream(c.Request.Context(), r.ContentHTML)
 		if err != nil {
 			respondError(c, err)
 			return
 		}
 		defer stream.Close()
-
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 		c.Header("Content-Disposition", `attachment; filename="report-`+reportID+`.docx"`)
 		c.Status(http.StatusOK)

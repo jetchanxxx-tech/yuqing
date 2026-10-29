@@ -123,8 +123,6 @@ export type ReportFormat = 'html' | 'md' | 'pdf' | 'docx';
 
 export const REPORT_FORMATS: { value: ReportFormat; label: string }[] = [
   { value: 'html', label: 'HTML' },
-  { value: 'md', label: 'Markdown' },
-  { value: 'pdf', label: 'PDF' },
   { value: 'docx', label: 'Word' },
 ];
 

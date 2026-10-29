@@ -27,6 +27,7 @@ from engines.common.time_window import analysis_period, analysis_scope
 from engines.common.auth import InternalAuthMiddleware
 from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials
 from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
+from engines.report_engine.saved_export import render_saved_docx
 
 try:
     from docx import Document
@@ -1041,3 +1042,22 @@ async def generate(req: GenerateRequest):
             material_coverage=req.material_coverage,
             warning=req.generation_warning,
         )
+
+
+class SavedExportRequest(BaseModel):
+    html_content: str = Field(min_length=1, max_length=4_194_304)
+    format: Literal['docx'] = 'docx'
+
+    @model_validator(mode='after')
+    def require_content(self):
+        if not self.html_content.strip():
+            raise ValueError('saved report is empty')
+        return self
+
+
+@app.post('/export')
+async def export_saved_report(req: SavedExportRequest):
+    content = render_saved_docx(req.html_content)
+    return StreamingResponse(io.BytesIO(content),
+        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers={'Content-Disposition': 'attachment; filename=report.docx'})

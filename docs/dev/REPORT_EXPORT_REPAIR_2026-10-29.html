@@ -1,0 +1,17 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>报告导出修复与发布验证</title><style>body{font:15px/1.7 system-ui;max-width:1000px;margin:32px auto;padding:0 20px;color:#203036}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd6cf;padding:9px;text-align:left;vertical-align:top}code{overflow-wrap:anywhere}.pending{background:#fff2da;padding:14px}</style></head><body>
+<h1>报告导出修复与发布验证</h1>
+<p class="pending">状态：实现中，未部署。用户要求继续部署；本轮先处理已复现的导出与历史版本缺陷，再执行精确提交的托管检查。服务器仍拒绝现有 SSH 凭据，正在等待服务器控制台恢复登录。</p>
+<h2>确定的行为</h2><ul>
+<li>报告完成时捕获该版本 HTML。查看、重跑或再次下载不能修改已发布版本；不再从可变的分析行读取旧报告。</li>
+<li>Word 导出直接转换已保存 HTML，保持摘要、维度、风险、原文引语及来源明细，不重新检索或调用 LLM，不产生新的模型用量。</li>
+<li>界面只提供已实现的 HTML 与 Word 下载。Word 仍遵循所请求格式的套餐权限，跨租户及未核验 API Key 所有者边界保持。</li>
+<li>0030 为 reports 增加 content_html，插入时在分析行共享锁下捕获，数据库触发器防止修改。报告列表只返回是否有版本正文，不返回大段 HTML。</li>
+<li>历史回填只处理当前完成分析的最新 HTML 报告，要求记录创建于该次完成之后且完成时间可核验。无法核验的旧版保留记录、明确正文不可用，不把新内容冒充历史版本。</li>
+<li>快照随原报告记录按现有保留政策清理；金融流水、用户资产和模型费用事实不变。迁移禁止破坏式 down。</li></ul>
+<h2>验证顺序</h2><ol>
+<li>先提交失败用例：保存报告导出 HTTP 入口、Word ZIP/XML 内容、无模型调用、危险链接不被请求；真实 PG 的重跑、并发阻塞与回滚；浏览器菜单和 HTML 字节。</li>
+<li>实现快照、Word 保存内容转换、请求格式权限及界面选项。托管运行 Python、Go race/vet/build、PG、桥接和浏览器，保留失败原因。</li>
+<li>通过后评审 dev → prod，运行合并后精确 SHA 的 prod 检查；只下载、校验、上传该 SHA 制品。服务器执行备份、独立恢复迁移演练、安装、重启和健康/真实导出核对。</li></ol>
+<h2>已知边界</h2><p>当前源头博查请求曾全部失败，尚无能区分认证、网络和供应商状态的服务器日志；不能宣称此报告修复解决了博查。新的真实全链路验收仍需服务器连接恢复与供应商请求成功。Word 只转换已保存的文本、标题及表格，既不执行 HTML 脚本，也不下载图片、字体或链接。</p>
+<p>原始测试报告：<a href="REPORT_QUALITY_TEST_2026-10-29.html">报告质量测试</a>。旧失败记录保留，不能改写为修复前已通过。</p>
+</body></html>

@@ -124,5 +124,34 @@ func (e *RealReportEngine) GenerateStream(ctx context.Context, req *ReportGenera
 	return resp.Body, nil
 }
 
+// ExportStream converts the published snapshot, without supplier credentials or
+// a new analysis/model call. The caller has already checked tenant and plan.
+func (e *RealReportEngine) ExportStream(ctx context.Context, content string) (io.ReadCloser, error) {
+	body, err := json.Marshal(struct {
+		HTML   string `json:"html_content"`
+		Format string `json:"format"`
+	}{content, "docx"})
+	if err != nil {
+		return nil, fmt.Errorf("report: encode export: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/export", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if e.authToken != "" {
+		request.Header.Set("X-Internal-Token", e.authToken)
+	}
+	response, err := e.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("report: export: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		defer response.Body.Close()
+		return nil, fmt.Errorf("report: export engine returned %d", response.StatusCode)
+	}
+	return response.Body, nil
+}
+
 // Compile-time interface check.
 var _ ReportEngine = (*RealReportEngine)(nil)
