@@ -4,6 +4,7 @@ import json
 import math
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -11,6 +12,11 @@ from engines.common.llm_client import LLMClient, LLMOutputTruncated, LLMSupplier
 
 OUTPUT_TOKENS = 16384
 TRUNCATED_OUTPUT_TOKENS = 32768
+DEEPSEEK_MODELS = {"deepseek-flash", "deepseek-v4-pro"}
+# Conservative envelopes from the official model table, checked 2026-10-30.
+# Alternate endpoints/aliases still require the operator's verified catalog.
+DEEPSEEK_CAPABILITIES = {model: {"context_tokens": 1_000_000, "max_output_tokens": 384_000}
+                         for model in DEEPSEEK_MODELS}
 
 
 class ModelContextExceeded(ValueError):
@@ -23,10 +29,22 @@ def glm_reasoning_options(model, effort="low"):
     This family requires thinking and supports low/high/max effort. Keep
     provider-specific fields away from other models; output budgets are separate.
     """
+    if model.lower() in DEEPSEEK_MODELS:
+        return model_reasoning_options(model, effort=effort)
     if model.lower() not in {"glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"}:
         return {}
     if effort not in {"low", "high", "max"}:
         raise ValueError("unsupported verified GLM reasoning effort")
+    return {"thinking": {"type": "enabled"}, "reasoning_effort": effort}
+
+
+def model_reasoning_options(model, *, task="analysis", effort=None):
+    """Official DeepSeek policy checked 2026-10-30; GLM retains its existing separate policy."""
+    if model.lower() not in DEEPSEEK_MODELS:
+        return {}
+    effort = effort or ("low" if task in {"planning", "relevance", "classification"} else "high")
+    if effort not in {"low", "high", "max"}:
+        raise ValueError("unsupported verified DeepSeek reasoning effort")
     return {"thinking": {"type": "enabled"}, "reasoning_effort": effort}
 
 
@@ -55,6 +73,8 @@ def _check_capacity(client, model, messages, output_tokens):
     """
     catalog = json.loads(os.environ.get("YUQING_MODEL_CAPABILITIES_JSON", "{}"))
     limits = catalog.get(model) or catalog.get(model.lower())
+    if limits is None and isinstance(client, LLMClient) and urlsplit(client.base_url).hostname == "api.deepseek.com":
+        limits = DEEPSEEK_CAPABILITIES.get(model.lower())
     if limits is None:
         # Offline provider-boundary fixtures cannot contact a live supplier.
         # Real clients must have an operator-verified entry before spending.
@@ -87,6 +107,11 @@ async def chat_json_bounded(client, model, messages, *, deadline=None,
         deadline = loop.time() + 900
     parameters = dict(kwargs)
     parameters.pop("max_tokens", None)
+    if model.lower() in DEEPSEEK_MODELS:
+        parameters = {**model_reasoning_options(model, task="planning"), **parameters}
+        if parameters.get("thinking", {}).get("type") == "enabled":
+            for ignored in ("temperature", "presence_penalty", "frequency_penalty"):
+                parameters.pop(ignored, None)
     budget = attempt_budget if attempt_budget is not None else AttemptBudget()
     if not budget.remaining:
         raise ValueError("supplier attempt budget exhausted")

@@ -5,6 +5,7 @@ AI 研判段落替换为「AI 研判不可用」提示 —— 结果呈现优于
 """
 import io
 import asyncio
+import copy
 import json
 import hmac
 import os
@@ -18,16 +19,16 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
-from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.llm_client import LLM_MODEL, LLMContentRejected, LLMAuthorizationError, build_client
 from engines.common.prompt_catalog import ScenarioID, EVIDENCE_RULES, analysis_context
-from engines.common.evidence import resolve_quote
+from engines.common.evidence import resolve_quote, validate_classification
 from engines.common.evidence_units import resolve_unit_quote
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_period, analysis_scope
 from engines.common.auth import InternalAuthMiddleware
-from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials
-from engines.common.model_budget import chat_json_bounded, glm_reasoning_options
+from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials, span_key, span_for, phase_complete
+from engines.common.model_budget import chat_json_bounded, glm_reasoning_options, model_reasoning_options
 from engines.report_engine.saved_export import render_saved_docx
 
 try:
@@ -45,6 +46,11 @@ app = FastAPI(title="Report Engine", version="0.2.0", lifespan=usage_lifespan)
 @app.exception_handler(AccountingDurabilityError)
 async def accounting_failure(_request, _error):
     return JSONResponse(status_code=503, content={"code": "ACCOUNTING_DURABILITY_ERROR", "message": "usage persistence unavailable"})
+
+
+@app.exception_handler(LLMAuthorizationError)
+async def authorization_failure(_request, _error):
+    return JSONResponse(status_code=503, content={"code": "ACCOUNTING_AUTHORIZATION_ERROR", "message": "usage authorization unavailable"})
 
 if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
     app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
@@ -79,9 +85,19 @@ class GenerateRequest(BaseModel):
     # False = 洞察引擎未产出（未配置/调用失败）。渲染时不得把空情感
     # 数据画成 0/0/0 —— 那与「全部中性」无法区分，属误导（审核 D1）。
     insight_available: bool = True
+    resilient: bool = False
+    delivery_level: Literal["", "full", "limited", "brief", "empty"] = ""
+    delivery_reasons: list[str] = Field(default_factory=list)
+    delivery_policy: Literal["best_available", "full_only"] = "best_available"
+    unverified_documents: list[dict] = Field(default_factory=list)
+    summary: str = ""
+    mode: str = ""
 
     @model_validator(mode="after")
     def restrict_target_statistics(self):
+        if self.resilient:
+            self.unverified_documents = [*self.unverified_documents, *[
+                d for d in self.documents if d.get("semantic_classification", "direct") not in {"", "direct", "context"}]]
         self.documents, self.context_documents = separate_materials(self.documents, self.context_documents)
         ids = {document["id"] for document in self.documents if isinstance(document.get("id"), str) and document["id"]}
         seen = set()
@@ -101,6 +117,8 @@ class GenerateResponse(BaseModel):
     content: str = ""
     material_coverage: dict = Field(default_factory=dict)
     warning: str = ""
+    delivery_level: str = ""
+    delivery_reasons: list[str] = Field(default_factory=list)
 
 
 _LLM_PROMPT = """你是资深舆情分析师和报告撰写专家。你的使命是挖掘真实的民意和人情味，
@@ -312,6 +330,123 @@ def _validate_report_output(data) -> None:
             raise ValueError(f"报告字段 {field} 不是有效选项")
 
 
+def _expected_dimensions(req):
+    return ["heat", "sentiment", "deep_cause"] if req.mode == "quick" else ["background", "heat", "sentiment", "group", "deep_cause"]
+
+
+def _classified_ids(req):
+    phase = next((p for p in req.insight_material_coverage.get("phases", [])
+                  if isinstance(p, dict) and p.get("phase") == "classification"), {})
+    read = {span_key(s) for s in phase.get("read_spans", []) if isinstance(s, dict)}
+    missing = {s.get("document_id") for s in phase.get("unprocessed", []) if isinstance(s, dict)}
+    return {d.get("id") for d in req.documents if d.get("id") not in missing
+            and {span_key(span_for(piece)) for batch in material_batches([d]) for piece in batch}.issubset(read)}
+
+
+def _prepare_resilient_delivery(req):
+    """Recheck complete component and citation boundaries; never upgrade the platform grade."""
+    requested = req.delivery_level
+    if requested in {"brief", "empty"}:
+        if requested == "brief" and not any(d.get("url") and str(d.get("content") or "").strip()
+                for d in [*req.documents, *req.context_documents, *req.unverified_documents]):
+            req.delivery_level = "empty"
+            req.delivery_reasons = list(dict.fromkeys([*req.delivery_reasons, "未取得来源可追溯且内容非空的材料"]))
+        req.sentiments, req.topics, req.dimensions, req.summary = [], [], [], ""
+        return
+    reasons = list(req.delivery_reasons)
+    classified = _classified_ids(req)
+    raw_sentiments = [s for s in req.sentiments if s.get("document_id") in classified]
+    sentiments, topics, issues = validate_classification({"sentiments": raw_sentiments, "topics": req.topics}, req.documents)
+    req.sentiments, req.topics = sentiments, topics
+    complete_dimensions = set()
+    seen_dimensions = set()
+    dimensions = []
+    for raw in req.dimensions:
+        if not isinstance(raw, dict) or raw.get("id") not in _expected_dimensions(req) or raw.get("id") in seen_dimensions:
+            issues.append("分析分项标识未通过核验")
+            continue
+        seen_dimensions.add(raw["id"])
+        dimension = copy.deepcopy(raw)
+        quotes, locations = [], []
+        unsafe = not isinstance(dimension.get("quotes", []), list)
+        for quote in dimension.get("quotes", []) if not unsafe else []:
+            verified = resolve_quote(quote, [*req.documents, *req.context_documents]) if isinstance(quote, dict) else None
+            location = quote_location(verified, [*req.documents, *req.context_documents]) if verified else None
+            if verified is None or location is None:
+                unsafe = True
+                continue
+            quotes.append(verified)
+            # The saved source span is authoritative; supplied offsets cannot override it.
+            candidates = [s for s in dimension.get("quote_locations", []) if isinstance(s, dict)
+                          and s.get("document_id") == verified["document_id"] and s.get("quote_text") == verified["text"]]
+            for candidate in candidates:
+                document = next((d for d in [*req.documents, *req.context_documents] if d.get("id") == verified["document_id"]), {})
+                field = candidate.get("field", "content")
+                start, end = candidate.get("start"), candidate.get("end")
+                if field in {"content", "title"} and isinstance(start, int) and isinstance(end, int) and 0 <= start < end:
+                    value = str(document.get(field) or "")[start:end]
+                    if value == verified["text"]:
+                        location = {**candidate, "field": field}
+                        break
+            locations.append(location)
+        dimension["quotes"], dimension["quote_locations"] = quotes, locations
+        if unsafe:
+            issues.append("分析分项的引文未通过原文核验，相关分项已移除")
+            continue
+        if (dimension.get("complete", True) and all(isinstance(dimension.get(k), str) and dimension[k].strip()
+                for k in ("findings", "deep_read", "trend"))
+                and phase_complete(req.insight_material_coverage, "dimension:" + dimension["id"], req.documents, req.context_documents)):
+            complete_dimensions.add(dimension["id"])
+        else:
+            dimension["complete"] = False
+            dimension.setdefault("scope_notice", "此分项仅保留已核验的材料结论；未处理范围保持未知。")
+        dimensions.append(dimension)
+    req.dimensions = dimensions
+    if len({d.get("url") for d in req.documents if d.get("url") and str(d.get("content") or "").strip()}) < 2:
+        level = "brief" if req.documents or req.context_documents or req.unverified_documents else "empty"
+        reasons.append("不同网址的已核验直接材料不足 2 条")
+    else:
+        summary_phase = next((p for p in req.insight_material_coverage.get("phases", [])
+                              if isinstance(p, dict) and p.get("phase") == "summary"), {})
+        summary_complete = bool(req.summary.strip()) and summary_phase.get("input_basis") == "verified_dimension_findings" and (
+            summary_phase.get("compiled") is True or not (summary_phase.get("failure_reason") or summary_phase.get("failure_code")))
+        full = (complete_dimensions == set(_expected_dimensions(req))
+                and phase_complete(req.insight_material_coverage, "classification", req.documents)
+                and len(req.sentiments) == len(req.documents) and summary_complete and not issues)
+        if full:
+            level = "full"
+        elif complete_dimensions or req.sentiments:
+            level = "limited"
+            reasons.append("分析存在可划定的未完成范围；仅展示已核验结论和实际统计分母")
+        else:
+            level = "brief"
+            reasons.append("尚未形成完整独立分析分项或有效逐文档分类")
+    order = {"empty": 0, "brief": 1, "limited": 2, "full": 3}
+    if requested and order[requested] < order[level]:
+        level = requested
+    req.delivery_level = level
+    req.delivery_reasons = list(dict.fromkeys([*reasons, *issues]))
+    if level in {"brief", "empty"}:
+        req.sentiments, req.topics, req.dimensions, req.summary = [], [], [], ""
+
+
+def _compile_verified_report(req, outputs=()):
+    """Compile saved verified conclusions without pretending that a writer reread source text."""
+    attempts = req.material_coverage
+    components = (["summary"] if req.summary else []) + (["classification"] if req.sentiments else [])
+    components += ["dimension:" + d["id"] for d in req.dimensions]
+    req.material_coverage = {"version": "complete-chunks-v1", "phases": [{"phase": "report", "input_basis": "verified_components",
+        "read_spans": [], "unprocessed": [], "derived_reads": [{"component": c} for c in components]}],
+        "writing_attempts": attempts.get("phases", [])}
+    summaries = ([req.summary] if req.summary else []) + [item.get("executive_summary", "") for item in outputs]
+    return {"executive_summary": "\n\n".join(s for s in summaries if s),
+            "event_nature": "／".join(dict.fromkeys(item["event_nature"] for item in outputs if item.get("event_nature"))),
+            "action_advice": "／".join(dict.fromkeys(item["action_advice"] for item in outputs if item.get("action_advice"))),
+            "topic_analyses": [value for item in outputs for value in item.get("topic_analyses", [])],
+            "risk_points": [value for item in outputs for value in item.get("risk_points", [])],
+            "recommendations": [value for item in outputs for value in item.get("recommendations", [])]}
+
+
 async def _llm_insight(req: GenerateRequest) -> dict | None:
     """LLM 研判。Key 缺失、调用失败或返回非对象时返回 None（降级渲染）。"""
     coverage = MaterialCoverage()
@@ -324,7 +459,11 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
             coverage.fail("report", batch, "报告模型未配置，未阅读原文")
         req.material_coverage = coverage.result()
         req.generation_warning = "报告模型未配置"
-        return None
+        return _compile_verified_report(req) if req.resilient and req.delivery_level in {"full", "limited"} else None
+    if req.resilient and any(p.get("failure_code") == LLMContentRejected.code
+                            for p in req.insight_material_coverage.get("phases", []) if isinstance(p, dict)):
+        req.generation_warning = "已拒绝的材料请求保持终态；使用已核验分析组件编排报告"
+        return _compile_verified_report(req)
     llm = build_client(key, req.llm_base_url, timeout=600)
     llm.usage_context = {"run_id": req.run_id, "engine": "report", "phase": "generate"}
     deadline = asyncio.get_running_loop().time() + _REPORT_BUDGET_SECONDS
@@ -353,7 +492,7 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                      materials=materials_text(batch, numbered=True), dimensions=notes)}],
                 temperature=0.3, max_tokens=16384, deadline=deadline,
                 validate_result=_validate_report_output,
-                **glm_reasoning_options(req.llm_model or LLM_MODEL),
+                **{**glm_reasoning_options(req.llm_model or LLM_MODEL), **model_reasoning_options(req.llm_model or LLM_MODEL)},
             )
             coverage.read("report", batch)
             if index < len(dimension_chunks):
@@ -379,13 +518,15 @@ async def _llm_insight(req: GenerateRequest) -> dict | None:
                                   "evidence": citation["text"], "evidence_document_id": citation["document_id"],
                                   "evidence_source": citation["source"], "evidence_location": location})
             outputs.append({**data, "risk_points": risks})
-    except AccountingDurabilityError:
+    except (AccountingDurabilityError, LLMAuthorizationError):
         raise
     except Exception as error:
         reason = "报告阶段超时" if isinstance(error, TimeoutError) else str(error) or type(error).__name__
-        coverage.fail("report", batch, reason)
+        coverage.fail("report", batch, reason, code=getattr(error, "code", ""))
         req.material_coverage = coverage.result()
         req.generation_warning = reason
+        if req.resilient:
+            return _compile_verified_report(req, outputs)
         return None
     req.material_coverage = coverage.result()
     req.material_coverage["phases"][0]["derived_reads"] = derived_reads
@@ -472,7 +613,8 @@ def _topic_rows(topics: list[dict]) -> list[str]:
 
 
 def _source_details(document: dict) -> list[tuple[str, str]]:
-    kinds = {"body": "已取得正文", "summary": "博查摘要（正文未取得）"}
+    kinds = {"body": "本机取得正文（对应保存文本）", "provider_body": "供应商提供正文（对应保存文本版本；未声称本机已访问原网页）",
+             "summary": "供应商摘要（正文未取得；不能作为原网页逐字原声）"}
     dates = document.get("date_sources")
     original = _safe_url(document.get("url"))
     final = _safe_url(document.get("final_url"))
@@ -487,6 +629,9 @@ def _source_details(document: dict) -> list[tuple[str, str]]:
     ]
     if document.get("truncated"):
         details.append(("保存范围", "正文达到保存上限；后续原文未核验"))
+    for key, label in (("content_sha256", "保存文本 SHA256"), ("fetched_at", "抓取时间"), ("content_provider", "正文提供方")):
+        if document.get(key):
+            details.append((label, str(document[key])))
     return details
 
 
@@ -499,6 +644,45 @@ def _document_rows(documents: list[dict]) -> list[str]:
         + "".join(f"<br>{_esc(label)}：{_esc(value)}" for label, value in _source_details(d)) + "</td></tr>"
         for i, d in enumerate([x for x in documents[:50] if isinstance(x, dict)])
     ]
+
+
+def _delivery_notice(req):
+    labels = {"full": "完整研判", "limited": "受限研判", "brief": "资料简报", "empty": "空结果回执"}
+    label = labels.get(req.delivery_level, "资料交付")
+    reasons = "".join(f"<li>{_esc(reason)}</li>" for reason in req.delivery_reasons)
+    policy = "<p>本次要求完整研判；当前保留的成果等级见上方说明。</p>" if req.delivery_policy == "full_only" and req.delivery_level != "full" else ""
+    return f'<div class="notice"><b>交付等级：{label}</b>' + (f"<ul>{reasons}</ul>" if reasons else "") + policy + "</div>"
+
+
+def _render_receipt(req, generated_at):
+    parts = [_delivery_notice(req)]
+    period = analysis_period(req.date_from, req.date_to)
+    if period:
+        parts.append(f"<p>本次资料日期范围：{_esc(period)}（包含起止日期）。</p>")
+    parts.append("<p>以下为保存资料与处理记录。未完成的相关性、情感、热度和风险判断保持未知。</p>")
+    documents, seen = [], set()
+    for classification, values in (("direct", req.documents), ("context", req.context_documents), ("uncertain", req.unverified_documents)):
+        for document in values:
+            key = (document.get("id"), document.get("url"))
+            if key in seen or not str(document.get("content") or "").strip():
+                continue
+            seen.add(key)
+            documents.append((classification, document))
+    if req.delivery_level == "empty":
+        parts.append("<h2>空结果回执</h2><p>未取得可交付的有效材料。本回执不代表已完成研判。</p>")
+    else:
+        parts.append(f"<h2>资料目录</h2><p>保存 {len(documents)} 条材料；本次尚未形成可交付的研判结论。</p>")
+        for classification, document in documents:
+            status = {"direct": "已完成直接材料准入，语义分析尚未完成", "context": "背景／比较材料，不计入目标统计",
+                      "uncertain": "相关性待核验，不能断言与主题相关"}[classification]
+            parts.append(f"<h3>{_esc(document.get('title', '未命名材料'))}</h3><p>{_esc(status)}</p>")
+            parts.append("<table><tr><th>记录项</th><th>保存值</th></tr>" + "".join(
+                f"<tr><td>{_esc(label)}</td><td>{_esc(value)}</td></tr>" for label, value in _source_details(document)) + "</table>")
+            parts.append('<p>保存文本（仅代表本次取得的正文或摘要范围）：</p><p style="white-space:pre-wrap">'
+                         + _esc(document.get("content", "")) + "</p>")
+    parts.append(_coverage_section(req))
+    parts.append("<h2>补充路径</h2><p>可补充所选来源范围内的公开链接，核对日期或调整研究范围。供应商明确拒绝的相同请求不自动重复提交。</p>")
+    return _TEMPLATE.substitute(title=_esc(req.title), generated_at=generated_at, body="\n".join(parts))
 
 
 def _overview_cards(req: GenerateRequest, stats: dict) -> str:
@@ -634,6 +818,8 @@ def _dimensions_section(dimensions: list[dict]) -> str:
     for d in dims:
         name = _esc(d.get("name", "未命名维度"))
         body = ['<div class="dimension">', f"<h3>{name}</h3>"]
+        if d.get("scope_notice"):
+            body.append(f'<p class="notice">{_esc(d["scope_notice"])}</p>')
         if d.get("findings"):
             body.append(f"<p><b>核心发现</b>：{_esc(d.get('findings', ''))}</p>")
         dps = _str_list(d.get("data_points"))
@@ -666,6 +852,8 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
     """渲染完整 HTML 报告。insight 为 None 时降级为纯数据报告。"""
     stats = _sentiment_stats(req.sentiments)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    if req.resilient and req.delivery_level in {"brief", "empty"}:
+        return _render_receipt(req, generated_at)
     title = _esc(req.title)
     template_names = {"daily": "日报模板", "weekly": "周报模板", "event": "事件分析模板"}
     period = analysis_period(req.date_from, req.date_to)
@@ -680,6 +868,13 @@ def _render(req: GenerateRequest, insight: dict | None) -> str:
         return _TEMPLATE.substitute(title=title, generated_at=generated_at, body=body)
 
     parts = [period_notice] if period_notice else []
+    if req.resilient:
+        parts.append(_delivery_notice(req))
+        parts.append(f'<div class="notice">情感分类覆盖 {len(req.sentiments)}/{len(req.documents)} 篇直接材料。'
+                     f'情感比例仅以已完整分类的 {len(req.sentiments)} 篇为分母；其余保持未知。'
+                     '引文仅指向对应保存文本版本；摘要不等于原网页逐字原声。</div>')
+        if req.generation_warning:
+            parts.append(f'<div class="notice">{_esc(req.generation_warning)}</div>')
     if req.research_intent.get("topic"):
         parts.append(f'<div class="notice">本轮系统理解：{_esc(req.research_intent["topic"])}</div>')
     parts.append(f'<div class="notice">直接证据 {len(req.documents)} 篇；背景材料 {len(req.context_documents)} 篇。'
@@ -1021,12 +1216,19 @@ async def health():
 async def generate(req: GenerateRequest):
     """LLM 研判 + 模板渲染。LLM 不可用时降级为数据报告。"""
     report_id = "rep-" + uuid.uuid4().hex[:16]
-    insight = await _llm_insight(req)
+    if req.resilient:
+        _prepare_resilient_delivery(req)
+    if req.resilient and req.delivery_level in {"brief", "empty"}:
+        req.material_coverage = {"version": "complete-chunks-v1", "phases": [{"phase": "report", "input_basis": "saved_material_metadata",
+                                  "read_spans": [], "unprocessed": []}]}
+        insight = None
+    else:
+        insight = await _llm_insight(req)
 
     if req.format == "docx":
         if not DOCX_AVAILABLE:
             return {"error": "python-docx not installed"}, 500
-        content_bytes = _render_docx(req, insight)
+        content_bytes = render_saved_docx(_render(req, insight)) if req.resilient else _render_docx(req, insight)
         return StreamingResponse(
             io.BytesIO(content_bytes),
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1042,6 +1244,8 @@ async def generate(req: GenerateRequest):
             content=content,
             material_coverage=req.material_coverage,
             warning=req.generation_warning,
+            delivery_level=req.delivery_level,
+            delivery_reasons=req.delivery_reasons,
         )
 
 

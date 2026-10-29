@@ -23,11 +23,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 import httpx
 
-from engines.common.llm_client import LLM_MODEL, LLMContentRejected, build_client
+from engines.common.llm_client import LLM_MODEL, LLMContentRejected, LLMAuthorizationError, build_client
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_scope
@@ -35,12 +36,24 @@ from engines.common.auth import InternalAuthMiddleware
 from engines.common.evidence import normalize_quote, resolve_quote, sample_stats, validate_classification
 from engines.common.evidence_units import resolve_unit_quote
 from engines.common.prompt_catalog import ScenarioID, EVIDENCE_RULES, analysis_context
-from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials
-from engines.common.model_budget import AttemptBudget, chat_json_bounded
+from engines.common.materials import MaterialCoverage, material_batches, materials_text, quote_location, separate_materials, span_for, span_key, phase_complete
+from engines.common.model_budget import AttemptBudget, chat_json_bounded, model_reasoning_options
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 app = FastAPI(title="Insight Engine", version="0.4.0", lifespan=usage_lifespan)
+
+
+@app.exception_handler(AccountingDurabilityError)
+async def accounting_failure(_request, _error):
+    return JSONResponse(status_code=503, content={"code": "ACCOUNTING_DURABILITY_ERROR", "message": "usage persistence unavailable"})
+
+
+@app.exception_handler(LLMAuthorizationError)
+async def authorization_failure(_request, _error):
+    return JSONResponse(status_code=503, content={"code": "ACCOUNTING_AUTHORIZATION_ERROR", "message": "usage authorization unavailable"})
+
+
 if os.environ.get("YUQING_BILLING_SERVICE_TOKEN"):
     app.add_middleware(InternalAuthMiddleware, token=os.environ["YUQING_BILLING_SERVICE_TOKEN"])
 
@@ -63,6 +76,8 @@ class AnalyzeRequest(BaseModel):
     # 套餐裁剪模式："" / "full" = 5 维完整研判；"quick" = 3 维速览
     # 其他值按 full 处理；输出预算与 full 相同。
     mode: str = ""
+    resilient: bool = False
+    reusable_components: dict = Field(default_factory=dict)
 
 
 class SentimentRequest(BaseModel):
@@ -72,6 +87,8 @@ class SentimentRequest(BaseModel):
     analysis_id: str = ""
     api_key: str = ""
     llm_base_url: str = ""
+    resilient: bool = False
+    reusable_components: dict = Field(default_factory=dict)
 
 
 def _require_key(api_key: str) -> str:
@@ -153,7 +170,9 @@ def _quick_thinking_kwargs(mode: str, model: str) -> dict:
 
 async def _chat_json_smart(llm, model: str, messages: list[dict], mode: str = "", **kwargs) -> dict:
     """One shared deadline and at most two supplier attempts, including recovery."""
-    return await chat_json_bounded(llm, model, messages, **kwargs, **_quick_thinking_kwargs(mode, model))
+    task = kwargs.pop("task", "analysis")
+    return await chat_json_bounded(llm, model, messages, **kwargs,
+                                   **{**_quick_thinking_kwargs(mode, model), **model_reasoning_options(model, task=task)})
 
 _DIMENSION_PROMPT = """【分析维度】id={dim_id} 名称={dim_name}
 
@@ -494,6 +513,39 @@ def _error_reason(exc: Exception) -> str:
     return str(exc) or type(exc).__name__
 
 
+def _cached_component(previous: dict, phase: str, batch: list[dict]) -> dict | None:
+    spans = {span_key(span_for(d)) for d in batch}
+    for component in previous.get("batch_components", []):
+        if not isinstance(component, dict) or component.get("phase") != phase:
+            continue
+        if {span_key(s) for s in component.get("material_spans", []) if isinstance(s, dict)} == spans:
+            result = component.get("result")
+            if isinstance(result, dict):
+                return copy.deepcopy(result)
+    return None
+
+
+def _dimension_compilation(spec, pieces, expected, *, resilient=False):
+    if len(pieces) == 1:
+        result = copy.deepcopy(pieces[0])
+    else:
+        batch_label = "已处理材料批次" if resilient else "材料批次"
+        result = {
+            "id": spec.id, "name": spec.name,
+            "findings": "\n\n".join(f"【{batch_label} {i}/{expected}】{p['findings']}" for i, p in enumerate(pieces, 1)),
+            "data_points": list(dict.fromkeys(value for p in pieces for value in p["data_points"])),
+            "quotes": [value for p in pieces for value in p["quotes"]],
+            "quote_locations": [value for p in pieces for value in p.get("quote_locations", [])],
+            "deep_read": "\n\n".join(f"【{batch_label} {i}】{p['deep_read']}" for i, p in enumerate(pieces, 1)),
+            "trend": "\n".join(dict.fromkeys(p["trend"] for p in pieces)),
+        }
+    if resilient:
+        result["complete"] = len(pieces) == expected
+        if not result["complete"]:
+            result["scope_notice"] = f"仅依据已完成的 {len(pieces)}/{expected} 个材料批次；未处理范围保持未知。"
+    return result
+
+
 async def _run_dimensions(
     llm, documents: list[dict], analysis_type: str, title: str,
     llm_model: str = "", mode: str = "",
@@ -507,6 +559,9 @@ async def _run_dimensions(
     coverage: MaterialCoverage | None = None,
     attempt_budgets: dict | None = None,
     batch_results: dict | None = None,
+    resilient: bool = False,
+    reusable_components: dict | None = None,
+    completed_components: list | None = None,
 ) -> tuple[list[dict], list[str]]:
     """并发跑维度（闸门限 3）。quick 模式裁剪到 3 维速览。
     返回 (成功的维度, 失败原因列表)。"""
@@ -517,21 +572,45 @@ async def _run_dimensions(
     batches = material_batches(documents, context_documents or [])
     budgets = attempt_budgets if attempt_budgets is not None else {}
     cached_results = batch_results if batch_results is not None else {}
+    previous = reusable_components or {}
+    partial_failures = []
     if coverage is not None:
         for spec in specs:
             coverage.prepare(f"dimension:{spec.id}", batches)
+            if resilient:
+                coverage.restore(f"dimension:{spec.id}", previous.get("material_coverage", {}))
 
     async def guarded(spec: DimensionSpec) -> dict:
         pieces = []
+        last_error = None
         for batch in batches:
+            phase = f"dimension:{spec.id}"
             batch_key = (spec.id, tuple((str(item.get("id", "")), item.get("_content_start", 0), item.get("_content_end", 0)) for item in batch))
-            previous = cached_results.get(batch_key)
+            cached = cached_results.get(batch_key)
+            if resilient and not quote_retry:
+                cached = _cached_component(previous, phase, batch)
+                if cached is not None:
+                    checked = copy.deepcopy(cached)
+                    dropped, _ = _verify_quotes([checked], batch)
+                    if dropped or not checked.get("findings") or not checked.get("deep_read"):
+                        cached = None
+                if coverage is not None and coverage.refused(phase, batch):
+                    last_error = LLMContentRejected()
+                    partial_failures.append(f"{spec.name}（{_error_reason(last_error)}）")
+                    continue
+                if cached is not None:
+                    pieces.append(cached)
+                    cached_results[batch_key] = copy.deepcopy(cached)
+                    coverage.read(phase, batch)
+                    if completed_components is not None:
+                        completed_components.append({"phase": phase, "material_spans": [span_for(d) for d in batch], "result": copy.deepcopy(cached)})
+                    continue
             # A quote repair does not re-spend already verified batches.
-            if quote_retry and previous is not None and all(
+            if quote_retry and cached is not None and all(
                 not quote.get("_chunk_unverified") and resolve_quote(quote, batch) is not None
-                for quote in previous.get("quotes", [])
+                for quote in cached.get("quotes", [])
             ):
-                pieces.append(previous)
+                pieces.append(cached)
                 continue
             budget = budgets.setdefault(batch_key, AttemptBudget(limit=2))
             async with sem:
@@ -540,32 +619,29 @@ async def _run_dimensions(
                         llm, spec, batch, analysis_type, title, llm_model, mode,
                         quote_retry, scenario_template_id, research_intent, deadline, budget,
                     )
+                    if resilient and not all(str(piece.get(key) or "").strip() for key in ("findings", "deep_read", "trend")):
+                        raise ValueError("分析分项缺少完整发现、解读或范围说明")
                     if coverage is not None:
                         coverage.read(f"dimension:{spec.id}", batch)
                     pieces.append(piece)
                     # Quote verification strips invalid entries from the public
                     # result; keep the original validation flags for recovery.
                     cached_results[batch_key] = copy.deepcopy(piece)
-                except AccountingDurabilityError:
+                    if resilient and completed_components is not None:
+                        completed_components.append({"phase": phase, "material_spans": [span_for(d) for d in batch], "result": copy.deepcopy(piece)})
+                except (AccountingDurabilityError, LLMAuthorizationError):
                     raise
                 except Exception as exc:
                     if coverage is not None:
                         coverage.fail(f"dimension:{spec.id}", batch, _error_reason(exc),
-                            code=LLMContentRejected.code if isinstance(exc, LLMContentRejected) else "")
-                    raise
-        if len(pieces) == 1:
-            return pieces[0]
-        # Compilation preserves each scoped finding and its original citations.
-        # It makes no extra synthesis call and never presents generated notes as raw text.
-        return {
-            "id": spec.id, "name": spec.name,
-            "findings": "\n\n".join(f"【材料批次 {i}/{len(pieces)}】{p['findings']}" for i, p in enumerate(pieces, 1)),
-            "data_points": list(dict.fromkeys(value for p in pieces for value in p["data_points"])),
-            "quotes": [value for p in pieces for value in p["quotes"]],
-            "quote_locations": [value for p in pieces for value in p.get("quote_locations", [])],
-            "deep_read": "\n\n".join(f"【材料批次 {i}】{p['deep_read']}" for i, p in enumerate(pieces, 1)),
-            "trend": "\n".join(dict.fromkeys(p["trend"] for p in pieces)),
-        }
+                            code=getattr(exc, "code", ""))
+                    if not resilient:
+                        raise
+                    last_error = exc
+                    partial_failures.append(f"{spec.name}（{_error_reason(exc)}）")
+        if not pieces:
+            raise last_error or RuntimeError("维度未完成任何材料批次")
+        return _dimension_compilation(spec, pieces, len(batches), resilient=resilient)
 
     tasks = [asyncio.create_task(guarded(spec)) for spec in specs]
     try:
@@ -585,15 +661,20 @@ async def _run_dimensions(
     dims: list[dict] = []
     failed: list[str] = []
     for spec, res in zip(specs, results):
-        if isinstance(res, AccountingDurabilityError):
+        if isinstance(res, (AccountingDurabilityError, LLMAuthorizationError)):
             raise res
         if isinstance(res, asyncio.CancelledError):
             failed.append(f"{spec.name}（超时）")
+            if resilient:
+                pieces = [cached_results[key] for batch in batches
+                          if (key := (spec.id, tuple((str(d.get("id", "")), d.get("_content_start", 0), d.get("_content_end", 0)) for d in batch))) in cached_results]
+                if pieces:
+                    dims.append(_dimension_compilation(spec, pieces, len(batches), resilient=True))
         elif isinstance(res, Exception):
             failed.append(f"{spec.name}（{_error_reason(res)}）")
         else:
             dims.append(res)
-    return dims, failed
+    return dims, list(dict.fromkeys([*failed, *partial_failures]))
 
 
 
@@ -618,13 +699,16 @@ def _validate_topic_evidence(topics: list[dict], documents: list[dict]) -> tuple
     return valid, invalid
 
 
-async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
+async def _classify_documents(llm, model, req, scope, gate, deadline, coverage, completed_components=None, progress=None):
     batches = material_batches(req.documents)
     coverage.prepare("classification", batches)
-    by_document: dict[str, list[tuple[dict, int]]] = {}
-    topics_by_name: dict[str, dict] = {}
-    assigned: dict[str, str] = {}
-    warnings = []
+    if req.resilient:
+        coverage.restore("classification", req.reusable_components.get("material_coverage", {}))
+    progress = progress if progress is not None else {}
+    by_document = progress.setdefault("by_document", {})
+    topics_by_name = progress.setdefault("topics_by_name", {})
+    assigned = progress.setdefault("assigned", {})
+    warnings = progress.setdefault("warnings", [])
     for batch in batches:
         budget = AttemptBudget(limit=2)
         checked = None
@@ -635,12 +719,22 @@ async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
              + "\n本批全部为直接证据。每条只评价所给原文片段；背景旧款体验不归给目标产品。\n"
              + _SENTIMENT_TOPIC_PROMPT.format(docs=json.dumps(_doc_briefs(batch), ensure_ascii=False))},
         ]
+        if req.resilient and coverage.refused("classification", batch):
+            warnings.append("情感分类材料批次被供应商拒绝，保持未知；未重复请求")
+            continue
+        cached = _cached_component(req.reusable_components, "classification", batch) if req.resilient else None
         async with gate:
             try:
-                while budget.remaining:
+                if cached is not None:
+                    checked = validate_classification(cached, batch)
+                    if checked[2]:
+                        cached = None
+                    else:
+                        coverage.read("classification", batch)
+                while cached is None and budget.remaining:
                     result = await _chat_json_smart(
                         llm, model, messages, mode=req.mode, temperature=0,
-                        max_tokens=16384, deadline=deadline, attempt_budget=budget,
+                        max_tokens=16384, deadline=deadline, attempt_budget=budget, task="classification",
                     )
                     checked = validate_classification(result if isinstance(result, dict) else {}, batch)
                     if not checked[2]:
@@ -655,14 +749,20 @@ async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
                         }}, ensure_ascii=False)})
                 if checked[2]:
                     coverage.fail("classification", batch, "；".join(checked[2]))
-            except AccountingDurabilityError:
+                elif req.resilient and completed_components is not None:
+                    completed_components.append({"phase": "classification", "material_spans": [span_for(d) for d in batch],
+                        "result": {"sentiments": copy.deepcopy(checked[0]), "topics": copy.deepcopy(checked[1])}})
+            except (AccountingDurabilityError, LLMAuthorizationError):
                 coverage.fail("classification", batch, "用量持久化失败")
                 raise
             except Exception as exc:
                 coverage.fail("classification", batch, _error_reason(exc),
-                    code=LLMContentRejected.code if isinstance(exc, LLMContentRejected) else "")
+                    code=getattr(exc, "code", ""))
                 if checked is None:
-                    raise
+                    if not req.resilient:
+                        raise
+                    warnings.append(f"情感和话题材料批次未完成：{_error_reason(exc)}")
+                    continue
                 # Keep the same strictly filtered partial values for legacy
                 # callers. Warning + unread coverage still fail the Go gate.
                 warnings.append("分类协议纠正未完成，保留部分核验结果")
@@ -679,6 +779,13 @@ async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
                     assigned[doc_id] = name
                     if doc_id not in merged["doc_ids"]:
                         merged["doc_ids"].append(doc_id)
+    return _classification_results(req, progress)
+
+
+def _classification_results(req, progress):
+    by_document = progress.get("by_document", {})
+    topics_by_name = progress.get("topics_by_name", {})
+    warnings = progress.get("warnings", [])
     sentiments = []
     for document in req.documents:
         pieces = by_document.get(document.get("id"), [])
@@ -700,6 +807,41 @@ async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
             topics.append({**topic, "doc_ids": ids, "doc_count": len(ids)})
     return sentiments, topics, list(dict.fromkeys(warnings))
 
+
+def _resilient_receipt(req, retained, reason):
+    coverage = MaterialCoverage()
+    for phase in ["classification", *["dimension:" + spec.id for spec in DIMENSIONS
+                                          if req.mode != "quick" or spec.id in QUICK_DIMENSION_IDS]]:
+        batches = material_batches(req.documents, [] if phase == "classification" else req.context_documents)
+        coverage.prepare(phase, batches)
+        for batch in batches:
+            coverage.fail(phase, batch, reason)
+    usable = any(str(d.get("content") or "").strip() and d.get("url") for d in retained if isinstance(d, dict))
+    return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": reason,
+            "material_coverage": coverage.result(), "delivery_level": "brief" if usable else "empty",
+            "delivery_reasons": [reason], "batch_components": []}
+
+
+def _insight_delivery(req, coverage, sentiments, dimensions, summary):
+    urls = {d.get("url") for d in req.documents if str(d.get("content") or "").strip() and d.get("url")}
+    expected = set(QUICK_DIMENSION_IDS) if req.mode == "quick" else {spec.id for spec in DIMENSIONS}
+    complete = {d.get("id") for d in dimensions if d.get("complete") and d.get("findings", "").strip()
+                and d.get("deep_read", "").strip() and d.get("trend", "").strip()
+                and phase_complete(coverage, "dimension:" + d.get("id", ""), req.documents, req.context_documents)}
+    reasons = []
+    if len(urls) < 2:
+        reasons.append("不同网址的已核验直接材料不足 2 条，尚不能形成研判")
+    if expected != complete:
+        reasons.append("部分独立分析分项未完成，结论仅适用于已处理材料")
+    classification_complete = phase_complete(coverage, "classification", req.documents)
+    if not classification_complete:
+        reasons.append(f"情感分类实际覆盖 {len(sentiments)}/{len(req.documents)} 篇直接材料；其余保持未知")
+    if len(urls) >= 2 and expected == complete and classification_complete and summary:
+        return "full", []
+    if len(urls) >= 2 and (complete or sentiments):
+        return "limited", reasons
+    return ("brief" if req.documents or req.context_documents else "empty"), reasons or ["尚未形成可独立核验的完整分析分项"]
+
 # ── 接口 ────────────────────────────────────────────────────────
 
 
@@ -718,10 +860,15 @@ async def health():
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest) -> dict:
     """情感分类 + 话题聚类 + 五维度研判 + 汇总摘要。空文档返回零值，不调用 LLM。"""
+    retained = [*req.documents, *req.context_documents]
     req.documents, req.context_documents = separate_materials(req.documents, req.context_documents)
     if not req.documents:
+        if req.resilient:
+            return _resilient_receipt(req, retained, "未取得已完成语义准入的直接材料；保留资料，相关性待核验")
         return {"sentiments": [], "topics": [], "summary": "", "dimensions": [], "warning": "", "material_coverage": MaterialCoverage().result()}
 
+    if req.resilient and not (req.api_key or LLM_API_KEY):
+        return _resilient_receipt(req, retained, "模型未配置，未完成语义分析；以下仅交付资料")
     key = _require_key(req.api_key)
     llm = build_client(key, req.llm_base_url, timeout=900)
     llm.usage_context = {"run_id": req.run_id, "engine": "insight", "phase": "analyze"}
@@ -745,14 +892,18 @@ async def analyze(req: AnalyzeRequest) -> dict:
     gate = asyncio.Semaphore(_DIMENSION_CONCURRENCY)
     dimension_attempts = {}
     dimension_batches = {}
+    completed_components = []
+    classification_progress = {}
 
-    sentiment_task = asyncio.create_task(_classify_documents(llm, model, req, scope, gate, work_deadline, coverage))
+    sentiment_task = asyncio.create_task(_classify_documents(llm, model, req, scope, gate, work_deadline, coverage,
+        completed_components, classification_progress))
     dimensions_task = asyncio.create_task(_run_dimensions(
         llm, req.documents, req.analysis_type, scoped_title, model, req.mode,
         gate, work_deadline,
         scenario_template_id=req.scenario_template_id,
         context_documents=req.context_documents, research_intent=req.research_intent, coverage=coverage,
         attempt_budgets=dimension_attempts, batch_results=dimension_batches,
+        resilient=req.resilient, reusable_components=req.reusable_components, completed_components=completed_components,
     ))
     sentiments = []
     topics = []
@@ -763,11 +914,13 @@ async def analyze(req: AnalyzeRequest) -> dict:
                 timeout=max(0, work_deadline - asyncio.get_running_loop().time()),
             )
             warnings.extend(classification_warnings)
-        except AccountingDurabilityError:
+        except (AccountingDurabilityError, LLMAuthorizationError):
             raise
         except HTTPException:
             raise
         except Exception as exc:
+            if req.resilient:
+                sentiments, topics, _ = _classification_results(req, classification_progress)
             reason = _error_reason(exc)
             logger.warning("sentiment/topic analysis failed: %s; continuing with dimensions", reason)
             warnings.append(f"情感和话题分析失败：{reason}")
@@ -801,6 +954,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
             scenario_template_id=req.scenario_template_id,
             context_documents=req.context_documents, research_intent=req.research_intent, coverage=coverage,
             attempt_budgets=dimension_attempts, batch_results=dimension_batches,
+            resilient=req.resilient, reusable_components=req.reusable_components, completed_components=completed_components,
         )
         retried_by_id = {str(d.get("id", "")): d for d in retried}
         dimensions = [retried_by_id.get(str(d.get("id", "")), d) for d in dimensions]
@@ -808,6 +962,10 @@ async def analyze(req: AnalyzeRequest) -> dict:
         # The source may not contain two safe verbatim quotes; a verified single quote is valid.
         # Only an unverified quote after retry remains a failure.
         if invalid_quote_ids:
+            if req.resilient:
+                for dimension in dimensions:
+                    if dimension.get("id") in invalid_quote_ids:
+                        dimension["complete"] = False
             quote_retry_failures.extend(
                 f"{next((str(d.get('name', d.get('id', ''))) for d in dimensions if str(d.get('id', '')) == dim_id), dim_id)}（仍有无法核验的引语）"
                 for dim_id in sorted(invalid_quote_ids)
@@ -818,20 +976,37 @@ async def analyze(req: AnalyzeRequest) -> dict:
         warnings.append(f"引语重试后仍有 {len(dropped)} 条无法核验：{'；'.join(dropped)}")
     if quote_retry_failures:
         warnings.append(f"引语核验重试失败：{'；'.join(quote_retry_failures)}")
+    if req.resilient and invalid_quote_ids:
+        for dimension in dimensions:
+            if dimension.get("id") in invalid_quote_ids:
+                dimension["complete"] = False
     warning = "；".join(warnings)
 
     # ④ 汇总摘要（输入含各维度结论，避免"对摘要的摘要"）
     summary = ""
     summary_phase = {"phase": "summary", "read_spans": [], "unprocessed": [],
                      "input_basis": "verified_dimension_findings", "reduction_batches": []}
+    cached_summary = ""
+    if req.resilient:
+        old_phase = next((p for p in req.reusable_components.get("material_coverage", {}).get("phases", [])
+                          if isinstance(p, dict) and p.get("phase") == "summary"), {})
+        old_summary = req.reusable_components.get("summary")
+        if (isinstance(old_summary, str) and old_summary.strip() and old_phase.get("input_basis") == "verified_dimension_findings"
+                and not old_phase.get("failure_reason") and not old_phase.get("failure_code")):
+            cached_summary, summary_phase = old_summary, copy.deepcopy(old_phase)
+        context += f"\n情感分类实际覆盖 {len(sentiments)}/{len(req.documents)} 篇直接材料，比例仅以已完整分类材料为分母；其余未知。"
     try:
         if any(phase.get("failure_code") == LLMContentRejected.code
                for phase in coverage.result()["phases"]):
             raise LLMContentRejected()
-        notes = json.dumps([{k: v for k, v in d.items() if k in ("name", "findings", "trend", "data_points", "quotes")} for d in dimensions], ensure_ascii=False)
+        notes = "" if cached_summary else json.dumps([{k: v for k, v in d.items()
+            if k in ("name", "findings", "trend", "data_points", "quotes") or req.resilient and k in ("scope_notice", "complete")}
+            for d in dimensions], ensure_ascii=False)
         counts = {label: sum(s.get("sentiment") == label for s in sentiments) for label in ("positive", "negative", "neutral")}
 
         async def summarize(fragment):
+            if cached_summary:
+                return cached_summary
             data = await _chat_json_smart(
                 llm, model,
                 [{"role": "system", "content": "你是资深舆情分析师。输出必须是 JSON 对象。"},
@@ -858,7 +1033,7 @@ async def analyze(req: AnalyzeRequest) -> dict:
                 raise ValueError("摘要分批归纳未收敛；未静默截掉剩余结论")
             notes = reduced
         summary = await summarize(notes)
-    except AccountingDurabilityError:
+    except (AccountingDurabilityError, LLMAuthorizationError):
         raise
     except HTTPException:
         raise
@@ -872,10 +1047,15 @@ async def analyze(req: AnalyzeRequest) -> dict:
         if isinstance(exc, LLMContentRejected):
             summary_phase["failure_code"] = exc.code
 
+    if req.resilient and not summary and dimensions:
+        summary = "\n\n".join(f"{d.get('name', d.get('id', ''))}：{d.get('scope_notice', '')}{d.get('findings', '')}" for d in dimensions)
+        summary_phase["compiled"] = True
+        summary_phase["derived_reads"] = [{"component": "dimension:" + d["id"]} for d in dimensions]
+
     material_coverage = coverage.result()
     material_coverage["phases"].append(summary_phase)
 
-    return {
+    result = {
         "sentiments": sentiments,
         "topics": topics,
         "summary": summary,
@@ -883,6 +1063,20 @@ async def analyze(req: AnalyzeRequest) -> dict:
         "warning": warning,
         "material_coverage": material_coverage,
     }
+    if req.resilient:
+        # Persist only quote-verified batch components for a newly accepted resume.
+        safe_components = []
+        for component in completed_components:
+            if component["phase"].startswith("dimension:"):
+                batch = [d for batch in material_batches(req.documents, req.context_documents) for d in batch
+                         if span_key(span_for(d)) in {span_key(s) for s in component["material_spans"]}]
+                if _verify_quotes([component["result"]], batch)[0]:
+                    continue
+            if component not in safe_components:
+                safe_components.append(component)
+        level, reasons = _insight_delivery(req, material_coverage, sentiments, dimensions, summary)
+        result.update(delivery_level=level, delivery_reasons=reasons, batch_components=safe_components)
+    return result
 
 
 @app.post("/sentiment")

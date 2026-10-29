@@ -29,6 +29,13 @@ class LLMSupplierTimeout(TimeoutError):
     """Only the supplier request exceeded its bounded attempt allowance."""
 
 
+class LLMAuthorizationError(RuntimeError):
+    """A platform accounting authorization failure; never a supplier outage fallback."""
+
+    billing_failure = True
+    code = "llm_authorization_failed"
+
+
 class LLMContentRejected(RuntimeError):
     """Terminal provider moderation decision, independent of JSON validity."""
 
@@ -38,9 +45,23 @@ class LLMContentRejected(RuntimeError):
         super().__init__("llm_content_rejected: 模型供应商内容审核拒绝处理本次材料")
 
 
+class LLMProviderStopped(RuntimeError):
+    """A supplier's explicit resource/abort outcome, not a JSON repair opportunity."""
+
+    def __init__(self, reason):
+        self.code = "llm_" + reason
+        labels = {"insufficient_system_resource": "模型供应商资源不足", "aborted": "模型供应商已中止本次生成"}
+        super().__init__(self.code + ": " + labels[reason])
+
+
 def _content_rejected(response):
     return any(choice.get("finish_reason") in {"sensitive", "content_filter"}
                for choice in response.get("choices") or [])
+
+
+def _terminal_stop(response):
+    return next((choice.get("finish_reason") for choice in response.get("choices") or []
+                 if choice.get("finish_reason") in {"insufficient_system_resource", "aborted"}), "")
 
 
 # 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
@@ -124,7 +145,10 @@ class LLMClient:
             # Explicit MockTransport-only unit clients cannot contact suppliers.
             return await self._supplier_attempt(model, messages, supplier_timeout, **kwargs)
         call_id = uuid.uuid4().hex
-        permission = await authorize_call(usage_context, call_id, model, attempt)
+        try:
+            permission = await authorize_call(usage_context, call_id, model, attempt)
+        except Exception as error:
+            raise LLMAuthorizationError("LLM accounting authorization unavailable") from error
         event = {"event_id": uuid.uuid4().hex, "call_id": call_id, "event_version": 1, "attempt": attempt,
                  "actual_model": model, "provider_request_id": "", "usage_status": "unknown",
                  "prompt_tokens": 0, "completion_tokens": 0, "cache_tokens": 0, "outcome": "provider_pending"}
@@ -138,15 +162,19 @@ class LLMClient:
             if observed:
                 _observe_usage(event, observed)
             rejected = bool(observed and _content_rejected(observed))
-            event["outcome"] = "provider_rejected" if rejected else "provider_error"
+            stopped = _terminal_stop(observed) if observed else ""
+            event["outcome"] = "provider_rejected" if rejected else "provider_" + stopped if stopped else "provider_error"
             persist_usage_event(event, permission["permit"])
             if rejected and isinstance(error, Exception):
                 # External cancellation remains cancellation; an observed
                 # refusal remains terminal even if the stream later breaks.
                 raise LLMContentRejected() from None
+            if stopped and isinstance(error, Exception):
+                raise LLMProviderStopped(stopped) from None
             raise
         _observe_usage(event, response)
-        event["outcome"] = "provider_rejected" if _content_rejected(response) else "provider_response"
+        stopped = _terminal_stop(response)
+        event["outcome"] = "provider_rejected" if _content_rejected(response) else "provider_" + stopped if stopped else "provider_response"
         # This fatal error is intentionally outside the supplier exception
         # handler: failure to persist must not retry or relabel observed facts.
         persist_usage_event(event, permission["permit"])
@@ -199,6 +227,8 @@ class LLMClient:
         if choice.get("finish_reason") == "length":
             raise LLMOutputTruncated(
                 "LLM 输出被截断（思考内容或 JSON 内容耗尽 max_tokens）—— 增大 max_tokens 或换非思考型模型")
+        if choice.get("finish_reason") in {"insufficient_system_resource", "aborted"}:
+            raise LLMProviderStopped(choice["finish_reason"])
         return _parse_json_content(content)
 
 

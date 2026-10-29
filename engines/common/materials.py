@@ -13,6 +13,20 @@ CHUNK_CHARS = 8000
 BATCH_CHARS = 16000
 
 
+def span_key(span: dict) -> tuple:
+    return (span.get("document_id"), span.get("start"), span.get("end"), span.get("material_class", "direct"))
+
+
+def phase_complete(coverage: dict, phase: str, documents: list[dict], context_documents: list[dict] = ()) -> bool:
+    """Require the exact saved-text envelope, without treating derived notes as source reads."""
+    entry = next((p for p in coverage.get("phases", []) if isinstance(p, dict) and p.get("phase") == phase), None)
+    if not entry or entry.get("unprocessed") or entry.get("failure_code") or entry.get("failure_reason"):
+        return False
+    expected = {span_key(span_for(d)) for batch in material_batches(documents, context_documents) for d in batch}
+    actual = {span_key(s) for s in entry.get("read_spans", []) if isinstance(s, dict)}
+    return bool(expected) and expected == actual
+
+
 def material_batches(documents: list[dict], context_documents: list[dict] = ()) -> list[list[dict]]:
     sources: dict[str, list[deque]] = {}
     for material_class, docs in (("direct", documents), ("context", context_documents)):
@@ -96,6 +110,28 @@ class MaterialCoverage:
             span = span_for(document)
             if span not in entry["read_spans"]:
                 entry["read_spans"].append(span)
+
+    def restore(self, phase: str, previous: dict):
+        """Reuse only exact current spans; Go additionally binds prior snapshots to input hashes."""
+        old = next((p for p in previous.get("phases", []) if isinstance(p, dict) and p.get("phase") == phase), None)
+        if not old:
+            return
+        entry = self.phases[phase]
+        expected = {span_key(s) for s in entry["expected"]}
+        for span in old.get("read_spans", []):
+            if isinstance(span, dict) and span_key(span) in expected and span not in entry["read_spans"]:
+                entry["read_spans"].append(dict(span))
+        for span in old.get("unprocessed", []):
+            if isinstance(span, dict) and span_key(span) in expected:
+                entry["failures"][(span["document_id"], span["start"], span["end"])] = {
+                    key: span[key] for key in ("reason", "code") if key in span}
+        if old.get("failure_code"):
+            entry["failure_code"] = old["failure_code"]
+
+    def refused(self, phase: str, batch: list[dict]) -> bool:
+        failures = self.phases[phase]["failures"]
+        return any(failures.get((s["document_id"], s["start"], s["end"]), {}).get("code") == "llm_content_rejected"
+                   for s in (span_for(d) for d in batch))
 
     def fail(self, phase: str, batch: list[dict], reason: str, *, code: str = ""):
         if code:

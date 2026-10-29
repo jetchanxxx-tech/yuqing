@@ -197,3 +197,20 @@ async def test_independent_candidates_keep_reserved_slots_and_resume_reuses_vers
     assert retained["content_version"] == "saved-v1"
     assert retained["fetched_at"] == "2026-10-30T01:00:00Z"
     assert retained["semantic_classification"] == "uncertain"
+
+
+@pytest.mark.asyncio
+async def test_social_trending_page_is_discovery_step_and_never_article_material():
+    from engines.common.discovery import discover_public
+
+    def public_network(request):
+        if request.url.path.startswith("/hot-event/"):
+            return httpx.Response(200, json={"data": [{"Title": "公开热点", "Url": "https://www.toutiao.com/trending/760002/"}]})
+        if request.url.path == "/trending/760002/":
+            return httpx.Response(200, text='<html><body><a href="https://www.toutiao.com/article/760003/">真实文章</a></body></html>')
+        raise AssertionError(str(request.url))
+
+    result = await discover_public(keywords=["手机"], sources=["toutiao"], transport=httpx.MockTransport(public_network))
+    assert [row["url"] for row in result["candidates"]] == ["https://www.toutiao.com/article/760003/"]
+    assert result["pages_visited"] == 2
+    assert len(result["candidates"][0]["discovery_chain"]) == 2
