@@ -272,7 +272,7 @@ bash /opt/pangu-source/scripts/healthcheck.sh
 > 与 §1-8 的 Ubuntu 流程**不通用**：dnf 而非 apt、PG15 需 PGDG 源、nginx 为 oneinstack 源码版（/usr/local/nginx，vhost include 机制）、Node 为 oneinstack 版（/usr/local/node/bin，**systemd 必须写全路径**）、Python 需另装 3.11。
 > 老机 47.120.20.10 的部署配置已废弃（2026-09-22 用户确认）。
 
-SSH 登录：`ssh -p 22352 root@101.96.209.90`。本节服务器命令以 root 执行；密码通过交互提示或本地凭据输入，自动化从环境变量读取，不写入文档或部署脚本。
+SSH 登录（2026-10-29 用户更正）：`ssh -p 22352 jet@101.96.209.90`，通过 `sudo` 执行本节所需 root 操作。旧 root SSH 身份已失效，不应继续重试。自动化使用已保存的私密凭据/askpass，凭据不写入文档或部署脚本。
 
 ### 9.1 差异速查
 

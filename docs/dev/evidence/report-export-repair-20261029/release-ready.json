@@ -1,0 +1,113 @@
+{
+  "commit": "051cbc4447ce81f969aea76f3f33267a02672b49",
+  "version": "0.2.9-beta",
+  "prod_run": 40797266407,
+  "prod_run_url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/40797266407",
+  "all_nine_jobs_passed": true,
+  "python_passed": 341,
+  "report_checks_passed": 19,
+  "pg_required_passed": 277,
+  "pg_skips": 0,
+  "pg_failures": 0,
+  "browser_passed": 63,
+  "archive_verification": {
+    "checked_at": "2026-10-29T01:08:46.222027+00:00",
+    "scope": "read-only archive verification; not GitHub provenance, migration, or deployment evidence",
+    "commit": "051cbc4447ce81f969aea76f3f33267a02672b49",
+    "release_archive_sha256": "be79bccc388508819bf1ce82df020104e602a65dbcda16d34deb8079aee6b357",
+    "browser_archive_sha256": "ad810170bfae54f72f2268d7de0d380f12bc150501baf086036f25d38c335b63",
+    "unpacked_manifest_sha256": "7b9be15ce1bc8e231b9249709b87463103650ebb1320d2ffb20ad7725b9c1f98",
+    "release_file_count": 1176,
+    "browser_file_count": 311,
+    "runtime": {
+      "scrapling": "0.4.15",
+      "playwright": "1.63.0",
+      "build_commit": "051cbc4447ce81f969aea76f3f33267a02672b49"
+    },
+    "binary_sha256": {
+      "platform/bin/yuqing-cli": "79a0f2179f968615e32b27701a0324c8f03d96b092d906b48fe8bbdce4c24b48",
+      "platform/bin/yuqing-server": "cce07eab34cde033e1ed02486bdff7ca662565797d64265e5e7ec9c82a763398",
+      "platform/bin/yuqing-worker": "32d6ed441054d0b8ab600408f24bf43cd0ab192a5afb4fbfac119b91f12472bf"
+    },
+    "result": "verified"
+  },
+  "deployed": true,
+  "blocker": "server rejects existing configured SSH password; awaiting console access recovery",
+  "live_version_last_seen": "0.2.9-beta by verified BUILD_COMMIT and binary hash",
+  "public_health": {
+    "status": "ok",
+    "version": "0.2.8-beta"
+  },
+  "health_version_label_limitation": "router hardcoded 0.2.8-beta; running binary hash and BUILD_COMMIT match 0.2.9 release",
+  "deployment": {
+    "source_sha": "051cbc4447ce81f969aea76f3f33267a02672b49",
+    "schema": 30,
+    "services": {
+      "yuqing-server": "active",
+      "yuqing-worker": "active",
+      "yuqing-query": "active",
+      "yuqing-insight": "active",
+      "yuqing-report": "active",
+      "yuqing-media": "active",
+      "yuqing-forum": "active",
+      "yuqing-rsshub": "active"
+    },
+    "maintenance_removed": true,
+    "report_export_smoke": {
+      "result": "PASS",
+      "commit": "051cbc4447ce81f969aea76f3f33267a02672b49",
+      "report_id": "623059c178f27544320251e8ce",
+      "analysis_id": "01M50T1CB29EPXPYDNFGGBWN7F",
+      "report_version": 1,
+      "html_matches_snapshot": true,
+      "word_valid": true,
+      "word_sources_verified": true,
+      "source_count": 50,
+      "actual_provider_calls": 0,
+      "ledger_unchanged": true,
+      "ledger_counts": {
+        "credits": 58,
+        "usage": 100,
+        "authorizations": 100,
+        "active_runs": 0
+      },
+      "html_sha256": "120ff270dc438da24b1a25c10f1506d8bb0cef2ca8ef2c65e50b44df553e1f4e",
+      "docx_sha256": "c6bdf3d55fb5fe3e250cdb849ef6b7753e731314be3b1cd67c11ee5128babf83",
+      "scope": "ordinary existing account HTML API download + internal authenticated saved-HTML Word render; paid-plan gates verified on hosted runner; no new report/model/Bocha calls"
+    },
+    "migration_gates": {
+      "rehearsal": {
+        "schema": 30,
+        "verified_existing_report_snapshots": 12,
+        "legacy_named_projection_reads": 35
+      },
+      "production": {
+        "schema": 30,
+        "verified_existing_report_snapshots": 12,
+        "legacy_named_projection_reads": 35
+      }
+    },
+    "backup": {
+      "sha": "051cbc4447ce81f969aea76f3f33267a02672b49",
+      "old_commit": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+      "writers_stopped": [
+        "yuqing-server",
+        "yuqing-worker",
+        "yuqing-query",
+        "yuqing-insight",
+        "yuqing-report",
+        "yuqing-media",
+        "yuqing-forum"
+      ],
+      "dump_sha256": "7562d73b642a06ed3509282d65f06961ac13b1579f5effe46c52b9f73d67ff05",
+      "installation_sha256": "fadd4c55f0348f4ba2ec96d747aa28d2362819d3f258f0984685f5ccc98d8fec",
+      "rollback": "/opt/yuqing/rollback/051cbc4447ce81f969aea76f3f33267a02672b49",
+      "old_binaries": {
+        "yuqing-server": "43507c3b7a8258b7e93dbd5c6856b60229180a4154cf98361d29b6fca680e9f8",
+        "yuqing-worker": "161001028ba31ee617c5ba022d788df13a83866adab5aad593c87674152d61d3",
+        "yuqing-cli": "0a963aa15544b3ca2b383c2714d6d60efe043b0a33acae965c725e09eae8164a"
+      }
+    },
+    "ssh_identity": "jet with sudo; credential file remains private"
+  }
+}
