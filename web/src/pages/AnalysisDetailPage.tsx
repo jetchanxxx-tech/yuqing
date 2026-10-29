@@ -316,13 +316,11 @@ export default function AnalysisDetailPage() {
           {completed || artifactAvailable ? (
             <Card style={{ borderRadius: 16 }}>
               <ResultTabs
+                deliveryLevel={detail.delivery_level}
                 resultLoading={resultQ.isLoading}
                 resultError={resultQ.isError}
                 onRetryResult={() => void resultQ.refetch()}
-                result={resultQ.data && (detail.delivery_level === 'brief' || detail.delivery_level === 'empty')
-                  ? { ...resultQ.data, sentiments: { positive: 0, negative: 0, neutral: 0, items: [] }, topics: [], dimensions: [], summary: '',
-                    warning: '当前资料尚未形成完整研判；未分析不代表中性或没有风险。' }
-                  : resultQ.data}
+                result={resultQ.data}
                 relatedReports={relatedReports}
                 reportsLoading={reportsQ.isLoading}
               />
@@ -677,6 +675,7 @@ function MaterialList({ documents }: { documents: SentimentDoc[] }) {
 }
 
 interface ResultTabsProps {
+  deliveryLevel?: AnalysisResult['delivery_level'];
   result: AnalysisResult | undefined;
   resultLoading: boolean;
   resultError: boolean;
@@ -685,7 +684,7 @@ interface ResultTabsProps {
   reportsLoading: boolean;
 }
 
-function ResultTabs({ result, resultLoading, resultError, onRetryResult, relatedReports, reportsLoading }: ResultTabsProps) {
+function ResultTabs({ deliveryLevel, result, resultLoading, resultError, onRetryResult, relatedReports, reportsLoading }: ResultTabsProps) {
   const formatDateTime = useDateTime();
   if (resultError) {
     return <ErrorBlock description="结果数据加载失败" onRetry={onRetryResult} />;
@@ -699,9 +698,12 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
   const topics = result.topics ?? [];
   const dimensions = result.dimensions ?? [];
   const semantic = result.retrieval_coverage?.admission_version === 'semantic-v2';
+  const level = deliveryLevel || result.delivery_level;
+  const materialsOnly = level === 'brief' || level === 'empty';
 
   return (
     <Tabs
+      defaultActiveKey={materialsOnly ? 'report' : 'summary'}
       items={[
         {
           key: 'summary',
@@ -732,7 +734,7 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
         },
         {
           key: 'docs',
-          label: `${semantic ? '直接证据' : '历史准入材料'}（${docs.length}）`,
+          label: `${materialsOnly ? '资料目录' : semantic ? '直接证据' : '历史准入材料'}（${docs.length}）`,
           children:
             docs.length === 0 ? (
               <EmptyBlock description="未采集到公开文档" />
@@ -830,10 +832,11 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
           children: (
             <div>
               <Alert
-                type="success"
+                type={level && level !== 'full' ? 'warning' : 'success'}
                 showIcon
-                message="分析已完成，洞察报告已生成"
-                description="报告由 AI 基于采集文档与情感/话题分析自动生成。"
+                message={level ? `${DELIVERY_LABELS[level]}已保存` : '分析已完成，洞察报告已生成'}
+                description={materialsOnly ? '资料相关性与未完成分析保持待核验；未分析不代表中性或没有风险。'
+                  : level === 'limited' ? '结论仅适用于已处理材料，请结合报告内的实际分母与缺口阅读。' : '报告基于已核验的材料与分析结果编排。'}
                 style={{ marginBottom: 16 }}
               />
               {result.report?.content ? (
@@ -863,7 +866,7 @@ function ResultTabs({ result, resultLoading, resultError, onRetryResult, related
             </div>
           ),
         },
-      ]}
+      ].filter((tab) => !materialsOnly || ['docs', 'background', 'report'].includes(tab.key))}
     />
   );
 }

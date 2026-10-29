@@ -50,3 +50,39 @@ test('brief delivery shows collection channels and resumes as a new accepted run
   await expect.poll(() => resumed).toBe(true);
   await page.screenshot({ path: 'test-results/resilient-ui/delivery.png', fullPage: true });
 });
+
+test('creation preserves public seed links and explicit delivery preference', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('access_token', 'offline-ui-token'));
+  let payload: Record<string, unknown> | undefined;
+  await page.route('**/api/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/auth/me')) return route.fulfill({ json: { user_id: 'ui-user', tenant_id: 'ui-tenant',
+      email: 'ui@example.invalid', name: '界面验收', roles: ['admin'], user_status: 'active', tenant_status: 'active',
+      plan_code: 'pro', timezone: 'Asia/Shanghai', avatar_url: '' } });
+    if (path.endsWith('/billing/credits')) return route.fulfill({ json: { balance: 3 } });
+    if (path.endsWith('/collection-capabilities')) return route.fulfill({ json: { sources: [
+      { source: 'news', discovery: true, static_fetch: true, dynamic_fetch: true, status: 'configured_unverified', limitations: ['公开入口仅覆盖其列表范围'] },
+    ] } });
+    if (path.endsWith('/analyses') && route.request().method() === 'POST') {
+      payload = route.request().postDataJSON();
+      return route.fulfill({ status: 201, json: { id: 'created-with-seeds', state: 'queued' } });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/analyses/new');
+  await page.getByPlaceholder('例如：新品发布会舆情监测').fill('公开新闻资料验收');
+  await page.getByRole('button', { name: '手动选择视角', exact: true }).click();
+  await page.getByRole('button', { name: '下一步', exact: true }).click();
+  await page.getByRole('combobox').fill('公开新闻');
+  await page.getByRole('combobox').press('Enter');
+  await page.getByRole('button', { name: '下一步', exact: true }).click();
+  await page.getByRole('checkbox', { name: '新闻', exact: true }).check();
+  await expect(page.getByText('公开入口仅覆盖其列表范围', { exact: true })).toBeVisible();
+  await page.getByLabel('补充公开链接（可选，每行一条，最多 10 条）').fill('https://www.chinanews.com.cn/gn/2026/10-30/10000000.shtml');
+  await page.getByRole('combobox', { name: '交付方式', exact: true }).click();
+  await page.getByTitle('必须完整研判，否则保留资料并标明未完成', { exact: true }).click();
+  await page.getByRole('button', { name: '下一步', exact: true }).click();
+  await page.getByRole('button', { name: '提交分析', exact: true }).click();
+  await expect.poll(() => payload).toMatchObject({ sources: ['news'],
+    seed_urls: ['https://www.chinanews.com.cn/gn/2026/10-30/10000000.shtml'], delivery_policy: 'full_only' });
+});
