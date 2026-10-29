@@ -1,0 +1,130 @@
+{
+  "source_sha": "67055a652f140a9a07983247ea6bf22cc15daa95",
+  "production_baseline": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+  "result": "FAIL",
+  "checks": [
+    {
+      "name": "empty report list is a non-null array",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "unknown report is 404",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "HTML download returns exact stored content",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "content_type": "text/html; charset=utf-8"
+      }
+    },
+    {
+      "name": "HTML attachment has the requested report id",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "unauthenticated HTML download denied",
+      "passed": true,
+      "observed": {
+        "status": 401
+      }
+    },
+    {
+      "name": "cross-tenant access denied 01M62D2HGWNBNCVCA4B48383BB",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "cross-tenant access denied download?format=html",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "historical report id preserves its first snapshot",
+      "passed": false,
+      "observed": {
+        "status": 200,
+        "returned_v2": true
+      }
+    },
+    {
+      "name": "Pro HTML report can be exported as Word from the UI action",
+      "passed": false,
+      "observed": {
+        "status": 409,
+        "body": "{\"code\":\"CONFLICT\",\"message\":\"report 01M62D2HGWZV6SSDJZPB7YR78T is a html report, not docx\",\"request_id\":\"01M62D2HJSYG6N18MW98JKDE45\"}"
+      }
+    },
+    {
+      "name": "native Word download contains valid DOCX bytes",
+      "passed": false,
+      "observed": {
+        "status": 500,
+        "body": "{\"code\":\"INTERNAL\",\"message\":\"internal server error\",\"request_id\":\"01M62D2HK2YZ5JVXVT4J3TPC8P\"}"
+      }
+    },
+    {
+      "name": "Word request retains saved source documents",
+      "passed": false,
+      "observed": {
+        "documents": null,
+        "context_documents": null
+      }
+    },
+    {
+      "name": "Word request retains dimensions and period",
+      "passed": false,
+      "observed": {
+        "dimension_count": 0,
+        "date_from": null,
+        "date_to": null
+      }
+    },
+    {
+      "name": "Word request retains scene and template",
+      "passed": false,
+      "observed": {
+        "scenario": null,
+        "template": ""
+      }
+    },
+    {
+      "name": "direct Python control creates a valid Word source appendix",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "valid_docx": true,
+        "scope": "no LLM key: rendering control only, not successful AI report acceptance"
+      }
+    },
+    {
+      "name": "Lite native Word request is forbidden",
+      "passed": true,
+      "observed": {
+        "status": 403
+      }
+    },
+    {
+      "name": "view and export did not consume report credits",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "no live supplier requests were authorized by export",
+      "passed": true,
+      "observed": {}
+    }
+  ],
+  "live_supplier_calls": 0,
+  "scope": "actual prebuilt Go HTTP API + PostgreSQL + real FastAPI/DOCX renderer; isolated fixtures"
+}

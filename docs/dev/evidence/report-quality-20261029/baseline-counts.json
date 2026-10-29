@@ -1,0 +1,277 @@
+{
+  "baseline_run": 40004212322,
+  "production_sha": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+  "python_total": 334,
+  "report_module_cases": 35,
+  "report_and_material_related_cases": 49,
+  "python_failures": 0,
+  "python_skips": 0,
+  "pg_events": {
+    "run": 1142,
+    "pass": 1142,
+    "fail": 0,
+    "skip": 0
+  },
+  "pg_report_related": [
+    {
+      "package": "github.com/yuqing/platform/migrations",
+      "test": "TestReportCenterMigration/clean_v7"
+    },
+    {
+      "package": "github.com/yuqing/platform/migrations",
+      "test": "TestReportCenterMigration/hotfixed_v7"
+    },
+    {
+      "package": "github.com/yuqing/platform/migrations",
+      "test": "TestReportCenterMigration"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestAnalysisDateRangeReachesInsightAndReportTransports//analyze"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestAnalysisDateRangeReachesInsightAndReportTransports//generate"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestAnalysisDateRangeReachesInsightAndReportTransports"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestBillingDurabilityPGReportFailureCannotCompleteOrKeepReportCharge"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestPipelineBudget_sumsConfiguredStageBudgets/未接线_insight/report：超时值仍在配置里但不计入"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/app",
+      "test": "TestReportAdapterSendsSelectedTemplateToEngine"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_reports_realStore/list"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_reports_realStore/detail_of_unknown_report_is_404"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_reports_realStore/download_of_unknown_report_is_404"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_reports_realStore/templates"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_reports_realStore"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_protectedEndpoint_withoutToken_401Envelope//api/v1/reports"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestProfileReportTimestampPGProjection"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/api/v1",
+      "test": "TestContract_analyses_lifecycleOmitsReportBody"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestClosureMemoryReportRetentionPreservesOtherTenantAndRejectsLateCreate"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceCreateFromAnalysis_allFormats"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestCreateFromAnalysisOnceReplaysSameRunWithoutDuplicates"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceCreateFromAnalysis_unsupportedFormat"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceCreateFromAnalysis_missingArguments"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceGet_found"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceGet_notFoundAndIsolation"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceList_emptyAndCreated"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_returnsDownloadLink"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/free_can_download_html"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/free_cannot_download_markdown"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/lite_can_download_markdown"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/lite_cannot_download_pdf"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/pro_can_download_pdf"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/pro_can_download_docx"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating/enterprise_can_download_everything"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_planGating"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_unknownPlanOrTenant"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_formatMismatch"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestServiceDownloadURL_notFound"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestMemoryStore_UpdateStatusAndFilter"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestPGReportStore_requiresExistingCreator"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestPGReportCreateOnceRedeliveryAndRerun"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createGetRoundTrip/memory"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createGetRoundTrip/postgres"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createGetRoundTrip"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createDuplicateConflicts/memory"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createDuplicateConflicts/postgres"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_createDuplicateConflicts"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_listFiltersAndPaginates/memory"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_listFiltersAndPaginates/postgres"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_listFiltersAndPaginates"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_updateStatus/memory"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_updateStatus/postgres"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestReportStore_updateStatus"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/report",
+      "test": "TestPGReportStore_titleAndSummaryNotPersisted"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestK4PGSlowReportCannotOverwriteOrFailNewRerun"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestService_setReportStoresContent"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipeline_analyzeAndReportPopulateResults"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipelineForwardsSelectedReportTemplate"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipeline_createsReportRecordAfterCompletion"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipeline_createsNewReportOnRerun"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipelineReportRecordOnlyAfterCompletion"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestCompletedReportRecordFailureReconcilesOnTerminalRedelivery"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPipelineForwardsSceneToInsightAndReport"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestServiceCreateRejectsUnknownReportTemplate"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestAnalysisArgsPreservesReportTemplateSnapshot"
+    },
+    {
+      "package": "github.com/yuqing/platform/internal/business/analysis",
+      "test": "TestPGStore_listOmitsReportContent"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "run_id": "",
+    "title": "iphone18",
+    "template_id": "",
+    "format": "docx",
+    "documents": null,
+    "context_documents": null,
+    "sentiments": [
+      {
+        "document_id": "audit-direct-01",
+        "sentiment": "positive",
+        "confidence": 0.9,
+        "score": 0,
+        "model": ""
+      }
+    ],
+    "topics": [
+      {
+        "id": "topic-1",
+        "name": "续航",
+        "keywords": [
+          "续航"
+        ],
+        "doc_count": 1,
+        "trend": ""
+      }
+    ],
+    "analysis_id": "01M62D2HGWAB6REMN3KY09BZH6",
+    "insight_available": false
+  }
+]
