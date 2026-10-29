@@ -78,6 +78,7 @@ func (f *engineFetcher) Fetch(ctx context.Context, req analysis.FetchRequest) ([
 
 func (f *engineFetcher) FetchWithCoverage(ctx context.Context, req analysis.FetchRequest) (analysis.FetchResult, error) {
 	result, err := f.crawler.SearchWithCoverage(ctx, &engine.CrawlReq{
+		Resilient: req.Resilient, DeliveryPolicy: req.DeliveryPolicy, SeedURLs: req.SeedURLs, ResumeFromRunID: req.ResumeFromRunID, RetainedCandidates: req.RetainedCandidates,
 		RunID:    req.RunID,
 		TenantID: req.TenantID, Title: req.Title, AnalysisType: req.AnalysisType, ScenarioTemplateID: req.ScenarioTemplateID, ResearchQuestion: req.ResearchQuestion, ResearchIntentVersion: req.ResearchIntentVersion,
 		Keywords:       req.Keywords,
@@ -141,6 +142,7 @@ type engineInsightAdapter struct {
 func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.InsightRequest) (analysis.InsightResult, error) {
 	docs := toEngineDocuments(req.Documents)
 	resp, err := a.ins.Analyze(ctx, &engine.InsightAnalyzeReq{
+		Resilient: req.Resilient, ReusableComponents: req.ReusableComponents,
 		RunID:            req.RunID,
 		Documents:        docs,
 		ContextDocuments: toEngineDocuments(req.ContextDocuments), ResearchIntent: req.ResearchIntent,
@@ -156,6 +158,7 @@ func (a *engineInsightAdapter) Analyze(ctx context.Context, req analysis.Insight
 		return analysis.InsightResult{}, err
 	}
 	out := analysis.InsightResult{
+		BatchComponents:  resp.BatchComponents,
 		Summary:          resp.Summary,
 		MaterialCoverage: resp.MaterialCoverage,
 		Warning:          resp.Warning,
@@ -187,7 +190,7 @@ func toAnalysisDimension(d engine.DimensionResult) analysis.Dimension {
 		quotes = append(quotes, analysis.Quote{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 	}
 	return analysis.Dimension{
-		ID:             d.ID,
+		ID: d.ID, Complete: d.Complete, BatchComponents: d.BatchComponents, Recommendations: d.Recommendations,
 		QuoteLocations: d.QuoteLocations,
 		Name:           d.Name,
 		Findings:       d.Findings,
@@ -207,7 +210,7 @@ func toEngineDimensions(dims []analysis.Dimension) []engine.DimensionResult {
 			quotes = append(quotes, engine.QuoteResult{Text: q.Text, Source: q.Source, DocumentID: q.DocumentID})
 		}
 		out = append(out, engine.DimensionResult{
-			ID: d.ID, Name: d.Name, Findings: d.Findings, QuoteLocations: d.QuoteLocations,
+			ID: d.ID, Name: d.Name, Findings: d.Findings, QuoteLocations: d.QuoteLocations, Complete: d.Complete, BatchComponents: d.BatchComponents, Recommendations: d.Recommendations,
 			DataPoints: d.DataPoints, Quotes: quotes,
 			DeepRead: d.DeepRead, Trend: d.Trend,
 		})
@@ -222,6 +225,7 @@ type engineReportAdapter struct {
 
 func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportRequest) (analysis.ReportResult, error) {
 	resp, err := a.rep.Generate(ctx, &engine.ReportGenerateReq{
+		Resilient: req.Resilient, DeliveryLevel: req.DeliveryLevel, DeliveryReasons: req.DeliveryReasons, DeliveryPolicy: req.DeliveryPolicy, UnverifiedDocuments: toEngineDocuments(req.UnverifiedDocuments), Summary: req.Summary, Mode: req.Mode,
 		RunID:              req.RunID,
 		Title:              req.Title,
 		DateFrom:           req.DateFrom,
@@ -241,7 +245,7 @@ func (a *engineReportAdapter) Generate(ctx context.Context, req analysis.ReportR
 	if err != nil {
 		return analysis.ReportResult{}, err
 	}
-	return analysis.ReportResult{ReportID: resp.ReportID, Content: resp.Content, Warning: resp.Warning, MaterialCoverage: resp.MaterialCoverage}, nil
+	return analysis.ReportResult{DeliveryLevel: resp.DeliveryLevel, DeliveryReasons: resp.DeliveryReasons, ReportID: resp.ReportID, Content: resp.Content, Warning: resp.Warning, MaterialCoverage: resp.MaterialCoverage}, nil
 }
 
 // reportSvcAdapter 把 *report.Service 适配为 analysis.reportSvc 接口。
@@ -371,4 +375,12 @@ func analysisTaskHandler(log *slog.Logger, handle func(context.Context, analysis
 		}
 		return nil
 	}
+}
+
+func (a *reportSvcAdapter) CreateDeliverySnapshot(ctx context.Context, tenantID, analysisID, format, createdBy, content, level string, reasons []string, resume string) (string, error) {
+	r, err := a.svc.CreateDeliverySnapshot(ctx, tenantID, analysisID, format, createdBy, content, level, reasons, resume)
+	if err != nil || r == nil {
+		return "", err
+	}
+	return r.ID, nil
 }

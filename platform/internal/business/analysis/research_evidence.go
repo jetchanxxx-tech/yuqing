@@ -236,6 +236,12 @@ func boundaryMaterials(docs []Document) []retrieval.Material {
 }
 
 func (s *Service) decorateResult(a *AnalysisResult) {
+	if a.SeedURLs == nil {
+		a.SeedURLs = []string{}
+	}
+	if a.DeliveryReasons == nil {
+		a.DeliveryReasons = []string{}
+	}
 	if a.RetrievalCoverage != nil {
 		a.InsightMaterialCoverage = a.RetrievalCoverage.InsightMaterialCoverage
 		a.ReportMaterialCoverage = a.RetrievalCoverage.ReportMaterialCoverage

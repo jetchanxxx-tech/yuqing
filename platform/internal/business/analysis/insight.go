@@ -39,30 +39,36 @@ type Quote struct {
 // 为什么分维度：单轮单视角的「一次调用出全部」只能产出各方面都平庸的概括，
 // 且跨分析高度趋同。分维度独立深挖再汇总，结论才有层次。
 type Dimension struct {
-	QuoteLocations []map[string]any `json:"quote_locations,omitempty"`
-	ID             string           `json:"id"`
-	Name           string           `json:"name"`
-	Findings       string           `json:"findings"`
-	DataPoints     []string         `json:"data_points,omitempty"`
-	Quotes         []Quote          `json:"quotes,omitempty"`
-	DeepRead       string           `json:"deep_read"`
-	Trend          string           `json:"trend"`
+	Recommendations []map[string]any `json:"recommendations,omitempty"`
+	Complete        bool             `json:"complete,omitempty"`
+	BatchComponents []map[string]any `json:"batch_components,omitempty"`
+	QuoteLocations  []map[string]any `json:"quote_locations,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Findings        string           `json:"findings"`
+	DataPoints      []string         `json:"data_points,omitempty"`
+	Quotes          []Quote          `json:"quotes,omitempty"`
+	DeepRead        string           `json:"deep_read"`
+	Trend           string           `json:"trend"`
 }
 
 // InsightResult is the analysis engine output: summary + sentiments + topics + dimensions.
 type InsightResult struct {
-	MaterialCoverage map[string]any
-	Summary          string
-	Sentiments       []Sentiment
-	Topics           []Topic
-	Dimensions       []Dimension
+	BatchComponents  []map[string]any `json:"batch_components,omitempty"`
+	MaterialCoverage map[string]any   `json:"material_coverage"`
+	Summary          string           `json:"summary"`
+	Sentiments       []Sentiment      `json:"sentiments"`
+	Topics           []Topic          `json:"topics"`
+	Dimensions       []Dimension      `json:"dimensions"`
 	// Warning 是引擎侧的部分降级说明（如某个维度调用失败但其余成功）。
 	// 管线将其合并进任务的 warning 字段。
-	Warning string
+	Warning string `json:"warning"`
 }
 
 // InsightRequest carries the documents to analyze.
 type InsightRequest struct {
+	Resilient          bool
+	ReusableComponents map[string]any
 	ContextDocuments   []Document
 	ResearchIntent     map[string]any
 	RunID              string
@@ -87,6 +93,13 @@ type InsightAnalyzer interface {
 
 // ReportRequest carries the data to render a report.
 type ReportRequest struct {
+	Resilient               bool
+	DeliveryLevel           string
+	DeliveryReasons         []string
+	DeliveryPolicy          string
+	UnverifiedDocuments     []Document
+	Summary                 string
+	Mode                    string
 	ContextDocuments        []Document
 	ResearchIntent          map[string]any
 	InsightMaterialCoverage map[string]any
@@ -112,6 +125,8 @@ type ReportRequest struct {
 
 // ReportResult is the generated report content.
 type ReportResult struct {
+	DeliveryLevel    string
+	DeliveryReasons  []string
 	Warning          string
 	MaterialCoverage map[string]any
 	ReportID         string
@@ -134,6 +149,7 @@ func (s *Service) SetInsight(ctx context.Context, tenantID, analysisID string, r
 		a.Sentiments = r.Sentiments
 		a.Topics = r.Topics
 		a.Dimensions = r.Dimensions
+		a.InsightBatchComponents = r.BatchComponents
 		return nil
 	})
 }

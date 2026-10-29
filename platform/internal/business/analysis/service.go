@@ -49,6 +49,7 @@ type Service struct {
 	memoryCompletion  func(context.Context, string, *AnalysisResult)
 	cancellationGuard billingpolicy.MutationGuard
 	taskTimeout       time.Duration
+	modelIdentity     func() string
 }
 
 func (s *Service) SetMemoryCompletionHook(hook func(context.Context, string, *AnalysisResult)) {
@@ -122,6 +123,8 @@ func NewPGService(pool *pgxpool.Pool, q queue.Queue, concurrency int) *Service {
 
 // CreateAnalysisRequest holds the parameters for a new analysis.
 type CreateAnalysisRequest struct {
+	SeedURLs           []string `json:"seed_urls"`
+	DeliveryPolicy     string   `json:"delivery_policy"`
 	APIKeyID           string   `json:"-"`
 	ActorTokenVersion  *int64   `json:"-"`
 	TenantID           string   `json:"tenant_id"`
@@ -140,24 +143,33 @@ type CreateAnalysisRequest struct {
 
 // AnalysisResult is the full result of a completed analysis.
 type AnalysisResult struct {
-	CurrentRunID            string         `json:"current_run_id,omitempty"`
-	ID                      string         `json:"id"`
-	Name                    string         `json:"name"`
-	AnalysisType            string         `json:"analysis_type"`
-	ScenarioTemplateID      string         `json:"scenario_template_id,omitempty"`
-	ResearchQuestion        string         `json:"research_question,omitempty"`
-	ResearchIntent          map[string]any `json:"research_intent,omitempty"`
-	ResearchIntentVersion   string         `json:"research_intent_version,omitempty"`
-	InsightMaterialCoverage map[string]any `json:"insight_material_coverage,omitempty"`
-	ReportMaterialCoverage  map[string]any `json:"report_material_coverage,omitempty"`
-	RunStartedAt            *time.Time     `json:"run_started_at,omitempty"`
-	TaskDeadlineAt          *time.Time     `json:"task_deadline_at,omitempty"`
-	State                   State          `json:"state"`
-	Progress                int            `json:"progress"`
-	ErrorCode               string         `json:"error_code,omitempty"`
-	StartedAt               time.Time      `json:"started_at,omitempty"`
-	FinishedAt              time.Time      `json:"finished_at,omitempty"`
-	CreatedAt               time.Time      `json:"created_at"`
+	SeedURLs                []string         `json:"seed_urls"`
+	DeliveryPolicy          string           `json:"delivery_policy"`
+	DeliveryLevel           string           `json:"delivery_level"`
+	DeliveryReasons         []string         `json:"delivery_reasons"`
+	ResumeFromRunID         string           `json:"resume_from_run_id,omitempty"`
+	ModelFingerprint        string           `json:"-"`
+	RetainedCandidates      []map[string]any `json:"-"`
+	ReusableComponents      map[string]any   `json:"-"`
+	CurrentRunID            string           `json:"current_run_id,omitempty"`
+	ID                      string           `json:"id"`
+	Name                    string           `json:"name"`
+	AnalysisType            string           `json:"analysis_type"`
+	ScenarioTemplateID      string           `json:"scenario_template_id,omitempty"`
+	ResearchQuestion        string           `json:"research_question,omitempty"`
+	ResearchIntent          map[string]any   `json:"research_intent,omitempty"`
+	ResearchIntentVersion   string           `json:"research_intent_version,omitempty"`
+	InsightBatchComponents  []map[string]any `json:"-"`
+	InsightMaterialCoverage map[string]any   `json:"insight_material_coverage,omitempty"`
+	ReportMaterialCoverage  map[string]any   `json:"report_material_coverage,omitempty"`
+	RunStartedAt            *time.Time       `json:"run_started_at,omitempty"`
+	TaskDeadlineAt          *time.Time       `json:"task_deadline_at,omitempty"`
+	State                   State            `json:"state"`
+	Progress                int              `json:"progress"`
+	ErrorCode               string           `json:"error_code,omitempty"`
+	StartedAt               time.Time        `json:"started_at,omitempty"`
+	FinishedAt              time.Time        `json:"finished_at,omitempty"`
+	CreatedAt               time.Time        `json:"created_at"`
 	// CreatedBy is the user who created this analysis (迁移 0008).
 	CreatedBy string `json:"created_by,omitempty"`
 
@@ -230,9 +242,13 @@ func (s *Service) Create(ctx context.Context, req CreateAnalysisRequest) (*Analy
 		}
 	}
 
+	if err := validateDeliveryInputs(&req); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	result := &AnalysisResult{
-		ID:                    id.New(),
+		ID:       id.New(),
+		SeedURLs: append([]string{}, req.SeedURLs...), DeliveryPolicy: req.DeliveryPolicy, DeliveryReasons: []string{}, ModelFingerprint: s.currentModelFingerprint(),
 		Name:                  req.Name,
 		AnalysisType:          req.AnalysisType,
 		ScenarioTemplateID:    req.ScenarioTemplateID,
@@ -392,21 +408,7 @@ func (s *Service) Rerun(ctx context.Context, tenantID, analysisID string, actors
 			return pkgerrors.Wrap(pkgerrors.ErrConflict,
 				fmt.Sprintf("only terminal analyses can be rerun, current state is %s", a.State))
 		}
-		a.State = StateQueued
-		a.Progress = 0
-		a.ErrorCode = ""
-		a.StartedAt = time.Time{}
-		a.FinishedAt = time.Time{}
-		a.Summary = ""
-		a.Warning = ""
-		a.Sentiments = nil
-		a.Topics = nil
-		a.Dimensions = nil
-		a.ReportID = ""
-		a.ReportContent = ""
-		a.RetrievalCoverage = nil
-		a.ResearchIntent = nil
-		a.ResearchIntentVersion = ""
+		resetForRerun(a)
 		return nil
 	})
 	if err != nil {

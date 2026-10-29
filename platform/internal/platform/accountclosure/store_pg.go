@@ -95,7 +95,7 @@ func preview(ctx context.Context, tx pgx.Tx, uid string, allowPending bool) (*Pr
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM orders WHERE tenant_id=$1 AND (state IN ('pending','refund_needed','refunding','disputed') OR state='paid' AND NOT granted)`, t.ID).Scan(&orders); err != nil {
 				return nil, err
 			}
-			if err = tx.QueryRow(ctx, `SELECT count(*) FROM analysis_runs r WHERE tenant_id=$1 AND (state NOT IN ('completed','failed','canceled') OR EXISTS(SELECT 1 FROM llm_call_authorizations c WHERE c.run_id=r.id AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)))`, t.ID).Scan(&runs); err != nil {
+			if err = tx.QueryRow(ctx, `SELECT count(*) FROM analysis_runs r WHERE tenant_id=$1 AND (state NOT IN ('completed','failed','canceled') OR EXISTS(SELECT 1 FROM llm_call_authorizations c WHERE c.run_id=r.id AND NOT EXISTS(SELECT 1 FROM usage_events u WHERE u.call_id=c.call_id)) OR EXISTS(SELECT 1 FROM tool_call_authorizations c WHERE c.run_id=r.id AND NOT EXISTS(SELECT 1 FROM tool_usage_events u WHERE u.call_id=c.call_id)))`, t.ID).Scan(&runs); err != nil {
 				return nil, err
 			}
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM invoices WHERE tenant_id=$1 AND status IN ('unpaid','disputed','refund_pending')`, t.ID).Scan(&invoices); err != nil {

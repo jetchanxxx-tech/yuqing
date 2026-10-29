@@ -75,6 +75,38 @@ func RegisterInternalBillingRoutes(router *gin.Engine, s *Services) {
 		}
 		c.JSON(status, gin.H{"committed": true, "duplicate": duplicate})
 	})
+	group.POST("/tool-authorizations", func(c *gin.Context) {
+		var req usage.ToolAuthorizationRequest
+		if !decode(c, &req) {
+			return
+		}
+		result, err := s.LLMCalls.AuthorizeTool(c.Request.Context(), req)
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		status := http.StatusCreated
+		if result.Duplicate {
+			status = http.StatusOK
+		}
+		c.JSON(status, result)
+	})
+	group.POST("/tool-usage-events", func(c *gin.Context) {
+		var event usage.ToolUsageEvent
+		if !decode(c, &event) {
+			return
+		}
+		duplicate, err := s.LLMCalls.RecordTool(c.Request.Context(), event, c.GetHeader("X-Tool-Call-Permit"))
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		status := http.StatusCreated
+		if duplicate {
+			status = http.StatusOK
+		}
+		c.JSON(status, gin.H{"committed": true, "duplicate": duplicate})
+	})
 	analyses := router.Group("/internal/v1/analyses", authenticate)
 	decodeEvidence := func(c *gin.Context, dst any, limit int64) bool {
 		decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, limit))

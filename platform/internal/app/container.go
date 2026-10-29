@@ -88,10 +88,11 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 
 		var err error
 		platformSettings, err = settings.NewPGStore(pool, map[string]string{
-			"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
-			"llm_api_key":   os.Getenv("LLM_API_KEY"),
-			"llm_base_url":  os.Getenv("LLM_BASE_URL"),
-			"llm_model":     os.Getenv("LLM_MODEL"),
+			"bocha_api_key":   os.Getenv("BOCHA_API_KEY"),
+			"search_provider": os.Getenv("YUQING_SEARCH_PROVIDER"), "search_api_key": os.Getenv("DEEPSEEK_API_KEY"), "search_base_url": os.Getenv("YUQING_SEARCH_BASE_URL"), "fetch_provider": os.Getenv("YUQING_FETCH_PROVIDER"),
+			"llm_api_key":  os.Getenv("LLM_API_KEY"),
+			"llm_base_url": os.Getenv("LLM_BASE_URL"),
+			"llm_model":    os.Getenv("LLM_MODEL"),
 		})
 		if err != nil {
 			panic(fmt.Sprintf("app: seed settings: %v", err))
@@ -114,15 +115,21 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		// Platform settings: seeded from environment (e.g., BOCHA_API_KEY).
 		// Admins can override via PUT /api/v1/admin/settings.
 		platformSettings = settings.NewMemoryStore(map[string]string{
-			"bocha_api_key": os.Getenv("BOCHA_API_KEY"),
-			"llm_api_key":   os.Getenv("LLM_API_KEY"),
-			"llm_base_url":  os.Getenv("LLM_BASE_URL"),
-			"llm_model":     os.Getenv("LLM_MODEL"),
+			"bocha_api_key":   os.Getenv("BOCHA_API_KEY"),
+			"search_provider": os.Getenv("YUQING_SEARCH_PROVIDER"), "search_api_key": os.Getenv("DEEPSEEK_API_KEY"), "search_base_url": os.Getenv("YUQING_SEARCH_BASE_URL"), "fetch_provider": os.Getenv("YUQING_FETCH_PROVIDER"),
+			"llm_api_key":  os.Getenv("LLM_API_KEY"),
+			"llm_base_url": os.Getenv("LLM_BASE_URL"),
+			"llm_model":    os.Getenv("LLM_MODEL"),
 		})
 	}
 
 	// 报告额度闸门：Create/Rerun 各扣 1 次，管线失败/取消自动回补。
 	analysisSvc.SetCreditReserver(creditSvc)
+	analysisSvc.SetModelIdentity(func() string {
+		base, _ := platformSettings.Get(context.Background(), "llm_base_url")
+		model, _ := platformSettings.Get(context.Background(), "llm_model")
+		return base + "\x00" + model
+	})
 
 	authSvc := auth.NewService(authStore, cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, cfg.Auth.RefreshTTL)
 	authSvc.SetMeter(usageMeter)
@@ -227,6 +234,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 	}
 	// ReportEngine 在外层声明，以便 API handler 使用
 	var reportEngine *engine.RealReportEngine
+	var queryEngine *engine.RealCrawlerEngine
 	if cfg.Engines.Query.URL == "" {
 		logger.Warn("pipeline: 未配置 engines.query.url，分析任务将停留在 queued")
 	} else {
@@ -238,7 +246,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		}
 		crawler := engine.NewRealCrawlerEngine(
 			cfg.Engines.Query.URL,
-			"", // 引擎内网认证：MVP 未启用
+			os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), // shared internal engine authentication
 			keyFor("bocha_api_key"),
 		)
 		// LLM 供应商可配置（后台「数据源配置」）：每次请求实时读 settings，
@@ -249,6 +257,8 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 			return baseURL, model
 		}
 		crawler.WithLLMOpts(llmOpts).WithLLMKey(keyFor("llm_api_key"))
+		crawler.WithSearchSettings(searchSettingsFor(platformSettings))
+		queryEngine = crawler
 		// insight/report 引擎未配置时传 nil —— 管线跳过对应步骤并记录 warning
 		var insight *engine.RealInsightEngine
 		if cfg.Engines.Insight.URL != "" {
@@ -439,6 +449,7 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		PaymentRegistry:   paymentRegistry,
 		Trends:            trendsSvc,
 		ReportEngine:      reportEngine,
+		QueryEngine:       queryEngine,
 		PGPool:            platformPool,
 	}
 }
@@ -494,6 +505,7 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 		return baseURL, model
 	}
 	crawler.WithLLMOpts(llmOpts).WithLLMKey(keyFor("llm_api_key"))
+	crawler.WithSearchSettings(searchSettingsFor(services.Settings))
 	var insight *engine.RealInsightEngine
 	if cfg.Engines.Insight.URL != "" {
 		insight = engine.NewRealInsightEngine(cfg.Engines.Insight.URL, os.Getenv("YUQING_BILLING_SERVICE_TOKEN"), keyFor("llm_api_key")).WithLLMOpts(llmOpts)
@@ -555,5 +567,22 @@ func RunPGWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) e
 		case err := <-q.Errors():
 			logger.Error("worker: delivery failed; retained for retry", "err", err)
 		}
+	}
+}
+
+func searchSettingsFor(store settings.Store) func() (string, string, string, string) {
+	return func() (string, string, string, string) {
+		ctx := context.Background()
+		provider, _ := store.Get(ctx, "search_provider")
+		key, _ := store.Get(ctx, "search_api_key")
+		base, _ := store.Get(ctx, "search_base_url")
+		fetch, _ := store.Get(ctx, "fetch_provider")
+		if provider == "" {
+			provider = "bocha"
+		}
+		if base == "" && provider == "deepseek" {
+			base = "https://api.deepseek.com"
+		}
+		return provider, key, base, fetch
 	}
 }

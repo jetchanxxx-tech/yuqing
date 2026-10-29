@@ -20,10 +20,12 @@ func RegisterAnalysisRoutes(r *gin.RouterGroup, svcs *Services) {
 	analyses := r.Group("/analyses")
 	analyses.POST("", middleware.RequirePermission("analyses:create"), svcs.handleCreateAnalysis)
 	analyses.GET("", middleware.RequirePermission("analyses:list"), svcs.handleListAnalyses)
+	analyses.GET("/collection-capabilities", middleware.RequirePermission("analyses:read"), svcs.handleCollectionCapabilities)
 	analyses.GET("/:id", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysis)
 	analyses.GET("/:id/result", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysisResult)
 	analyses.GET("/:id/timeline", middleware.RequirePermission("analyses:read"), svcs.handleGetAnalysisTimeline)
 	analyses.POST("/:id/cancel", middleware.RequirePermission("analyses:cancel"), svcs.handleCancelAnalysis)
+	analyses.POST("/:id/resume", middleware.RequirePermission("analyses:rerun"), svcs.handleResumeAnalysis)
 	analyses.POST("/:id/rerun", middleware.RequirePermission("analyses:rerun"), svcs.handleRerunAnalysis)
 	analyses.GET("/:id/events", middleware.RequirePermission("analyses:read"), svcs.handleAnalysisEvents)
 }
@@ -222,7 +224,8 @@ func (s *Services) handleGetAnalysisResult(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":                   a.ID,
+		"id":             a.ID,
+		"delivery_level": a.DeliveryLevel, "delivery_reasons": a.DeliveryReasons, "delivery_policy": a.DeliveryPolicy, "seed_urls": a.SeedURLs, "resume_from_run_id": a.ResumeFromRunID,
 		"scenario_template_id": a.ScenarioTemplateID,
 		"state":                a.State,
 		"doc_count":            docCount, "context_count": contextCount,
@@ -402,4 +405,39 @@ func notFound(c *gin.Context, message string) {
 		"message":    message,
 		"request_id": requestID(c),
 	})
+}
+
+func (s *Services) handleResumeAnalysis(c *gin.Context) {
+	p := middleware.GetPrincipal(c)
+	if p == nil {
+		unauthorized(c)
+		return
+	}
+	actor, err := resolveBillingActor(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if err = s.Analysis.Resume(c.Request.Context(), p.TenantID, c.Param("id"), actor); err != nil {
+		respondError(c, err)
+		return
+	}
+	a, err := s.Analysis.Get(c.Request.Context(), p.TenantID, c.Param("id"))
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, a)
+}
+func (s *Services) handleCollectionCapabilities(c *gin.Context) {
+	if s.QueryEngine == nil {
+		respondError(c, pkgerrors.Wrap(pkgerrors.ErrServiceUnavailable, "collection capabilities unavailable"))
+		return
+	}
+	data, err := s.QueryEngine.Capabilities(c.Request.Context())
+	if err != nil {
+		respondError(c, pkgerrors.Wrap(pkgerrors.ErrServiceUnavailable, "collection capabilities unavailable"))
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
 }

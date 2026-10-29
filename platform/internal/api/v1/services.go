@@ -58,6 +58,7 @@ type Services struct {
 
 	// ReportEngine proxies docx generation to Python report_engine
 	ReportEngine *engine.RealReportEngine
+	QueryEngine  *engine.RealCrawlerEngine
 
 	// PGPool is the platform PostgreSQL connection pool for schema validation
 	PGPool *pgxpool.Pool

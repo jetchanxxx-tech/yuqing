@@ -53,6 +53,11 @@ func looksLikeJSON(s string) bool {
 
 // FetchRequest 是一次采集请求。
 type FetchRequest struct {
+	Resilient             bool
+	DeliveryPolicy        string
+	SeedURLs              []string
+	ResumeFromRunID       string
+	RetainedCandidates    []map[string]any
 	RunID                 string
 	TenantID              string
 	AnalysisID            string
@@ -197,7 +202,7 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	}
 	// 幂等：任务已被取消或已完成后重复投递直接跳过
 	if IsTerminal(string(a.State)) {
-		if a.State == StateCompleted && a.ReportContent != "" {
+		if (a.State == StateCompleted || a.State == StateFailed && nonFullDelivery(a.DeliveryLevel)) && a.ReportContent != "" {
 			if _, durable := p.reportSvc.(durableReportService); durable {
 				return p.ensureReportRecord(ctx, msg, a)
 			}
@@ -216,6 +221,10 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 	// ① 预算检查（MVP 未接 LLM 计量，仅推进状态）
 	if err := p.step(ctx, msg, StateAcquiringBudget, progressBudget); err != nil {
 		return p.fail(ctx, msg, "budget_error", err)
+	}
+
+	if resilient(a) {
+		return p.handleResilient(ctx, msg, a)
 	}
 
 	// ② 数据采集
@@ -568,6 +577,12 @@ func (p *Pipeline) ensureReportRecord(ctx context.Context, msg TaskMessage, a *A
 	}
 	if durable, ok := p.reportSvc.(durableReportService); ok {
 		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, reportRunKey(a))
+		return err
+	}
+	if snapshot, ok := p.reportSvc.(interface {
+		CreateDeliverySnapshot(context.Context, string, string, string, string, string, string, []string, string) (string, error)
+	}); ok && a.DeliveryLevel != "" {
+		_, err := snapshot.CreateDeliverySnapshot(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, a.ReportContent, a.DeliveryLevel, a.DeliveryReasons, a.ResumeFromRunID)
 		return err
 	}
 	if snapshot, ok := p.reportSvc.(interface {

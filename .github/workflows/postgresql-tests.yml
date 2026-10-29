@@ -26,6 +26,7 @@ jobs:
       YUQING_TEST_PG_URL: postgres://postgres:testpass@127.0.0.1:5432/yuqing_test?sslmode=disable
       GOMAXPROCS: '2'
       GOFLAGS: '-p=2'
+      YUQING_TOOL_BRIDGE_TEST: '1'
 
     services:
       postgres:
@@ -56,6 +57,14 @@ jobs:
       - name: Download locked Go modules
         working-directory: platform
         run: go mod download
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare actual tool bridge client on hosted runner
+        run: |
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          python -m pip install 'httpx>=0.27.0'
 
       - name: Run and verify PostgreSQL contracts
         working-directory: platform

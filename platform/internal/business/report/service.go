@@ -112,7 +112,7 @@ func (s *Service) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysis
 		}
 		return nil, err
 	}
-	return &rp, nil
+	return s.store.Get(ctx, tenantID, rp.ID)
 }
 
 // Get returns one report scoped to the tenant.
@@ -167,4 +167,27 @@ func (s *Service) plan(code string) *billing.Plan {
 
 func supportedFormat(format string) bool {
 	return slices.Contains(Formats, format)
+}
+
+// CreateDeliverySnapshot captures both rendered content and its authoritative
+// grade for memory stores; PostgreSQL captures the immutable run under a lock.
+func (s *Service) CreateDeliverySnapshot(ctx context.Context, tenantID, analysisID, format, createdBy, content, level string, reasons []string, resume string) (*Report, error) {
+	rp, err := s.CreateFromAnalysisSnapshot(ctx, tenantID, analysisID, format, createdBy, content)
+	if err != nil {
+		return nil, err
+	}
+	rp.DeliveryLevel = level
+	rp.DeliveryReasons = append([]string{}, reasons...)
+	rp.ResumeFromRunID = resume
+	if memory, ok := s.store.(*MemoryStore); ok {
+		memory.mu.Lock()
+		if r, exists := memory.byTenant[tenantID][rp.ID]; exists {
+			r.DeliveryLevel = level
+			r.DeliveryReasons = append([]string{}, reasons...)
+			r.ResumeFromRunID = resume
+			memory.byTenant[tenantID][rp.ID] = r
+		}
+		memory.mu.Unlock()
+	}
+	return rp, nil
 }

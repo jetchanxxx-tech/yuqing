@@ -32,7 +32,7 @@ var _ Store = (*PGStore)(nil)
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 // reportColumns 是读路径的列清单（含迁移 0008 新增列）。
-const reportColumns = `id, analysis_id, format, status, file_key, created_by, report_version, created_at, (content_html<>'')`
+const reportColumns = `id, analysis_id, format, status, file_key, created_by, report_version, created_at, (content_html<>''),delivery_level,delivery_reasons,resume_from_run_id,COALESCE(run_id,'')`
 
 // Create 插入一条报告记录（含迁移 0008 新增列）。
 func (s *PGStore) Create(ctx context.Context, tenantID, createdBy string, r Report) error {
@@ -45,17 +45,16 @@ func (s *PGStore) Create(ctx context.Context, tenantID, createdBy string, r Repo
 			return err
 		}
 		defer tx.Rollback(context.Background())
-		var current string
 		var state string
-		if err = tx.QueryRow(ctx, `SELECT COALESCE(current_run_id,''),state FROM analyses WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, r.AnalysisID, tenantID).Scan(&current, &state); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT state FROM analysis_runs WHERE id=$1 AND analysis_id=$2 AND tenant_id=$3 FOR SHARE`, runID, r.AnalysisID, tenantID).Scan(&state); err != nil {
 			return err
 		}
-		if current != runID || state != "completed" {
+		if state != "completed" && state != "failed" {
 			return pkgerrors.ErrConflict
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()))`,
-			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion, r.CreatedAt)
+		_, err = tx.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version, created_at,run_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()),NULLIF($10,''))`,
+			r.ID, tenantID, r.AnalysisID, r.Format, r.Status, r.FileKey, createdBy, r.ReportVersion, r.CreatedAt, runID)
 	} else {
 		_, err = s.pool.Exec(ctx, `INSERT INTO reports (id, tenant_id, analysis_id, format, status, file_key, created_by, report_version, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()))`,
@@ -79,7 +78,7 @@ func (s *PGStore) Get(ctx context.Context, tenantID, reportID string) (*Report, 
 	var r Report
 	err := s.pool.QueryRow(ctx,
 		`SELECT `+reportColumns+`,content_html FROM reports WHERE id = $1 AND tenant_id = $2`,
-		reportID, tenantID).Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt, &r.SnapshotAvailable, &r.ContentHTML)
+		reportID, tenantID).Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt, &r.SnapshotAvailable, &r.DeliveryLevel, &r.DeliveryReasons, &r.ResumeFromRunID, &r.RunID, &r.ContentHTML)
 	if err != nil {
 		return nil, notFoundOrInternal(err, "report not found")
 	}
@@ -120,7 +119,7 @@ func (s *PGStore) List(ctx context.Context, tenantID string, f Filter) ([]Report
 	out := make([]Report, 0)
 	for rows.Next() {
 		var r Report
-		if err := rows.Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt, &r.SnapshotAvailable); err != nil {
+		if err := rows.Scan(&r.ID, &r.AnalysisID, &r.Format, &r.Status, &r.FileKey, &r.CreatedBy, &r.ReportVersion, &r.CreatedAt, &r.SnapshotAvailable, &r.DeliveryLevel, &r.DeliveryReasons, &r.ResumeFromRunID, &r.RunID); err != nil {
 			return nil, pgInternal(err)
 		}
 		out = append(out, r)

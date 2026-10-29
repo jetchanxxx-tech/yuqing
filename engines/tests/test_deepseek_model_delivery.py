@@ -10,6 +10,7 @@ from engines.common.model_budget import chat_json_bounded
 from engines.insight_engine import main as insight
 from engines.report_engine import main as report
 from engines.tests.test_report import DEFAULT_LLM_PAYLOAD
+from engines.tests.test_usage_bridge import billing_sandbox
 
 
 @pytest.mark.asyncio
@@ -47,7 +48,7 @@ async def test_current_deepseek_analysis_uses_task_effort_and_full_output_recove
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", ["deepseek-flash", "deepseek-v4-pro"])
-async def test_current_deepseek_report_uses_explicit_reasoning_policy(monkeypatch, model):
+async def test_current_deepseek_report_uses_explicit_reasoning_policy(monkeypatch, billing_sandbox, model):
     requests = []
     def provider(request):
         body = json.loads(request.content)
@@ -56,7 +57,8 @@ async def test_current_deepseek_report_uses_explicit_reasoning_policy(monkeypatc
             "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(DEFAULT_LLM_PAYLOAD)}}]})
     client = LLMClient("https://offline.invalid/v1", transport=httpx.MockTransport(provider))
     monkeypatch.setattr(report, "build_client", lambda *_args, **_kwargs: client)
-    req = report.GenerateRequest(api_key="offline-key", llm_model=model, documents=[{"id": "d1", "content": "后排腿部空间局促。", "source_name": "汽车之家"}])
+    req = report.GenerateRequest(api_key="offline-key", run_id="accepted-run", llm_model=model,
+        documents=[{"id": "d1", "content": "后排腿部空间局促。", "source_name": "汽车之家"}])
     assert await report._llm_insight(req) is not None
     assert requests[0].get("thinking") == {"type": "enabled"}
     assert requests[0].get("reasoning_effort") == "high" and "temperature" not in requests[0]

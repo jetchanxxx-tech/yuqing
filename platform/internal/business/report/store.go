@@ -16,6 +16,10 @@ type Store interface {
 
 // Report represents a generated analysis report.
 type Report struct {
+	RunID             string     `json:"run_id,omitempty"`
+	DeliveryLevel     string     `json:"delivery_level"`
+	DeliveryReasons   []string   `json:"delivery_reasons"`
+	ResumeFromRunID   string     `json:"resume_from_run_id,omitempty"`
 	CreatedAt         *time.Time `json:"created_at,omitempty"`
 	ID                string     `json:"id"`
 	AnalysisID        string     `json:"analysis_id"`

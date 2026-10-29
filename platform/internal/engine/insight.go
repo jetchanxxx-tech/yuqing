@@ -99,8 +99,11 @@ func (e *RealInsightEngine) post(ctx context.Context, path string, body []byte) 
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if resp.StatusCode != http.StatusOK {
+		if fatal := accountingFailure(data); fatal != nil {
+			return nil, fatal
+		}
 		return nil, fmt.Errorf("insight: engine returned %d: %s", resp.StatusCode, string(data))
 	}
 	return data, nil

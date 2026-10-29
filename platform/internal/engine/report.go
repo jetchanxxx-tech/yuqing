@@ -68,8 +68,11 @@ func (e *RealReportEngine) Generate(ctx context.Context, req *ReportGenerateReq)
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<20))
 	if resp.StatusCode != http.StatusOK {
+		if fatal := accountingFailure(data); fatal != nil {
+			return nil, fatal
+		}
 		var problem struct {
 			Code string `json:"code"`
 		}

@@ -28,6 +28,7 @@ def verified_request():
         "topics": [{"id": "t1", "name": "续航反馈", "keywords": ["续航"], "doc_ids": ["d1", "d2"], "doc_count": 2}],
         "dimensions": [{"id": dim, "name": dim, "findings": f"核验结论-{dim}", "data_points": ["1 篇直接材料"],
                         "deep_read": f"核验解读-{dim}", "trend": f"材料不足以判断趋势-{dim}",
+                        "recommendations": [{"stage": "待补充核验", "action": "补充同口径续航测试", "rationale": "现有材料仅含两轮测试"}] if dim == "deep_cause" else [],
                         "quotes": [{"document_id": "d1", "text": "实测续航为八小时。", "source": "测试新闻"}],
                         "quote_locations": [{**span, "quote_text": "实测续航为八小时。"}]} for dim in DIMENSIONS],
         "insight_material_coverage": {"version": "complete-chunks-v1", "phases": [
@@ -156,6 +157,7 @@ def test_writer_failure_compiles_every_verified_component_and_citation_without_d
         for value in (f"核验结论-{dim}", f"核验解读-{dim}", f"材料不足以判断趋势-{dim}"):
             assert value in data["content"]
     assert "实测续航为八小时。" in data["content"] and "[0:9]" in data["content"]
+    assert "补充同口径续航测试" in data["content"] and "现有材料仅含两轮测试" in data["content"]
     phase = data["material_coverage"]["phases"][0]
     assert phase["input_basis"] == "verified_components"
     assert phase["read_spans"] == [] and not phase["unprocessed"]

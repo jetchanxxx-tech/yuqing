@@ -34,6 +34,8 @@ type MediaAnalyzeResp struct {
 
 // InsightAnalyzeReq requests deep analysis + sentiment + topics.
 type InsightAnalyzeReq struct {
+	Resilient          bool           `json:"resilient"`
+	ReusableComponents map[string]any `json:"reusable_components,omitempty"`
 	RunID              string         `json:"run_id"`
 	DocumentIDs        []string       `json:"document_ids"`
 	Documents          []Document     `json:"documents,omitempty"`
@@ -57,9 +59,10 @@ type InsightAnalyzeReq struct {
 
 // InsightAnalyzeResp is the deep analysis response.
 type InsightAnalyzeResp struct {
-	Sentiments []SentimentResult `json:"sentiments"`
-	Topics     []TopicResult     `json:"topics"`
-	Summary    string            `json:"summary"`
+	BatchComponents []map[string]any  `json:"batch_components,omitempty"`
+	Sentiments      []SentimentResult `json:"sentiments"`
+	Topics          []TopicResult     `json:"topics"`
+	Summary         string            `json:"summary"`
 	// Dimensions 是五个维度的独立研判（背景/热度/情感观点/群体差异/深层原因）。
 	Dimensions []DimensionResult `json:"dimensions"`
 	// Warning 是引擎侧的降级原因（如某个维度调用失败），与平台侧 warning 合并展示。
@@ -70,14 +73,17 @@ type InsightAnalyzeResp struct {
 // DimensionResult is one analytical dimension's verdict, organized on the
 // fixed skeleton: findings → data → quotes → deep_read → trend.
 type DimensionResult struct {
-	QuoteLocations []map[string]any `json:"quote_locations,omitempty"`
-	ID             string           `json:"id"`
-	Name           string           `json:"name"`
-	Findings       string           `json:"findings"`
-	DataPoints     []string         `json:"data_points,omitempty"`
-	Quotes         []QuoteResult    `json:"quotes,omitempty"`
-	DeepRead       string           `json:"deep_read"`
-	Trend          string           `json:"trend"`
+	Recommendations []map[string]any `json:"recommendations,omitempty"`
+	Complete        bool             `json:"complete,omitempty"`
+	BatchComponents []map[string]any `json:"batch_components,omitempty"`
+	QuoteLocations  []map[string]any `json:"quote_locations,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Findings        string           `json:"findings"`
+	DataPoints      []string         `json:"data_points,omitempty"`
+	Quotes          []QuoteResult    `json:"quotes,omitempty"`
+	DeepRead        string           `json:"deep_read"`
+	Trend           string           `json:"trend"`
 }
 
 // QuoteResult is a verbatim quote from the source material with its platform.
@@ -103,6 +109,13 @@ type SentimentResp struct {
 
 // ReportGenerateReq requests report generation from document IR.
 type ReportGenerateReq struct {
+	Resilient               bool              `json:"resilient"`
+	DeliveryLevel           string            `json:"delivery_level,omitempty"`
+	DeliveryReasons         []string          `json:"delivery_reasons"`
+	DeliveryPolicy          string            `json:"delivery_policy,omitempty"`
+	UnverifiedDocuments     []Document        `json:"unverified_documents"`
+	Summary                 string            `json:"summary"`
+	Mode                    string            `json:"mode"`
 	AnalysisType            string            `json:"analysis_type,omitempty"`
 	ScenarioTemplateID      string            `json:"scenario_template_id,omitempty"`
 	RunID                   string            `json:"run_id"`
@@ -130,6 +143,8 @@ type ReportGenerateReq struct {
 
 // ReportGenerateResp is the report generation response.
 type ReportGenerateResp struct {
+	DeliveryLevel    string         `json:"delivery_level"`
+	DeliveryReasons  []string       `json:"delivery_reasons"`
 	Warning          string         `json:"warning,omitempty"`
 	MaterialCoverage map[string]any `json:"material_coverage,omitempty"`
 	ReportID         string         `json:"report_id"`
@@ -155,21 +170,26 @@ type ForumRunResp struct {
 
 // CrawlReq schedules a platform-managed crawl.
 type CrawlReq struct {
-	TenantID              string         `json:"tenant_id"`
-	Title                 string         `json:"title"`
-	AnalysisType          string         `json:"analysis_type"`
-	ScenarioTemplateID    string         `json:"scenario_template_id,omitempty"`
-	ResearchQuestion      string         `json:"research_question,omitempty"`
-	ResearchIntentVersion string         `json:"research_intent_version,omitempty"`
-	RunID                 string         `json:"run_id,omitempty"`
-	Sources               []string       `json:"sources"`
-	Keywords              []string       `json:"keywords"`
-	AnalysisID            string         `json:"analysis_id"`
-	MaxDepth              int            `json:"max_depth"`
-	DateFrom              string         `json:"date_from,omitempty"`
-	DateTo                string         `json:"date_to,omitempty"`
-	ExcludeWords          []string       `json:"exclude_words,omitempty"`
-	ResearchIntent        map[string]any `json:"research_intent,omitempty"`
+	Resilient             bool             `json:"resilient"`
+	DeliveryPolicy        string           `json:"delivery_policy"`
+	SeedURLs              []string         `json:"seed_urls"`
+	ResumeFromRunID       string           `json:"resume_from_run_id,omitempty"`
+	RetainedCandidates    []map[string]any `json:"retained_candidates"`
+	TenantID              string           `json:"tenant_id"`
+	Title                 string           `json:"title"`
+	AnalysisType          string           `json:"analysis_type"`
+	ScenarioTemplateID    string           `json:"scenario_template_id,omitempty"`
+	ResearchQuestion      string           `json:"research_question,omitempty"`
+	ResearchIntentVersion string           `json:"research_intent_version,omitempty"`
+	RunID                 string           `json:"run_id,omitempty"`
+	Sources               []string         `json:"sources"`
+	Keywords              []string         `json:"keywords"`
+	AnalysisID            string           `json:"analysis_id"`
+	MaxDepth              int              `json:"max_depth"`
+	DateFrom              string           `json:"date_from,omitempty"`
+	DateTo                string           `json:"date_to,omitempty"`
+	ExcludeWords          []string         `json:"exclude_words,omitempty"`
+	ResearchIntent        map[string]any   `json:"research_intent,omitempty"`
 }
 
 // Shared types used across engine contracts.

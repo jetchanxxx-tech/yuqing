@@ -9,7 +9,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	pkgerrors "github.com/yuqing/platform/internal/pkg/errors"
 	"github.com/yuqing/platform/internal/pkg/id"
+	"github.com/yuqing/platform/internal/pkg/llm"
 	"github.com/yuqing/platform/internal/pkg/queue"
+	"github.com/yuqing/platform/internal/platform/billing"
 	"github.com/yuqing/platform/internal/platform/billingpolicy"
 	"github.com/yuqing/platform/internal/platform/credit"
 )
@@ -24,7 +26,7 @@ type Run struct {
 	FinishedAt                     *time.Time
 }
 
-func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResult, analysisID string, actor billingpolicy.Actor) error {
+func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResult, analysisID string, actor billingpolicy.Actor, resume ...bool) error {
 	pg := s.store.(*pgStore)
 	credits, ok := s.credits.(*credit.Service)
 	if !ok || !credits.UsesPool(pg.pool) {
@@ -69,6 +71,21 @@ func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResul
 	if err != nil {
 		return err
 	}
+	if len(resume) > 0 && resume[0] && !decision.Exempt {
+		budget, budgetErr := billing.NewEntitlementService(pg.pool).EffectiveBudgetTx(ctx, tx, tenantID)
+		if budgetErr != nil {
+			return budgetErr
+		}
+		if budget.Mode == llm.BudgetHardCap {
+			var spent int64
+			if err = tx.QueryRow(ctx, `SELECT COALESCE(SUM(quota_tokens),0) FROM usage_events WHERE tenant_id=$1 AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)`, tenantID, budget.PeriodStart, budget.PeriodEnd).Scan(&spent); err != nil {
+				return err
+			}
+			if spent >= budget.TokenQuota {
+				return pkgerrors.ErrTokenQuotaExceeded
+			}
+		}
+	}
 	runID := id.New()
 	chargeMode := "normal"
 	if decision.Exempt {
@@ -91,9 +108,17 @@ func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResul
 		if _, err = tx.Exec(ctx, deleteDocumentsSQL, tenantID, a.ID); err != nil {
 			return err
 		}
+		previousRun := a.CurrentRunID
 		resetForRerun(a)
+		if len(resume) > 0 && resume[0] {
+			a.ResumeFromRunID = previousRun
+		}
 	}
+	a.ModelFingerprint = s.currentModelFingerprint()
 	a.CurrentRunID = runID
+	if _, err = tx.Exec(ctx, `UPDATE analysis_runs SET delivery_policy=$2,resume_from_run_id=$3,model_fingerprint=$4,inputs_snapshot=$5 WHERE id=$1`, runID, a.DeliveryPolicy, a.ResumeFromRunID, a.ModelFingerprint, marshalJSON(deliveryInputSnapshot(a))); err != nil {
+		return err
+	}
 	statement := insertAnalysisSQL
 	if rerun {
 		statement = updateAnalysisSQL
@@ -111,6 +136,11 @@ func (s *Service) admitPG(ctx context.Context, tenantID string, a *AnalysisResul
 	return tx.Commit(ctx)
 }
 func resetForRerun(a *AnalysisResult) {
+	a.DeliveryLevel = ""
+	a.DeliveryReasons = []string{}
+	a.ResumeFromRunID = ""
+	a.RetainedCandidates = nil
+	a.ReusableComponents = nil
 	a.State = StateQueued
 	a.Progress = 0
 	a.ErrorCode = ""
@@ -136,12 +166,12 @@ func syncRunTx(ctx context.Context, tx pgx.Tx, tenantID string, a *AnalysisResul
 	if a.CurrentRunID == "" {
 		return nil
 	} // Explicit pre-cutover fixture/history only.
-	if !IsTerminal(string(previous)) && (a.State == StateFailed || a.State == StateCanceled) {
+	if !IsTerminal(string(previous)) && (a.State == StateFailed || a.State == StateCanceled || (a.State == StateCompleted && nonFullDelivery(a.DeliveryLevel))) {
 		if _, err := credit.RefundRunTx(ctx, tx, tenantID, a.CurrentRunID); err != nil {
 			return err
 		}
 	}
-	_, err := tx.Exec(ctx, `UPDATE analysis_runs SET state=$2,finished_at=$3 WHERE id=$1 AND tenant_id=$4 AND analysis_id=$5`, a.CurrentRunID, string(a.State), nullableTime(a.FinishedAt), tenantID, a.ID)
+	_, err := tx.Exec(ctx, `UPDATE analysis_runs SET state=$2,finished_at=$3,delivery_level=$6,delivery_reasons=$7,report_content_snapshot=CASE WHEN $6<>'' THEN $8 ELSE report_content_snapshot END,insight_snapshot=CASE WHEN $6<>'' THEN $9 ELSE insight_snapshot END WHERE id=$1 AND tenant_id=$4 AND analysis_id=$5`, a.CurrentRunID, string(a.State), nullableTime(a.FinishedAt), tenantID, a.ID, a.DeliveryLevel, marshalJSON(nonNullStrings(a.DeliveryReasons)), a.ReportContent, marshalJSON(insightFromAnalysis(a)))
 	return err
 }
 
