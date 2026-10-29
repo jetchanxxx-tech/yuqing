@@ -1,0 +1,37 @@
+{
+  "commit": "051cbc4447ce81f969aea76f3f33267a02672b49",
+  "version": "0.2.9-beta",
+  "prod_run": 40797266407,
+  "prod_run_url": "https://github.com/jetchanxxx-tech/yuqing/actions/runs/40797266407",
+  "all_nine_jobs_passed": true,
+  "python_passed": 341,
+  "report_checks_passed": 19,
+  "pg_required_passed": 277,
+  "pg_skips": 0,
+  "pg_failures": 0,
+  "browser_passed": 63,
+  "archive_verification": {
+    "checked_at": "2026-10-29T01:08:46.222027+00:00",
+    "scope": "read-only archive verification; not GitHub provenance, migration, or deployment evidence",
+    "commit": "051cbc4447ce81f969aea76f3f33267a02672b49",
+    "release_archive_sha256": "be79bccc388508819bf1ce82df020104e602a65dbcda16d34deb8079aee6b357",
+    "browser_archive_sha256": "ad810170bfae54f72f2268d7de0d380f12bc150501baf086036f25d38c335b63",
+    "unpacked_manifest_sha256": "7b9be15ce1bc8e231b9249709b87463103650ebb1320d2ffb20ad7725b9c1f98",
+    "release_file_count": 1176,
+    "browser_file_count": 311,
+    "runtime": {
+      "scrapling": "0.4.15",
+      "playwright": "1.63.0",
+      "build_commit": "051cbc4447ce81f969aea76f3f33267a02672b49"
+    },
+    "binary_sha256": {
+      "platform/bin/yuqing-cli": "79a0f2179f968615e32b27701a0324c8f03d96b092d906b48fe8bbdce4c24b48",
+      "platform/bin/yuqing-server": "cce07eab34cde033e1ed02486bdff7ca662565797d64265e5e7ec9c82a763398",
+      "platform/bin/yuqing-worker": "32d6ed441054d0b8ab600408f24bf43cd0ab192a5afb4fbfac119b91f12472bf"
+    },
+    "result": "verified"
+  },
+  "deployed": false,
+  "blocker": "server rejects existing configured SSH password; awaiting console access recovery",
+  "live_version_last_seen": "0.2.8-beta"
+}

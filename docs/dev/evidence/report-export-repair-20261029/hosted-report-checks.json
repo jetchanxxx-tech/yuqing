@@ -1,0 +1,136 @@
+{
+  "source_sha": "051cbc4447ce81f969aea76f3f33267a02672b49",
+  "production_baseline": "b3d1a5762160653084d5d96e36f81c5ab7ba68e5",
+  "result": "PASS",
+  "checks": [
+    {
+      "name": "empty report list is a non-null array",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "unknown report is 404",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "HTML download returns exact stored content",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "content_type": "text/html; charset=utf-8"
+      }
+    },
+    {
+      "name": "HTML attachment has the requested report id",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "unauthenticated HTML download denied",
+      "passed": true,
+      "observed": {
+        "status": 401
+      }
+    },
+    {
+      "name": "cross-tenant access denied 01M62JQG41BXE9RT5DBJDPQ5ZS",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "cross-tenant access denied download?format=html",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "historical report id preserves its first snapshot",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "returned_v2": false
+      }
+    },
+    {
+      "name": "Pro Word export retains the original report version",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "valid_docx": true
+      }
+    },
+    {
+      "name": "unimplemented export is refused: md",
+      "passed": true,
+      "observed": {
+        "status": 409
+      }
+    },
+    {
+      "name": "unimplemented export is refused: pdf",
+      "passed": true,
+      "observed": {
+        "status": 409
+      }
+    },
+    {
+      "name": "native Word download contains valid DOCX bytes",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "body": "<valid DOCX>"
+      }
+    },
+    {
+      "name": "Word export uses immutable saved HTML, not current analysis inputs",
+      "passed": true,
+      "observed": {
+        "saved_html_matches": true
+      }
+    },
+    {
+      "name": "Word file retains source IDs and links",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "Word file retains dimensions, scene and period",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "direct Python control creates a valid Word source appendix",
+      "passed": true,
+      "observed": {
+        "status": 200,
+        "valid_docx": true,
+        "scope": "no LLM key: rendering control only, not successful AI report acceptance"
+      }
+    },
+    {
+      "name": "Lite native Word request is forbidden",
+      "passed": true,
+      "observed": {
+        "status": 403
+      }
+    },
+    {
+      "name": "view and export did not consume report credits",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "no live supplier requests were authorized by export",
+      "passed": true,
+      "observed": {}
+    }
+  ],
+  "live_supplier_calls": 0,
+  "scope": "actual prebuilt Go HTTP API + PostgreSQL + real FastAPI/DOCX renderer; isolated fixtures"
+}
