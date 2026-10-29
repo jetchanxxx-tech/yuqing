@@ -5,6 +5,7 @@ from datetime import date, datetime
 import hashlib
 import hmac
 import inspect
+import logging
 import os
 import time
 from urllib.parse import urlsplit, urlunsplit
@@ -16,13 +17,14 @@ import httpx
 
 from engines.common.llm_client import LLM_MODEL, build_client
 from engines.common.relevance import usable_excerpt
-from engines.common.retrieval_intent import plan_research_intent, validate_intent
+from engines.common.retrieval_intent import ResearchIntentValidationError, plan_research_intent, validate_intent
 from engines.common.scraper import (PageScraper, FetchOutcome, SOURCE_DOMAINS, BOCHA_API_KEY as DEFAULT_BOCHA_KEY,
     ProviderBudget, ProviderBudgetExhausted, _classify_by_domain, _hash_content, _is_public_http_url, _source_display_name)
 from engines.common.semantic_admission import ADMISSION_VERSION, classify_materials, SemanticAdmissionIncomplete
 from engines.common.usage_bridge import configuration, usage_lifespan
 
 app = FastAPI(title="Query Engine", version="0.4.0", lifespan=usage_lifespan)
+logger = logging.getLogger(__name__)
 _scraper = None
 
 
@@ -260,6 +262,7 @@ async def _execute(req):
                 intent = validate_intent(req.research_intent, req, model)
             else:
                 intent = await plan_research_intent(llm, model, req, deadline=min(deadline - 60, loop.time() + 120))
+            coverage["phase"] = "persisting_research_intent"
             intent = await persist_research_intent(req, intent, model)
             coverage["research_intent"] = intent
             coverage["phase_elapsed_seconds"]["planning"] = round(loop.time() - started, 3)
@@ -506,7 +509,23 @@ async def _execute(req):
         except Exception:
             pass
         raise
-    except Exception:
+    except Exception as error:
+        failure = {"phase": coverage["phase"], "error_type": type(error).__name__}
+        code = "retrieval_stage_incomplete"
+        status = 503
+        if isinstance(error, ResearchIntentValidationError):
+            failure.update(code=error.code, field=error.field)
+            code = "research_intent_protocol_rejected"
+            status = 502
+        elif isinstance(error, httpx.HTTPStatusError):
+            failure["dependency_http_status"] = error.response.status_code
+        coverage["failure"] = failure
+        # Exception text/tracebacks can contain supplier bodies and secrets.
+        # Fixed protocol codes, stages and exception classes are sufficient to
+        # locate the boundary without disclosing those bodies.
+        logger.error("retrieval_stage_failed analysis_id=%s run_id=%s phase=%s error_type=%s code=%s field=%s dependency_http_status=%s",
+            req.analysis_id, req.run_id, failure["phase"], failure["error_type"],
+            failure.get("code", code), failure.get("field", ""), failure.get("dependency_http_status", ""))
         coverage["phase"] = "failed"
         for row in coverage["candidate_audit"]:
             if row["status"] in {"candidate", "semantic_pending", "semantic_partial"}:
@@ -515,7 +534,7 @@ async def _execute(req):
             await asyncio.wait_for(checkpoint(), timeout=20)
         except Exception:
             pass
-        raise HTTPException(503, {"code": "retrieval_stage_incomplete", "message": "Retrieval could not complete its authenticated durable stages", "coverage": _coverage(coverage)})
+        raise HTTPException(status, {"code": code, "message": "Research planning output did not satisfy its protocol" if status == 502 else "Retrieval could not complete its authenticated durable stages", "coverage": _coverage(coverage)}) from None
 
 
 def _apply_decisions(decisions, rows, partial=False):
