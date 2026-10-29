@@ -257,6 +257,14 @@ func (a *reportSvcAdapter) CreateFromAnalysis(ctx context.Context, tenantID, ana
 	return r.ID, nil
 }
 
+func (a *reportSvcAdapter) CreateFromAnalysisSnapshot(ctx context.Context, tenantID, analysisID, format, createdBy, content string) (string, error) {
+	r, err := a.svc.CreateFromAnalysisSnapshot(ctx, tenantID, analysisID, format, createdBy, content)
+	if err != nil || r == nil {
+		return "", err
+	}
+	return r.ID, nil
+}
+
 type pgReportSvcAdapter struct{ *reportSvcAdapter }
 
 func (a *pgReportSvcAdapter) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysisID, format, createdBy, runKey string) (string, error) {

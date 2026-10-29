@@ -367,13 +367,15 @@ func (p *Pipeline) Handle(ctx context.Context, msg TaskMessage) error {
 		_ = p.svc.SetWarning(ctx, msg.TenantID, msg.AnalysisID, warn)
 	}
 
-	// ⑤ 完成
-	if err := p.step(ctx, msg, StateCompleted, progressDone); err != nil {
-		return p.fail(ctx, msg, "pipeline_error", err)
-	}
+	// Capture this run before making it rerunnable. After completed is visible,
+	// the mutable analysis can already belong to the next run.
 	completed, err := p.svc.Get(ctx, msg.TenantID, msg.AnalysisID)
 	if err != nil {
 		return err
+	}
+	// ⑤ 完成
+	if err := p.step(ctx, msg, StateCompleted, progressDone); err != nil {
+		return p.fail(ctx, msg, "pipeline_error", err)
 	}
 	if completed.ReportContent != "" {
 		if err := p.ensureReportRecord(ctx, msg, completed); err != nil {
@@ -568,6 +570,13 @@ func (p *Pipeline) ensureReportRecord(ctx context.Context, msg TaskMessage, a *A
 		_, err := durable.CreateFromAnalysisOnce(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, reportRunKey(a))
 		return err
 	}
+	if snapshot, ok := p.reportSvc.(interface {
+		CreateFromAnalysisSnapshot(context.Context, string, string, string, string, string) (string, error)
+	}); ok {
+		_, err := snapshot.CreateFromAnalysisSnapshot(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy, a.ReportContent)
+		return err
+	}
+
 	if _, err := p.reportSvc.CreateFromAnalysis(ctx, msg.TenantID, msg.AnalysisID, "html", a.CreatedBy); err != nil {
 		p.log.Warn("pipeline: create report record failed", "analysis_id", msg.AnalysisID, "err", err)
 	}

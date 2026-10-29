@@ -200,15 +200,6 @@ func Build(cfg *config.Config, logger *slog.Logger) *v1.Services {
 		return billing.DefaultPlans()[planCode]
 	}
 	reportSvc := report.NewService(reportStore, planCodeFor, planProvider)
-	if cfg.Store.Driver != "postgres" {
-		reportSvc.WithContentSource(func(ctx context.Context, tenantID, analysisID string) (string, error) {
-			a, err := analysisSvc.Get(ctx, tenantID, analysisID)
-			if err != nil {
-				return "", err
-			}
-			return a.ReportContent, nil
-		})
-	}
 
 	dashboardSvc := dashboard.NewService(analysisSvc, reportSvc)
 	alertSvc := alert.NewService(alertStore, nil)

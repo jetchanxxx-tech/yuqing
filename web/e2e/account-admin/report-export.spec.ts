@@ -9,7 +9,7 @@ const api = 'http://127.0.0.1:8080/api/v1';
 test('saved report HTML downloads exact published bytes and only implemented export actions are offered', async ({ page, request }) => {
   if (process.env.RUNNER_ENVIRONMENT !== 'github-hosted' || process.env.YUQING_TEST_PG_URL !== db) throw new Error('Hosted disposable database required');
   const email = `report-${randomBytes(8).toString('hex')}@example.invalid`;
-  const password = randomBytes(18).toString('hex');
+  const password = `Report-2026-${randomBytes(18).toString('hex')}`;
   const response = await request.post(`${api}/auth/register`, { data: { email, password, name: '报告导出验收' } });
   expect(response.status()).toBe(201);
   const actor = await response.json();

@@ -26,7 +26,6 @@ type Service struct {
 	// planProvider returns the plan definition for a plan code; nil falls
 	// back to billing.DefaultPlans.
 	planProvider func(planCode string) *billing.Plan
-	contentFor   func(context.Context, string, string) (string, error)
 }
 
 // NewService wires the report store with plan gating.
@@ -34,30 +33,16 @@ func NewService(store Store, planCodeFor func(tenantID string) string, planProvi
 	return &Service{store: store, planCodeFor: planCodeFor, planProvider: planProvider}
 }
 
-// WithContentSource supplies immutable content for the in-memory runtime.
-// PostgreSQL captures its version under the analysis row lock in migration 0030.
-func (s *Service) WithContentSource(source func(context.Context, string, string) (string, error)) *Service {
-	s.contentFor = source
-	return s
-}
-
-func (s *Service) captureContent(ctx context.Context, tenantID string, r *Report) error {
-	if s.contentFor == nil {
-		return nil
-	}
-	content, err := s.contentFor(ctx, tenantID, r.AnalysisID)
-	if err != nil {
-		return err
-	}
-	r.ContentHTML = content
-	r.SnapshotAvailable = content != ""
-	return nil
-}
-
 // CreateFromAnalysis creates a completed report for an analysis.
 // createdBy is the user's UUID who triggered the report (written to reports.created_by).
 // report_version is auto-assigned: 1 for the first report, incremented for subsequent ones.
 func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, format, createdBy string) (*Report, error) {
+	return s.CreateFromAnalysisSnapshot(ctx, tenantID, analysisID, format, createdBy, "")
+}
+
+// CreateFromAnalysisSnapshot binds the already-read completed run content in
+// memory. PostgreSQL captures the content under its analysis row lock instead.
+func (s *Service) CreateFromAnalysisSnapshot(ctx context.Context, tenantID, analysisID, format, createdBy, content string) (*Report, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("report: tenant_id is required")
 	}
@@ -83,9 +68,8 @@ func (s *Service) CreateFromAnalysis(ctx context.Context, tenantID, analysisID, 
 		ReportVersion: version,
 		CreatedBy:     createdBy,
 	}
-	if err := s.captureContent(ctx, tenantID, &rp); err != nil {
-		return nil, err
-	}
+	rp.ContentHTML = content
+	rp.SnapshotAvailable = content != ""
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		return nil, err
 	}
@@ -122,9 +106,6 @@ func (s *Service) CreateFromAnalysisOnce(ctx context.Context, tenantID, analysis
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	rp := Report{CreatedAt: &createdAt, ID: reportID, AnalysisID: analysisID, Format: format, Status: statusCompleted,
 		FileKey: fmt.Sprintf("reports/%s.%s", reportID, format), ReportVersion: len(previous) + 1, CreatedBy: createdBy}
-	if err := s.captureContent(ctx, tenantID, &rp); err != nil {
-		return nil, err
-	}
 	if err := s.store.Create(ctx, tenantID, createdBy, rp); err != nil {
 		if errors.Is(err, pkgerrors.ErrConflict) {
 			return getExisting()

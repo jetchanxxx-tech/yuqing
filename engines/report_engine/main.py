@@ -6,6 +6,7 @@ AI 研判段落替换为「AI 研判不可用」提示 —— 结果呈现优于
 import io
 import asyncio
 import json
+import hmac
 import os
 import uuid
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from html import escape
 from string import Template
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -1055,8 +1056,16 @@ class SavedExportRequest(BaseModel):
         return self
 
 
-@app.post('/export')
-async def export_saved_report(req: SavedExportRequest):
+def require_saved_export_auth(request: Request):
+    secret = os.environ.get('YUQING_BILLING_SERVICE_TOKEN', '')
+    if not secret:
+        raise HTTPException(503, 'report export authentication is not configured')
+    if not hmac.compare_digest(request.headers.get('X-Internal-Token', ''), secret):
+        raise HTTPException(403, 'forbidden')
+
+
+@app.post('/export', dependencies=[Depends(require_saved_export_auth)])
+def export_saved_report(req: SavedExportRequest):
     content = render_saved_docx(req.html_content)
     return StreamingResponse(io.BytesIO(content),
         media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',

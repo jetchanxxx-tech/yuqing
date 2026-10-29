@@ -139,7 +139,7 @@ def main():
             def register(prefix):
                 response = api('POST', '/auth/register', data={
                     'email': prefix + '-' + secrets.token_hex(5) + '@example.invalid',
-                    'password': secrets.token_urlsafe(24), 'name': '报告沙箱验收'})
+                    'password': 'Report-2026-' + secrets.token_urlsafe(24), 'name': '报告沙箱验收'})
                 assert response.status_code == 201, response.status_code
                 return response.json()
 

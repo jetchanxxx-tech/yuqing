@@ -56,7 +56,7 @@ class SavedReportParser(HTMLParser):
         if self.ignored:
             return
         if tag in ('td', 'th') and self.cell is not None:
-            self.row.append(''.join(self.cell).strip())
+            self.row.append(''.join(self.cell))
             self.cell = None
         elif tag == 'tr' and self.row is not None:
             self.table.append(self.row)
