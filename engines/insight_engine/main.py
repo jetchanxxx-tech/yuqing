@@ -825,8 +825,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
     summary_phase = {"phase": "summary", "read_spans": [], "unprocessed": [],
                      "input_basis": "verified_dimension_findings", "reduction_batches": []}
     try:
-        if any(span.get("code") == LLMContentRejected.code
-               for phase in coverage.result()["phases"] for span in phase["unprocessed"]):
+        if any(phase.get("failure_code") == LLMContentRejected.code
+               for phase in coverage.result()["phases"]):
             raise LLMContentRejected()
         notes = json.dumps([{k: v for k, v in d.items() if k in ("name", "findings", "trend", "data_points", "quotes")} for d in dimensions], ensure_ascii=False)
         counts = {label: sum(s.get("sentiment") == label for s in sentiments) for label in ("positive", "negative", "neutral")}

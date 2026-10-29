@@ -137,8 +137,13 @@ class LLMClient:
             observed = getattr(error, "observed_response", None)
             if observed:
                 _observe_usage(event, observed)
-            event["outcome"] = "provider_error"
+            rejected = bool(observed and _content_rejected(observed))
+            event["outcome"] = "provider_rejected" if rejected else "provider_error"
             persist_usage_event(event, permission["permit"])
+            if rejected and isinstance(error, Exception):
+                # External cancellation remains cancellation; an observed
+                # refusal remains terminal even if the stream later breaks.
+                raise LLMContentRejected() from None
             raise
         _observe_usage(event, response)
         event["outcome"] = "provider_rejected" if _content_rejected(response) else "provider_response"
