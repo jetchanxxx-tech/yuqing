@@ -1,6 +1,7 @@
 """Authenticated accepted-run retrieval: shared topic → platforms → bodies → evidence."""
 import asyncio
 from collections import deque
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 import hashlib
 import hmac
@@ -22,8 +23,16 @@ from engines.common.scraper import (PageScraper, FetchOutcome, SOURCE_DOMAINS, B
     ProviderBudget, ProviderBudgetExhausted, _classify_by_domain, _hash_content, _is_public_http_url, _source_display_name)
 from engines.common.semantic_admission import ADMISSION_VERSION, classify_materials, SemanticAdmissionIncomplete
 from engines.common.usage_bridge import configuration, usage_lifespan
+from engines.common.discovery import collection_capabilities, discover_public
+from engines.common.tool_usage import tool_usage_lifespan
 
-app = FastAPI(title="Query Engine", version="0.4.0", lifespan=usage_lifespan)
+
+@asynccontextmanager
+async def collector_lifespan(app):
+    async with usage_lifespan(app), tool_usage_lifespan(app):
+        yield
+
+app = FastAPI(title="Query Engine", version="0.5.0", lifespan=collector_lifespan)
 logger = logging.getLogger(__name__)
 _scraper = None
 
@@ -56,6 +65,15 @@ class SearchRequest(BaseModel):
     llm_api_key: str = ""
     llm_base_url: str = ""
     llm_model: str = ""
+    resilient: bool = False
+    delivery_policy: str = "best_available"
+    seed_urls: list[str] = Field(default_factory=list)
+    search_provider: str = "bocha"
+    search_api_key: str = ""
+    search_base_url: str = "https://api.deepseek.com"
+    fetch_provider: str = ""
+    retained_candidates: list[dict] = Field(default_factory=list)
+    resume_from_run_id: str = ""
 
 
 class SearchResponse(BaseModel):
@@ -69,6 +87,14 @@ class SearchResponse(BaseModel):
 async def health():
     return {"status": "ok", "engine": "query", "version": "0.4.0", "admission_version": ADMISSION_VERSION,
             "scrapling": get_scraper()._available, "bocha": bool(os.getenv("BOCHA_API_KEY") or DEFAULT_BOCHA_KEY)}
+
+
+@app.get("/capabilities")
+async def capabilities(x_internal_token: str = Header(default="")):
+    secret = os.getenv("YUQING_BILLING_SERVICE_TOKEN", "")
+    if not secret or not x_internal_token or not hmac.compare_digest(x_internal_token, secret):
+        raise HTTPException(401, "Internal service authentication required")
+    return collection_capabilities(get_scraper()._available)
 
 
 def _validate(req):
@@ -89,6 +115,14 @@ def _validate(req):
         raise HTTPException(422, "date_from/date_to must be ISO dates") from exc
     if lower and upper and lower > upper:
         raise HTTPException(422, "date_from must not exceed date_to")
+    if req.delivery_policy not in {"best_available", "full_only"} or req.search_provider not in {"bocha", "deepseek", ""} or req.fetch_provider not in {"", "deepseek", "local"}:
+        raise HTTPException(422, "Unsupported collection configuration")
+    if len(req.seed_urls) > 10 or len(req.retained_candidates) > 100:
+        raise HTTPException(422, "Seed or retained candidate limit exceeded")
+    if any(not _is_public_http_url(url) or _classify_by_domain(url) not in req.sources for url in req.seed_urls):
+        raise HTTPException(422, "Seed URLs must be public selected-source HTTP(S) pages")
+    if req.resilient:
+        return
     if not (req.bocha_api_key or os.getenv("BOCHA_API_KEY") or DEFAULT_BOCHA_KEY):
         raise HTTPException(503, "Bocha API key required; preset test URLs are not real sources")
     if not (req.llm_api_key or os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY")):
@@ -230,6 +264,9 @@ def _coverage(coverage):
 
 
 async def _execute(req):
+    if req.resilient:
+        from engines.query_engine.resilient import execute
+        return await execute(req)
     loop = asyncio.get_running_loop()
     started = loop.time()
     deadline = started + 900
