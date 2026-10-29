@@ -29,7 +29,7 @@ test('saved report HTML downloads exact published bytes and only implemented exp
   await page.goto('/reports');
   const row = page.getByRole('row').filter({ hasText: aid });
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: '下载', exact: true }).hover();
+  await row.getByRole('button', { name: /下\s*载$/ }).hover();
   await expect(page.getByRole('menuitem', { name: '下载 HTML', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '下载 Word', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '下载 Markdown', exact: true })).toHaveCount(0);
