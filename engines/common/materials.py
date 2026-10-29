@@ -97,10 +97,11 @@ class MaterialCoverage:
             if span not in entry["read_spans"]:
                 entry["read_spans"].append(span)
 
-    def fail(self, phase: str, batch: list[dict], reason: str):
+    def fail(self, phase: str, batch: list[dict], reason: str, *, code: str = ""):
         for document in batch:
             span = span_for(document)
-            self.phases[phase]["failures"][(span["document_id"], span["start"], span["end"])] = reason
+            self.phases[phase]["failures"][(span["document_id"], span["start"], span["end"])] = {
+                "reason": reason, **({"code": code} if code else {})}
 
     def result(self) -> dict:
         phases = []
@@ -109,7 +110,7 @@ class MaterialCoverage:
             for span in entry["expected"]:
                 if span not in entry["read_spans"]:
                     key = (span["document_id"], span["start"], span["end"])
-                    missing.append({**span, "reason": entry["failures"].get(key, "阶段时限内未处理")})
+                    missing.append({**span, **entry["failures"].get(key, {"reason": "阶段时限内未处理"})})
             phases.append({"phase": phase, "read_spans": entry["read_spans"], "unprocessed": missing})
         return {"version": "complete-chunks-v1", "phases": phases}
 

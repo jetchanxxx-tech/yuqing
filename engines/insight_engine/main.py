@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 import httpx
 
-from engines.common.llm_client import LLM_MODEL, build_client
+from engines.common.llm_client import LLM_MODEL, LLMContentRejected, build_client
 from engines.common.usage_bridge import usage_lifespan
 from engines.common.usage_outbox import AccountingDurabilityError
 from engines.common.time_window import analysis_scope
@@ -550,7 +550,8 @@ async def _run_dimensions(
                     raise
                 except Exception as exc:
                     if coverage is not None:
-                        coverage.fail(f"dimension:{spec.id}", batch, _error_reason(exc))
+                        coverage.fail(f"dimension:{spec.id}", batch, _error_reason(exc),
+                            code=LLMContentRejected.code if isinstance(exc, LLMContentRejected) else "")
                     raise
         if len(pieces) == 1:
             return pieces[0]
@@ -658,7 +659,8 @@ async def _classify_documents(llm, model, req, scope, gate, deadline, coverage):
                 coverage.fail("classification", batch, "用量持久化失败")
                 raise
             except Exception as exc:
-                coverage.fail("classification", batch, _error_reason(exc))
+                coverage.fail("classification", batch, _error_reason(exc),
+                    code=LLMContentRejected.code if isinstance(exc, LLMContentRejected) else "")
                 if checked is None:
                     raise
                 # Keep the same strictly filtered partial values for legacy
@@ -823,6 +825,9 @@ async def analyze(req: AnalyzeRequest) -> dict:
     summary_phase = {"phase": "summary", "read_spans": [], "unprocessed": [],
                      "input_basis": "verified_dimension_findings", "reduction_batches": []}
     try:
+        if any(span.get("code") == LLMContentRejected.code
+               for phase in coverage.result()["phases"] for span in phase["unprocessed"]):
+            raise LLMContentRejected()
         notes = json.dumps([{k: v for k, v in d.items() if k in ("name", "findings", "trend", "data_points", "quotes")} for d in dimensions], ensure_ascii=False)
         counts = {label: sum(s.get("sentiment") == label for s in sentiments) for label in ("positive", "negative", "neutral")}
 
@@ -864,6 +869,8 @@ async def analyze(req: AnalyzeRequest) -> dict:
         warnings.append(f"摘要生成失败：{reason}")
         warning = "；".join(warnings)
         summary_phase["failure_reason"] = reason
+        if isinstance(exc, LLMContentRejected):
+            summary_phase["failure_code"] = exc.code
 
     material_coverage = coverage.result()
     material_coverage["phases"].append(summary_phase)

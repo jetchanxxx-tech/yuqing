@@ -29,6 +29,20 @@ class LLMSupplierTimeout(TimeoutError):
     """Only the supplier request exceeded its bounded attempt allowance."""
 
 
+class LLMContentRejected(RuntimeError):
+    """Terminal provider moderation decision, independent of JSON validity."""
+
+    code = "llm_content_rejected"
+
+    def __init__(self):
+        super().__init__("llm_content_rejected: 模型供应商内容审核拒绝处理本次材料")
+
+
+def _content_rejected(response):
+    return any(choice.get("finish_reason") in {"sensitive", "content_filter"}
+               for choice in response.get("choices") or [])
+
+
 # 调用层重试（借鉴 BettaFish 思路，按本项目预算收紧）：Go→insight 只等 420s，
 # 只对快速失败的瞬时错误重试一次；504/524/读超时已耗掉大段预算，不重试。
 _TRANSIENT_STATUS = {429, 500, 502, 503}
@@ -127,7 +141,7 @@ class LLMClient:
             persist_usage_event(event, permission["permit"])
             raise
         _observe_usage(event, response)
-        event["outcome"] = "provider_response"
+        event["outcome"] = "provider_rejected" if _content_rejected(response) else "provider_response"
         # This fatal error is intentionally outside the supplier exception
         # handler: failure to persist must not retry or relabel observed facts.
         persist_usage_event(event, permission["permit"])
@@ -170,6 +184,11 @@ class LLMClient:
         """
         kwargs.setdefault("response_format", {"type": "json_object"})
         resp = await self.chat(model, messages, **kwargs)
+        if _content_rejected(resp):
+            # The response is already durably accounted. Do not parse partial
+            # content or spend the malformed-JSON recovery allowance on a
+            # supplier's explicit content decision.
+            raise LLMContentRejected()
         choice = (resp.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content", "")
         if choice.get("finish_reason") == "length":
