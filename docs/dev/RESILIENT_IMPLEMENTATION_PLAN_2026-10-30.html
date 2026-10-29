@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>自主采集与报告交付实施计划</title><style>body{max-width:1100px;margin:36px auto;padding:0 24px;font:16px/1.8 system-ui;color:#243548}td,th{border:1px solid #ccc;padding:10px}table{border-collapse:collapse;width:100%}code{overflow-wrap:anywhere}</style>
+<h1>自主采集与报告交付实施计划</h1><p>2026-10-30，用户已授权执行完整 PRD、GitHub 发布、服务器部署与真实验收。实施方式：按确定接口拆分采集／平台／分析报告，根任务负责 UI、集成及发布。全部测试和构建只在 GitHub 托管 runner。</p>
+<p>规格：<a href="../planning/PRD_RESILIENT_COLLECTION_AND_REPORT_DELIVERY_2026-10-29.html">用户批准 PRD</a>；接口：<a href="contracts/RESILIENT_DELIVERY_2026-10-30.md">实现契约</a>。先记录 RED 用例提交及实际失败，再写实现，通过 hosted GREEN；迁移、账本、引用与跨租户边界不得依赖 mock 验收。</p>
+<table><tr><th>任务</th><th>实现及文件</th><th>验收门槛</th></tr>
+<tr><td>1. 独立发现与多通路取文</td><td>query_engine、discovery/deepseek_tools/tool_usage；公开新闻＋现有社媒独立入口、种子链接、DeepSeek Search/Fetch、30%候选预留、失败仍保存材料。</td><td>博查／DeepSeek禁用仍取得真实URL和正文；日期来源不越权；128字查询、按次计量、取消与安全回归通过。</td></tr>
+<tr><td>2. 交付与计费平台契约</td><td>platform分析／报告、Go接口及组合根、0031+迁移、工具账本、续跑／历史快照。</td><td>full/limited/brief/empty等级权威落库；仅full消费，其他一扣一退；并发／回滚／重启／旧run／跨租户／模型授权实库测试。</td></tr>
+<tr><td>3. 模型兼容与分项报告</td><td>insight/report、llm_client/model_budget/materials；DeepSeek参数、终止原因、成功分项保留、确定性降级渲染。</td><td>拒绝不重试，无模型仍有资料简报，写作失败保留验证分析；部分结果不冒充全量，HTML/Word一致。</td></tr>
+<tr><td>4. 用户流程与数据面板</td><td>web/src/api、任务创建／详情／报告列表及e2e。</td><td>显示交付等级、缺口、各平台各通路计数、来源正文状态、可选种子、续跑；下载与历史版本不变。</td></tr>
+<tr><td>5. 实际入口与供应商探针</td><td>GitHub-hosted已构建服务，隔离正常接纳任务，服务器真实公开入口与DeepSeekKey（私密注入）。</td><td>原姆巴佩场景、iPhone17／系列对照、模型拒绝、搜索停用、全部模型停用、静态转动态均留原始证据；未知费用不造零。</td></tr>
+<tr><td>6. 正式发布与复验</td><td>独立整体评审，dev→prod PR，精确prod构建，校验、备份、迁移、切换、健康与真实报告。</td><td>所有必需检查绿；归档／BUILD_COMMIT／文件清单一致；新版本实际生成并下载报告，原始拒绝场景按等级交付。</td></tr></table>
+<h2>审查重点</h2><ul><li>账号余额导致模型／搜索／Fetch同时失效时，本地通路仍独立；不能将同供应商服务当互相容灾。</li><li>存在候选但语义未完成时只能资料简报；未知不得成为direct或中性统计。</li><li>已退款的部分交付续跑必须新run接纳，旧版本与历史账本不改写。</li><li>并发取消、旧run迟到、用量ACK丢失后仍幂等，不能重复付费或退款。</li><li>收集页面只允许公开选定来源，DNS／重定向／子资源校验不可为成功率放宽。</li></ul>
+<p>当前状态：实施启动；未宣称新能力已上线。进度与具体提交/托管结果记录在同目录交付状态中。</p></html>

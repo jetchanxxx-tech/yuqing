@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>盘古舆情 · 自主采集与报告持续交付 PRD</title>
+<style>
+:root{color-scheme:light;--ink:#17283a;--muted:#536476;--line:#d7e0e9;--brand:#235a85;--paper:#fff;--bg:#eef3f7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.8 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1120px;margin:28px auto 64px;background:var(--paper);padding:36px 44px;border:1px solid var(--line)}h1{font-size:28px;line-height:1.4;margin:0 0 12px}h2{font-size:21px;margin:34px 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px}h3{font-size:17px;margin:22px 0 8px}p{margin:10px 0}a{color:var(--brand)}code{font-size:.9em;overflow-wrap:anywhere;background:#edf2f7;padding:1px 4px}table{width:100%;border-collapse:collapse;font-size:14px;margin:14px 0}th,td{padding:10px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:#edf3f8}ul,ol{padding-left:24px}.meta{color:var(--muted);font-size:14px}.notice{padding:14px 18px;border-left:4px solid #a56b1e;background:#fff7e9}.decision{padding:14px 18px;border-left:4px solid var(--brand);background:#eef5fb}.flow{display:flex;flex-wrap:wrap;gap:10px;list-style:none;padding:0}.flow li{flex:1 1 150px;background:#eef5fb;border:1px solid var(--line);padding:12px}.flow b{display:block}.muted{color:var(--muted)}.scroll{overflow-x:auto}.badge{display:inline-block;padding:2px 9px;border:1px solid #a56b1e;color:#865313;font-size:13px;margin-right:8px}nav{padding:12px 16px;background:#f5f8fb}nav a{margin-right:16px;white-space:nowrap}@media(max-width:700px){main{margin:0;padding:22px 16px;border:0}h1{font-size:23px}table{min-width:650px}}@media print{body{background:#fff}main{margin:0;border:0;max-width:none;padding:0}h2,h3{break-after:avoid}tr,.notice,.decision{break-inside:avoid}nav{display:none}a{color:inherit}}
+</style>
+</head>
+<body><main>
+<header>
+<h1>自主采集与报告持续交付 PRD</h1>
+<p class="meta">盘古舆情 · v1.2 · 2026-10-30 · <span class="badge">已授权实施</span>用户于 2026-10-30 批准按本 PRD 改造、更新 GitHub、部署并实际验收。</p>
+<p class="notice"><strong>本轮交付边界：</strong>2026-10-30 用户已明确授权实施与发布；以下历史基线用于核对，交付状态以本轮实际证据为准。当前生产为 <code>1af8cb5e4c85d82ba14adf662a4e2e5af1c8e9f9</code>；之后开发分支中的供应商拒绝识别与诊断补丁尚未部署，需纳入本方案重新评审。本文中的新采集、降级报告、数据面板和恢复机制均不能表述为已上线。</p>
+</header>
+<nav aria-label="文档导航"><a href="#facts">真实问题</a><a href="#goal">产品目标</a><a href="#collection">自主采集</a><a href="#delivery">报告策略</a><a href="#ux">用户流程</a><a href="#acceptance">验收</a><a href="#deepseek">DeepSeek 可行性</a><a href="#review">审核事项</a></nav>
+
+<section id="facts"><h2>1. 真实问题与当前能力</h2>
+<p><strong>此次拒绝分析的是智谱 GLM，博查已正常返回数据。</strong>独立的已接纳诊断任务用失败材料批次重放，取得 GLM 的 <code>finish_reason=sensitive</code>、空正文及 <code>usage=null</code>；另一材料批次正常返回。搜索故障、网页抓取故障和模型处理拒绝是三个独立环节，产品必须分别处理。</p>
+<div class="scroll"><table><thead><tr><th>实际生产任务</th><th>可核验结果</th><th>暴露的问题</th></tr></thead><tbody>
+<tr><td><code>01M63MJ5SJZN72N66S1W4TNPJ3</code><br>姆巴佩／蒙牛／东鹏／补水啦，5 平台，最近 7 天</td><td>博查 30 次请求、300 条原始候选；准入 29 条 direct、17 条 context。分析阶段失败，没有报告。失败后的额度已一扣一退。</td><td>部分材料被模型拒绝，整份报告随之失败；已有材料、统计和已完成部分没有形成可用交付物。系统将供应商拒绝误当 JSON 错误重试。</td></tr>
+<tr><td><code>01M63N4E6KTXEDFYXNHHKC3NGH</code><br>iPhone17／续航／发热，最近 30 天</td><td>248 条原始候选，只有 1 条直接证据；按现有两条门槛结束，未生成完整研判。</td><td>材料不足时仍应交付资料简报与缺口说明，并提供有针对性的补充路径。</td></tr>
+<tr><td><code>01M63ND2PMJA15NXEZ9XTM13EG</code><br>iPhone／续航，最近 30 天</td><td>25 次博查请求、250 条候选，19 条 direct、27 条 context；三维分析和报告成功，耗时 623.8 秒。HTML 实际下载 126,219 字节，与保存内容一致。</td><td>证明当前链路有真实成功路径；不能把这个普通产品话题的成功替代原话题失败的验收。</td></tr>
+</tbody></table></div>
+<p>当前 Scrapling 已被调用，具备静态抓取、有限动态渲染及正文选择器，但候选 URL 基本来自博查。因此“博查没有给链接”时，自主采集仍无入口。本轮姆巴佩任务中，67 条候选记录为 <code>empty_body</code>、1 条超时、19 条触发安全地址拦截；这些只是实际结果，尚不能据此断言具体网站反爬、选择器或网络的单一根因。</p>
+<p>现有完整性门槛要求所有应读材料都处理成功。它保护了报告真实性，但缺少“有范围、有缺口的正式交付”这一层，导致一处失败就只剩错误页。</p>
+</section>
+
+<section id="goal"><h2>2. 产品目标与推荐方案</h2>
+<p>用户发起一次研究后，系统持续收集所选范围内的真实材料，尽可能形成研判；某个搜索服务、站点或模型不可用时，保留已有成果，交付对应等级的报告，并明确哪些事实、材料和分析尚未完成。</p>
+<div class="scroll"><table><thead><tr><th>方案</th><th>用户获得的能力</th><th>代价与边界</th></tr></thead><tbody>
+<tr><td><strong>推荐：独立采集通路＋分级报告交付</strong></td><td>外部搜索和自主发现并行；网页抓取独立运行；报告可降为受限研判或资料简报。供应商故障不再直接等于成果丢失。</td><td>需要采集编排、逐文档处理账本、报告等级、结算及界面契约共同改造，分阶段上线。</td></tr>
+<tr><td>只增加备用搜索／模型</td><td>缓解单家超时、额度和服务中断。</td><td>仍依赖供应商；不解决独立发现、站点正文获取和所有模型均不可用时的交付。只能作为辅助能力。</td></tr>
+<tr><td>完全自建跨平台搜索与采集</td><td>长期降低外部搜索依赖。</td><td>需要长期索引、站点适配与持续维护；无法一次承诺所有封闭平台的完整搜索。一期不以此为完成标准。</td></tr>
+</tbody></table></div>
+<div class="decision"><strong>本版建议批准第一种方案。</strong>自主采集必须在健康状态下也参与工作，不能只是供应商报错后的空壳兜底。备用模型只处理已配置、已验证的服务可用性切换；内容审核拒绝有独立策略，不通过改写、隐藏原文或轮询供应商来规避其决定。</div>
+<p>本次不扩展自定义 Prompt 模板、自动定时监测、视频转写和全量评论。保留多关键词共同描述同一研究主题的语义；不得重新引入“必须逐字全中”的准入过滤。</p>
+</section>
+
+<section><h2>3. 新流程与能力边界</h2>
+<ol class="flow" aria-label="建议流程"><li><b>研究输入</b>主题、关联关键词、平台、日期、可选种子链接</li><li><b>并行发现</b>外部搜索＋自主公开入口＋范围内存量材料</li><li><b>抓取与核验</b>静态／动态正文、来源、日期、去重、语义用途</li><li><b>分项分析</b>按文档和维度记录成功、拒绝、失败、未处理</li><li><b>成果交付</b>完整研判／受限研判／资料简报＋缺口清单</li></ol>
+<ul>
+<li><strong>发现与抓取分开：</strong>发现器产出真实候选 URL，Scrapling 抓取网页。两者均可在博查关闭时工作；仅安装 Scrapling 不能算具备独立发现。</li>
+<li><strong>采集与模型分开：</strong>模型规划失败时，按原始关键词、来源和日期继续执行基础采集计划，标注研究意图尚未增强。关键词组合只用于召回，不能冒充语义相关性结论。</li>
+<li><strong>材料与结论分开：</strong>抓取成功不等于相关，相关不等于事实已证实，模型未处理不等于负面或中性。各状态分别保存。</li>
+<li><strong>运行与交付分开：</strong>任务终态同时记录交付等级和限制原因。部分成功有文件和预览，不能只用一个 <code>completed</code> 或 <code>failed</code> 掩盖差异。</li>
+</ul>
+</section>
+
+<section id="collection"><h2>4. 自主采集：真正独立于博查的第二条通路</h2>
+<h3>4.1 候选发现入口</h3>
+<div class="scroll"><table><thead><tr><th>入口</th><th>要求</th><th>一期承诺边界</th></tr></thead><tbody>
+<tr><td>公开站点适配器</td><td>从公开栏目、榜单、账号公开页、公开站内搜索、RSS／Atom、sitemap 发现链接；按入口自身支持的能力分页，记录每条 URL 的发现链。</td><td>上线前逐平台实测，不能把“适配器存在”写成“平台搜索可用”。榜单只覆盖榜单范围，不冒充全站关键词搜索。</td></tr>
+<tr><td>用户种子链接／公开账号页</td><td>创建任务时可选填多个公开链接或公开列表页；提取直接文章和同域有限层级链接。未填写也应有系统默认公开入口。</td><td>补充能力，不把系统的搜索职责转嫁给用户。用户提供的链接同样通过范围、安全和日期检查。</td></tr>
+<tr><td>现有 RSSHub</td><td>复用已运行服务的真实路由作为一种发现适配器；保存实际原网页链接、源站及快照时间。</td><td>RSSHub 不是全网搜索，不保证每个路由稳定。一次路由失败不能拖垮其他入口。</td></tr>
+<tr><td>范围内历史材料</td><td>在同一租户有权访问且仍在保留期的资料中检索候选，核对原发布时间、保存版本和是否需要重抓。</td><td>不跨租户复用私有材料；不把旧材料伪装成最近采集或本次新发布内容。</td></tr>
+<tr><td>外部搜索</td><td>博查继续作为扩展召回来源；其他已配置供应商可作为后续适配器。</td><td>未配置备用服务时明确缺失，不默认新采购、不虚构覆盖率。</td></tr>
+</tbody></table></div>
+<p><strong>接入顺序建议：</strong>先核验公开新闻网页入口、今日头条公开入口、微博公开榜单入口；公众号、抖音、西瓜分别做入口发现与正文可用性验证。第一阶段的完成条件是“至少一个公开新闻站点和一个现有社媒平台独立发现并抓取真实内容”，不是声称五个平台都已实现自主搜索。若用户只选了尚未验证的渠道，明确提示其当前能力和预计交付等级，仍执行可用的既有搜索／链接通路。</p>
+<h3>4.2 健康情况下也并行采集</h3>
+<p>同一任务启动外部搜索和自主发现，共享一个候选池、时间预算和去重账本。建议自主发现预留至少 30% 的候选处理名额，至少有一个可执行独立入口时才计算预留；任一路提前耗尽时，剩余名额可回收。按所选平台轮转调度，不能由头条先填满全部候选。来源数量不同不强凑均衡。</p>
+<p>当博查出现额度不足、认证错误、连续限流／超时或某平台返回空结果时，停止无效重试，将剩余预算交给该平台的独立入口与已有合法候选。永久错误每任务不重复请求；429／暂时 5xx 的受控重试与现有总次数、截止时间共用预算。</p>
+<h3>4.3 正文抓取与故障定位</h3>
+<p>静态正文提取失败后，在浏览器预算允许时使用动态渲染；仍为空则按入口切换到已经核验的同平台公开地址形态或其他真实候选。不得由模型生成 URL 或猜测文章内容。保存响应状态、最终地址、正文选择器结果、页面壳／验证码识别、超时阶段及静态／动态尝试记录。</p>
+<p>安全地址拦截、跨平台重定向、日期冲突、无内容与页面验证分别统计。特别核验“文章主请求被拒绝”和“子资源被拒绝”的区别，修正误报应基于实际网络证据，不能放开私网访问来提高成功率。账号登录、验证码和访问限制只记录实际不可获取，不作为已抓正文。</p>
+<p>正文不可取得但可信摘要可用时可作为摘要材料，保留来源和原文范围；未取得正文必须在报告中展示。已选日期和来源不得自动扩大；放宽范围由用户显式发起新一轮研究。</p>
+</section>
+
+<section id="delivery"><h2>5. 模型异常与报告交付策略</h2>
+<h3>5.1 按失败类型决策</h3>
+<div class="scroll"><table><thead><tr><th>实际事件</th><th>处理策略</th><th>用户拿到什么</th></tr></thead><tbody>
+<tr><td>规划 JSON 格式异常</td><td>在同一尝试和期限预算中纠正；仍失败则基础采集继续，规划标记未增强，后续语义分析独立决定能否进行。</td><td>可继续采集；最终按实际分析完整性决定报告等级。</td></tr>
+<tr><td>模型限流、超时或服务中断</td><td>有界重试；管理员已开启且通过验证的备用服务可接续未完成分项。所有真实调用独立计量，不能多层嵌套重试。</td><td>完整或受限研判；全部模型不可用时转资料简报。</td></tr>
+<tr><td>模型明确拒绝处理某批材料</td><td>标记供应商拒绝，不再将同一请求当格式错误重试。保存已取证据、已完成分析和缺口；该批次未得到的判断保持未知。可以换用独立公开来源补充事实，不能靠换皮、删词、拆分重放来规避拒绝。</td><td>满足条件时交付受限研判；不能形成可靠判断时交付资料简报，列出实际拒绝范围和待核验问题。</td></tr>
+<tr><td>只有报告写作调用失败</td><td>使用已验证分析组件和确定性模板编排可读文档，保留来源、引语、统计和缺口；不凭代码补写未经分析的推断。</td><td>内容齐全、核验通过时仍可交付完整报告；核验有缺口则受限研判。</td></tr>
+<tr><td>部分分类／维度失败</td><td>其他分项在自身预算内继续。每项统计展示实际处理分母；失败材料不被暗中当作已读，也不导致成功组件全部丢弃。</td><td>受限研判，明确哪些结论只适用于已处理材料。</td></tr>
+<tr><td>全部模型不可用／语义准入未完成</td><td>继续来源、日期、去重等可确定核验；保留候选。用代码渲染资料列表、抓取记录和缺口，不运行词面规则冒充语义准入。</td><td>资料简报，材料相关性标为待核验；不输出情感比例、风险定性或品牌结论。</td></tr>
+</tbody></table></div>
+<h3>5.2 三种报告与一个空结果回执</h3>
+<div class="scroll"><table><thead><tr><th>交付等级</th><th>最低条件</th><th>必须包含</th><th>不得包含</th></tr></thead><tbody>
+<tr><td><strong>完整研判</strong></td><td>至少 2 个不同 URL 的 direct 材料；本套餐要求的分析分项、相关材料消费及引文校验均完成。正文缺失可使用合格摘要，但明确材料类型。</td><td>摘要、套餐维度、建议、统计范围、证据与来源、覆盖限制、HTML／Word。</td><td>未知处理状态、漏读材料伪称全量、不同平台数据冒充、跨文档引文。</td></tr>
+<tr><td><strong>受限研判</strong></td><td>至少 2 条已验证 direct；至少 1 个完整、独立、证据核验通过的分析分项，或逐文档有效分类。存在可明确划定的未完成范围。</td><td>已完成发现、可核验数据、未完成分项、所覆盖材料数／可用材料总数、恢复建议、醒目的受限说明。</td><td>把部分材料的百分比推广到全部样本；将未处理维度补成通用结论；宣称与完整研判等价。</td></tr>
+<tr><td><strong>资料简报</strong></td><td>至少 1 条来源可追溯、内容非空、符合所选来源与日期的材料；可尚未完成语义分类。</td><td>资料目录、原文或摘要范围、来源／发布时间、抓取情况、核验状态、处理缺口、建议补充路径；固定模板渲染。</td><td>对候选材料断言与主题相关、未验证事实、全网热度／情感／风险推断。</td></tr>
+<tr><td><strong>空结果回执</strong></td><td>无任何符合来源与日期的可用内容。</td><td>执行过的查询和入口、真实失败原因、范围与预算、可操作的下一步。</td><td>凑两条材料、假报告、伪造引用；将该回执计为研判报告成功。</td></tr>
+</tbody></table></div>
+<p>页面预览、下载文件、报告列表、历史版本及 API 均保存同一个交付等级。Word 从已保存 HTML 转换，不为导出重新调用模型。完整报告的严格门槛保留；新增等级明确表达能交付的范围，而不是把严格校验删除。</p>
+<h3>5.3 原始场景的预期变化</h3>
+<p>对“姆巴佩／蒙牛／东鹏／补水啦”这类任务：博查、独立入口和 Scrapling 继续取证；某批次被 GLM 拒绝后，已取原始资料和已验证分析仍可用于相应交付等级。若已有分析无法满足受限研判条件，至少交付资料简报，并展示“29 条直接相关材料、17 条背景材料，部分分析被供应商拒绝，未形成完整研判”。不得承诺通过同一模型必然生成全部主观结论。</p>
+</section>
+
+<section id="ux"><h2>6. 用户流程与采集数据面板</h2>
+<p><strong>创建任务：</strong>保留现有关键词、平台、日期及场景；新增可选种子链接。默认“自动恢复采集＋按实际完成度交付”，创建前显示所选平台已核验的自主发现／静态抓取／动态抓取能力。仅用户可选“必须完整研判，否则只保留资料”，该偏好也要在创建时说明。</p>
+<p><strong>任务进行中：</strong>显示当前阶段、实际耗时和材料进度。例如：“博查暂不可用，已转公开入口采集；已发现 21 条链接，取得正文 8 条、摘要 6 条”。模型失败提示不能再统一写成采集失败。</p>
+<p><strong>完成后：</strong>优先展示本轮交付等级和报告预览；限制原因与报告同屏。“继续补充”只处理缺口，先展示将沿用的材料、允许的来源与预计新增调用；“调整范围重跑”明确创建新 run，旧版报告仍可下载。</p>
+<div class="scroll"><table><thead><tr><th>面板层次</th><th>用户需要看到的数据</th><th>操作</th></tr></thead><tbody>
+<tr><td>平台 × 采集通路</td><td>博查／公开入口／种子链接／历史材料分别发现多少候选；静态和动态取得多少正文；准入多少 direct／context；失败和未处理各多少。</td><td>查看实际入口、失败原因、最近成功时间；按来源筛选资料。</td></tr>
+<tr><td>单条材料</td><td>原 URL／最终 URL、来源、发现入口、原发布时间、采集时间、正文／摘要、去重关系、相关性和模型处理状态、引用位置。</td><td>打开原文、查看抓取记录；有权限时重新抓取，状态仍接受硬边界核验。</td></tr>
+<tr><td>分析与交付</td><td>逐分类／维度／报告章节的已处理材料、拒绝／失败／未处理、实际统计分母；报告版本和等级。</td><td>下载当前成果、继续未完成工作、调整范围；拒绝类错误不提供无效的连续重试按钮。</td></tr>
+<tr><td>管理员运营</td><td>各入口可用率、正文成功率、有效证据产出、限流、供应商拒绝率、耗时和实际费用状态。</td><td>启停失败适配器、核查选择器和网络、配置供应商及恢复优先级。</td></tr>
+</tbody></table></div>
+<p>“发现 300 条”必须与“去重后 87 条”“有效材料 46 条”分开呈现。对站点无公开入口、抓取受限、用户选中但返回为空的情况，显示具体状态，不显示为零舆情。</p>
+</section>
+
+<section><h2>7. 生命周期、恢复、计费与数据契约</h2>
+<h3>7.1 运行与版本</h3>
+<p>建议采用运行状态与交付状态两条轴：运行经历排队、发现、抓取、核验、分析、编排、终止；交付状态为完整研判、受限研判、资料简报或空结果回执。界面将“受限研判／资料简报已交付”与“任务失败且无成果”区别展示。具体字段和兼容映射在审核后的技术方案中冻结。</p>
+<p>自动恢复仅在当前接纳 run 的预算内执行；按 URL／内容版本／分析项记录幂等键和处理进度。服务重启后使用持久快照和队列租约恢复，不允许旧 run 覆盖新 run 的当前状态。用户取消后停止新增搜索、浏览器和模型请求，保留已入账的真实用量与已有材料。</p>
+<p>跨终态继续工作走现有合法的新 run 接纳流程，引用上一轮的可复用证据版本，不直接把失败／已退款 run 改回运行。续跑前核查来源日期、原文版本、账户状态、权限和用量授权；已完成且仍有效的分项不重复购买。</p>
+<h3>7.2 建议的报告额度规则（本次待审核）</h3>
+<ul>
+<li>接纳时仍扣 1 次；<strong>只有完整研判保留该消费</strong>。受限研判、资料简报和空结果回执建议配对回补这 1 次，不额外收费。</li>
+<li>同一运行中的自动恢复不另扣报告次数；用户主动重新申请完整研判时创建新 run，按当前套餐正常接纳和计费，不重用旧退款。</li>
+<li>无论用户侧是否退款，每次真实供应商调用都保留实际 token、调用结果和可验证成本。供应商未报用量／价格时保持 unknown／pending，不能记成真实零成本。</li>
+<li>初始管理员固定不可变 UID 豁免规则、其他用户套餐限制、原子扣减及成对退款保持；新增交付等级的退款幂等和并发边界必须经真实 PostgreSQL 契约验收。</li>
+<li>避免资料简报被无限调用滥用：保留现有身份与试用门禁，新增同主题重复请求合并、并发和供应商调用预算；具体试用／恢复入口规则须与新等级一起验证。</li>
+</ul>
+<h3>7.3 必要数据</h3>
+<p>发现记录保存通路、入口、原 URL、发现时间、查询、供应商业务码和适配器版本；证据快照保存原始发布时间、采集时间、内容类型、哈希与可验证位置；分析记录保存输入材料版本、范围、供应商结果、已完成项与失败码；报告快照保存交付等级、可见限制、来源清单、版本及内容哈希。</p>
+<p>补充入口来自不同站点时仍按 URL 真实域名分类，不能贴成用户选择的第一个平台。采集记录与报告材料分开，不让无关候选进入看板舆情统计。记录限于有权访问的数据；凭据与 token 不进入任务、错误页面、文档和公开日志。继续执行现有文件保留和账户注销规则。</p>
+</section>
+
+<section><h2>8. 时间与资源预算</h2>
+<p>先以现有总任务 2,760 秒作为上限；采集／核验 900 秒、分析 1,200 秒、编排 600 秒及调度结算余量保持总体约束。外部搜索、自主入口和恢复共享阶段预算，不能每加一个入口就新增一套完整时限；至少为确定性渲染和结算预留 60 秒。</p>
+<p>一期建议沿用最终 50 条、待处理候选 100 条、博查单任务最多 40 次／单平台最多 8 次、最多 20 次动态渲染的上限。独立发现建议最多访问 60 个列表／搜索／feed 页面，按用户选中的入口轮转；文章抓取不突破候选上限。静态抓取和动态浏览器继续受全服务并发闸门约束，避免多任务把服务器耗尽。</p>
+<p>模型输出仍从 16,384 token 起，真正截断时在已验证模型能力及同一截止时间内最多一次提高到 32,768；不为节省成本缩短回答。内容拒绝不占用格式纠正重试。平均耗时暂不承诺，发布前用真实任务的 P50／P95 给出参考。</p>
+<p>本版不承诺“任何话题都能得到 AI 全部结论”或“所有平台都能全量抓取”。承诺的是各层独立恢复、真实成果保留、明确交付等级和可操作的缺口处理。</p>
+</section>
+
+<section id="acceptance"><h2>9. 可验证的验收标准</h2>
+<div class="scroll"><table><thead><tr><th>场景</th><th>必须观察到的结果</th></tr></thead><tbody>
+<tr><td>关闭博查／额度不足</td><td>从至少一个公开新闻站点和一个既有社媒平台的独立入口发现真实 URL 并抓到有效内容；证据显示发现过程没有调用博查。其他平台实测结果逐个披露。</td></tr>
+<tr><td>博查正常但结果偏向单平台</td><td>自主入口仍被调度且具有处理名额；展示两条通路各自贡献、去重后来源分布。没有真实内容的平台不凑数。</td></tr>
+<tr><td>静态空页、动态可取正文</td><td>先观察静态失败，再实际运行 Scrapling 动态浏览器取得正文；引用能回到该正文。只有 fixture 通过不算实际站点验收。</td></tr>
+<tr><td>网页验证／安全地址拦截／日期冲突</td><td>分别保留明确原因；均不被浏览器重试或摘要回退绕过。未选来源和日期越权准入为 0。</td></tr>
+<tr><td>智谱 sensitive／content_filter</td><td>实际记录供应商拒绝与原请求 ID，不做无效格式重试；已完成成果保留，按条件生成受限研判或资料简报；统计不把拒绝材料当已分析。不能用普通产品成功替代此场景。</td></tr>
+<tr><td>所有模型均不可用</td><td>自主抓取仍运行；无需模型即可生成资料简报／空结果回执。相关性待核验和无法生成的结论明确展示，无伪造研判。</td></tr>
+<tr><td>只有写作服务故障</td><td>已验证分析组件通过确定性模板形成 HTML／Word；内容与来源完整，报告等级由完成度决定，不要求重新购买全部模型调用。</td></tr>
+<tr><td>1 条 direct／0 条材料</td><td>分别得到资料简报／空结果回执，不能标完整研判；退款精确配对，真实供应商成本仍保留。</td></tr>
+<tr><td>续跑、重启、取消和并发</td><td>已完成项不重复付费，取消后无新增付费授权；旧 run 不覆盖新 run；每个消费最多一笔退款，报告旧版可下载。</td></tr>
+<tr><td>完整成功对照</td><td>在服务器实际创建正常任务，真实采集、分析、生成、预览及下载均完成；保存任务 ID、提交 SHA、日志、实际用量、报告文件和哈希。</td></tr>
+</tbody></table></div>
+<p><strong>质量口径：</strong>“存在可用材料”的失败任务必须交付对应等级文档，覆盖故障矩阵的交付率目标为 100%；这不是完整研判成功率。未完成数据冒充完成、伪造引用、跨平台错标、越权来源／日期放行为 0。正文成功率和各平台覆盖率按真实入口分别报告，不先编定百分比。</p>
+<p>自动回归包含真实入口契约、外部失败 fixture、Scrapling 静态／动态、PG 并发／回滚／重建、账本与版本、浏览器页面及导出。所有构建和测试在 GitHub 托管 runner；正式部署使用 reviewed dev→prod 和精确 SHA 成功产物。服务器实测只运行已构建服务及实际验收请求。</p>
+</section>
+
+<section><h2>10. 建议分期与发布门槛</h2>
+<ol>
+<li><strong>入口可行性与契约：</strong>用户批准后，先做公开入口发现／正文成功率探针，核定一期可用平台和限制；冻结交付等级、账本及恢复接口。若独立发现不成立，先调整适配器范围，不能跳过该目标宣布完成。</li>
+<li><strong>自主采集与面板：</strong>实现发现器、共享候选池、Scrapling 诊断及逐通路计数；博查关闭实测通过后，才标记“具备自主采集”。</li>
+<li><strong>分级报告交付：</strong>实现分项成功保留、供应商拒绝／故障策略、确定性渲染、等级提示、退款和文件快照；故障矩阵与完整成功对照均通过后发布。</li>
+<li><strong>缺口续跑与扩展平台：</strong>在已冻结的计量、版本和幂等契约内上线续跑；逐个核验公众号／抖音／西瓜等入口。多模型可用性路由作为明确配置的后续能力，不作为一期自主爬虫的替代。</li>
+</ol>
+<p>这是产品分期与验收顺序，不是开发工时承诺。本 PRD 审核后再形成具体技术方案、任务拆分及交付计划；未经本次用户审核，不继续相关产品代码、合并发布或新增真实付费任务。</p>
+</section>
+
+<section id="deepseek"><h2>11. DeepSeek Search／Fetch 与模型替换可行性</h2>
+<p class="notice"><strong>新增候选方案，待用户选择：</strong>本节基于 2026-10-29 实际读取的 DeepSeek 官方指南与接口参考，以及现有项目代码。尚未用本项目账号发起 DeepSeek Search／Fetch／模型实测，未修改线上供应商、凭据和运行代码。技术可接入不等于已经验证各平台覆盖、正文获取或原始话题分析成功。</p>
+<p><strong>评估结论：</strong>可以将 DeepSeek 作为主分析／报告模型，并用其 Search、Fetch 替换主搜索和供应商正文通路；同时保留本机 Scrapling 与公开入口自主发现。建议由现有任务编排器分别调用这些独立 HTTP API，一期不引入由模型自主无限调度的工具循环。</p>
+<div class="scroll"><table><thead><tr><th>能力</th><th>官方已确认</th><th>项目中的职责</th></tr></thead><tbody>
+<tr><td>DeepSeek 模型</td><td>OpenAI 兼容，支持流式、JSON Output、思考模式；当前官方建议模型名为 <code>deepseek-flash</code>，另有 <code>deepseek-v4-pro</code>。</td><td>统一主题规划、语义准入、情感话题、分维度研判和报告写作；保留原文证据和交付等级校验。</td></tr>
+<tr><td><code>POST /v1/tools/search</code></td><td>query 搜索，count 1–50；返回 URL、标题、snippet、summary、可选 content、发布时间和排序信息。</td><td>替换博查的主召回适配器；<code>need_content=true</code> 时优先复用实际返回的可用正文，避免重复取文。</td></tr>
+<tr><td><code>POST /v1/tools/fetch</code></td><td>单 URL 抓取，返回 title 与 Markdown content；受目标站点可用性及访问策略影响。</td><td>供应商远程取正文通路；不能等价于已实现站内搜索、账号登录、视频转写或全量评论。</td></tr>
+<tr><td>本机 Scrapling＋独立入口</td><td>已有静态／动态抓取基础；独立发现通路仍需本 PRD 的改造与实际验证。</td><td>公开 feed／栏目／列表／种子链接发现后直接抓取。DeepSeek 账号、搜索、Fetch 均不可用时仍能独立运行。</td></tr>
+</tbody></table></div>
+<p>Search 和 Fetch 是 DeepSeek 提供的外部服务，不是 Scrapling 的本地能力。只有“本机发现真实链接→本机 Scrapling 抓取→保存原文”在不调用 Search／Fetch 时也实际跑通，才可标为自主采集。仅把博查依赖换成 DeepSeek 依赖，不满足此前的产品目标。</p>
+<h3>11.1 可先单独替换分析与报告模型</h3>
+<p><strong>可以与搜索迁移分开实施。</strong>若只决定替换 GLM，第一步可保留当前博查与 Scrapling 采集通路，将统一主题规划、语义准入、情感与话题、三／五维分析、摘要及报告写作统一改为 DeepSeek。只替换最后的报告写作不足以解决本次问题，因为实际阻塞发生在此前的维度分析阶段。</p>
+<div class="scroll"><table><thead><tr><th>节点</th><th>替换范围与验收</th></tr></thead><tbody><tr><td>主题规划与语义准入</td><td>DeepSeek 理解同一任务的全部关联关键词、返回规范结构及逐文档证据用途。保持来源、日期、直接／背景边界。</td></tr><tr><td>情感、话题、三／五维分析</td><td>按当前套餐执行同样维度；相同原始材料对照，检查文档覆盖、观点、统计分母和逐字引用。不能因为换模型缩小材料范围或补造结论。</td></tr><tr><td>摘要和报告写作</td><td>使用已核验的分项结论及证据编排；既有 HTML 快照与 Word 转换继续工作。下载旧报告不重新调用任何新模型。</td></tr></tbody></table></div>
+<p>现有 OpenAI 兼容客户端及按请求注入供应商 Key／Base URL／Model 的装配可复用，但启用前必须补齐能力登记、DeepSeek 思考参数、终止原因、实际用量及价格版本。模型候选为官方当前的 <code>deepseek-flash</code> 与 <code>deepseek-v4-pro</code>；先做相同材料的质量、引用、完整性及耗时对照，再选择生产型号，不能凭型号名称宣称实测质量或速度更好。</p>
+<p>DeepSeek 官方明确支持 <code>content_filter</code>，JSON Output 也可能返回空 content。因此更换模型能够去掉 GLM 依赖，但不应承诺原话题一定通过，也不能替代本 PRD 的受限研判／资料简报方案。原话题拒绝场景与普通产品完整报告必须分别实际验收。</p>
+<h3>11.2 建议采集通路</h3>
+<ol><li>同一研究启动 DeepSeek Search 与公开入口自主发现，两条路径汇入按来源轮转的候选池。</li><li>Search 返回可用 content 时校验保存；没有正文时，根据站点策略选择本机静态 Scrapling 或 DeepSeek Fetch，失败后在预算内尝试另一可用通路，必要时做有限动态渲染。</li><li>相同 URL／内容版本成功获取后不重复抓取；供应商正文与本地正文保存为可追溯文本版本，不能混用引用位置。snippet／summary 始终标为摘要，不自动当成原网页逐字引文。</li><li>核验来源、日期、相关性与引用后交给 DeepSeek 模型分析；模型不可用或明确拒绝部分材料时，仍按完整／受限／资料简报等级交付。</li><li>遇到账号级 401／402，不再把同账号的 Fetch 或模型当独立容灾。直接继续可用的本地采集；没有模型时走确定性资料简报。</li></ol>
+<h3>11.3 不能只更换 Key 的兼容点</h3>
+<div class="scroll"><table><thead><tr><th>差异</th><th>接入要求</th></tr></thead><tbody>
+<tr><td>Search 查询长度</td><td><code>query</code> 与 <code>ori_question</code> 最长均为 128 个 Unicode 字符；当前规划器允许单查询 300 字，研究问题可到 2,000 字。需在规划阶段分配检索表达和站点／日期语法的长度预算，必要时拆成多个关联查询，不能截掉品牌或关注点冒充完整意图。</td></tr>
+<tr><td>站点与日期条件</td><td>使用 <code>site:</code>、<code>after:</code>、<code>before:</code> 语法。不能沿用博查 <code>include</code>、<code>freshness</code> 字段——DeepSeek 文档明确未知字段会被忽略。仍须逐平台发起和按真实 URL 域名复核；日期边界／时区先实际验证，再按上海时区和用户范围严格复核。</td></tr>
+<tr><td>响应与正文溯源</td><td>搜索结果在 <code>results[]</code>，不是博查的 webPages.value。<code>date</code> 是 UTC RFC3339 或 null。Fetch 只定义 title/content，没有发布时间或最终重定向地址字段；不能仅凭 Fetch 补造这两项，无法核验时保留缺口。</td></tr>
+<tr><td>供应商排序指标</td><td>rerank_score、authority 可辅助排序；它们不是本项目的相关性、真实性或证据准入结论，不按某一分数自动放行材料。</td></tr>
+<tr><td>模型能力与参数</td><td>现有客户端可复用流式和 JSON 传输，但能力登记目前只有已核验 GLM 项。切换需显式登记 DeepSeek 模型能力与超时策略。官方当前思考模式默认开启、effort 默认 high；思考模式下 temperature 等参数被忽略。不能认为现有 temperature=0 就保证分类确定性，也不能直接套用 GLM 参数分支。</td></tr>
+<tr><td>JSON／终止原因</td><td>官方 JSON Output 指南仍说明可能返回空 content；Chat API 明确有 <code>content_filter</code>、<code>length</code>、<code>insufficient_system_resource</code>、<code>aborted</code>。必须区分拒绝、截断、资源不足和空响应，不能承诺更换 DeepSeek 后不再发生。</td></tr>
+<tr><td>工具调用模式</td><td>Search／Fetch 可由程序直接调用，无需原生 Tool Calls。若以后改为模型工具循环，官方要求带 tools 的历史回传 reasoning_content；当前客户端未实现这种完整历史保留，不能无改造切成该模式。</td></tr>
+<tr><td>计量与错误处理</td><td>Search／Fetch 按成功请求计费，需新增独立工具请求账本，关联 accepted run、供应商、操作、状态、是否取得结果和价格版本；不能塞进模型用量表伪造零 token 调用。确认失败／无结果与客户端断连的未知状态分开，未知费用保持待对账。</td></tr>
+</tbody></table></div>
+<h3>11.4 官方价格、限速与集中风险</h3>
+<p>官方当前 Search、Fetch 均为每 1,000 次成功请求 5 元，即每次 0.005 元；Search 必须 HTTP 200 且 results 非空，Fetch 必须实际返回正文。count 不影响单次价格。例如 30 次成功 Search＋50 次成功 Fetch 为 <strong>0.40 元搜索／抓取费</strong>，不含模型 token、运行资源或额外调用；这只是按文档计算的例子，不是本项目实测账单。</p>
+<p>官方单账号 Search 100 QPS、Fetch 25 QPS，Fetch 另有目标域名限速；与使用多少个 Key 无关。项目应保留更保守的全服务并发和总预算，不将供应商 QPS 当作延迟或站点成功率承诺。官方提到 Harness／Claude Code／Codex 服务端工具调用将在北京时间 2026-11-01 00:00 起按次收费，此说明不能推导本项目直接 HTTP 调用当前免费。</p>
+<p>把模型、搜索与远程抓取集中到一个 DeepSeek 账号能简化接入，但同时共享账号认证、余额和供应商可用性风险。因此本机 Scrapling、自主发现及无需模型的简报渲染需要继续保留。博查和 GLM 是否停用作为明确迁移决策，不能未经审核改动现有线上配置。</p>
+<h3>11.5 审核后最小实测矩阵</h3>
+<ol><li><strong>平台和日期：</strong>对原 5 平台、最近 7 天／30 天逐一请求 Search，核对域名、日期、实际相关结果、正文返回率；不能仅凭 HTTP 200 宣布比博查覆盖更好。</li><li><strong>原话题：</strong>保留姆巴佩／蒙牛／东鹏／补水啦场景，实际验证 DeepSeek 搜索、Fetch 和分析的响应。无论成功或拒绝都留存真实结果，不能把普通产品成功当作原话题已解决。</li><li><strong>完整产品对照：</strong>复用 iPhone17 与 iPhone 系列续航两组已测条件，比较有效 direct 材料、正文／摘要、完整报告、耗时和实际费用；不降低证据门槛来提高成功率。</li><li><strong>独立性与容灾：</strong>禁用 DeepSeek 搜索／Fetch，再模拟账号或模型不可用，验证公开入口发现＋本机 Scrapling 与资料简报确实不依赖同一个供应商。</li><li><strong>程序兼容：</strong>真实验证 JSON、流式终止原因、16,384／32,768 输出预算、期限、取消、引用、工具调用按次计量和报告退款。当前仅完成文档可行性评估，实测须在方案获批后进行。</li></ol>
+<p>核对来源：<a href="https://api-docs.deepseek.com/zh-cn/guides/search/">Search／Fetch 使用指南</a>、<a href="https://api-docs.deepseek.com/zh-cn/api/search">Search 参考</a>、<a href="https://api-docs.deepseek.com/zh-cn/api/fetch">Fetch 参考</a>、<a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing">模型与价格</a>、<a href="https://api-docs.deepseek.com/zh-cn/guides/thinking_mode">思考模式</a>、<a href="https://api-docs.deepseek.com/zh-cn/guides/json_mode">JSON Output</a>、<a href="https://api-docs.deepseek.com/zh-cn/api/create-chat-completion">Chat Completion 参考</a>。日期为本次文档核对日期，后续启用前重新确认账号权限、模型可用性和价格版本。</p>
+</section>
+
+<section id="review"><h2>12. 本次请审核的五项产品决策</h2>
+<ol>
+<li><strong>采集默认：</strong>外部搜索＋自主发现并行，预留自主候选名额；入口可用性逐平台验收，第一阶段先完成公开新闻与至少一个现有社媒平台。</li>
+<li><strong>交付默认：</strong>允许明确标识的受限研判和资料简报作为正式可下载成果；无内容只有空结果回执，不能包装成完整报告。</li>
+<li><strong>计费默认：</strong>只有完整研判消费 1 次；其他等级配对回补，真实供应商用量照实记录。用户主动重新申请完整研判按新 run 正常计费。</li>
+<li><strong>供应商候选：</strong>是否选择“DeepSeek 主模型＋Search／Fetch 主供应商＋本机自主采集”的方向；建议先按上节矩阵做实际对照，达到门槛后才停用原供应商。</li>
+<li><strong>当前未部署补丁：</strong>供应商拒绝识别、停止无效重试、失败原因展示并入本方案，随审批后的交付等级和恢复流程一起评审，不先把“明确报错”当作最终产品解决方案。</li>
+</ol>
+<p class="decision">审核入口：可直接回复认可的条目及修改意见。当前只提交本 PRD，等待用户确认后再推进技术设计和实施。</p>
+</section>
+
+<footer><h2>附：事实依据与兼容关系</h2>
+<p><a href="../dev/RESEARCH_PLANNING_FIX_2026-10-29.html">研究规划修复与实测记录</a>；<a href="SEMANTIC_RETRIEVAL_SCRAPLING_DESIGN_2026-10-15.html">既有语义检索与 Scrapling 设计</a>；<a href="../dev/LLM_USAGE_BRIDGE_OPERATIONS.md">实际用量桥接约束</a>。</p>
+<p class="muted">本提案需经审核后替换历史“任一未处理材料使整次任务无交付”“所有报告都必须走模型写作”等相关产品语义；现有来源、日期、原文引用和完整报告真实性约束继续有效。原用户任务、历史报告及财务流水均不在本 PRD 阶段改写。</p></footer>
+</main></body></html>
